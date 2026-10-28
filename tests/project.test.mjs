@@ -397,3 +397,61 @@ test('profile direct-message controls respect the personal blacklist',()=>{
  assert.match(profile,/disabled=\{isBlocked\}/);
  assert.match(shell,/onBlockUser=\{id=>void toggleProfileBlock\(id\)\}/);
 });
+
+
+test('direct chats show loading, retry, and empty state only after completed request',()=>{
+ const shell=load('components/AppShell.tsx');
+ const css=load('app/globals.css');
+ assert.match(shell,/const \[chatLoad,setChatLoad\]=useState/);
+ assert.match(shell,/setChatLoad\(\{id:chatId,status:'loading'\}\)/);
+ assert.match(shell,/setChatLoad\(\{id:chatId,status:'ready'\}\)/);
+ assert.match(shell,/setChatLoad\(\{id:chatId,status:'error'\}\)/);
+ assert.match(shell,/!activeChatLoading&&!activeChatLoadError&&!chatMessages\.length/);
+ assert.match(shell,/className="ik-chat-loading"/);
+ assert.match(shell,/Попробовать снова/);
+ assert.match(css,/\.ik-chat-loading-bubble/);
+ assert.match(css,/@keyframes ik-chat-shimmer/);
+});
+test('inbox polling does not reread channels or messages every few seconds',()=>{
+ const shell=load('components/AppShell.tsx');
+ assert.match(shell,/const refreshInbox=useCallback/);
+ assert.match(shell,/window\.setInterval\(\(\)=>void run\(\),12000\)/);
+ assert.match(shell,/cycles%6===0/);
+ assert.match(shell,/window\.setInterval\(\(\)=>void sync\(\),6000\)/);
+ const body=shell.slice(shell.indexOf('const refresh=useCallback'),shell.indexOf('const refreshInbox=useCallback'));
+ assert.ok(!body.includes('setChatMessages(ordered)'));
+});
+test('private signed media URLs are scoped to token, deduplicated and bounded',()=>{
+ const source=load('lib/supabase-rest.ts');
+ assert.match(source,/const signedMediaCache=new Map/);
+ assert.match(source,/const key=token\+':\'\+path/);
+ assert.match(source,/SIGNED_URL_CACHE_LIMIT=120/);
+ assert.match(source,/SIGNED_URL_CACHE_MS=15\*60\*1000/);
+ assert.match(source,/signal:AbortSignal\.timeout\(18000\)/);
+ assert.match(source,/signedMediaCache\.delete\(key\)/);
+});
+test('security headers prevent sniffing and framing but preserve future calls',()=>{
+ const cfg=load('next.config.ts');
+ assert.match(cfg,/X-Content-Type-Options/);
+ assert.match(cfg,/X-Frame-Options/);
+ assert.match(cfg,/Referrer-Policy/);
+ assert.match(cfg,/Strict-Transport-Security/);
+ assert.ok(!cfg.includes('microphone=()'));
+ assert.ok(!cfg.includes('camera=()'));
+});
+test('Telegram-like message actions are compact and functional on iPhone',()=>{
+ const ui=load('components/AppShell.tsx'),css=load('app/globals.css');
+ assert.match(ui,/className="ik-message-menu-reactions"/);
+ assert.match(ui,/className="ik-message-menu-preview-name"/);
+ assert.match(ui,/>Ответить<\/span>/);
+ assert.match(ui,/reactToMessage\(id,emoji\)/);
+ assert.match(ui,/>Изменить<\/span>/);
+ assert.match(ui,/>Удалить для всех<\/span>/);
+ assert.match(css,/\.ik-message-menu-buttons button svg/);
+ assert.match(css,/width:min\(350px,calc\(100dvw - 32px\)\)/);
+});
+test('edit history RLS optimization preserves owner restriction',()=>{
+ const sql=load('supabase/migrations/20261029_050000_optimize_edit_history_rls.sql');
+ assert.match(sql,/alter policy message_edit_history_read_own/);
+ assert.match(sql,/editor_id=\(select auth\.uid\(\)\)/);
+});
