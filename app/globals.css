@@ -361,3 +361,42 @@ textarea:focus-visible{outline:2px solid #111;outline-offset:2px}
 .chat-media-error,.chat-media-loading{font-size:12px;opacity:.7}
 .bubble:has(.chat-media-image),.bubble:has(.chat-media-video){max-width:min(84%,360px)}
 @media(prefers-reduced-motion:reduce){.chat-attach-button{transition:none}}
+/* Story presentation: cinematic 9:16 viewer, timed progress, active-story avatar ring */
+.profile-avatar-has-story{position:relative;cursor:pointer;isolation:isolate}
+.profile-avatar-has-story::before{content:"";position:absolute;inset:-6px;border-radius:50%;background:conic-gradient(from 210deg,#6e5cff,#db3bca,#ff8d57,#ffcf55,#6e5cff);z-index:-1;box-shadow:0 0 0 3px #fff inset;transition:filter .25s ease,transform .25s ease}
+.profile-avatar-has-story:hover::before{filter:saturate(1.3);transform:scale(1.035)}
+.story-viewer{position:fixed;inset:0;z-index:120;background:rgba(6,6,10,.96);display:flex;align-items:center;justify-content:center;animation:story-overlay-in .22s ease both}
+.story-viewer-stage{width:min(100vw,450px);height:min(100dvh,820px);position:relative;overflow:hidden;background:#17171b;border-radius:18px;box-shadow:0 22px 90px #0009;color:#fff}
+.story-viewer-image{position:absolute;inset:0;width:100%;height:100%;object-fit:contain}
+.story-viewer-stage::before{content:"";position:absolute;inset:0 0 auto;height:140px;background:linear-gradient(#0009,transparent);z-index:1;pointer-events:none}
+.story-progress{position:absolute;top:13px;left:13px;right:13px;display:flex;gap:4px;z-index:3}
+.story-progress-track{height:3px;flex:1;background:#ffffff70;border-radius:4px;overflow:hidden}
+.story-progress-track>span{display:block;height:100%;width:0;background:#fff}
+.story-progress-track>span.done{width:100%}
+.story-progress-track>span.playing{animation:story-progress-fill 6s linear both}
+.story-viewer-header{position:absolute;top:27px;left:15px;right:15px;display:flex;align-items:center;gap:10px;z-index:4}
+.story-viewer-avatar{width:38px;height:38px;flex-shrink:0;border-radius:50%;background:#888;display:grid;place-items:center;overflow:hidden;font-weight:800}
+.story-viewer-avatar img{width:100%;height:100%;object-fit:cover}
+.story-viewer-author{display:grid;gap:3px;min-width:0;flex:1;text-shadow:0 1px 5px #0009}
+.story-viewer-author strong{font-size:14px;font-weight:750}
+.story-viewer-author small{font-size:11px;opacity:.82}
+.story-viewer-close{border:0;background:#ffffff24;color:#fff;width:35px;height:35px;border-radius:50%;font-size:25px;cursor:pointer}
+.story-viewer-prev,.story-viewer-next{position:absolute;top:90px;bottom:40px;width:36%;border:0;background:transparent;z-index:2;cursor:pointer}
+.story-viewer-prev{left:0}.story-viewer-next{right:0}
+.story-viewer-caption{position:absolute;bottom:25px;left:20px;right:20px;text-align:center;z-index:3;font-size:15px;font-weight:650;line-height:1.5;text-shadow:0 2px 10px #000}
+@keyframes story-progress-fill{to{width:100%}}
+@keyframes story-overlay-in{from{opacity:0}to{opacity:1}}
+@media(max-width:550px){.story-viewer-stage{height:100dvh;border-radius:0}}
+.message-receipt{display:inline-block;margin-right:5px;font-size:13px;letter-spacing:-3px;padding-right:3px;color:#999;font-weight:800}
+.message-receipt.read{color:#34a4f3}
+/* Profile information is read-only until the explicit edit control is used */
+.profile-edit-trigger{border:1px solid #e5e5e5;background:linear-gradient(180deg,#fff,#f5f5f5);color:#171717;border-radius:12px;padding:9px 12px;font:inherit;font-size:12px;font-weight:800;letter-spacing:-.025em;white-space:nowrap;cursor:pointer;box-shadow:0 2px 6px #00000009;transition:transform .22s ease,box-shadow .25s ease}
+.profile-edit-trigger:hover{box-shadow:0 4px 13px #00000017;transform:translateY(-1px)}
+.profile-edit-trigger:active{transform:scale(.95)}
+.profile-identity h1{font-weight:850;letter-spacing:-.055em;font-stretch:expanded}
+.profile-topbar strong{font-weight:850;letter-spacing:-.035em}
+.profile-section-title h2{font-weight:850;letter-spacing:-.045em}
+.profile-editor h2{font-weight:850;letter-spacing:-.045em}
+.profile-editor-intro{font-size:12px;color:#888;line-height:1.5;margin:0 0 15px}
+.profile-view{font-family:Inter,Arial,Helvetica,sans-serif;font-optical-sizing:auto}
+@media(prefers-reduced-motion:reduce){.story-viewer{animation:none}.story-progress-track>span.playing{animation:none;width:100%}.profile-edit-trigger{transition:none}}
