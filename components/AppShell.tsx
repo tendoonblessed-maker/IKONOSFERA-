@@ -419,17 +419,20 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
   }
   async function sendMessage(e:React.FormEvent){
     e.preventDefault();if(!session||!selected||!userId||sending||activePartnerBlocked)return;
-    const chatId=selected,body=draft.trim();
+    const chatId=selected,body=draft.trim(),token=session.access_token;
     if(!body||body.length>4000)return;
     setSending(true);setError('');
     try{
-      await postMessage(session.access_token,chatId,userId,body);
-      delete draftsRef.current[chatId];
-      if(selectedRef.current===chatId){
-        setDraft('');
-        try{setChatMessages((await listMessages(session.access_token,chatId)).reverse());}
-        catch{/* The next sync will refresh sent messages without resending. */}
+      await postMessage(token,chatId,userId,body);
+      // Users may type their next message while the previous send is in flight.
+      // Only clear the exact draft that was submitted, not their new text.
+      if((draftsRef.current[chatId]||'').trim()===body){
+        delete draftsRef.current[chatId];
+        if(selectedRef.current===chatId)setDraft(current=>current.trim()===body?'':current);
       }
+      const updated=(await listMessages(token,chatId)).reverse();
+      // The user may have switched conversations while we awaited Supabase.
+      if(selectedRef.current===chatId)setChatMessages(updated);
     }catch(e){setError(userFacingError(e));}
     finally{setSending(false);}
   }
@@ -501,25 +504,37 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
   async function messageAction(messageId:string,action:"hide"|"delete_everyone"|"edit",body?:string){
     if(!session||!selected||!userId)return;
     if(action==="delete_everyone"&&!window.confirm("Удалить сообщение для обоих?"))return;
-    try{await manageMessage(session.access_token,messageId,action,body);
-      setMessageMenuId(null);setEditingMessageId(null);setChatMessages((await listMessages(session.access_token,selected)).reverse());
+    const chatId=selected,token=session.access_token;
+    try{
+      await manageMessage(token,messageId,action,body);
+      const updated=(await listMessages(token,chatId)).reverse();
+      if(selectedRef.current===chatId){
+        setMessageMenuId(null);setEditingMessageId(null);setChatMessages(updated);
+      }
     }catch(e){setError(userFacingError(e));}
   }
   async function reactToMessage(messageId:string,emoji:ReactionEmoji){
-    if(!session||!userId||sending)return;
+    if(!session||!selected||!userId||sending)return;
+    const chatId=selected,token=session.access_token,ids=chatMessages.map(m=>m.id);
     const previous=messageReactions.find(r=>r.message_id===messageId&&r.user_id===userId);
     setSending(true);setError("");
-    try{await setMessageReaction(session.access_token,userId,messageId,previous?.emoji===emoji?null:emoji);
-      setMessageReactions(await listMessageReactions(session.access_token,chatMessages.map(m=>m.id)));
-      setMessageReactionPicker(null);
+    try{
+      await setMessageReaction(token,userId,messageId,previous?.emoji===emoji?null:emoji);
+      const updated=await listMessageReactions(token,ids);
+      if(selectedRef.current===chatId){
+        setMessageReactions(updated);
+        setMessageReactionPicker(null);
+      }
     }catch(e){setError(userFacingError(e));}finally{setSending(false);}
   }
   async function sendAttachment(file:File|undefined){
     if(!file||!session||!selected||!userId||sending||activePartnerBlocked)return;
+    const chatId=selected,token=session.access_token;
     setSending(true);setError("");
     try{
-      await sendDirectMedia(session.access_token,selected,userId,file);
-      setChatMessages((await listMessages(session.access_token,selected)).reverse());
+      await sendDirectMedia(token,chatId,userId,file);
+      const updated=(await listMessages(token,chatId)).reverse();
+      if(selectedRef.current===chatId)setChatMessages(updated);
       setNotice("Вложение отправлено.");
     }catch(e){setError(userFacingError(e));}
     finally{setSending(false);}
