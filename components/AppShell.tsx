@@ -1,6 +1,6 @@
 'use client';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { backendReady, changeProfile, createTemporaryAccount, consumeEmailLinkSession, clearSession, currentUser, listChats, listMessages, listMessageReactions, setMessageReaction, markChatRead, listProfiles, myProfile, postMessage, sendDirectMedia, sendEmailCode, signOut, startDirectChat, validSession, verifyEmailCode, type ChatMessage, type MessageReaction, type DirectChat, type Profile, type Session } from '@/lib/supabase-rest';
+import { backendReady, changeProfile, validateUsername, explainProfileError, createTemporaryAccount, consumeEmailLinkSession, clearSession, currentUser, listChats, listMessages, listMessageReactions, setMessageReaction, markChatRead, listProfiles, myProfile, postMessage, sendDirectMedia, sendEmailCode, signOut, startDirectChat, validSession, verifyEmailCode, type ChatMessage, type MessageReaction, type DirectChat, type Profile, type Session } from '@/lib/supabase-rest';
 
 import ProfilePanel from "@/components/ProfilePanel";
 import ChatMedia from "@/components/ChatMedia";
@@ -32,6 +32,9 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
   const [channelSlug,setChannelSlug]=useState("");
   const [channelDescription,setChannelDescription]=useState("");
   const [chatMessages,setChatMessages]=useState<ChatMessage[]>([]);
+  const [chatLoading,setChatLoading]=useState(false);
+  const [chatLoadedId,setChatLoadedId]=useState<string|null>(null);
+  const [onboardingDone,setOnboardingDone]=useState(false);
   const [messageReactions,setMessageReactions]=useState<MessageReaction[]>([]);
   const [messageReactionPicker,setMessageReactionPicker]=useState<string|null>(null);
   const [search,setSearch]=useState('');
@@ -74,7 +77,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
     if(activeChat && chats.some(chat=>chat.id===activeChat)) {
       const messages=await listMessages(token,activeChat);
       const ordered=messages.reverse();
-      setChatMessages(ordered);
+      if(selectedRef.current===activeChat){setChatMessages(ordered);setChatLoadedId(activeChat);setChatLoading(false);}
       setMessageReactions(await listMessageReactions(token,ordered.map(m=>m.id)));
       if(typeof document!=='undefined'&&document.visibilityState==='visible'){
         if(ordered.some(m=>m.sender_id!==id&&!m.read_at)){
@@ -83,7 +86,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
           }).catch(()=>{});
         }
       }
-    } else if(activeChat) {setSelected(null);setChatMessages([]);}
+    } else if(activeChat) {setSelected(null);setChatMessages([]);setChatLoading(false);setChatLoadedId(null);}
   },[]);
 
   useEffect(()=>{
@@ -117,6 +120,20 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
     return()=>{cancelled=true;window.clearInterval(timer);};
   },[session,userId,refresh]);
 
+  useEffect(()=>{
+    if(!session||!userId||!selected)return;
+    setChatLoading(true);setChatLoadedId(null);
+    let cancelled=false;
+    const token=session.access_token;
+    void listMessages(token,selected).then(messages=>{
+      if(cancelled||selectedRef.current!==selected)return;
+      const ordered=messages.reverse();
+      setChatMessages(ordered);setChatLoadedId(selected);setChatLoading(false);
+      void listMessageReactions(token,ordered.map(m=>m.id)).then(setMessageReactions).catch(()=>{});
+      if(ordered.some(m=>m.sender_id!==userId&&!m.read_at))void markChatRead(token,selected).catch(()=>{});
+    }).catch(e=>{if(!cancelled){setChatLoading(false);setChatLoadedId(selected);setError(userFacingError(e));}});
+    return()=>{cancelled=true;};
+  },[selected,session?.access_token,userId]);
   useEffect(()=>{messageEnd.current?.scrollIntoView({behavior:'auto'});},[chatMessages.length,selected]);
 
   async function requestCode(e:React.FormEvent){e.preventDefault();setError('');setBusy(true);try{await sendEmailCode(email.trim().toLowerCase());setCodeSent(true);setNotice('Проверь почту: открой ссылку из письма или введи код, если он пришёл.');}catch(e){setError(userFacingError(e));}finally{setBusy(false);}}
@@ -199,13 +216,23 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
     }catch(e){setError(userFacingError(e));}
     finally{setSending(false);}
   }
-  async function saveProfile(e:React.FormEvent){e.preventDefault();if(!session||!userId)return;setBusy(true);setError('');try{const p=await changeProfile(session.access_token,userId,editUsername.trim().toLowerCase().replace(/^@/,''),editName.trim());setProfile(p);setNotice('Профиль сохранён');}catch(e){setError(userFacingError(e));}finally{setBusy(false);}}
+  async function saveProfile(e:React.FormEvent){
+    e.preventDefault();if(!session||!userId)return;
+    const username=editUsername.trim().toLowerCase().replace(/^@/,'');
+    const validation=validateUsername(username);
+    if(validation){setError(validation);return;}
+    if(!editName.trim()){setError('Введи никнейм.');return;}
+    setBusy(true);setError('');
+    try{const p=await changeProfile(session.access_token,userId,username,editName.trim());setProfile(p);setOnboardingDone(true);setNotice('Профиль сохранён');}
+    catch(e){setError(explainProfileError(e));}finally{setBusy(false);}
+  }
   async function logout(){if(!session)return;if(anonymous&&!window.confirm('Это временный аккаунт. После выхода восстановить его нельзя. Выйти?'))return;setBusy(true);try{await signOut(session.access_token);}catch(e){setError(userFacingError(e));}finally{clearSession();setSession(null);setUserId('');setProfile(null);setAnonymous(false);setRows([]);setSelected(null);setProfileTarget(null);setSelectedChannel(null);setChannels([]);setChatMessages([]);setBusy(false);}}
   async function install(){if(installPrompt){await installPrompt.prompt();await installPrompt.userChoice;setInstallPrompt(null);}else setInstallHelp(true);}
   const active=rows.find(r=>r.chat.id===selected);
   const filtered=rows.filter(r=>!search.trim()||`${r.other?.display_name??''} ${r.other?.username??''}`.toLowerCase().includes(search.trim().toLowerCase()));
   const loggedIn=Boolean(session&&userId);
-  const detailOpen=Boolean(!loggedIn||selected||profileTarget||selectedChannel);
+  const mustSetup=loggedIn&&!onboardingDone&&(!profile||!profile.onboarding_completed);
+  const detailOpen=Boolean(!loggedIn||mustSetup||selected||profileTarget||selectedChannel);
   const myChannels=channels.filter(ch=>ch.owner_id===userId||subscriptions.includes(ch.id));
   const recommendedChannels=channels.filter(ch=>ch.owner_id!==userId&&!subscriptions.includes(ch.id));
   const filteredChannels=(showRecommendations?recommendedChannels:myChannels).filter(ch=>!channelSearch.trim()||((ch.title+" "+ch.slug).toLowerCase().includes(channelSearch.trim().toLowerCase())));
@@ -216,7 +243,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
       <div className="pane-toolbar"><h1>{tab==='chats'?'Чаты':tab==='contacts'?'Контакты':tab==='channels'?'Каналы':tab==='profile'?'Профиль':'Настройки'}</h1><button type="button" className="icon-button" title="Создать чат" aria-label="Новый чат" onClick={()=>{switchTab(tab==='channels'?'channels':'contacts');if(tab==='channels')setChannelCreating(true);}} disabled={!loggedIn}>＋</button></div>
       {tab==='chats'&&<div className="pane-search"><span aria-hidden="true">⌕</span><input aria-label="Поиск по чатам" placeholder="Поиск" value={search} onChange={e=>setSearch(e.target.value)} disabled={!loggedIn}/></div>}
       <div className="chat-list">
-      {tab==='chats'&&(loggedIn?filtered.length?filtered.map(row=><button type="button" key={row.chat.id} className={`chat-item ${selected===row.chat.id?'active':''}`} onClick={()=>{setSelected(row.chat.id);setSelectedChannel(null);setProfileTarget(null);setChatMessages([]);setError('');}}><span className="contact-avatar">{imageUrl(row.other?.avatar_path)?<img className="avatar-image" src={imageUrl(row.other?.avatar_path)||""} alt=""/>:(row.other?.display_name||'?').slice(0,1).toUpperCase()}</span><span className="contact-info"><strong>{row.other?.display_name??'Собеседник'}</strong><small>@{row.other?.username??'unknown'}</small></span><span className="chat-item-dot"/></button>):<div className="list-empty"><div className="empty-icon">✉</div><strong>Нет переписок</strong><p>Нажми +, чтобы найти человека по юзернейму и начать общение.</p><button className="secondary-action" onClick={()=>setTab('contacts')}>Новый чат</button></div>:<div className="list-empty"><div className="empty-icon">✉</div><strong>Нет переписок</strong><p>{backendReady?'Войди, чтобы читать сообщения.':'Для переписки осталось подключить сервер.'}</p></div>)}
+      {tab==='chats'&&(loggedIn?filtered.length?filtered.map(row=><button type="button" key={row.chat.id} className={`chat-item ${selected===row.chat.id?'active':''}`} onClick={()=>{setSelected(row.chat.id);setSelectedChannel(null);setProfileTarget(null);setChatMessages([]);setChatLoading(true);setChatLoadedId(null);setError('');}}><span className="contact-avatar">{imageUrl(row.other?.avatar_path)?<img className="avatar-image" src={imageUrl(row.other?.avatar_path)||""} alt=""/>:(row.other?.display_name||'?').slice(0,1).toUpperCase()}</span><span className="contact-info"><strong>{row.other?.display_name??'Собеседник'}</strong><small>@{row.other?.username??'unknown'}</small></span><span className="chat-item-dot"/></button>):<div className="list-empty"><div className="empty-icon">✉</div><strong>Нет переписок</strong><p>Нажми +, чтобы найти человека по юзернейму и начать общение.</p><button className="secondary-action" onClick={()=>setTab('contacts')}>Новый чат</button></div>:<div className="list-empty"><div className="empty-icon">✉</div><strong>Нет переписок</strong><p>{backendReady?'Войди, чтобы читать сообщения.':'Для переписки осталось подключить сервер.'}</p></div>)}
       {tab==='contacts'&&<div className="contact-search-panel"><h2>Новый диалог</h2><p>Введи юзернейм другого пользователя IKONOSFERA.</p><form onSubmit={e=>{e.preventDefault();void openChat(lookup.trim());}}><label htmlFor="lookup">Юзернейм</label><input id="lookup" placeholder="например, friend_01" value={lookup} onChange={e=>setLookup(e.target.value)} minLength={3} maxLength={25} disabled={!loggedIn}/><button className="accent-button" disabled={!loggedIn||busy||!lookup.trim()}>{busy?'Открываем…':'Начать переписку'}</button></form></div>}
 
       {tab==='channels'&&<div className="channel-browser">
@@ -232,7 +259,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
           {ch.owner_id===userId?<span className="channel-owner-badge">Мой</span>:<button type="button" disabled={busy} className="channel-subscribe-button" onClick={()=>void toggleSubscription(ch.id)}>{subscriptions.includes(ch.id)?"Отписаться":"Подписаться"}</button>}
         </div>):<p className="channel-empty-list">{!loggedIn?"Войди, чтобы увидеть каналы.":showRecommendations?"Новых рекомендаций пока нет.":"Ты ещё не подписан на каналы. Загляни в рекомендации."}</p>}</div>
       </div>}
-      {tab==='settings'&&<div className="settings-panel"><h2>Мой профиль</h2>{loggedIn?<><button type="button" className="open-own-profile" onClick={()=>goToProfile(userId)}><span className="contact-avatar">{imageUrl(profile?.avatar_path)?<img className="avatar-image" src={imageUrl(profile?.avatar_path)||""} alt=""/>:(profile?.display_name||'?').charAt(0).toUpperCase()}</span><span><strong>{profile?.display_name||"Мой профиль"}</strong><small>Оформление · фото · истории</small></span><span>›</span></button><p>Люди могут найти тебя по уникальному имени.</p>{anonymous&&<p className="test-account-warning">Тестовый аккаунт без почты: доступ хранится только на этом устройстве. После удаления приложения, очистки данных или выхода восстановить его нельзя.</p>}<form onSubmit={saveProfile}><label htmlFor="username">Юзернейм</label><input id="username" value={editUsername} onChange={e=>setEditUsername(e.target.value)} minLength={3} maxLength={24} pattern="[a-z0-9_]{3,24}" required/><label htmlFor="displayName">Отображаемое имя</label><input id="displayName" value={editName} onChange={e=>setEditName(e.target.value)} maxLength={60} required/><button className="accent-button" disabled={busy}>Сохранить профиль</button></form><button className="secondary-action" onClick={logout} disabled={busy}>Выйти из аккаунта</button></>:<p>Войди, чтобы настроить профиль.</p>}<div className="settings-meta"><span>Платформа</span><strong>{platform.ios?'iPhone / iPad':'Android / Desktop'}</strong><span>Запуск</span><strong>{platform.standalone?'Установленное приложение':'Браузер'}</strong><span>Сервер</span><strong>{backendReady?'Настроен':'Не подключён'}</strong></div>{!platform.standalone&&<button className="secondary-action" onClick={()=>void install()}>Установить приложение</button>}</div>}
+      {tab==='settings'&&<div className="settings-panel"><h2>Мой профиль</h2>{loggedIn?<><button type="button" className="open-own-profile" onClick={()=>goToProfile(userId)}><span className="contact-avatar">{imageUrl(profile?.avatar_path)?<img className="avatar-image" src={imageUrl(profile?.avatar_path)||""} alt=""/>:(profile?.display_name||'?').charAt(0).toUpperCase()}</span><span><strong>{profile?.display_name||"Мой профиль"}</strong><small>Оформление · фото · истории</small></span><span>›</span></button><p>Люди могут найти тебя по уникальному имени.</p>{anonymous&&<p className="test-account-warning">Тестовый аккаунт без почты: доступ хранится только на этом устройстве. После удаления приложения, очистки данных или выхода восстановить его нельзя.</p>}<form onSubmit={saveProfile}><label htmlFor="username">Юзернейм</label><input id="username" value={editUsername} onChange={e=>setEditUsername(e.target.value)} minLength={3} maxLength={24} required/><small className="profile-field-hint">{validateUsername(editUsername)||"Латинские буквы, цифры и _; 3–24 символа"}</small><label htmlFor="displayName">Отображаемое имя</label><input id="displayName" value={editName} onChange={e=>setEditName(e.target.value)} maxLength={60} required/><button className="accent-button" disabled={busy}>Сохранить профиль</button></form><button className="secondary-action" onClick={logout} disabled={busy}>Выйти из аккаунта</button></>:<p>Войди, чтобы настроить профиль.</p>}<div className="settings-meta"><span>Платформа</span><strong>{platform.ios?'iPhone / iPad':'Android / Desktop'}</strong><span>Запуск</span><strong>{platform.standalone?'Установленное приложение':'Браузер'}</strong><span>Сервер</span><strong>{backendReady?'Настроен':'Не подключён'}</strong></div>{!platform.standalone&&<button className="secondary-action" onClick={()=>void install()}>Установить приложение</button>}</div>}
       </div>
       <nav className="pane-nav" aria-label="Основные разделы">
   <button type="button" aria-label="Чаты" aria-current={tab==='chats'?'page':undefined} className={tab==='chats'?'current':''} onClick={()=>switchTab('chats')}><span className="nav-art"><img src="/nav-chats.webp" alt="" width="64" height="64"/></span><span className="nav-label">Чаты</span></button>
@@ -243,10 +270,11 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
 </nav>
     </aside>
     <main className={`conversation-pane ${detailOpen?'open':''}`}>
-      {profileTarget&&session&&loggedIn?<ProfilePanel key={profileTarget} token={session.access_token} userId={userId} targetId={profileTarget} onBack={()=>{setProfileTarget(null);if(tab==='profile')setTab('chats');}} onOwnProfileChange={()=>{void myProfile(session.access_token,userId).then(setProfile).catch(()=>{});}} onMessage={openDirectFromProfile} onOpenChannel={channel=>{setProfileTarget(null);setSelected(null);setSelectedChannel(channel);setTab("channels");}}/>:
+      {mustSetup?<section className="onboarding-screen"><div className="onboarding-card"><span className="onboarding-mark">IK</span><h1>Создай свой профиль</h1><p>Перед тем как начать общаться, придумай никнейм и уникальный юзернейм. Так друзья смогут тебя найти.</p><form onSubmit={saveProfile}><label>Никнейм<input value={editName} onChange={e=>setEditName(e.target.value)} maxLength={60} placeholder="Как тебя называть?" required/></label><label>Юзернейм<input value={editUsername} onChange={e=>setEditUsername(e.target.value.toLowerCase().replace(/^@/,''))} maxLength={24} placeholder="например, tendo888" required/></label><small>{validateUsername(editUsername)||"3–24 символа: латиница, цифры и _"}</small><button className="accent-button" type="submit" disabled={busy}>{busy?"Сохраняем…":"Продолжить →"}</button></form>{error&&<p className="profile-error" role="alert">{error}</p>}</div></section>:
+      profileTarget&&session&&loggedIn?<ProfilePanel key={profileTarget} token={session.access_token} userId={userId} targetId={profileTarget} onBack={()=>{setProfileTarget(null);if(tab==='profile')setTab('chats');}} onOwnProfileChange={()=>{void myProfile(session.access_token,userId).then(setProfile).catch(()=>{});}} onMessage={openDirectFromProfile} onOpenChannel={channel=>{setProfileTarget(null);setSelected(null);setSelectedChannel(channel);setTab("channels");}}/>:
       selectedChannel&&session&&loggedIn?<ChannelsPanel key={selectedChannel.id} token={session.access_token} userId={userId} channel={selectedChannel} onBack={()=>setSelectedChannel(null)} onShowProfile={goToProfile} subscribed={subscriptions.includes(selectedChannel.id)||selectedChannel.owner_id===userId} onToggleSubscribe={()=>void toggleSubscription(selectedChannel.id)} onMessageAuthor={()=>void getChannelOwnerAndChat(selectedChannel.owner_id)}/>:
       
-      active&&loggedIn?<><header className="conversation-header"><button className="back-button" onClick={()=>setSelected(null)} aria-label="Назад к чатам">‹</button><button type="button" className="contact-avatar small contact-avatar-button" onClick={()=>active.other&&goToProfile(active.other.id)} title="Открыть профиль">{imageUrl(active.other?.avatar_path)?<img className="avatar-image" src={imageUrl(active.other?.avatar_path)||""} alt=""/>:(active.other?.display_name||'?').slice(0,1).toUpperCase()}</button><button type="button" className="conversation-heading conversation-heading-link" onClick={()=>active.other&&goToProfile(active.other.id)}><strong>{active.other?.display_name??'Собеседник'}</strong><small>@{active.other?.username??'unknown'}</small></button></header><div className="conversation-history" aria-live="polite">{!chatMessages.length&&<div className="conversation-blank"><span>Начало переписки</span><p>Сообщения видны только участникам диалога.</p></div>}{chatMessages.map(message=><div key={message.id} className={`bubble ${message.sender_id===userId?'mine':'theirs'}`}>{message.media_path&&message.media_type&&session&&<ChatMedia token={session.access_token} path={message.media_path} type={message.media_type}/>} {message.body&&<span>{message.body}</span>}<time dateTime={message.created_at}>{message.sender_id===userId&&<span className={"message-receipt"+(message.read_at?" read":"")} title={message.read_at?"Просмотрено":"Отправлено"}>{message.read_at?"✓✓":"✓"}</span>}{new Date(message.created_at).toLocaleTimeString('ru-RU',{hour:'2-digit',minute:'2-digit'})}</time><div className="reaction-bar message-reaction-bar">
+      active&&loggedIn?<><header className="conversation-header"><button className="back-button" onClick={()=>setSelected(null)} aria-label="Назад к чатам">‹</button><button type="button" className="contact-avatar small contact-avatar-button" onClick={()=>active.other&&goToProfile(active.other.id)} title="Открыть профиль">{imageUrl(active.other?.avatar_path)?<img className="avatar-image" src={imageUrl(active.other?.avatar_path)||""} alt=""/>:(active.other?.display_name||'?').slice(0,1).toUpperCase()}</button><button type="button" className="conversation-heading conversation-heading-link" onClick={()=>active.other&&goToProfile(active.other.id)}><strong>{active.other?.display_name??'Собеседник'}</strong><small>@{active.other?.username??'unknown'}</small></button></header><div className="conversation-history" aria-live="polite">{(chatLoading||chatLoadedId!==selected)?<div className="chat-loading-state" role="status" aria-live="polite"><div className="chat-loading-spinner"/><strong>Загружаем диалог</strong><span>Подождите, сообщения появятся здесь</span><div className="chat-loading-skeleton"/><div className="chat-loading-skeleton right"/><div className="chat-loading-skeleton short"/></div>:!chatMessages.length&&<div className="conversation-blank"><span>Начало переписки</span><p>Сообщения видны только участникам диалога.</p></div>}{chatMessages.map(message=><div key={message.id} className={`bubble ${message.sender_id===userId?'mine':'theirs'}`}>{message.media_path&&message.media_type&&session&&<ChatMedia token={session.access_token} path={message.media_path} type={message.media_type}/>} {message.body&&<span>{message.body}</span>}<time dateTime={message.created_at}>{message.sender_id===userId&&<span className={"message-receipt"+(message.read_at?" read":"")} title={message.read_at?"Просмотрено":"Отправлено"}>{message.read_at?"✓✓":"✓"}</span>}{new Date(message.created_at).toLocaleTimeString('ru-RU',{hour:'2-digit',minute:'2-digit'})}</time><div className="reaction-bar message-reaction-bar">
  {REACTION_EMOJIS.filter(emoji=>messageReactions.some(r=>r.message_id===message.id&&r.emoji===emoji)).map(emoji=><button key={emoji} type="button" className={"reaction-pill"+(messageReactions.some(r=>r.message_id===message.id&&r.user_id===userId&&r.emoji===emoji)?" mine":"")} onClick={()=>void reactToMessage(message.id,emoji)} disabled={sending}>{emoji} <span>{messageReactions.filter(r=>r.message_id===message.id&&r.emoji===emoji).length}</span></button>)}
  <button type="button" className="reaction-add" aria-label="Добавить реакцию" onClick={()=>setMessageReactionPicker(messageReactionPicker===message.id?null:message.id)}>☺ +</button>
  {messageReactionPicker===message.id&&<div className="reaction-picker">{REACTION_EMOJIS.map(emoji=><button type="button" key={emoji} disabled={sending} onClick={()=>void reactToMessage(message.id,emoji)} aria-label={"Реакция "+emoji}>{emoji}</button>)}</div>}
