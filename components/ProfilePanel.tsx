@@ -88,7 +88,7 @@ export default function ProfilePanel({token,userId,targetId,onBack,onOwnProfileC
  const cover=profile?imageUrl(profile.cover_path):null;
  return <section className="profile-view" aria-label="Профиль пользователя">
    <header className="profile-topbar"><button type="button" className="profile-back" onClick={onBack} aria-label="Назад">‹ <span>Назад</span></button>
-     <strong>Профиль</strong>{mine?<button type="button" className="profile-link" onClick={()=>setEditing(v=>!v)}>{editing?"Готово":"Изм."}</button>:<span/>}</header>
+     <strong>Профиль</strong>{mine?<button type="button" className="profile-edit-trigger" onClick={()=>setEditing(v=>!v)} aria-expanded={editing}>{editing?"Закрыть":"✎ Редактировать"}</button>:<span/>}</header>
    <div className="profile-scroll">
     <div className="profile-hero">
      <div className="profile-cover" style={cover?{backgroundImage:"url("+cover+")"}:undefined}>
@@ -102,7 +102,7 @@ export default function ProfilePanel({token,userId,targetId,onBack,onOwnProfileC
         {!mine&&<button type="button" className="accent-button profile-message-button" onClick={()=>onMessage(profile.username)}>Написать сообщение</button>}</div>:<p>Загрузка профиля…</p>}
     </div>
     {mine&&editing&&<form className="profile-editor" onSubmit={save}>
-     <h2>Изменить профиль</h2>
+     <h2>Редактирование профиля</h2><p className="profile-editor-intro">Измени информацию о себе и нажми «Сохранить изменения».</p>
      <label>Имя<input value={name} onChange={e=>setName(e.target.value)} maxLength={60} required/></label>
      <label>Юзернейм<input value={username} onChange={e=>setUsername(e.target.value)} minLength={3} maxLength={24} pattern="[a-z0-9_]{3,24}" required/></label>
      <label>О себе<textarea value={bio} onChange={e=>setBio(e.target.value)} maxLength={160} rows={3} placeholder="Расскажи немного о себе"/></label>
@@ -118,7 +118,7 @@ export default function ProfilePanel({token,userId,targetId,onBack,onOwnProfileC
     </form>}
     {(featuredChannel||mine)&&<div className="profile-content-section profile-featured-section">
       <div className="profile-section-title"><div><h2>Мой канал</h2><p>Закреплён в профиле</p></div>
-       {mine&&!editing&&<button type="button" className="profile-action" onClick={()=>setEditing(true)}>Изменить</button>}</div>
+       {mine&&!editing&&<button type="button" className="profile-action" onClick={()=>setEditing(true)}>Редактировать профиль</button>}</div>
       {featuredChannel?<button type="button" className="profile-featured-channel" onClick={()=>onOpenChannel(featuredChannel)}>
         <span className="profile-featured-icon">#</span><span className="profile-featured-details"><strong>{featuredChannel.title}</strong><small>@{featuredChannel.slug}</small>
         {featuredChannel.description&&<span>{featuredChannel.description}</span>}</span><span className="profile-featured-arrow">›</span>
