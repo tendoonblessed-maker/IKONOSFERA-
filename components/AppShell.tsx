@@ -11,6 +11,7 @@ import GroupPanel from "@/components/GroupPanel";
 import GroupInboxRow from "@/components/GroupInboxRow";
 import {createGroup,listGroups,listGroupOverviews,type Group,type GroupOverview} from "@/lib/groups";
 import ChannelsPanel from "@/components/ChannelsPanel";
+import BotsPanel from "@/components/BotsPanel";
 import { REACTION_EMOJIS, type ReactionEmoji, createChannel, imageUrl, listChannels, listMySubscriptions, subscribeChannel, unsubscribeChannel, getChannelSubscriberCounts, type Channel } from "@/lib/social";
 
 type Tab = 'chats' | 'contacts' | 'channels' | 'profile' | 'settings';
@@ -66,7 +67,8 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
   const [editingMessageId,setEditingMessageId]=useState<string|null>(null);
   const [editingMessageBody,setEditingMessageBody]=useState("");
   const [search,setSearch]=useState('');
-  const [chatFilter,setChatFilter]=useState<'all'|'private'|'groups'|'unread'>('all');
+  const [chatFilter,setChatFilter]=useState<'all'|'private'|'groups'|'unread'|'bots'>('all');
+  const [selectedBot,setSelectedBot]=useState<'days'|'mood'|null>(null);
   const [messageSearch,setMessageSearch]=useState('');
   const [searchInConversation,setSearchInConversation]=useState(false);
   const [selectedMessages,setSelectedMessages]=useState<string[]>([]);
@@ -286,7 +288,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
     if(!id)return;setSelected(null);setSelectedChannel(null);setProfileTarget(id);setError("");
   }
   function switchTab(next:Tab){
-    setSelectedGroup(null);setCreatingGroup(false);
+    setSelectedGroup(null);setSelectedBot(null);setCreatingGroup(false);
     setMessageSearch("");setSearchInConversation(false);setSelectedMessages([]);setCreateMenuOpen(false);setTab(next);setSelected(null);setSelectedChannel(null);setProfileTarget(next==="profile"&&userId?userId:null);setShowRecommendations(false);setError("");
   }
   async function sendMessage(e:React.FormEvent){
@@ -353,16 +355,16 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
     refreshActivity();const timer=window.setInterval(refreshActivity,30000);
     return()=>{gone=true;window.clearInterval(timer);};
   },[session,activePartnerId]);
-  const filtered=rows.filter(r=>chatFilter!=='groups'&&(chatFilter!=='unread'||Number(r.preview?.unread_count||0)>0) && (!search.trim()||`${r.other?.display_name??''} ${r.other?.username??''} ${r.preview?.last_body??''}`.toLowerCase().includes(search.trim().toLowerCase())));
+  const filtered=rows.filter(r=>chatFilter!=='groups'&&chatFilter!=='bots'&&(chatFilter!=='unread'||Number(r.preview?.unread_count||0)>0) && (!search.trim()||`${r.other?.display_name??''} ${r.other?.username??''} ${r.preview?.last_body??''}`.toLowerCase().includes(search.trim().toLowerCase())));
   const unreadTotal=rows.reduce((sum,row)=>sum+Number(row.preview?.unread_count||0),0)+groups.reduce((sum,group)=>sum+Number(groupOverviews[group.id]?.unread_count||0),0);
-  const visibleGroups=groups.filter(g=>chatFilter!=='private'&&(chatFilter!=='unread'||Number(groupOverviews[g.id]?.unread_count||0)>0)&&(!search.trim()||((g.title+' '+(groupOverviews[g.id]?.last_body||'')).toLowerCase().includes(search.trim().toLowerCase()))));
+  const visibleGroups=groups.filter(g=>chatFilter!=='private'&&chatFilter!=='bots'&&(chatFilter!=='unread'||Number(groupOverviews[g.id]?.unread_count||0)>0)&&(!search.trim()||((g.title+' '+(groupOverviews[g.id]?.last_body||'')).toLowerCase().includes(search.trim().toLowerCase()))));
   const inboxItems=[
     ...filtered.map(row=>({kind:'chat' as const,row,pinned:Boolean(row.chat.pinned_for?.includes(userId)),time:Date.parse(row.preview?.last_created_at||row.chat.created_at)})),
     ...visibleGroups.map(group=>({kind:'group' as const,group,pinned:false,time:Date.parse(groupOverviews[group.id]?.last_created_at||group.created_at)}))
   ].sort((a,b)=>Number(b.pinned)-Number(a.pinned)||(b.time||0)-(a.time||0));
   const visibleMessages=chatMessages.filter(message=>!message.deleted_for?.includes(userId)&&(!searchInConversation||!messageSearch.trim()||message.body.toLocaleLowerCase('ru').includes(messageSearch.trim().toLocaleLowerCase('ru'))));
   const loggedIn=Boolean(session&&userId);
-  const detailOpen=Boolean(!loggedIn||selected||profileTarget||selectedChannel||selectedGroup);
+  const detailOpen=Boolean(!loggedIn||selected||profileTarget||selectedChannel||selectedGroup||selectedBot);
   const myChannels=channels.filter(ch=>ch.owner_id===userId||subscriptions.includes(ch.id));
   const recommendedChannels=channels.filter(ch=>ch.owner_id!==userId&&!subscriptions.includes(ch.id));
   const filteredChannels=(showRecommendations?recommendedChannels:myChannels).filter(ch=>!channelSearch.trim()||((ch.title+" "+ch.slug).toLowerCase().includes(channelSearch.trim().toLowerCase())));
@@ -391,10 +393,12 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
         <button type="button" className={chatFilter==='all'?'selected':''} aria-pressed={chatFilter==='all'} onClick={()=>setChatFilter('all')}>Все</button>
         <button type="button" className={chatFilter==='private'?'selected':''} aria-pressed={chatFilter==='private'} onClick={()=>setChatFilter('private')}>Личные</button>
         <button type="button" className={chatFilter==='groups'?'selected':''} aria-pressed={chatFilter==='groups'} onClick={()=>setChatFilter('groups')}>Группы</button>
+        <button type="button" className={chatFilter==='bots'?'selected':''} aria-pressed={chatFilter==='bots'} onClick={()=>{setChatFilter('bots');setSelectedBot(null);}}>Боты</button>
         <button type="button" className={chatFilter==='unread'?'selected':''} aria-pressed={chatFilter==='unread'} onClick={()=>setChatFilter('unread')}>Непрочитанные{unreadTotal>0&&<span className="ik-filter-count">{unreadTotal>99?'99+':unreadTotal}</span>}</button>
       </div>}
       <div className="chat-list">
-      {tab==='chats'&&(loggedIn?inboxItems.length?inboxItems.map(item=>item.kind==='group'
+      {tab==='chats'&&loggedIn&&chatFilter==='bots'&&<div className="ik-bot-list"><button type="button" onClick={()=>{setSelectedBot('days');setSelected(null);setSelectedGroup(null);setSelectedChannel(null);setProfileTarget(null);}}><span>◷</span><strong>Сколько мне осталось?<small>Счётчик дней до выбранной даты</small></strong><b>›</b></button><button type="button" onClick={()=>{setSelectedBot('mood');setSelected(null);setSelectedGroup(null);setSelectedChannel(null);setProfileTarget(null);}}><span>✳</span><strong>Точка равновесия<small>15 вопросов о самочувствии</small></strong><b>›</b></button></div>}
+      {tab==='chats'&&chatFilter!=='bots'&&(loggedIn?inboxItems.length?inboxItems.map(item=>item.kind==='group'
        ? <GroupInboxRow key={'g-'+item.group.id} group={item.group} overview={groupOverviews[item.group.id]} active={selectedGroup?.id===item.group.id} onOpen={()=>{setSelectedGroup(item.group);setSelected(null);setSelectedChannel(null);setProfileTarget(null);}}/>
        : <ChatInboxRow key={'c-'+item.row.chat.id} row={item.row} currentUserId={userId} active={selected===item.row.chat.id}
           onOpen={()=>{setSelected(item.row.chat.id);setSelectedGroup(null);setSelectedChannel(null);setProfileTarget(null);setChatMessages([]);setError('');}}
@@ -431,7 +435,8 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
 </nav>
     </aside>
     <main className={`conversation-pane ${detailOpen?'open':''}`}>
-      {selectedGroup&&session&&loggedIn?<GroupPanel key={selectedGroup.id} token={session.access_token} userId={userId} group={selectedGroup} onBack={()=>setSelectedGroup(null)} onShowProfile={id=>{setSelectedGroup(null);goToProfile(id);}}/>:
+      {selectedBot&&loggedIn?<BotsPanel userId={userId} bot={selectedBot} onBack={()=>setSelectedBot(null)}/>:
+      selectedGroup&&session&&loggedIn?<GroupPanel key={selectedGroup.id} token={session.access_token} userId={userId} group={selectedGroup} onBack={()=>setSelectedGroup(null)} onShowProfile={id=>{setSelectedGroup(null);goToProfile(id);}}/>:
       profileTarget&&session&&loggedIn?<ProfilePanel key={profileTarget} token={session.access_token} userId={userId} targetId={profileTarget} onBack={()=>{setProfileTarget(null);if(tab==='profile')setTab('chats');}} onOwnProfileChange={()=>{void myProfile(session.access_token,userId).then(setProfile).catch(()=>{});}} onMessage={openDirectFromProfile} onOpenChannel={channel=>{setProfileTarget(null);setSelected(null);setSelectedChannel(channel);setTab("channels");}}/>:
       selectedChannel&&session&&loggedIn?<ChannelsPanel key={selectedChannel.id} token={session.access_token} userId={userId} channel={selectedChannel} onBack={()=>setSelectedChannel(null)} onShowProfile={goToProfile} subscribed={subscriptions.includes(selectedChannel.id)||selectedChannel.owner_id===userId} onToggleSubscribe={()=>void toggleSubscription(selectedChannel.id)} onMessageAuthor={()=>void getChannelOwnerAndChat(selectedChannel.owner_id)} onChannelUpdated={updated=>{setSelectedChannel(updated);setChannels(old=>old.map(ch=>ch.id===updated.id?updated:ch));}} onChannelDeleted={()=>{setSelectedChannel(null);setChannels(old=>old.filter(ch=>ch.id!==selectedChannel.id));setTab("channels");}}/>:
       
