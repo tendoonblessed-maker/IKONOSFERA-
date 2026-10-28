@@ -16,6 +16,7 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile}:Pro
  const [error,setError]=useState('');
  const [initialLoading,setInitialLoading]=useState(true);
  const historyRef=useRef<HTMLDivElement|null>(null);
+ const followNewestRef=useRef(true);
  const lastReadRef=useRef<string|null>(null);
  const requestSequenceRef=useRef(0);
  const refresh=useCallback(async()=>{
@@ -60,7 +61,7 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile}:Pro
   const timer=window.setInterval(updateMembers,120000);
   return()=>{cancelled=true;window.clearInterval(timer);};
  },[token,group.id]);
- useEffect(()=>{const history=historyRef.current;if(history)history.scrollTop=history.scrollHeight;},[messages.length,initialLoading]);
+ useEffect(()=>{const history=historyRef.current;if(history&&followNewestRef.current)history.scrollTop=history.scrollHeight;},[messages.length,initialLoading]);
  useEffect(()=>{if(!membersOpen)return;const onKey=(event:KeyboardEvent)=>{if(event.key==='Escape')setMembersOpen(false);};window.addEventListener('keydown',onKey);return()=>window.removeEventListener('keydown',onKey);},[membersOpen]);
   useEffect(()=>{if(!membersOpen||!members.length)return;let gone=false;const load=()=>{if(document.visibilityState==='visible')void getUserActivities(token,members.map(m=>m.id)).then(value=>{if(!gone)setPresence(value);}).catch(()=>{});};load();const t=setInterval(load,40000);return()=>{gone=true;clearInterval(t);};},[token,membersOpen,members]);
  async function send(e:FormEvent){e.preventDefault();if(busy||!draft.trim())return;
@@ -79,7 +80,10 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile}:Pro
  <header className="conversation-header"><button type="button" className="back-button" onClick={onBack} aria-label="Назад">‹</button>
  <button type="button" className="conversation-heading group-member-trigger" onClick={()=>setMembersOpen(true)} aria-label="Показать участников группы"><strong>{group.title}</strong><small>{members.length} участников · нажми, чтобы посмотреть</small></button>
  </header>
- <div className="conversation-history" ref={historyRef} aria-busy={initialLoading}>
+ <div className="conversation-history" ref={historyRef} aria-busy={initialLoading} onScroll={event=>{
+ const area=event.currentTarget;
+ followNewestRef.current=area.scrollHeight-area.scrollTop-area.clientHeight<120;
+ }}>
  {initialLoading&&<div className="ik-chat-loading" role="status" aria-label="Загружаем сообщения группы"><div className="ik-chat-loading-bubble incoming"/><div className="ik-chat-loading-bubble incoming short"/><div className="ik-chat-loading-bubble outgoing"/><span className="ik-chat-loading-label">Загружаем сообщения…</span></div>}
  {!initialLoading&&!error&&messages.length===0&&<p className="group-empty">Группа создана. Напиши первое сообщение!</p>}
  {!initialLoading&&error&&messages.length===0&&<div className="ik-chat-load-error" role="alert">
