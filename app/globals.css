@@ -420,3 +420,19 @@ textarea:focus-visible{outline:2px solid #111;outline-offset:2px}
 .profile-editor input[aria-invalid="true"]{border-color:#e85067;box-shadow:0 0 0 3px #e8506715}
 @keyframes reaction-pop{from{opacity:0;transform:translateY(5px) scale(.95)}to{opacity:1;transform:translateY(0) scale(1)}}
 @media(prefers-reduced-motion:reduce){.reaction-picker{animation:none}.reaction-pill,.reaction-add,.reaction-picker button{transition:none}}
+
+/* Chat management and rich attachments */
+.chat-row-wrap{display:flex;flex-direction:column;min-width:0}
+.chat-row-wrap>.chat-item{width:100%}
+.chat-row-actions{display:flex;gap:5px;padding:0 10px 8px 65px;flex-wrap:wrap}
+.chat-row-actions button,.message-manage-actions button{border:1px solid #eaeaea;background:#fff;color:#777;border-radius:9px;padding:5px 8px;font-size:10px;font-weight:650;cursor:pointer;transition:transform .2s ease,background .2s ease}
+.chat-row-actions button:hover,.message-manage-actions button:hover{background:#f2f2f2;transform:translateY(-1px)}
+.message-manage-actions{display:flex;flex-wrap:wrap;gap:4px;margin-top:7px}
+.message-edit-form,.channel-inline-editor{display:flex;flex-wrap:wrap;gap:7px;margin:10px 0}
+.message-edit-form input,.channel-inline-editor input,.channel-inline-editor textarea{flex:1;min-width:120px;border:1px solid #ddd;border-radius:9px;padding:8px;font:inherit}
+.message-edit-form button,.channel-inline-editor button{border:1px solid #ddd;background:#fff;border-radius:9px;padding:7px 10px;cursor:pointer}
+.message-deleted{font-style:italic;opacity:.6}
+.chat-media-audio,.channel-post-audio{width:min(100%,320px);display:block;margin:8px 0}
+.chat-file-link,.channel-file-link{display:inline-flex;align-items:center;gap:9px;padding:12px;border-radius:12px;background:#f3f3f3;color:#222;font-size:13px;font-weight:650;text-decoration:none}
+.channel-post-video{width:100%;max-height:420px;border-radius:14px;display:block;background:#111}
+@media(prefers-reduced-motion:reduce){.chat-row-actions button,.message-manage-actions button{transition:none}}
