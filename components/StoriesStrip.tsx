@@ -50,7 +50,7 @@ export default function StoriesStrip({token,userId,contacts,ownProfile}:Props){
   {people[0]?.stories.length>0&&<button className="home-story-add" type="button" disabled={busy} onClick={()=>inputRef.current?.click()}>+ Добавить историю</button>}
   {error&&<p role="alert" className="profile-error">{error}</p>}
   {story&&person&&<div className="story-viewer story-viewer-telegram" role="dialog" aria-modal="true" aria-label={'Истории: '+person.name} onPointerDown={()=>setPaused(true)} onPointerUp={()=>setPaused(false)} onPointerCancel={()=>setPaused(false)}>
-   <div className="story-viewer-stage" key={story.id}>
+   <div className="story-viewer-stage">
     <img className="story-viewer-image" src={imageUrl(story.image_path)||''} alt={story.caption||'История'}/>
     <div className="story-progress">{person.stories.map((s,i)=><span className="story-progress-track" key={s.id}><span className={i<active!.story?'done':i===active!.story?'playing':''} style={i===active!.story&&paused?{animationPlayState:'paused'}:undefined}/></span>)}</div>
     <header className="story-viewer-header"><span className="story-viewer-avatar">{imageUrl(person.avatar)?<img src={imageUrl(person.avatar)||''} alt=""/>:person.name.slice(0,1)}</span><span className="story-viewer-author"><strong>{person.name}</strong><small>{new Date(story.created_at).toLocaleString('ru-RU',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'})}</small></span><button type="button" className="story-viewer-close" onClick={()=>setActive(null)} aria-label="Закрыть">×</button></header>
