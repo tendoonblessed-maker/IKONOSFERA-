@@ -10,6 +10,11 @@ export type DirectChat = { id: string; user_a: string; user_b: string; created_a
 export type ChatMessage = { id: string; chat_id: string; sender_id: string; body: string; created_at: string; media_path: string|null; media_type: "image"|"video"|"audio"|"file"|null; read_at: string|null; edited_at?:string|null; deleted_for?:string[]; deleted_for_everyone?:boolean };
 const STORAGE = 'ikonosfera-session-v1';
 
+class SupabaseHttpError extends Error {
+  constructor(message:string,readonly status:number){super(message);this.name='SupabaseHttpError';}
+}
+let sessionRefreshPromise:Promise<Session|null>|null=null;
+
 function ensureReady() { if (!backendReady) throw Error('Сервер пока не подключён'); }
 function headers(token?: string, extras?: Record<string,string>) {
   return { apikey: anonKey, Authorization: `Bearer ${token || anonKey}`, 'Content-Type': 'application/json', ...extras };
@@ -29,7 +34,7 @@ async function http<T>(path: string, options: { method?: string; token?: string;
   try { value = raw ? JSON.parse(raw) : null; } catch { value = raw; }
   if (!response.ok) {
     const error = value && typeof value === 'object' ? (value as { msg?: string; message?: string; error_description?: string }).message ?? (value as { msg?: string }).msg ?? (value as { error_description?: string }).error_description : null;
-    throw Error(error || `Запрос не выполнен (${response.status})`);
+    throw new SupabaseHttpError(error || `Запрос не выполнен (${response.status})`,response.status);
   }
   return value as T;
 }
@@ -44,12 +49,30 @@ export function saveSession(s: { access_token: string; refresh_token: string; ex
 }
 export function clearSession() { localStorage.removeItem(STORAGE); }
 export async function validSession(): Promise<Session | null> {
-  const s = loadSession(); if (!s) return null;
-  if (s.expires_at > Math.floor(Date.now()/1000)) return s;
-  try {
-    const next = await http<{access_token: string;refresh_token:string;expires_in:number}>(`/auth/v1/token?grant_type=refresh_token`, {method:'POST',body:{refresh_token:s.refresh_token}});
-    return saveSession(next);
-  } catch { clearSession(); return null; }
+  const s=loadSession();
+  if(!s)return null;
+  if(s.expires_at>Math.floor(Date.now()/1000))return s;
+  // A refresh token is single-use: concurrent UI requests must not refresh it
+  // twice, otherwise the second request may invalidate an otherwise valid login.
+  if(sessionRefreshPromise)return sessionRefreshPromise;
+  sessionRefreshPromise=(async()=>{
+    try{
+      const next=await http<{access_token:string;refresh_token:string;expires_in:number}>(
+        '/auth/v1/token?grant_type=refresh_token',{method:'POST',body:{refresh_token:s.refresh_token}}
+      );
+      return saveSession(next);
+    }catch(error){
+      // Do not log users out because of offline mode, a timeout, or HTTP 5xx.
+      // Only Supabase's explicit invalid/revoked refresh-token responses end
+      // the session. Keep the stored token for a retry on reconnection.
+      if(error instanceof SupabaseHttpError&&[400,401,403].includes(error.status)){
+        if(loadSession()?.refresh_token===s.refresh_token)clearSession();
+        return null;
+      }
+      throw error;
+    }
+  })().finally(()=>{sessionRefreshPromise=null;});
+  return sessionRefreshPromise;
 }
 /** Development-only anonymous account. No email and no recovery after local data is lost.
  * Requires Anonymous Sign-Ins enabled in Supabase Authentication settings.
@@ -131,8 +154,17 @@ export async function listProfiles(token: string, ids: string[]) {
   if (!ids.length) return [];
   return http<Profile[]>(`/rest/v1/profiles?select=id,username,display_name,avatar_path,cover_path,bio&id=in.(${ids.map(encodeURIComponent).join(',')})`,{token});
 }
-export async function listMessages(token: string, chatId: string) {
-  return http<ChatMessage[]>(`/rest/v1/messages?select=id,chat_id,sender_id,body,created_at,media_path,media_type,read_at,edited_at,deleted_for,deleted_for_everyone&chat_id=eq.${encodeURIComponent(chatId)}&order=created_at.desc&limit=100`,{token});
+export const CHAT_MESSAGE_PAGE_SIZE=100;
+const CHAT_MESSAGE_COLUMNS='id,chat_id,sender_id,body,created_at,media_path,media_type,read_at,edited_at,deleted_for,deleted_for_everyone';
+/** Newest page first. Sort ties by ID so pagination has a stable boundary. */
+export async function listMessages(token:string,chatId:string):Promise<ChatMessage[]>{
+  return http<ChatMessage[]>(`/rest/v1/messages?select=${CHAT_MESSAGE_COLUMNS}&chat_id=eq.${encodeURIComponent(chatId)}&order=created_at.desc,id.desc&limit=${CHAT_MESSAGE_PAGE_SIZE}`,{token});
+}
+/** Older than the earliest loaded message; server RLS still checks membership. */
+export async function listOlderMessages(token:string,chatId:string,before:Pick<ChatMessage,'id'|'created_at'>):Promise<ChatMessage[]>{
+  const time=encodeURIComponent(before.created_at),id=encodeURIComponent(before.id);
+  const cursor=`or=(created_at.lt.${time},and(created_at.eq.${time},id.lt.${id}))`;
+  return http<ChatMessage[]>(`/rest/v1/messages?select=${CHAT_MESSAGE_COLUMNS}&chat_id=eq.${encodeURIComponent(chatId)}&${cursor}&order=created_at.desc,id.desc&limit=${CHAT_MESSAGE_PAGE_SIZE}`,{token});
 }
 export async function postMessage(token: string, chatId: string, userId: string, body: string, clientMessageId: string = crypto.randomUUID()) {
   void userId;

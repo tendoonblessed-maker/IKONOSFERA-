@@ -1,8 +1,9 @@
 'use client';
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { backendReady, createTemporaryAccount, consumeEmailLinkSession, clearSession, currentUser, findProfileByUsername, listChats, listChatPreviews, listMessages, manageChat, manageMessage, listMessageReactions, setMessageReaction, markChatRead, listProfiles, myProfile, postMessage, reopenChat, sendDirectMedia, sendEmailCode, signOut, startDirectChat, validSession, type ChatMessage, type MessageReaction, type DirectChat, type Profile, type Session, type ChatPreview } from '@/lib/supabase-rest';
+import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { backendReady, createTemporaryAccount, consumeEmailLinkSession, clearSession, currentUser, findProfileByUsername, listChats, listChatPreviews, listMessages, listOlderMessages, CHAT_MESSAGE_PAGE_SIZE, manageChat, manageMessage, listMessageReactions, setMessageReaction, markChatRead, listProfiles, myProfile, postMessage, reopenChat, sendDirectMedia, sendEmailCode, signOut, startDirectChat, validSession, type ChatMessage, type MessageReaction, type DirectChat, type Profile, type Session, type ChatPreview } from '@/lib/supabase-rest';
 
 import ProfilePanel from "@/components/ProfilePanel";
+import {mergeRecentPage,prependEarlierPage} from "@/lib/chat-history";
 import ChatMedia from "@/components/ChatMedia";
 import ChatInboxRow from "@/components/ChatInboxRow";
 import {listSavedContacts,addSavedContact,removeSavedContact,listBlockedUsers,addBlockedUser,removeBlockedUser} from "@/lib/contacts";
@@ -68,6 +69,9 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
   const [chatMessages,setChatMessages]=useState<ChatMessage[]>([]);
   const [chatLoad,setChatLoad]=useState<{id:string;status:'loading'|'ready'|'error'}|null>(null);
   const [chatReloadNonce,setChatReloadNonce]=useState(0);
+  const [hasOlderMessages,setHasOlderMessages]=useState(false);
+  const [loadingOlderMessages,setLoadingOlderMessages]=useState(false);
+  const [olderMessagesError,setOlderMessagesError]=useState(false);
   const [messageReactions,setMessageReactions]=useState<MessageReaction[]>([]);
   const [messageReactionPicker,setMessageReactionPicker]=useState<string|null>(null);
   const [editingMessageId,setEditingMessageId]=useState<string|null>(null);
@@ -96,6 +100,8 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
   const messageEnd=useRef<HTMLDivElement|null>(null);
   const conversationHistoryRef=useRef<HTMLDivElement|null>(null);
   const chatAutoScrollRef=useRef(true);
+  const loadingOlderRef=useRef(false);
+  const prependScrollRef=useRef<{chatId:string;height:number;top:number}|null>(null);
   const selectedRef=useRef<string|null>(null);
   const searchInputRef=useRef<HTMLInputElement|null>(null);
   const draftsRef=useRef<Record<string,string>>({});
@@ -221,6 +227,11 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
     const token=session.access_token;
     setChatLoad({id:chatId,status:'loading'});
     setChatMessages([]);
+    setHasOlderMessages(false);
+    setLoadingOlderMessages(false);
+    setOlderMessagesError(false);
+    loadingOlderRef.current=false;
+    prependScrollRef.current=null;
     setMessageReactions([]);
     setSelectedMessages([]);
     setMessageMenuId(null);
@@ -230,11 +241,15 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
       try{
         const messages=(await listMessages(token,chatId)).reverse();
         if(cancelled)return;
-        setChatMessages(messages);
+        setChatMessages(current=>mergeRecentPage(current,messages,CHAT_MESSAGE_PAGE_SIZE));
+        if(first)setHasOlderMessages(messages.length===CHAT_MESSAGE_PAGE_SIZE);
         setChatLoad({id:chatId,status:'ready'});
         // Reactions must not block displaying text and attachments.
         void listMessageReactions(token,messages.map(message=>message.id))
-          .then(reactions=>{if(!cancelled)setMessageReactions(reactions);})
+          .then(reactions=>{if(!cancelled)setMessageReactions(current=>{
+            const recentIds=new Set(messages.map(message=>message.id));
+            return [...current.filter(reaction=>!recentIds.has(reaction.message_id)),...reactions];
+          });})
           .catch(()=>{});
         if(messages.some(message=>message.sender_id!==userId&&!message.read_at)){
           void markChatRead(token,chatId).catch(()=>{});
@@ -321,6 +336,13 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
   // Scroll only the message history. scrollIntoView() was scrolling the page
   // itself on iPhone Safari and pushing the composer below the viewport.
   useEffect(()=>{chatAutoScrollRef.current=true;},[selected]);
+  useLayoutEffect(()=>{
+    const pending=prependScrollRef.current;
+    const history=conversationHistoryRef.current;
+    if(!pending||!history||pending.chatId!==selected)return;
+    history.scrollTop=pending.top+(history.scrollHeight-pending.height);
+    prependScrollRef.current=null;
+  },[chatMessages.length,selected]);
   useEffect(()=>{
     const history=conversationHistoryRef.current;
     if(!history||!chatAutoScrollRef.current)return;
@@ -420,6 +442,40 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
     setSelectedGroup(null);setSelectedBot(null);setCreatingGroup(false);
     setMessageSearch("");setSearchInConversation(false);setSelectedMessages([]);setCreateMenuOpen(false);setTab(next);setSelected(null);setSelectedChannel(null);setProfileTarget(next==="profile"&&userId?userId:null);setShowRecommendations(false);setError("");
   }
+  async function loadOlderChatMessages(){
+    if(!session||!selected||loadingOlderRef.current||!hasOlderMessages||!chatMessages.length)return;
+    const chatId=selected,token=session.access_token,oldest=chatMessages[0];
+    const history=conversationHistoryRef.current;
+    loadingOlderRef.current=true;
+    chatAutoScrollRef.current=false;
+    if(history)prependScrollRef.current={chatId,height:history.scrollHeight,top:history.scrollTop};
+    setLoadingOlderMessages(true);setOlderMessagesError(false);
+    try{
+      const older=(await listOlderMessages(token,chatId,oldest)).reverse();
+      if(selectedRef.current!==chatId)return;
+      setHasOlderMessages(older.length===CHAT_MESSAGE_PAGE_SIZE);
+      if(older.length){
+        setChatMessages(current=>prependEarlierPage(current,older));
+        // Older reactions load on demand rather than during every 6s poll.
+        void listMessageReactions(token,older.map(message=>message.id))
+          .then(reactions=>{
+            if(selectedRef.current===chatId)setMessageReactions(current=>{
+              const ids=new Set(older.map(message=>message.id));
+              return [...current.filter(reaction=>!ids.has(reaction.message_id)),...reactions];
+            });
+          }).catch(()=>{});
+      }else prependScrollRef.current=null;
+    }catch(error){
+      if(selectedRef.current===chatId){
+        prependScrollRef.current=null;
+        setOlderMessagesError(true);
+      }
+    }finally{
+      loadingOlderRef.current=false;
+      if(selectedRef.current===chatId)setLoadingOlderMessages(false);
+    }
+  }
+
   async function sendMessage(e:React.FormEvent){
     e.preventDefault();if(!session||!selected||!userId||sending||activePartnerBlocked)return;
     const chatId=selected,body=draft.trim(),token=session.access_token;
@@ -436,7 +492,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
       // A sent message is not a failed send just because its refresh failed.
       try{
         const updated=(await listMessages(token,chatId)).reverse();
-        if(selectedRef.current===chatId)setChatMessages(updated);
+        if(selectedRef.current===chatId)setChatMessages(current=>mergeRecentPage(current,updated,CHAT_MESSAGE_PAGE_SIZE));
       }catch{/* The next inbox sync will show the successfully sent message. */}
     }catch(e){setError(userFacingError(e));}
     finally{setSending(false);}
@@ -512,24 +568,35 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
     const chatId=selected,token=session.access_token;
     try{
       await manageMessage(token,messageId,action,body);
-      if(selectedRef.current===chatId){setMessageMenuId(null);setEditingMessageId(null);}
+      if(selectedRef.current===chatId){
+        setMessageMenuId(null);setEditingMessageId(null);
+        // Actions on pages older than 100 messages must update locally too.
+        setChatMessages(current=>current.flatMap(message=>{
+          if(message.id!==messageId)return [message];
+          if(action==='hide')return [];
+          if(action==='delete_everyone')return [{...message,deleted_for_everyone:true,body:'',media_path:null,media_type:null}];
+          return [{...message,body:body??message.body,edited_at:new Date().toISOString()}];
+        }));
+      }
       try{
         const updated=(await listMessages(token,chatId)).reverse();
-        if(selectedRef.current===chatId)setChatMessages(updated);
+        if(selectedRef.current===chatId)setChatMessages(current=>mergeRecentPage(current,updated,CHAT_MESSAGE_PAGE_SIZE));
       }catch{/* Keep the confirmed action; retry updating the history on polling. */}
     }catch(e){setError(userFacingError(e));}
   }
   async function reactToMessage(messageId:string,emoji:ReactionEmoji){
     if(!session||!selected||!userId||sending)return;
-    const chatId=selected,token=session.access_token,ids=chatMessages.map(m=>m.id);
+    const chatId=selected,token=session.access_token;
     const previous=messageReactions.find(r=>r.message_id===messageId&&r.user_id===userId);
     setSending(true);setError("");
     try{
       await setMessageReaction(token,userId,messageId,previous?.emoji===emoji?null:emoji);
       if(selectedRef.current===chatId)setMessageReactionPicker(null);
       try{
-        const updated=await listMessageReactions(token,ids);
-        if(selectedRef.current===chatId)setMessageReactions(updated);
+        const updated=await listMessageReactions(token,[messageId]);
+        if(selectedRef.current===chatId)setMessageReactions(current=>[
+          ...current.filter(reaction=>reaction.message_id!==messageId),...updated
+        ]);
       }catch{/* Reaction was saved; the chat poll will reload its state. */}
     }catch(e){setError(userFacingError(e));}finally{setSending(false);}
   }
@@ -542,7 +609,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
       setNotice("Вложение отправлено.");
       try{
         const updated=(await listMessages(token,chatId)).reverse();
-        if(selectedRef.current===chatId)setChatMessages(updated);
+        if(selectedRef.current===chatId)setChatMessages(current=>mergeRecentPage(current,updated,CHAT_MESSAGE_PAGE_SIZE));
       }catch{/* Do not report a sent attachment as failed during refresh. */}
     }catch(e){setError(userFacingError(e));}
     finally{setSending(false);}
@@ -726,6 +793,11 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
         const area=event.currentTarget;
         chatAutoScrollRef.current=area.scrollHeight-area.scrollTop-area.clientHeight<120;
       }}>
+      {!activeChatLoading&&!activeChatLoadError&&hasOlderMessages&&<div className="ik-chat-older-controls">
+        <button type="button" className="ik-chat-older-button" disabled={loadingOlderMessages} onClick={()=>void loadOlderChatMessages()}>
+          {loadingOlderMessages?'Загружаем ранние сообщения…':olderMessagesError?'Не удалось загрузить. Повторить':'Показать предыдущие сообщения'}
+        </button>
+      </div>}
       {activeChatLoading&&<div className="ik-chat-loading" role="status" aria-label="Загружаем переписку">
         <div className="ik-chat-loading-line"><span className="ik-chat-loading-avatar"/></div>
         <div className="ik-chat-loading-bubble incoming"/><div className="ik-chat-loading-bubble incoming short"/>
