@@ -2,7 +2,7 @@
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { listProfiles, type Profile } from "@/lib/supabase-rest";
 import {
- addPostComment, deletePost, imageUrl, listChannelPosts, listPostComments, listPostReactions, setPostReaction, REACTION_EMOJIS, publishPost,
+ addPostComment, deletePost, editChannelPost, manageChannelComment, imageUrl, listChannelPosts, listPostComments, listPostReactions, setPostReaction, REACTION_EMOJIS, publishPost,
  removeComment, removeUpload, uploadPhoto,
  type Channel, type ChannelPost, type PostComment, type PostReaction, type ReactionEmoji
 } from "@/lib/social";
@@ -21,6 +21,9 @@ export default function ChannelsPanel({token,userId,channel,onBack,onShowProfile
  const [comments,setComments]=useState<PostComment[]>([]);
  const [authors,setAuthors]=useState<Record<string,Profile>>({});
  const [commentDraft,setCommentDraft]=useState("");
+ const [editingPostId,setEditingPostId]=useState<string|null>(null);
+ const [editingCommentId,setEditingCommentId]=useState<string|null>(null);
+ const [editingBody,setEditingBody]=useState("");
  const [busy,setBusy]=useState(false);const [error,setError]=useState("");const [notice,setNotice]=useState("");
  const reload=useCallback(async()=>{const list=await listChannelPosts(token,channel.id);setPosts(list);setReactions(await listPostReactions(token,list.map(p=>p.id)));},[token,channel.id]);
  async function react(postId:string,emoji:ReactionEmoji){
@@ -63,6 +66,17 @@ export default function ChannelsPanel({token,userId,channel,onBack,onShowProfile
    if(!authors[userId]){const mine=await listProfiles(token,[userId]);if(mine[0])setAuthors(prev=>({...prev,[userId]:mine[0]}));}
   }catch(e){setError(readable(e));}finally{setBusy(false);}
  }
+ async function savePostEdit(id:string){
+  if(!mine||busy)return;setBusy(true);setError("");
+  try{await editChannelPost(token,id,editingBody);setEditingPostId(null);await reload();}
+  catch(e){setError(readable(e));}finally{setBusy(false);}
+ }
+ async function saveCommentEdit(id:string){
+  if(busy)return;setBusy(true);setError("");
+  try{await manageChannelComment(token,id,"edit",editingBody);setEditingCommentId(null);
+   if(openComments)setComments(await listPostComments(token,openComments));
+  }catch(e){setError(readable(e));}finally{setBusy(false);}
+ }
  async function erasePost(p:ChannelPost){
   if(!mine||busy||!window.confirm("Удалить этот пост?"))return;
   setBusy(true);setError("");
@@ -70,9 +84,9 @@ export default function ChannelsPanel({token,userId,channel,onBack,onShowProfile
   catch(e){setError(readable(e));}finally{setBusy(false);}
  }
  async function eraseComment(c:PostComment){
-  if(c.author_id!==userId||busy)return;
+  if((c.author_id!==userId&&!mine)||busy)return;
   setBusy(true);
-  try{await removeComment(token,c.id);setComments(old=>old.filter(x=>x.id!==c.id));}
+  try{await manageChannelComment(token,c.id,"delete");setComments(old=>old.filter(x=>x.id!==c.id));}
   catch(e){setError(readable(e));}finally{setBusy(false);}
  }
  return <section className="channel-view">
@@ -97,7 +111,7 @@ export default function ChannelsPanel({token,userId,channel,onBack,onShowProfile
    {posts.length===0&&<div className="channel-empty">Публикаций пока нет.</div>}
    {posts.map(post=><article className="channel-post" key={post.id}>
     <div className="channel-post-meta"><span className="channel-post-icon">#</span><strong>{channel.title}</strong><time dateTime={post.created_at}>{formattedDate(post.created_at)}</time></div>
-    {post.body&&<p className="channel-post-body">{post.body}</p>}
+    {editingPostId===post.id?<form className="channel-inline-editor" onSubmit={e=>{e.preventDefault();void savePostEdit(post.id);}}><textarea value={editingBody} maxLength={4000} onChange={e=>setEditingBody(e.target.value)}/><button type="submit">Сохранить</button><button type="button" onClick={()=>setEditingPostId(null)}>Отмена</button></form>:post.body&&<p className="channel-post-body">{post.body}</p>}
     {imageUrl(post.image_path)&&<img className="channel-post-image" src={imageUrl(post.image_path)||""} alt="Изображение к публикации"/>}
     <div className="reaction-bar channel-reaction-bar">
      {REACTION_EMOJIS.filter(emoji=>reactions.some(r=>r.post_id===post.id&&r.emoji===emoji)).map(emoji=><button type="button" key={emoji} className={"reaction-pill"+(reactions.some(r=>r.post_id===post.id&&r.user_id===userId&&r.emoji===emoji)?" mine":"")} disabled={busy} onClick={()=>void react(post.id,emoji)}>{emoji} <span>{reactions.filter(r=>r.post_id===post.id&&r.emoji===emoji).length}</span></button>)}
@@ -105,11 +119,11 @@ export default function ChannelsPanel({token,userId,channel,onBack,onShowProfile
      {reactionPicker===post.id&&<div className="reaction-picker">{REACTION_EMOJIS.map(emoji=><button key={emoji} type="button" disabled={busy} onClick={()=>void react(post.id,emoji)} aria-label={"Реакция "+emoji}>{emoji}</button>)}</div>}
     </div>
     <div className="channel-post-actions"><button type="button" onClick={()=>void showComments(post.id)}>{openComments===post.id?"Скрыть комментарии":"Комментарии"}</button>
-    {mine&&<button type="button" disabled={busy} onClick={()=>void erasePost(post)}>Удалить пост</button>}</div>
+    {mine&&<button type="button" disabled={busy} onClick={()=>{setEditingPostId(post.id);setEditingBody(post.body);}}>Редактировать</button>}{mine&&<button type="button" disabled={busy} onClick={()=>void erasePost(post)}>Удалить пост</button>}</div>
     {openComments===post.id&&<div className="channel-comments">
        {comments.length===0?<p className="channel-no-comments">Будь первым, кто оставит комментарий.</p>:
-        comments.map(comment=><div className="channel-comment" key={comment.id}><div className="channel-comment-head"><button type="button" onClick={()=>onShowProfile(comment.author_id)}>{authors[comment.author_id]?.display_name||"Пользователь"}</button><time dateTime={comment.created_at}>{formattedDate(comment.created_at)}</time></div><p>{comment.body}</p>
-        {comment.author_id===userId&&<button className="channel-delete-comment" disabled={busy} onClick={()=>void eraseComment(comment)} type="button">Удалить</button>}</div>)}
+        comments.map(comment=><div className="channel-comment" key={comment.id}><div className="channel-comment-head"><button type="button" onClick={()=>onShowProfile(comment.author_id)}>{authors[comment.author_id]?.display_name||"Пользователь"}</button><time dateTime={comment.created_at}>{formattedDate(comment.created_at)}</time></div>{editingCommentId===comment.id?<form className="channel-inline-editor" onSubmit={e=>{e.preventDefault();void saveCommentEdit(comment.id);}}><input value={editingBody} maxLength={1500} onChange={e=>setEditingBody(e.target.value)}/><button type="submit">Сохранить</button><button type="button" onClick={()=>setEditingCommentId(null)}>Отмена</button></form>:<p>{comment.body}</p>}
+        {comment.author_id===userId&&<button className="channel-delete-comment" type="button" onClick={()=>{setEditingCommentId(comment.id);setEditingBody(comment.body);}}>Редактировать</button>}{(comment.author_id===userId||mine)&&<button className="channel-delete-comment" disabled={busy} onClick={()=>void eraseComment(comment)} type="button">Удалить</button>}</div>)}
        <form className="channel-comment-form" onSubmit={writeComment}><input aria-label="Написать комментарий" maxLength={1500} placeholder="Написать комментарий…" value={commentDraft} onChange={e=>setCommentDraft(e.target.value)}/><button type="submit" className="accent-button" disabled={busy||!commentDraft.trim()}>➤</button></form>
       </div>}
    </article>)}
