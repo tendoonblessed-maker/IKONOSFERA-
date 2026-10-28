@@ -1,12 +1,3 @@
--- allow_deleted_message_tombstones
-alter table public.messages drop constraint if exists messages_body_check;
-alter table public.messages add constraint messages_body_check check(char_length(trim(body))<=4000 and (char_length(trim(body))>=1 or media_path is not null or deleted_for_everyone=true));
-
--- channel_multimedia_attachments
-alter table public.channel_posts add column if not exists attachment_path text;
-alter table public.channel_posts add column if not exists attachment_type text check(attachment_type in('image','video','audio','file'));
-update storage.buckets set file_size_limit=26214400,allowed_mime_types=array['image/jpeg','image/png','image/webp','video/mp4','video/webm','video/quicktime','audio/mpeg','audio/mp4','audio/wav','audio/ogg','application/pdf','text/plain','application/zip','application/vnd.openxmlformats-officedocument.wordprocessingml.document','application/msword','application/vnd.openxmlformats-officedocument.spreadsheetml.sheet','application/vnd.ms-excel'] where id='ikonosfera-media';
-
 -- chat_management_and_channel_editing
 alter table public.messages add column if not exists edited_at timestamptz;
 alter table public.messages add column if not exists deleted_for uuid[] not null default '{}';
@@ -81,6 +72,10 @@ revoke all on function public.edit_channel_post(uuid,text),public.manage_channel
 grant execute on function public.edit_channel_post(uuid,text),public.manage_channel_comment(uuid,text,text) to authenticated;
 
 
+-- allow_deleted_message_tombstones
+alter table public.messages drop constraint if exists messages_body_check;
+alter table public.messages add constraint messages_body_check check(char_length(trim(body))<=4000 and (char_length(trim(body))>=1 or media_path is not null or deleted_for_everyone=true));
+
 -- direct_message_audio_documents
 alter table public.messages drop constraint if exists messages_media_pair;
 alter table public.messages add constraint messages_media_pair check((media_path is null and media_type is null) or(media_path is not null and media_type in ('image','video','audio','file')));
@@ -88,6 +83,11 @@ alter table public.messages drop constraint if exists messages_media_path_format
 alter table public.messages add constraint messages_media_path_format check(media_path is null or media_path ~ '^[0-9a-f-]{36}/[0-9a-f-]{36}/[0-9a-f-]{36}[.](jpg|png|webp|mp4|webm|mov|mp3|m4a|wav|ogg|pdf|txt|zip|doc|docx|xls|xlsx)$');
 update storage.buckets set allowed_mime_types=array['image/jpeg','image/png','image/webp','video/mp4','video/webm','video/quicktime','audio/mpeg','audio/mp4','audio/wav','audio/ogg','application/pdf','text/plain','application/zip','application/vnd.openxmlformats-officedocument.wordprocessingml.document','application/msword','application/vnd.openxmlformats-officedocument.spreadsheetml.sheet','application/vnd.ms-excel'] where id='ikonosfera-direct-media';
 
+
+-- channel_multimedia_attachments
+alter table public.channel_posts add column if not exists attachment_path text;
+alter table public.channel_posts add column if not exists attachment_type text check(attachment_type in('image','video','audio','file'));
+update storage.buckets set file_size_limit=26214400,allowed_mime_types=array['image/jpeg','image/png','image/webp','video/mp4','video/webm','video/quicktime','audio/mpeg','audio/mp4','audio/wav','audio/ogg','application/pdf','text/plain','application/zip','application/vnd.openxmlformats-officedocument.wordprocessingml.document','application/msword','application/vnd.openxmlformats-officedocument.spreadsheetml.sheet','application/vnd.ms-excel'] where id='ikonosfera-media';
 
 -- enforce_hidden_chat_and_message_visibility
 drop policy if exists messages_read_chat_members on public.messages;
