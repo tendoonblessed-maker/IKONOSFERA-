@@ -1506,3 +1506,12 @@ body{position:relative}
   display:block;width:12px;height:12px;flex:none;
   margin:0;padding:0;transform:none;
 }
+
+
+/* iPhone: place the add-story glyph at the exact center of its circular badge. */
+.home-story-item .home-story-plus{display:block!important;position:absolute!important;box-sizing:border-box!important;overflow:hidden!important}
+.home-story-item .home-story-plus svg{
+ position:absolute!important;top:50%!important;left:50%!important;
+ width:12px!important;height:12px!important;margin:0!important;
+ transform:translate(-50%,-50%)!important;display:block!important;
+}
