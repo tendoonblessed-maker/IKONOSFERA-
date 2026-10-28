@@ -485,6 +485,10 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
        ? <GroupInboxRow key={'g-'+item.group.id} group={item.group} overview={groupOverviews[item.group.id]} active={selectedGroup?.id===item.group.id} onOpen={()=>{setSelectedGroup(item.group);setSelected(null);setSelectedChannel(null);setProfileTarget(null);}}/>
        : <ChatInboxRow key={'c-'+item.row.chat.id} row={item.row} currentUserId={userId} active={selected===item.row.chat.id} selectionMode={editingChats} selectedForBulk={selectedChatIds.includes(item.row.chat.id)}
           onOpen={()=>{if(editingChats){toggleChatSelection(item.row.chat.id);return;}setSelected(item.row.chat.id);setSelectedGroup(null);setSelectedChannel(null);setProfileTarget(null);setChatMessages([]);setError('');}}
+          isSavedContact={Boolean(item.row.other&&savedContactIds.has(item.row.other.id))}
+          isBlocked={Boolean(item.row.other&&blockedUserIds.has(item.row.other.id))}
+          onContactAction={()=>{if(item.row.other)void toggleSavedContact(item.row.other);}}
+          onBlockAction={()=>{if(item.row.other)void toggleBlockedUser(item.row.other);}}
           onAction={action=>void chatAction(item.row.chat.id,action)}/>
        ):<div className="list-empty ik-chat-empty"><div className="empty-icon">✉</div><strong>{chatFilter==='unread'?'Всё прочитано':chatFilter==='groups'?'Нет групп':'Нет переписок'}</strong><p>{chatFilter==='unread'?'Новые сообщения появятся здесь.':chatFilter==='groups'?'Создай группу и пригласи участников.':'Найди человека по юзернейму или создай группу.'}</p>{chatFilter==='all'&&<button className="secondary-action" onClick={()=>switchTab('contacts')}>Новый чат</button>}</div>:<div className="list-empty"><div className="empty-icon">✉</div><strong>Нет переписок</strong><p>{backendReady?'Войди, чтобы читать сообщения.':'Для переписки осталось подключить сервер.'}</p></div>)}
       {tab==='contacts'&&<div className="contact-search-panel">
@@ -494,17 +498,19 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
           <input id="lookup" placeholder="Поиск по контактам и @username" value={lookup} onChange={e=>setLookup(e.target.value)} maxLength={25} disabled={!loggedIn}/>
           <button type="submit" disabled={!loggedIn||busy||lookup.trim().replace(/^@/,'').length<3}>{busy?'…':'Найти'}</button>
         </form>
-        <div className="ik-contact-invite"><span aria-hidden="true">＋</span><div><strong>Контакты IKONOSFERA</strong><small>Открой профиль или найди пользователя выше</small></div></div>
+        <div className="ik-contact-invite"><span aria-hidden="true">＋</span><div><strong>Контакты IKONOSFERA</strong><small>Сохранённые люди доступны на всех устройствах</small></div></div>
         <div className="ik-contact-section-label">КОНТАКТЫ <span>{contactPeople.length}</span></div>
         <div className="ik-contact-people">
           {contactPeople.filter(person=>!lookup.trim()||((person.display_name||'')+' '+person.username).toLowerCase().includes(lookup.trim().replace(/^@/,'').toLowerCase())).map(person=>
-            <button type="button" key={person.id} className="ik-contact-person" onClick={()=>goToProfile(person.id)}>
-              <span className="contact-avatar">{imageUrl(person.avatar_path)?<img className="avatar-image" src={imageUrl(person.avatar_path)||''} alt=""/>:(person.display_name||person.username).slice(0,1).toUpperCase()}</span>
-              <span className="ik-contact-person-text"><strong>{person.display_name||person.username}</strong><small>{activityLabel(userActivities[person.id])}</small></span>
-              <span className="ik-contact-chevron" aria-hidden="true">›</span>
-            </button>
+            <div key={person.id} className="ik-contact-person-row">
+              <button type="button" className="ik-contact-person" onClick={()=>goToProfile(person.id)}>
+                <span className="contact-avatar">{imageUrl(person.avatar_path)?<img className="avatar-image" src={imageUrl(person.avatar_path)||''} alt=""/>:(person.display_name||person.username).slice(0,1).toUpperCase()}</span>
+                <span className="ik-contact-person-text"><strong>{person.display_name||person.username}</strong><small>{blockedUserIds.has(person.id)?'Заблокирован':activityLabel(userActivities[person.id])}</small></span>
+              </button>
+              <button type="button" className="ik-contact-remove" title="Удалить из контактов" aria-label={'Удалить из контактов '+(person.display_name||person.username)} disabled={busy} onClick={()=>void toggleSavedContact(person)}>×</button>
+            </div>
           )}
-          {!contactPeople.length&&<p className="ik-contacts-empty">Контакты появятся здесь после переписки. Нового человека можно найти по @username выше.</p>}
+          {!contactPeople.length&&<p className="ik-contacts-empty">Сохранённых контактов пока нет. В разделе «Чаты» открой меню ⋯ рядом с перепиской и выбери «Добавить в контакты».</p>}
         </div>
       </div>}
 
