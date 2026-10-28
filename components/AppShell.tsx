@@ -1,6 +1,6 @@
 'use client';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { backendReady, createTemporaryAccount, consumeEmailLinkSession, clearSession, currentUser, findProfileByUsername, listChats, listMessages, manageChat, manageMessage, listMessageReactions, setMessageReaction, markChatRead, listProfiles, myProfile, postMessage, reopenChat, sendDirectMedia, sendEmailCode, signOut, startDirectChat, validSession, type ChatMessage, type MessageReaction, type DirectChat, type Profile, type Session } from '@/lib/supabase-rest';
+import { backendReady, createTemporaryAccount, consumeEmailLinkSession, clearSession, currentUser, findProfileByUsername, listChats, listChatPreviews, listMessages, manageChat, manageMessage, listMessageReactions, setMessageReaction, markChatRead, listProfiles, myProfile, postMessage, reopenChat, sendDirectMedia, sendEmailCode, signOut, startDirectChat, validSession, type ChatMessage, type MessageReaction, type DirectChat, type Profile, type Session, type ChatPreview } from '@/lib/supabase-rest';
 
 import ProfilePanel from "@/components/ProfilePanel";
 import ChatMedia from "@/components/ChatMedia";
@@ -12,7 +12,8 @@ import { REACTION_EMOJIS, type ReactionEmoji, createChannel, imageUrl, listChann
 
 type Tab = 'chats' | 'contacts' | 'channels' | 'profile' | 'settings';
 type Platform = { ios: boolean; standalone: boolean };
-type ChatRow = { chat: DirectChat; other: Profile | null };
+type ChatRow = { chat: DirectChat; other: Profile | null; preview:ChatPreview|null };
+const chatTime=(date:string|null)=>{if(!date)return '';const stamp=new Date(date);if(!Number.isFinite(stamp.getTime()))return '';const now=new Date();if(stamp.toDateString()===now.toDateString())return stamp.toLocaleTimeString('ru-RU',{hour:'2-digit',minute:'2-digit'});const previous=new Date(now.getFullYear(),now.getMonth(),now.getDate()-1);if(stamp.toDateString()===previous.toDateString())return 'вчера';return stamp.toLocaleDateString('ru-RU',{day:'2-digit',month:'2-digit'});};
 const userFacingError = (error: unknown) => {
   const message=error instanceof Error?error.message:'Неизвестная ошибка';
   if(/email.rate.limit.exceeded|email.*rate.*limit|over_email_send_rate_limit/i.test(message))
@@ -52,6 +53,8 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
   const [editingMessageId,setEditingMessageId]=useState<string|null>(null);
   const [editingMessageBody,setEditingMessageBody]=useState("");
   const [search,setSearch]=useState('');
+  const [chatFilter,setChatFilter]=useState<'all'|'unread'>('all');
+  const [createMenuOpen,setCreateMenuOpen]=useState(false);
   const [lookup,setLookup]=useState(initialUsername);
   const [draft,setDraft]=useState('');
   const [email,setEmail]=useState('');
@@ -65,6 +68,8 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
   const [installPrompt,setInstallPrompt]=useState<(Event & {prompt:()=>Promise<void>;userChoice:Promise<{outcome:string}>})|null>(null);
   const messageEnd=useRef<HTMLDivElement|null>(null);
   const selectedRef=useRef<string|null>(null);
+  const searchInputRef=useRef<HTMLInputElement|null>(null);
+  const draftsRef=useRef<Record<string,string>>({});
 
   useEffect(()=>{selectedRef.current=selected;},[selected]);
   useEffect(()=>{
@@ -78,14 +83,23 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
   },[]);
 
   const refresh=useCallback(async (token:string,id:string,activeChat:string|null)=>{
-    const [chats,allChannels,memberships]=await Promise.all([listChats(token),listChannels(token),listMySubscriptions(token,id)]);
+    const [chats,previews,allChannels,memberships,groupList]=await Promise.all([listChats(token),listChatPreviews(token).catch(()=>[] as ChatPreview[]),listChannels(token),listMySubscriptions(token,id),listGroups(token)]);
     setChannels(allChannels);
-    setGroups(await listGroups(token));
+    setGroups(groupList);
     setSubscriptions(memberships.map(m=>m.channel_id));
     const others=Array.from(new Set(chats.map(c=>c.user_a===id?c.user_b:c.user_a)));
     const profiles=await listProfiles(token,others);
     const byId=new Map(profiles.map(p=>[p.id,p]));
-    setRows(chats.filter(chat=>!chat.hidden_for?.includes(id)).sort((a,b)=>Number(Boolean(b.pinned_for?.includes(id)))-Number(Boolean(a.pinned_for?.includes(id)))).map(chat=>({chat,other:byId.get(chat.user_a===id?chat.user_b:chat.user_a)??null})));
+    const overview=new Map(previews.map(p=>[p.chat_id,p]));
+    setRows(chats.filter(chat=>!chat.hidden_for?.includes(id))
+      .sort((a,b)=>{
+        const pinned=Number(Boolean(b.pinned_for?.includes(id)))-Number(Boolean(a.pinned_for?.includes(id)));
+        if(pinned)return pinned;
+        const aTime=overview.get(a.id)?.last_created_at||a.created_at;
+        const bTime=overview.get(b.id)?.last_created_at||b.created_at;
+        return Date.parse(bTime)-Date.parse(aTime);
+      })
+      .map(chat=>({chat,other:byId.get(chat.user_a===id?chat.user_b:chat.user_a)??null,preview:overview.get(chat.id)??null})));
     if(activeChat && chats.some(chat=>chat.id===activeChat)) {
       const messages=await listMessages(token,activeChat);
       const ordered=messages.reverse();
@@ -132,6 +146,20 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
   },[session,userId,refresh]);
 
   useEffect(()=>{messageEnd.current?.scrollIntoView({behavior:'auto'});},[chatMessages.length,selected]);
+  useEffect(()=>{if(selected)setDraft(draftsRef.current[selected]||'');},[selected]);
+  useEffect(()=>{
+    const keyboard=(event:KeyboardEvent)=>{
+      if((event.ctrlKey||event.metaKey)&&event.key.toLowerCase()==='k'){
+        event.preventDefault();setTab('chats');setCreateMenuOpen(false);
+        searchInputRef.current?.focus();searchInputRef.current?.select();
+      }
+      if(event.key==='Escape'&&document.activeElement===searchInputRef.current){
+        setSearch('');searchInputRef.current?.blur();
+      }
+    };
+    window.addEventListener('keydown',keyboard);
+    return()=>window.removeEventListener('keydown',keyboard);
+  },[]);
 
   async function requestSignInLink(e:React.FormEvent){e.preventDefault();setError('');setBusy(true);try{await sendEmailCode(email.trim().toLowerCase());setEmailSent(true);setNotice('Письмо отправлено. Нажми Sign in («Войти») в письме от Supabase Auth.');}catch(e){setError(userFacingError(e));}finally{setBusy(false);}}
   async function beginTemporaryAccount(){
@@ -207,9 +235,9 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
   }
   function switchTab(next:Tab){
     setSelectedGroup(null);setCreatingGroup(false);
-    setTab(next);setSelected(null);setSelectedChannel(null);setProfileTarget(next==="profile"&&userId?userId:null);setShowRecommendations(false);setError("");
+    setCreateMenuOpen(false);setTab(next);setSelected(null);setSelectedChannel(null);setProfileTarget(next==="profile"&&userId?userId:null);setShowRecommendations(false);setError("");
   }
-  async function sendMessage(e:React.FormEvent){e.preventDefault();if(!session||!selected||!userId||sending)return;const body=draft.trim();if(!body||body.length>4000)return;setSending(true);setError('');try{await postMessage(session.access_token,selected,userId,body);setDraft('');setChatMessages((await listMessages(session.access_token,selected)).reverse());}catch(e){setError(userFacingError(e));}finally{setSending(false);}}
+  async function sendMessage(e:React.FormEvent){e.preventDefault();if(!session||!selected||!userId||sending)return;const body=draft.trim();if(!body||body.length>4000)return;setSending(true);setError('');try{await postMessage(session.access_token,selected,userId,body);setDraft('');delete draftsRef.current[selected];setChatMessages((await listMessages(session.access_token,selected)).reverse());}catch(e){setError(userFacingError(e));}finally{setSending(false);}}
   async function chatAction(chatId:string,action:"hide"|"pin"|"unpin"|"delete_everyone"){
     if(!session||!userId)return;
     if(action==="delete_everyone"&&!window.confirm("Удалить диалог и все сообщения у обоих участников?"))return;
@@ -248,7 +276,8 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
   async function install(){if(installPrompt){await installPrompt.prompt();await installPrompt.userChoice;setInstallPrompt(null);}else setInstallHelp(true);}
   const storyContacts=useMemo(()=>rows.map(row=>row.other).filter((p):p is Profile=>Boolean(p)),[rows]);
   const active=rows.find(r=>r.chat.id===selected);
-  const filtered=rows.filter(r=>!search.trim()||`${r.other?.display_name??''} ${r.other?.username??''}`.toLowerCase().includes(search.trim().toLowerCase()));
+  const filtered=rows.filter(r=>(chatFilter==='all'||Number(r.preview?.unread_count||0)>0) && (!search.trim()||`${r.other?.display_name??''} ${r.other?.username??''} ${r.preview?.last_body??''}`.toLowerCase().includes(search.trim().toLowerCase())));
+  const unreadTotal=rows.reduce((sum,row)=>sum+Number(row.preview?.unread_count||0),0);
   const loggedIn=Boolean(session&&userId);
   const detailOpen=Boolean(!loggedIn||selected||profileTarget||selectedChannel||selectedGroup);
   const myChannels=channels.filter(ch=>ch.owner_id===userId||subscriptions.includes(ch.id));
