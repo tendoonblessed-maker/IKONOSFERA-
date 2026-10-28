@@ -36,3 +36,11 @@ test('design tokens include baseline palette and reduced motion', () => {
   assert.match(css, /prefers-reduced-motion: reduce/);
   assert.match(css, /env\(safe-area-inset-bottom\)/);
 });
+
+test('installed iOS PWA keeps navigation below system status bar', () => {
+  const css = load('app/globals.css');
+  const layout = load('app/layout.tsx');
+  assert.match(css, /height: calc\(73px \+ env\(safe-area-inset-top, 0px\)\)/);
+  assert.match(css, /padding: env\(safe-area-inset-top, 0px\)/);
+  assert.match(layout, /statusBarStyle: "black"/);
+});
