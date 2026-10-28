@@ -346,3 +346,22 @@ textarea:focus-visible{outline:2px solid #111;outline-offset:2px}
  .conversation-pane .channel-view,.channel-post,.profile-grid-cell,.profile-story-thumb,
  .profile-lightbox,.profile-lightbox img{animation:none!important}
 }
+
+/* Opt-in channel discovery, separate from the subscribed feed */
+.channel-browser-tabs{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-top:17px;padding:4px;border-radius:13px;background:#f3f3f3}
+.channel-browser-tabs button{border:0;border-radius:10px;background:transparent;color:#777;font:inherit;font-size:12px;font-weight:600;min-height:39px;cursor:pointer;transition:background .25s ease,color .25s ease,box-shadow .25s ease}
+.channel-browser-tabs button.selected{background:#fff;color:#111;box-shadow:0 2px 8px #00000010}
+.channel-list-row{gap:9px}
+.channel-row-open{display:flex;align-items:center;gap:12px;flex:1;min-width:0;padding:0;border:0;background:transparent;color:#111;text-align:left;cursor:pointer}
+.channel-row-open>span:last-child{display:grid;gap:5px;min-width:0}
+.channel-row-open strong{font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.channel-row-open small{font-size:12px;color:#888}
+.channel-subscribe-button{flex-shrink:0;border:1px solid #dedede;border-radius:11px;padding:9px 10px;background:#fff;color:#111;font-size:11px;font-weight:650;cursor:pointer;transition:transform .2s ease,background .2s ease}
+.channel-subscribe-button:hover{background:#eee}
+.channel-subscribe-button:active{transform:scale(.94)}
+.channel-owner-badge{font-size:11px;color:#999;padding:5px}
+.channel-cover-actions{display:flex;align-items:center;justify-content:center;flex-wrap:wrap;gap:10px;margin-top:17px}
+.channel-cover-actions .secondary-action{margin:0}
+.profile-message-button{display:inline-block;margin:16px auto 0;max-width:260px}
+@media(max-width:400px){.channel-list-row{gap:5px}.channel-row-open{gap:7px}.channel-subscribe-button{font-size:10px;padding:8px 6px}}
+@media(prefers-reduced-motion:reduce){.channel-browser-tabs button,.channel-subscribe-button{transition:none}}
