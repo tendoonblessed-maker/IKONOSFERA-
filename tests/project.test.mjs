@@ -653,5 +653,5 @@ test('Telegram-inspired monochrome UI keeps fonts and responsive mobile keyboard
  assert.match(css,/\.messenger\.is-authenticated \.conversation-history/);
  assert.match(css,/font-size:16px!important/);
  assert.match(app,/aria-label="Написать сообщение"/);
- assert.match(app,/className="chat-message-row/);
+ assert.match(app,/className=\{`chat-message-row/);
 });
