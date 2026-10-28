@@ -5,7 +5,7 @@ const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? '';
 export const backendReady = Boolean(apiUrl && anonKey);
 
 export type Session = { access_token: string; refresh_token: string; expires_at: number };
-export type Profile = { id: string; username: string; display_name: string };
+export type Profile = { id: string; username: string; display_name: string; avatar_path?: string|null; cover_path?: string|null; bio?: string };
 export type DirectChat = { id: string; user_a: string; user_b: string; created_at: string };
 export type ChatMessage = { id: string; chat_id: string; sender_id: string; body: string; created_at: string };
 const STORAGE = 'ikonosfera-session-v1';
@@ -67,11 +67,11 @@ export async function verifyEmailCode(email: string, token: string) {
 export async function currentUser(token: string) { return http<{id:string;email?:string;is_anonymous?:boolean}>('/auth/v1/user',{token}); }
 export async function signOut(token: string) { try { await http('/auth/v1/logout',{token,method:'POST'}); } finally { clearSession(); } }
 export async function myProfile(token: string, id: string) {
-  const profiles=await http<Profile[]>(`/rest/v1/profiles?select=id,username,display_name&id=eq.${encodeURIComponent(id)}&limit=1`,{token});
+  const profiles=await http<Profile[]>(`/rest/v1/profiles?select=id,username,display_name,avatar_path,cover_path,bio&id=eq.${encodeURIComponent(id)}&limit=1`,{token});
   return profiles[0] ?? null;
 }
 export async function changeProfile(token: string, id: string, username: string, display_name: string) {
-  const profiles=await http<Profile[]>(`/rest/v1/profiles?id=eq.${encodeURIComponent(id)}&select=id,username,display_name`,{token,method:'PATCH',body:{username,display_name},extraHeaders:{Prefer:'return=representation'}});
+  const profiles=await http<Profile[]>(`/rest/v1/profiles?id=eq.${encodeURIComponent(id)}&select=id,username,display_name,avatar_path,cover_path,bio`,{token,method:'PATCH',body:{username,display_name},extraHeaders:{Prefer:'return=representation'}});
   if (!profiles[0]) throw Error('Профиль не найден');
   return profiles[0];
 }
@@ -83,7 +83,7 @@ export async function listChats(token: string) {
 }
 export async function listProfiles(token: string, ids: string[]) {
   if (!ids.length) return [];
-  return http<Profile[]>(`/rest/v1/profiles?select=id,username,display_name&id=in.(${ids.map(encodeURIComponent).join(',')})`,{token});
+  return http<Profile[]>(`/rest/v1/profiles?select=id,username,display_name,avatar_path,cover_path,bio&id=in.(${ids.map(encodeURIComponent).join(',')})`,{token});
 }
 export async function listMessages(token: string, chatId: string) {
   return http<ChatMessage[]>(`/rest/v1/messages?select=id,chat_id,sender_id,body,created_at&chat_id=eq.${encodeURIComponent(chatId)}&order=created_at.desc&limit=100`,{token});
