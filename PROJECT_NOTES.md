@@ -2,6 +2,12 @@
 
 Обновлено: 2026-10-28. Стадия: **этап 0, частично реализован, не проверен пользователем, не закрыт**. Тег `stage-0-ok` не создавался.
 
+## Развёртывание Vercel — 28.10.2026
+- Создан проект `ikonosfera` (`prj_bnHvCwX7mGMNn3dc3RgMWA5KPdj9`), команда `team_tyL304zi3vKlwRcPB7rFV5Ll`.
+- Запущен первый production-деплой `dpl_2xhxZc3LH5FS8p4dGiLXZg8Lr85z` из подготовленных исходников через Vercel API, **не из Git-интеграции**. Адрес после успешной сборки: `https://ikonosfera-tendoonblessed-5424.vercel.app` (готовность ещё проверяется).
+- GitHub Login Connection в Vercel пока не даёт доступ к приватному репозиторию (`repo_not_found`). Нужно отдельно настроить доступ Vercel GitHub App для этого репозитория, чтобы включить автодеплой.
+- Для чтения логов Vercel потребовал `authorize_team_access`; пользователь должен подтвердить доступ к команде. Не заявлять, что сайт готов до статуса READY и проверки URL.
+
 ## Проверка и публикация — 28.10.2026
 - GitHub Actions: полный набор `npm install`, `typecheck`, `lint`, `test`, `build` **успешно прошёл** в запуске `40648954267` (после исправления отсутствовавшего npm cache lockfile в `.github/workflows/check.yml`).
 - Vercel подключён как приложение ChatGPT, но попытка создать проект с GitHub вернула `400`: `You need to add a Login Connection to your GitHub account first.` Требуется связать GitHub с Vercel в настройках пользователя.
