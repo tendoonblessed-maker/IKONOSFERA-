@@ -5,11 +5,11 @@ import "./globals.css";
 const inter = Inter({ subsets: ["latin", "cyrillic"], display: "swap" });
 
 export const metadata: Metadata = {
-  title: "IKONOSFERA | Спокойное пространство для общения",
-  description: "Мессенджер, который помогает вернуть контроль над перепиской. Первая техническая версия.",
+  title: "IKONOSFERA | Мессенджер",
+  description: "IKONOSFERA — современный мессенджер для iPhone, Android и компьютера.",
   applicationName: "IKONOSFERA",
   manifest: "/manifest.webmanifest",
-  appleWebApp: { capable: true, title: "IKONOSFERA", statusBarStyle: "black" },
+  appleWebApp: { capable: true, title: "IKONOSFERA", statusBarStyle: "default" },
   icons: {
     icon: [
       { url: "/favicon.ico", sizes: "any" },
@@ -23,12 +23,12 @@ export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
   viewportFit: "cover",
-  themeColor: "#000000",
+  themeColor: "#ffffff",
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="ru" data-theme="dark">
+    <html lang="ru" data-theme="light">
       <body className={inter.className}>{children}</body>
     </html>
   );
