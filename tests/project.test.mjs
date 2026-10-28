@@ -16,7 +16,7 @@ test('temporary test account uses authenticated Supabase session, not mock messa
 
 test('white edition has monochrome UI, original wordmark and light PWA chrome',()=>{const css=load('app/globals.css');const shell=load('components/AppShell.tsx');const layout=load('app/layout.tsx');const manifest=JSON.parse(load('public/manifest.webmanifest'));assert.match(css,/color-scheme: light/);assert.match(css,/--bg:#ffffff/);assert.match(shell,/branding\/ikonosfera.svg/);assert.match(shell,/branding\/ikonosfera-wordmark.svg/);assert.match(layout,/statusBarStyle: "default"/);assert.equal(manifest.theme_color,'#ffffff');for(const img of ['ikonosfera.svg','ikonosfera-wordmark.svg'])assert.ok(existsSync(new URL('../public/branding/'+img,import.meta.url)));});
 
-test('white offline fallback and refreshed service worker cache',()=>{const offline=load('public/offline.html');const sw=load('public/sw.js');assert.ok(offline.includes('background:#fff;color:#111111'));assert.ok(offline.includes('/branding/ikonosfera.svg'));assert.ok(sw.includes('ikonosfera-shell-v3'));});
+test('white offline fallback and refreshed service worker cache',()=>{const offline=load('public/offline.html');const sw=load('public/sw.js');assert.ok(offline.includes('background:#fff;color:#111111'));assert.ok(offline.includes('/branding/ikonosfera.svg'));assert.ok(sw.includes('ikonosfera-shell-v4'));});
 
 test('social schema protects photo uploads, stories, channels, posts and comments',()=>{
  const sql=load('supabase/migrations/20261028_130000_social_profiles_channels.sql');
@@ -71,3 +71,30 @@ test('email authentication accepts magic link or one-time code',()=>{
 });
 
 test('Windows guest screen hides pre-login messenger sidebar',()=>{const css=load('app/globals.css');const ui=load('components/AppShell.tsx');assert.match(ui,/is-guest/);assert.match(css,/\.messenger\.is-guest \.chats-pane\{display:none!important\}/);assert.match(css,/\.messenger\.is-guest \.conversation-pane/);assert.match(ui,/Your sign-in link/);assert.match(ui,/Sign in/);});
+
+test('pre-release sign-in directs users to Sign in link and never asks for a code',()=>{
+ const ui=load('components/AppShell.tsx');
+ assert.match(ui,/Получить ссылку для входа/);
+ assert.match(ui,/Нажми синюю ссылку/);
+ assert.match(ui,/Your sign-in link/);
+ assert.ok(!ui.includes('Получить код'));
+ assert.ok(!ui.includes('Код из письма'));
+ assert.ok(!ui.includes('confirmCode'));
+});
+test('guest UI occupies full viewport while the messenger waits for authentication',()=>{
+ const ui=load('components/AppShell.tsx'),css=load('app/globals.css');
+ assert.match(ui,/is-guest/);
+ assert.match(css,/\.messenger\.is-guest\.chats-pane\{display:none!important\}/);
+ assert.match(css,/\.messenger\.is-guest \.conversation-placeholder\{overflow:hidden/);
+ assert.match(ui,/Больше чем просто мессенджер/);
+});
+test('no pixel cat remains in the active interface or styles',()=>{
+ assert.ok(!load('components/AppShell.tsx').includes('SleepyPixelCat'));
+ assert.ok(!load('app/globals.css').includes('pixel-cat-button'));
+});
+test('message/chat actions open contextual menus, not a stack of destructive buttons',()=>{
+ const ui=load('components/AppShell.tsx');
+ assert.match(ui,/chat-row-menu/);
+ assert.match(ui,/message-menu/);
+ assert.match(ui,/settings-edit-button/);
+});
