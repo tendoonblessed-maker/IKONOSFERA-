@@ -189,3 +189,7 @@ export async function findProfileByUsername(token:string,username:string):Promis
  const rows=await http<Profile[]>('/rest/v1/profiles?select=id,username,display_name,avatar_path,cover_path,bio&username=eq.'+encodeURIComponent(value)+'&limit=1',{token});
  return rows[0]??null;
 }
+
+export async function reopenChat(token:string,chatId:string){
+ return http('/rest/v1/rpc/reopen_direct_chat',{token,method:'POST',body:{p_chat_id:chatId}});
+}
