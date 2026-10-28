@@ -584,24 +584,35 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
     const chatId=selected,token=session.access_token;
     try{
       await manageMessage(token,messageId,action,body);
-      if(selectedRef.current===chatId){setMessageMenuId(null);setEditingMessageId(null);}
+      if(selectedRef.current===chatId){
+        setMessageMenuId(null);setEditingMessageId(null);
+        // Actions on pages older than 100 messages must update locally too.
+        setChatMessages(current=>current.flatMap(message=>{
+          if(message.id!==messageId)return [message];
+          if(action==='hide')return [];
+          if(action==='delete_everyone')return [{...message,deleted_for_everyone:true,body:'',media_path:null,media_type:null}];
+          return [{...message,body:body??message.body,edited_at:new Date().toISOString()}];
+        }));
+      }
       try{
         const updated=(await listMessages(token,chatId)).reverse();
-        if(selectedRef.current===chatId)setChatMessages(updated);
+        if(selectedRef.current===chatId)setChatMessages(current=>mergeRecentPage(current,updated));
       }catch{/* Keep the confirmed action; retry updating the history on polling. */}
     }catch(e){setError(userFacingError(e));}
   }
   async function reactToMessage(messageId:string,emoji:ReactionEmoji){
     if(!session||!selected||!userId||sending)return;
-    const chatId=selected,token=session.access_token,ids=chatMessages.map(m=>m.id);
+    const chatId=selected,token=session.access_token;
     const previous=messageReactions.find(r=>r.message_id===messageId&&r.user_id===userId);
     setSending(true);setError("");
     try{
       await setMessageReaction(token,userId,messageId,previous?.emoji===emoji?null:emoji);
       if(selectedRef.current===chatId)setMessageReactionPicker(null);
       try{
-        const updated=await listMessageReactions(token,ids);
-        if(selectedRef.current===chatId)setMessageReactions(updated);
+        const updated=await listMessageReactions(token,[messageId]);
+        if(selectedRef.current===chatId)setMessageReactions(current=>[
+          ...current.filter(reaction=>reaction.message_id!==messageId),...updated
+        ]);
       }catch{/* Reaction was saved; the chat poll will reload its state. */}
     }catch(e){setError(userFacingError(e));}finally{setSending(false);}
   }
@@ -614,7 +625,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
       setNotice("Вложение отправлено.");
       try{
         const updated=(await listMessages(token,chatId)).reverse();
-        if(selectedRef.current===chatId)setChatMessages(updated);
+        if(selectedRef.current===chatId)setChatMessages(current=>mergeRecentPage(current,updated));
       }catch{/* Do not report a sent attachment as failed during refresh. */}
     }catch(e){setError(userFacingError(e));}
     finally{setSending(false);}
