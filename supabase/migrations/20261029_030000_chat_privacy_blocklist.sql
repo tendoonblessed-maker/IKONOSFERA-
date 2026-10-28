@@ -1,25 +1,6 @@
--- Personal chat removal + blocklist: ownership is enforced by RLS and RPC.
-create table if not exists public.user_blocks(
- blocker_id uuid not null references public.profiles(id) on delete cascade,
- blocked_id uuid not null references public.profiles(id) on delete cascade,
- created_at timestamptz not null default now(),
- primary key(blocker_id,blocked_id),
- constraint user_blocks_not_self check(blocker_id<>blocked_id)
-);
-create index if not exists user_blocks_blocked_idx on public.user_blocks(blocked_id,blocker_id);
-alter table public.user_blocks enable row level security;
-revoke all on public.user_blocks from public,anon,authenticated;
-grant select,insert,delete on public.user_blocks to authenticated;
-drop policy if exists user_blocks_read_own on public.user_blocks;
-create policy user_blocks_read_own on public.user_blocks for select to authenticated
- using(blocker_id=(select auth.uid()));
-drop policy if exists user_blocks_create_own on public.user_blocks;
-create policy user_blocks_create_own on public.user_blocks for insert to authenticated
- with check(blocker_id=(select auth.uid()) and blocked_id<>blocker_id);
-drop policy if exists user_blocks_remove_own on public.user_blocks;
-create policy user_blocks_remove_own on public.user_blocks for delete to authenticated
- using(blocker_id=(select auth.uid()));
-
+-- Chat actions: reuse existing public.user_blocks(owner_id,blocked_id) and its RLS policies.
+-- Messages already pass through enforce_direct_message_blocks trigger.
+-- Do not create a second block table or duplicate delivery guard.
 -- Existing pin/unpin/delete-everyone keep their behavior; delete_self additionally
 -- masks all previous messages for one participant and removes their inbox entry.
 create or replace function public.manage_direct_chat(p_chat_id uuid,p_action text)
@@ -59,37 +40,28 @@ end;$$;
 revoke all on function public.manage_direct_chat(uuid,text) from public,anon;
 grant execute on function public.manage_direct_chat(uuid,text) to authenticated;
 
--- Blocking must be checked server-side, including file messages uploaded via REST.
--- This trigger also brings a previously deleted chat back when a new message arrives.
-create or replace function public.guard_direct_message_delivery()
+-- Existing delivery trigger checks blocks in both directions and
+-- restores the recipient's inbox if a newly received message arrives.
+create or replace function public.enforce_direct_message_blocks()
 returns trigger language plpgsql security definer set search_path='' as $$
-declare
- me uuid:=auth.uid();
- other_id uuid;
+declare recipient uuid;
 begin
- if me is null or new.sender_id<>me then
-   raise exception 'Not authenticated as sender' using errcode='42501';
+ select case when c.user_a=new.sender_id then c.user_b
+             when c.user_b=new.sender_id then c.user_a else null end
+ into recipient from public.chats c where c.id=new.chat_id;
+ if recipient is null or (select auth.uid()) is null or new.sender_id<>(select auth.uid()) then
+   raise exception 'Invalid direct message participant' using errcode='42501';
  end if;
- select case when user_a=me then user_b when user_b=me then user_a else null end
- into other_id from public.chats where id=new.chat_id;
- if other_id is null then
-   raise exception 'Not a participant' using errcode='42501';
+ if exists(select 1 from public.user_blocks b
+ where (b.owner_id=new.sender_id and b.blocked_id=recipient)
+    or (b.owner_id=recipient and b.blocked_id=new.sender_id)) then
+   raise exception 'Сообщение не отправлено: переписка заблокирована' using errcode='42501';
  end if;
- if exists(
-   select 1 from public.user_blocks
-   where (blocker_id=me and blocked_id=other_id)
-      or (blocker_id=other_id and blocked_id=me)
- ) then
-   raise exception 'Сообщение не отправлено: пользователь заблокирован' using errcode='42501';
- end if;
- update public.chats set hidden_for=array_remove(hidden_for,other_id)
- where id=new.chat_id and other_id=any(hidden_for);
+ update public.chats set hidden_for=array_remove(hidden_for,recipient)
+ where id=new.chat_id and recipient=any(hidden_for);
  return new;
 end;$$;
-drop trigger if exists guard_direct_message_delivery on public.messages;
-create trigger guard_direct_message_delivery before insert on public.messages
- for each row execute function public.guard_direct_message_delivery();
-revoke all on function public.guard_direct_message_delivery() from public,anon,authenticated;
+revoke all on function public.enforce_direct_message_blocks() from public,anon,authenticated;
 
 -- Opening a chat never bypasses blocks (even if the chat already exists).
 create or replace function public.start_direct_chat(target_username text)
@@ -107,8 +79,8 @@ begin
  if recipient is null then raise exception 'User not found';end if;
  if recipient=caller then raise exception 'Cannot message yourself';end if;
  if exists(select 1 from public.user_blocks
-    where (blocker_id=caller and blocked_id=recipient)
-       or (blocker_id=recipient and blocked_id=caller)) then
+    where (owner_id=caller and blocked_id=recipient)
+       or (owner_id=recipient and blocked_id=caller)) then
    raise exception 'Невозможно начать диалог: пользователь заблокирован' using errcode='42501';
  end if;
  a:=least(caller,recipient);b:=greatest(caller,recipient);
