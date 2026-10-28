@@ -1,0 +1,166 @@
+<!doctype html><html lang="ru" data-theme="dark"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#000000"><title>IKONOSFERA · визуальный просмотр этапа 0</title><style>[hidden] { display:none !important; }
+
+
+
+
+:root,
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #000000;
+  --layer: #0a0a0a;
+  --raised: #111111;
+  --raised-2: #161616;
+  --text: #f5f5f5;
+  --secondary: #a1a1a1;
+  --subdued: #8a8a8a;
+  --accent: #4dd0c7;
+  --border: #292929;
+  --status-ok: #86c5a2;
+  --status-wait: #f0ae8e;
+  --radius-control: 8px;
+  --radius-card: 14px;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-6: 24px;
+  --space-8: 32px;
+}
+
+* { box-sizing: border-box; }
+html { background: var(--bg); }
+body { margin: 0; background: var(--bg); color: var(--text); font-size: 16px; line-height: 1.5; }
+button { font: inherit; cursor: pointer; }
+button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+button:disabled { cursor: not-allowed; }
+button, a { -webkit-tap-highlight-color: transparent; }
+button:active:not(:disabled) { opacity: .82; }
+::selection { background: var(--accent); color: var(--bg); }
+.shell { display: grid; grid-template-columns: 346px minmax(0, 1fr); min-height: 100dvh; max-width: 1740px; margin: auto; border-left: 1px solid var(--raised); border-right: 1px solid var(--raised); }
+.sidebar { display: flex; min-height: 100dvh; flex-direction: column; border-right: 1px solid var(--border); background: var(--layer); }
+.identity { display: flex; align-items: center; gap: var(--space-3); padding: 31px 24px 27px; border-bottom: 1px solid var(--border); }
+.brand-symbol { width: 36px; height: 36px; border: 1.5px solid var(--accent); border-radius: 50%; display: grid; place-items: center; flex: none; }
+.brand-symbol span { display: block; width: 13px; height: 13px; border: 2px solid var(--accent); border-radius: 50%; }
+.brand-copy { display: flex; flex: 1; min-width: 0; flex-direction: column; gap: 2px; }
+.brand-copy strong { font-size: 17px; letter-spacing: -0.045em; font-weight: 650; }
+.brand-copy span { color: var(--secondary); font-size: 14px; }
+.version-mark { font-size: 11px; color: var(--subdued); border: 1px solid var(--border); border-radius: 5px; padding: 2px 7px; }
+.sidebar-content { flex: 1; padding: 27px 16px; }
+.sidebar-head { display: flex; align-items: center; justify-content: space-between; padding: 0 8px 20px; }
+.sidebar-head h1 { font-size: 17px; font-weight: 600; margin: 0; letter-spacing: -0.02em; }
+.number-count { font-size: 14px; font-weight: 600; color: var(--subdued); }
+.new-chat { background: var(--raised); border: 1px solid var(--border); border-radius: var(--radius-control); padding: 0 16px; min-height: 48px; width: 100%; display: flex; gap: 10px; align-items: center; font-size: 14px; font-weight: 550; color: var(--secondary); }
+.new-chat span { font-size: 22px; line-height: 1; font-weight: 300; }
+.new-chat:disabled { opacity: .7; }
+.empty-contacts { padding: 78px 15px 0; text-align: center; display: grid; justify-items: center; }
+.empty-contacts-icon { display: block; width: 45px; height: 45px; border: 1px solid var(--border); border-radius: 50%; position: relative; margin-bottom: 22px; }
+.empty-contacts-icon::after { content: ""; position: absolute; width: 14px; height: 14px; border: 1px solid var(--subdued); border-radius: 50%; top: 14px; left: 14px; }
+.empty-contacts strong { font-size: 14px; font-weight: 600; }
+.empty-contacts p { color: var(--secondary); font-size: 14px; margin: 5px 0 0; }
+.sidebar-navigation { display: grid; gap: 6px; padding: 0 16px 16px; }
+.sidebar-navigation button { min-height: 46px; border-radius: var(--radius-control); border: 1px solid transparent; background: transparent; text-align: left; padding: 0 14px; color: var(--secondary); font-size: 14px; }
+.sidebar-navigation button.side-nav-active { color: var(--accent); background: var(--raised); border-color: var(--border); }
+.sidebar-footer { display: flex; align-items: center; gap: 9px; padding: 20px 24px max(20px, env(safe-area-inset-bottom)); border-top: 1px solid var(--border); color: var(--secondary); font-size: 14px; }
+.small-status-dot { width: 6px; height: 6px; background: var(--status-ok); border-radius: 50%; }
+.edition { margin-left: auto; font-size: 11px; color: var(--subdued); }
+.page-area { display: flex; flex-direction: column; min-width: 0; min-height: 100dvh; }
+.topbar { height: 83px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border); padding: 0 40px; gap: 14px; }
+.topbar-name { display: flex; align-items: center; gap: 12px; font-size: 14px; color: var(--secondary); min-width: 0; }
+.breadcrumb { font-size: 11px; letter-spacing: .12em; color: var(--subdued); }
+.sep { color: var(--subdued); }
+.topbar-actions { display: flex; align-items: center; gap: 17px; }
+.stage-indicator { color: var(--accent); background: var(--raised); border: 1px solid var(--border); padding: 5px 10px; border-radius: 6px; font-size: 14px; white-space: nowrap; }
+.language-button { min-height: 44px; min-width: 54px; border: 0; color: var(--text); background: transparent; font-size: 13px; font-weight: 600; }
+.language-button span { margin-left: 4px; color: var(--secondary); }
+.main-area { display: flex; flex: 1; min-height: 0; flex-direction: column; }
+.home-screen { display: flex; flex-direction: column; flex: 1; position: relative; overflow: hidden; min-height: calc(100dvh - 83px); }
+.ambient-mark { position: absolute; right: -275px; top: 13%; height: 690px; width: 690px; pointer-events: none; }
+.ambient-mark span { position: absolute; border: 1px solid var(--border); border-radius: 50%; top: 50%; left: 50%; transform: translate(-50%, -50%); }
+.ring-one { width: 98%; height: 98%; opacity: .55; }
+.ring-two { width: 73%; height: 73%; opacity: .75; }
+.ring-three { width: 49%; height: 49%; }
+.ambient-mark .ring-core { width: 10%; height: 10%; border: 1px solid var(--accent); }
+.home-content { position: relative; z-index: 1; margin: auto 0; padding: 80px 46px 100px; max-width: 770px; }
+.eyebrow { font-size: 14px; font-weight: 550; letter-spacing: .065em; color: var(--accent); display: flex; align-items: center; gap: 10px; margin: 0 0 24px; }
+.eyebrow-stroke { display: block; width: 16px; height: 1px; background: var(--accent); }
+.home-content h2, .settings-screen h2 { font-size: clamp(39px, 4.1vw, 66px); line-height: 1.11; font-weight: 550; letter-spacing: -.062em; max-width: 610px; margin: 0; text-wrap: balance; }
+.intro-text { max-width: 510px; margin: 22px 0 0; color: var(--secondary); font-size: 16px; line-height: 1.6; }
+.stage-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 46px; max-width: 590px; }
+.stage-card { min-height: 150px; border: 1px solid var(--border); border-radius: var(--radius-card); background: var(--layer); padding: 18px 20px; display: flex; flex-direction: column; }
+.card-meta { font-size: 11px; letter-spacing: .04em; color: var(--subdued); }
+.card-value { font-size: 16px; line-height: 1.35; font-weight: 550; margin-top: 20px; }
+.state-label { display: flex; align-items: center; gap: 7px; margin-top: auto; font-size: 14px; color: var(--secondary); }
+.state-label span { width: 6px; height: 6px; border-radius: 50%; background: var(--status-ok); }
+.state-label.pending span { background: var(--status-wait); }
+.subnote { color: var(--secondary); font-size: 14px; margin: 19px 0 0; }
+.bottom-hint { position: relative; z-index: 1; border-top: 1px solid var(--border); padding: 18px 40px max(18px, env(safe-area-inset-bottom)); display: flex; align-items: center; gap: 11px; color: var(--secondary); font-size: 14px; }
+.hint-symbol { width: 17px; height: 17px; display: grid; place-items: center; border: 1px solid var(--subdued); border-radius: 50%; font-size: 11px; font-weight: 600; flex: none; }
+.bottom-nav { display: none; }
+.settings-screen { padding: 68px 46px 110px; max-width: 780px; }
+.settings-screen h2 { font-size: 44px; }
+.settings-card { border: 1px solid var(--border); border-radius: var(--radius-card); background: var(--layer); padding: 24px; margin-top: 30px; }
+.settings-card h3 { font-size: 16px; font-weight: 600; margin: 0 0 18px; }
+.settings-line { display: flex; gap: 12px; justify-content: space-between; align-items: center; border-top: 1px solid var(--border); min-height: 53px; font-size: 14px; }
+.settings-line span { color: var(--secondary); }
+.settings-line strong { font-weight: 550; text-align: right; }
+.settings-text { font-size: 14px; color: var(--secondary); }
+.inline-control { min-width: 44px; min-height: 44px; background: transparent; border: 0; color: var(--accent); }
+.outline-button { border: 1px solid var(--border); border-radius: var(--radius-control); min-height: 48px; padding: 0 19px; background: var(--raised); margin-top: 10px; font-size: 14px; }
+.install-panel { position: fixed; inset: 0; z-index: 100; display: grid; place-items: center; background: rgba(0,0,0,.85); padding: 16px; }
+.install-sheet { width: min(100%, 430px); border: 1px solid var(--border); background: var(--raised); border-radius: 16px; padding: 24px; box-shadow: 0 18px 50px rgba(0,0,0,.4); }
+.install-drag { display: none; }
+.install-tag { color: var(--accent); font-size: 11px; letter-spacing: .13em; }
+.install-sheet h2 { font-size: 25px; margin: 14px 0; letter-spacing: -.03em; }
+.install-sheet p { color: var(--secondary); font-size: 15px; line-height: 1.5; }
+.install-steps { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 23px 0; border: 1px solid var(--border); border-radius: 12px; padding: 14px 12px; }
+.install-steps span { font-size: 12px; color: var(--text); }
+.install-sheet .install-caption { font-size: 13px; }
+.primary-button { min-height: 48px; border-radius: var(--radius-control); border: 0; background: var(--accent); color: var(--bg); width: 100%; font-weight: 650; margin-top: 10px; }
+
+@media (max-width: 1023px) {
+  .shell { display: block; min-height: 100dvh; }
+  .sidebar { display: none; }
+  .page-area { min-height: 100dvh; }
+  .topbar { height: 73px; padding: 0 22px; }
+  .home-screen { min-height: calc(100dvh - 73px - 74px - env(safe-area-inset-bottom)); }
+  .ambient-mark { width: 440px; height: 440px; right: -290px; top: 10%; opacity: .75; }
+  .home-content { padding: 65px 24px 70px; }
+  .home-content h2 { font-size: clamp(40px, 8vw, 54px); }
+  .intro-text { font-size: 16px; }
+  .stage-grid { margin-top: 32px; }
+  .bottom-hint { padding: 14px 24px 18px; }
+  .bottom-nav { display: flex; position: sticky; bottom: 0; justify-content: center; background: var(--layer); border-top: 1px solid var(--border); padding: 4px 8px max(4px, env(safe-area-inset-bottom)); gap: 32px; }
+  .bottom-nav button { min-width: 104px; min-height: 58px; border: 0; background: transparent; color: var(--secondary); display: flex; flex-direction: column; gap: 3px; align-items: center; justify-content: center; font-size: 14px; }
+  .bottom-nav button.bottom-nav-active { color: var(--accent); }
+  .nav-circle { display: block; width: 21px; height: 21px; border-radius: 50%; border: 1.6px solid currentColor; position: relative; }
+  .nav-circle::after { content: ""; position: absolute; inset: 5px; border: 1.6px solid currentColor; border-radius: 50%; }
+  .nav-settings { width: 21px; height: 21px; border: 1.6px solid currentColor; border-radius: 7px; position: relative; }
+  .nav-settings::after { content: ""; position: absolute; width: 7px; height: 7px; border: 1.6px solid currentColor; border-radius: 50%; top: 5px; left: 5px; }
+  .settings-screen { padding: 42px 24px 70px; }
+}
+@media (max-width: 420px) {
+  .topbar { padding: 0 17px; }
+  .topbar-name { gap: 8px; }
+  .breadcrumb { font-size: 10px; }
+  .stage-indicator { font-size: 11px; }
+  .topbar-actions { gap: 4px; }
+  .home-content { padding: 45px 20px 60px; }
+  .home-content h2 { font-size: 40px; }
+  .stage-grid { gap: 8px; }
+  .stage-card { padding: 15px 13px; min-height: 150px; }
+  .card-value { font-size: 14px; }
+  .bottom-hint { font-size: 14px; padding: 14px 20px; }
+  .install-panel { align-items: end; padding: 0; }
+  .install-sheet { width: 100%; max-width: 100%; border-radius: 18px 18px 0 0; padding: 24px 24px max(24px, env(safe-area-inset-bottom)); }
+  .install-drag { display: block; height: 4px; width: 36px; margin: -9px auto 24px; background: var(--subdued); border-radius: 4px; }
+}
+@media (prefers-reduced-motion: no-preference) {
+  button:not(:disabled) { transition: background-color .18s ease-out, color .18s ease-out, opacity .18s ease-out; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0s !important; transition-duration: 0s !important; scroll-behavior: auto !important; }
+}
+</style></head><body>
+<div class="shell"><aside class="sidebar"><div class="identity"><div class="brand-symbol"><span></span></div><div class="brand-copy"><strong>ikonosfera</strong><span>Твоё пространство</span></div><span class="version-mark">00</span></div><div class="sidebar-content"><div class="sidebar-head"><h1>Все чаты</h1><span class="number-count">0</span></div><button class="new-chat" disabled><span>+</span>Написать</button><div class="empty-contacts"><span class="empty-contacts-icon"></span><strong>Пока пусто</strong><p>Твои разговоры появятся здесь</p></div></div><div class="sidebar-navigation"><button class="side-nav-active" data-screen="chats">Переписки</button><button data-screen="settings">Настройки</button></div><div class="sidebar-footer"><span class="small-status-dot"></span><span>Техническая версия</span><span class="edition">alpha 0.1</span></div></aside>
+<div class="page-area"><header class="topbar"><div class="topbar-name"><span class="breadcrumb">IKONOSFERA</span><span class="sep">/</span><span id="page-name">Переписки</span></div><div class="topbar-actions"><span class="stage-indicator">Этап 0</span><button class="language-button" id="lang">RU ↕</button></div></header><main class="main-area"><div class="home-screen" id="home"><div class="ambient-mark"><span class="ring-one"></span><span class="ring-two"></span><span class="ring-three"></span><span class="ring-core"></span></div><div class="home-content"><p class="eyebrow"><span class="eyebrow-stroke"></span>Начало пространства</p><h2>Меньше шума.<br>Больше смысла.</h2><p class="intro-text">IKONOSFERA создаётся как спокойное место для разговоров. Сейчас готовим надёжную основу для настоящего общения.</p><div class="stage-grid"><div class="stage-card"><span class="card-meta">01 / Interface</span><span class="card-value">Интерфейс работает</span><span class="state-label ready"><span></span>Этап 0</span></div><div class="stage-card"><span class="card-meta">02 / Messaging</span><span class="card-value">Обмен сообщениями ещё недоступен</span><span class="state-label pending"><span></span>Не подключено</span></div></div><p class="subnote">В разработке: безопасная переписка двух людей</p></div><div class="bottom-hint"><span class="hint-symbol">i</span>Это ещё не работающий мессенджер: отправка и получение сообщений отключены.</div></div><div id="settings" class="settings-screen" hidden><p class="eyebrow"><span class="eyebrow-stroke"></span>Техническая версия</p><h2>Настройки</h2><p class="intro-text">Регистрация и переписки появятся после подключения безопасного сервера.</p><section class="settings-card"><h3>Статус приложения</h3><div class="settings-line"><span>Подключение к серверу</span><strong>Не подключено</strong></div><div class="settings-line"><span>Режим запуска</span><strong>Браузер</strong></div></section></div></main><nav class="bottom-nav"><button class="bottom-nav-active" data-screen="chats"><span class="nav-circle"></span>Переписки</button><button data-screen="settings"><span class="nav-settings"></span>Настройки</button></nav></div></div>
+<script>document.querySelectorAll('[data-screen]').forEach(b=>b.addEventListener('click',()=>{const s=b.dataset.screen;document.getElementById('home').hidden=s!=='chats';document.getElementById('settings').hidden=s!=='settings';document.getElementById('page-name').textContent=s==='chats'?'Переписки':'Настройки';document.querySelectorAll('[data-screen]').forEach(x=>{x.classList.toggle('side-nav-active',x.dataset.screen===s&&x.closest('.sidebar'));x.classList.toggle('bottom-nav-active',x.dataset.screen===s&&x.closest('.bottom-nav'));});}));document.getElementById('lang').addEventListener('click',()=>alert('Полный RU/EN-перевод работает в проекте Next.js. Это только автономный просмотр оформления.'));</script></body></html>
