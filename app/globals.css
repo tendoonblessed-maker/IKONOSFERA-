@@ -1134,3 +1134,5 @@ html,body{min-height:100%;overflow:hidden}
 .messenger.is-authenticated .chat-message-row:hover .ik-select-message,.messenger.is-authenticated .ik-select-message:focus-visible,.messenger.is-authenticated .ik-select-message.selected{opacity:1}
 .messenger.is-authenticated .ik-select-message.selected{background:#21262b;border-color:#21262b;color:white}
 @media(max-width:800px){.messenger.is-authenticated .ik-select-message{opacity:.7}.messenger.is-authenticated .ik-conversation-search{padding:7px 10px}}
+
+.ik-profile-top-actions{display:flex;align-items:center;justify-content:flex-end;gap:6px;flex-wrap:wrap}.ik-profile-top-actions .profile-edit-trigger{font-size:12px;white-space:nowrap}@media(max-width:520px){.ik-profile-top-actions{gap:3px}.ik-profile-top-actions .profile-edit-trigger{padding:7px;font-size:11px}}
