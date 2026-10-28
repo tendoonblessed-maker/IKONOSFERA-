@@ -12,7 +12,7 @@ function requestHeaders(token:string, extras:Record<string,string>={}) {
   return { apikey:publicKey, Authorization:"Bearer "+token, "Content-Type":"application/json", ...extras };
 }
 async function api<T>(path:string,token:string,method="GET",body?:unknown) : Promise<T> {
-  const res=await fetch(apiUrl+path,{method,headers:requestHeaders(token,method==="POST"||method==="PATCH"?{Prefer:"return=representation"}:{}),
+  const res=await fetch(apiUrl+path,{method,headers:requestHeaders(token,method==="POST"||method==="PATCH"||method==="DELETE"?{Prefer:"return=representation"}:{}),
     body:body===undefined?undefined:JSON.stringify(body),cache:"no-store"});
   const value=await res.json().catch(()=>null);
   if(!res.ok)throw Error(value?.message||value?.error||value?.msg||"Ошибка сервера ("+res.status+")");
@@ -74,6 +74,17 @@ export async function listChannels(token:string):Promise<Channel[]>{
 export async function createChannel(token:string,owner_id:string,title:string,slug:string,description:string):Promise<Channel>{
   const rows=await api<Channel[]>("/rest/v1/channels?select=*",token,"POST",{owner_id,title:title.trim(),slug:slug.trim().toLowerCase(),description:description.trim()});
   if(!rows[0])throw Error("Канал не создан");return rows[0];
+}
+export async function updateChannel(token:string,channelId:string,ownerId:string,title:string,slug:string,description:string):Promise<Channel>{
+ const safeSlug=slug.trim().toLowerCase();
+ if(!title.trim()||title.trim().length>80||!/^[a-z0-9_]{3,32}$/.test(safeSlug)||description.length>500)throw Error("Проверь название, адрес и описание канала.");
+ const rows=await api<Channel[]>("/rest/v1/channels?id=eq."+encodeURIComponent(channelId)+"&owner_id=eq."+encodeURIComponent(ownerId)+"&select=*",token,"PATCH",{title:title.trim(),slug:safeSlug,description:description.trim()});
+ if(!rows[0])throw Error("Не удалось изменить канал. Проверь права владельца.");
+ return rows[0];
+}
+export async function deleteChannel(token:string,channelId:string,ownerId:string):Promise<void>{
+ const rows=await api<Channel[]>("/rest/v1/channels?id=eq."+encodeURIComponent(channelId)+"&owner_id=eq."+encodeURIComponent(ownerId)+"&select=id",token,"DELETE");
+ if(!rows.length)throw Error("Не удалось удалить канал. Проверь права владельца.");
 }
 export async function listChannelPosts(token:string,channelId:string):Promise<ChannelPost[]>{
   return api<ChannelPost[]>("/rest/v1/channel_posts?select=*&channel_id=eq."+encodeURIComponent(channelId)+"&order=created_at.desc&limit=100",token);
