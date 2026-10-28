@@ -420,3 +420,41 @@ textarea:focus-visible{outline:2px solid #111;outline-offset:2px}
 .profile-editor input[aria-invalid="true"]{border-color:#e85067;box-shadow:0 0 0 3px #e8506715}
 @keyframes reaction-pop{from{opacity:0;transform:translateY(5px) scale(.95)}to{opacity:1;transform:translateY(0) scale(1)}}
 @media(prefers-reduced-motion:reduce){.reaction-picker{animation:none}.reaction-pill,.reaction-add,.reaction-picker button{transition:none}}
+
+/* Tactile reactions with compact popover */
+.reaction-bar{display:flex;flex-wrap:wrap;align-items:center;gap:5px;position:relative;margin-top:7px}
+.reaction-pill,.reaction-add{border:1px solid #e9e9e9;background:#fff;border-radius:100px;padding:5px 9px;font-size:15px;cursor:pointer;transition:transform .2s cubic-bezier(.2,.8,.2,1),background .2s ease,box-shadow .2s ease}
+.reaction-pill span{font-size:11px;font-weight:800;color:#666}
+.reaction-pill.mine{background:#e8f3ff;border-color:#b4d9ff}
+.reaction-pill:hover,.reaction-add:hover{transform:translateY(-2px);box-shadow:0 3px 10px #00000012}
+.reaction-pill:active,.reaction-add:active{transform:scale(.89)}
+.reaction-add{font-size:12px;font-weight:800;color:#555}
+.reaction-picker{display:flex;gap:3px;align-items:center;padding:7px;background:#fff;border:1px solid #eaeaea;box-shadow:0 8px 28px #0000001a;border-radius:16px;position:absolute;bottom:calc(100% + 8px);left:0;z-index:20;max-width:min(310px,85vw)}
+.reaction-picker button{border:0;background:transparent;font-size:23px;border-radius:10px;padding:5px;cursor:pointer;transition:transform .18s ease,background .18s ease}
+.reaction-picker button:hover{background:#f5f5f5;transform:scale(1.2)}
+.message-reaction-bar{margin-bottom:0}
+.profile-field-error{color:#c73535;font-size:12px;display:block;margin-top:5px}
+.profile-field-hint{color:#858585;font-size:11px;display:block;margin-top:5px}
+/* Loading UI prevents falsely showing an empty chat while fetching history */
+.chat-loading-state{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:230px;gap:11px;color:#222;padding:25px;animation:chat-loading-appear .24s ease both}
+.chat-loading-state strong{font-size:14px;font-weight:800;letter-spacing:-.035em}
+.chat-loading-state>span{font-size:12px;color:#8c8c8c}
+.chat-loading-spinner{width:32px;height:32px;border:3px solid #ececec;border-top-color:#1d1d1d;border-radius:50%;animation:chat-spinner .8s linear infinite}
+.chat-loading-skeleton{width:65%;height:27px;background:linear-gradient(90deg,#f3f3f3,#eaeaea,#f3f3f3);background-size:200% 100%;border-radius:12px;align-self:flex-start;animation:chat-shimmer 1.4s ease infinite}
+.chat-loading-skeleton.right{align-self:flex-end;width:48%}
+.chat-loading-skeleton.short{width:37%}
+@keyframes chat-spinner{to{transform:rotate(360deg)}}
+@keyframes chat-shimmer{to{background-position:-200% 0}}
+@keyframes chat-loading-appear{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:none}}
+/* Mandatory onboarding for accounts without a personalized name */
+.onboarding-screen{flex:1;display:grid;place-items:center;min-height:100%;padding:24px;background:#fff}
+.onboarding-card{width:min(100%,410px);padding:32px;border:1px solid #efefef;border-radius:24px;background:linear-gradient(160deg,#fff,#fafafa);box-shadow:0 14px 50px #00000009}
+.onboarding-mark{display:grid;place-items:center;width:55px;height:55px;border:1px solid #e5e5e5;border-radius:17px;font-size:22px;font-weight:900;letter-spacing:-.09em;background:#fff;box-shadow:0 4px 15px #0000000a}
+.onboarding-card h1{font-size:29px;font-weight:900;letter-spacing:-.065em;margin:24px 0 8px}
+.onboarding-card p{font-size:13px;line-height:1.7;color:#777;margin-bottom:25px}
+.onboarding-card form{display:grid;gap:13px}
+.onboarding-card label{display:grid;gap:7px;font-size:12px;font-weight:800}
+.onboarding-card input{border:1px solid #ddd;border-radius:12px;padding:13px 14px;font-size:14px;background:#fff}
+.onboarding-card small{color:#777;font-size:11px}
+.onboarding-card .accent-button{margin-top:8px}
+@media(prefers-reduced-motion:reduce){.chat-loading-spinner,.chat-loading-skeleton{animation:none}.reaction-pill,.reaction-add,.reaction-picker button{transition:none}}
