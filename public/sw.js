@@ -1,5 +1,5 @@
 /* Stage 0 app-shell-only offline fallback. Never cache private chat content. */
-const CACHE_NAME = "ikonosfera-shell-v2";
+const CACHE_NAME = "ikonosfera-shell-v3";
 const OFFLINE_URL = "/offline.html";
 
 self.addEventListener("install", (event) => {
