@@ -1,11 +1,11 @@
 'use client';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { backendReady, changeProfile, createTemporaryAccount, consumeEmailLinkSession, clearSession, currentUser, listChats, listMessages, markChatRead, listProfiles, myProfile, postMessage, sendDirectMedia, sendEmailCode, signOut, startDirectChat, validSession, verifyEmailCode, type ChatMessage, type DirectChat, type Profile, type Session } from '@/lib/supabase-rest';
+import { backendReady, changeProfile, createTemporaryAccount, consumeEmailLinkSession, clearSession, currentUser, listChats, listMessages, listMessageReactions, setMessageReaction, markChatRead, listProfiles, myProfile, postMessage, sendDirectMedia, sendEmailCode, signOut, startDirectChat, validSession, verifyEmailCode, type ChatMessage, type MessageReaction, type DirectChat, type Profile, type Session } from '@/lib/supabase-rest';
 
 import ProfilePanel from "@/components/ProfilePanel";
 import ChatMedia from "@/components/ChatMedia";
 import ChannelsPanel from "@/components/ChannelsPanel";
-import { createChannel, imageUrl, listChannels, listMySubscriptions, subscribeChannel, unsubscribeChannel, type Channel } from "@/lib/social";
+import { REACTION_EMOJIS, type ReactionEmoji, createChannel, imageUrl, listChannels, listMySubscriptions, subscribeChannel, unsubscribeChannel, type Channel } from "@/lib/social";
 
 type Tab = 'chats' | 'contacts' | 'channels' | 'profile' | 'settings';
 type Platform = { ios: boolean; standalone: boolean };
@@ -32,6 +32,8 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
   const [channelSlug,setChannelSlug]=useState("");
   const [channelDescription,setChannelDescription]=useState("");
   const [chatMessages,setChatMessages]=useState<ChatMessage[]>([]);
+  const [messageReactions,setMessageReactions]=useState<MessageReaction[]>([]);
+  const [messageReactionPicker,setMessageReactionPicker]=useState<string|null>(null);
   const [search,setSearch]=useState('');
   const [lookup,setLookup]=useState(initialUsername);
   const [draft,setDraft]=useState('');
@@ -73,6 +75,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
       const messages=await listMessages(token,activeChat);
       const ordered=messages.reverse();
       setChatMessages(ordered);
+      setMessageReactions(await listMessageReactions(token,ordered.map(m=>m.id)));
       if(typeof document!=='undefined'&&document.visibilityState==='visible'){
         if(ordered.some(m=>m.sender_id!==id&&!m.read_at)){
           void markChatRead(token,activeChat).then(()=>listMessages(token,activeChat)).then(fresh=>{
@@ -177,6 +180,15 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
     setTab(next);setSelected(null);setSelectedChannel(null);setProfileTarget(next==="profile"&&userId?userId:null);setShowRecommendations(false);setError("");
   }
   async function sendMessage(e:React.FormEvent){e.preventDefault();if(!session||!selected||!userId||sending)return;const body=draft.trim();if(!body||body.length>4000)return;setSending(true);setError('');try{await postMessage(session.access_token,selected,userId,body);setDraft('');setChatMessages((await listMessages(session.access_token,selected)).reverse());}catch(e){setError(userFacingError(e));}finally{setSending(false);}}
+  async function reactToMessage(messageId:string,emoji:ReactionEmoji){
+    if(!session||!userId||sending)return;
+    const previous=messageReactions.find(r=>r.message_id===messageId&&r.user_id===userId);
+    setSending(true);setError("");
+    try{await setMessageReaction(session.access_token,userId,messageId,previous?.emoji===emoji?null:emoji);
+      setMessageReactions(await listMessageReactions(session.access_token,chatMessages.map(m=>m.id)));
+      setMessageReactionPicker(null);
+    }catch(e){setError(userFacingError(e));}finally{setSending(false);}
+  }
   async function sendAttachment(file:File|undefined){
     if(!file||!session||!selected||!userId||sending)return;
     setSending(true);setError("");
