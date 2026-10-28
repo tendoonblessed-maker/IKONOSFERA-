@@ -145,3 +145,60 @@ test('Telegram-inspired inbox keeps IKONOSFERA branding and supplies private pre
  assert.ok(sql.includes('not ((select auth.uid())=any(c.hidden_for))'));
  assert.ok(css.includes('.ik-inbox-filters'));
 });
+
+
+test('Presence statuses hide exact timestamps unless users opt in',()=>{
+ const sql=load('supabase/migrations/20261028_270000_presence_and_subscriber_counts.sql');
+ const activity=load('lib/activity.ts');
+ const shell=load('components/AppShell.tsx');
+ const profile=load('components/ProfilePanel.tsx');
+ assert.match(sql,/visibility text not null default 'approximate'/);
+ assert.match(sql,/user_activity_self_read/);
+ assert.match(sql,/case when a.visibility='exact' then a.last_seen_at else null end/);
+ assert.match(sql,/revoke all on public.user_activity from anon,authenticated/);
+ assert.match(sql,/revoke all on function public.get_user_activity/);
+ assert.match(activity,/activityLabel/);
+ assert.match(shell,/changeActivityVisibility/);
+ assert.match(shell,/Время последнего посещения/);
+ assert.match(profile,/getUserActivities/);
+});
+test('Channels expose subscriber totals without private subscriber identities',()=>{
+ const sql=load('supabase/migrations/20261028_270000_presence_and_subscriber_counts.sql');
+ const panel=load('components/ChannelsPanel.tsx');
+ const shell=load('components/AppShell.tsx');
+ assert.match(sql,/returns table\(channel_id uuid,subscribers bigint\)/);
+ assert.match(sql,/count\(\*\) from public.channel_subscriptions/);
+ assert.match(panel,/subscriberCount/);
+ assert.match(shell,/getChannelSubscriberCounts/);
+});
+test('Group members list is accessible from the chat heading and cannot be accessed outside RLS',()=>{
+ const panel=load('components/GroupPanel.tsx');
+ const shell=load('components/AppShell.tsx');
+ const sql=load('supabase/migrations/20261028_230000_group_chats.sql');
+ assert.match(panel,/setMembersOpen\(true\)/);
+ assert.match(panel,/aria-label="Участники группы"/);
+ assert.match(panel,/group\.owner_id/);
+ assert.match(panel,/onShowProfile/);
+ assert.match(shell,/onShowProfile=\{id=>/);
+ assert.match(sql,/group_member_read/);
+});
+test('Sharing the messenger copies a clean URL without tracking markers',()=>{
+ const shell=load('components/AppShell.tsx');
+ assert.ok(shell.includes("window.location.origin+'/'"));
+ assert.match(shell,/copyCleanLink/);
+});
+
+
+test('Group inbox previews and unread counts remain scoped to group members',()=>{
+ const sql=load('supabase/migrations/20261028_280000_group_inbox.sql');
+ const shell=load('components/AppShell.tsx');
+ const group=load('components/GroupPanel.tsx');
+ const row=load('components/GroupInboxRow.tsx');
+ assert.match(sql,/security invoker/);
+ assert.match(sql,/where msg.group_id=g.id and msg.sender_id/);
+ assert.match(sql,/me.user_id=\(select auth.uid\(\)\)/);
+ assert.match(sql,/group_member_update_own_read_cursor/);
+ assert.match(shell,/listGroupOverviews/);
+ assert.match(row,/ik-unread-count/);
+ assert.match(group,/markGroupRead/);
+});

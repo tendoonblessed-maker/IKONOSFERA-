@@ -74,6 +74,12 @@ export async function addStory(token:string,userId:string,image_path:string,capt
 export async function deleteStory(token:string,id:string):Promise<void>{
   await api("/rest/v1/stories?id=eq."+encodeURIComponent(id),token,"DELETE");
 }
+export async function getChannelSubscriberCounts(token:string,ids:string[]):Promise<Record<string,number>>{
+ const unique=Array.from(new Set(ids)).filter(id=>/^[0-9a-f-]{36}$/i.test(id)).slice(0,100);
+ if(!unique.length)return {};
+ const counts=await api<{channel_id:string;subscribers:number}[]>('/rest/v1/rpc/channel_subscriber_counts',token,'POST',{p_ids:unique});
+ return Object.fromEntries(counts.map(row=>[row.channel_id,Number(row.subscribers)]));
+}
 export async function listChannels(token:string):Promise<Channel[]>{
   return api<Channel[]>("/rest/v1/channels?select=*&order=created_at.desc&limit=100",token);
 }

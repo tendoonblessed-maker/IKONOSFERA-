@@ -3,7 +3,7 @@ import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { listProfiles, type Profile } from "@/lib/supabase-rest";
 import {
  addPostComment, deletePost, editChannelPost, manageChannelComment, imageUrl, listChannelPosts, listPostComments, listPostReactions, setPostReaction, REACTION_EMOJIS, publishPost,
- removeUpload, uploadChannelAttachment, updateChannel, deleteChannel, listDiscussionMessages, sendDiscussionMessage, deleteDiscussionMessage, listDiscussionComments,
+ removeUpload, uploadChannelAttachment, updateChannel, deleteChannel, getChannelSubscriberCounts, listDiscussionMessages, sendDiscussionMessage, deleteDiscussionMessage, listDiscussionComments,
  type Channel, type ChannelPost, type PostComment, type PostReaction, type ReactionEmoji, type DiscussionMessage
 } from "@/lib/social";
 
@@ -14,6 +14,8 @@ const formattedDate=(s:string)=>new Date(s).toLocaleString("ru-RU",{day:"numeric
 export default function ChannelsPanel({token,userId,channel,onBack,onShowProfile,subscribed,onToggleSubscribe,onMessageAuthor,onChannelUpdated,onChannelDeleted}:Props){
  const mine=channel.owner_id===userId;
  const [currentChannel,setCurrentChannel]=useState(channel);
+ const [subscriberCount,setSubscriberCount]=useState<number|null>(null);
+ useEffect(()=>{let cancelled=false;void getChannelSubscriberCounts(token,[channel.id]).then(counts=>{if(!cancelled)setSubscriberCount(counts[channel.id]??0);}).catch(()=>{if(!cancelled)setSubscriberCount(null);});return()=>{cancelled=true;};},[token,channel.id,subscribed]);
  const [settingsOpen,setSettingsOpen]=useState(false);
  const [settingsTitle,setSettingsTitle]=useState(channel.title);
  const [settingsSlug,setSettingsSlug]=useState(channel.slug);
@@ -131,7 +133,7 @@ export default function ChannelsPanel({token,userId,channel,onBack,onShowProfile
  }
  return <section className="channel-view">
   <header className="channel-topbar"><button type="button" className="profile-back" onClick={onBack} aria-label="Назад">‹ <span>Назад</span></button>
-   <div className="channel-top-title"><strong>{currentChannel.title}</strong><small>@{currentChannel.slug}</small></div>
+   <div className="channel-top-title"><strong>{currentChannel.title}</strong><small>{subscriberCount===null?"@"+currentChannel.slug:subscriberCount.toLocaleString("ru-RU")+" подписчиков · @"+currentChannel.slug}</small></div>
    <button type="button" className="channel-owner-link" onClick={()=>onShowProfile(channel.owner_id)}>Автор</button></header>
   <div className="channel-feed">
    {mine&&<div className="channel-management" style={{display:"flex",gap:10,flexWrap:"wrap",marginBottom:16}}>
@@ -166,7 +168,7 @@ export default function ChannelsPanel({token,userId,channel,onBack,onShowProfile
     <form onSubmit={sendDiscussion} style={{display:"flex",gap:8}}><input aria-label="Сообщение в обсуждении" placeholder="Сообщение участникам…" value={discussionDraft} maxLength={1500} onChange={e=>setDiscussionDraft(e.target.value)} style={{flex:1,minWidth:0}}/><button className="accent-button" type="submit" disabled={busy||!discussionDraft.trim()}>Отправить</button></form>
    </section>}
 
-   <div className="channel-cover-card"><div className="channel-emblem">#</div><h1>{currentChannel.title}</h1><p>@{currentChannel.slug}</p>
+   <div className="channel-cover-card"><div className="channel-emblem">#</div><h1>{currentChannel.title}</h1><p>@{currentChannel.slug}</p>{subscriberCount!==null&&<p className="channel-subscribers">{subscriberCount.toLocaleString("ru-RU")} подписчиков</p>}
     {channel.description&&<p className="channel-description">{currentChannel.description}</p>}
     <span>Канал IKONOSFERA</span><div className="channel-cover-actions">
     {!mine&&<button type="button" className="accent-button" onClick={onToggleSubscribe}>{subscribed?"Отписаться":"Подписаться"}</button>}

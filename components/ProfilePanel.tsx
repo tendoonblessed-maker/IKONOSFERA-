@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { changeProfile, explainProfileError, validateUsername } from "@/lib/supabase-rest";
+import {getUserActivities,activityLabel,type UserActivity} from "@/lib/activity";
 import {
  addProfilePhoto, addStory, deleteProfilePhoto, deleteStory, getFullProfile, getProfilePhotos,
  getStories, imageUrl, listOwnedChannels, removeUpload, updateFullProfile, uploadPhoto,
@@ -14,6 +15,7 @@ type Props={token:string;userId:string;targetId:string;onBack:()=>void;onOwnProf
 export default function ProfilePanel({token,userId,targetId,onBack,onOwnProfileChange,onMessage,onOpenChannel}:Props){
  const mine=targetId===userId;
  const [profile,setProfile]=useState<FullProfile|null>(null);
+ const [userActivity,setUserActivity]=useState<UserActivity|null>(null);
  const [photos,setPhotos]=useState<ProfilePhoto[]>([]);
  const [stories,setStories]=useState<Story[]>([]);
  const [ownedChannels,setOwnedChannels]=useState<Channel[]>([]);
@@ -37,6 +39,7 @@ export default function ProfilePanel({token,userId,targetId,onBack,onOwnProfileC
   setName(p?.display_name||"");setUsername(p?.username||"");setBio(p?.bio||"");
  },[token,targetId]);
  useEffect(()=>{let mounted=true;void reload().catch(e=>{if(mounted)setError(readableError(e));});return()=>{mounted=false;};},[reload]);
+ useEffect(()=>{let mounted=true;const poll=()=>{if(document.visibilityState!=='visible')return;void getUserActivities(token,[targetId]).then(rows=>{if(mounted)setUserActivity(rows[targetId]||null);}).catch(()=>{});};poll();const timer=window.setInterval(poll,30000);return()=>{mounted=false;window.clearInterval(timer);};},[token,targetId]);
  const run=async(action:()=>Promise<void>)=>{
   if(busy)return;setBusy(true);setError("");setNotice("");
   try{await action();await reload();}
@@ -104,7 +107,7 @@ export default function ProfilePanel({token,userId,targetId,onBack,onOwnProfileC
      <div className={"profile-avatar-large"+(stories.length?" profile-avatar-has-story":"")} onClick={()=>{if(stories.length)setStoryIndex(0);}} role={stories.length?"button":undefined} tabIndex={stories.length?0:undefined} onKeyDown={e=>{if(stories.length&&(e.key==="Enter"||e.key===" ")){e.preventDefault();setStoryIndex(0);}}} aria-label={stories.length?"Посмотреть истории":undefined}>{avatar?<img src={avatar} alt="Аватар пользователя"/>:<span>{(profile?.display_name||"?").charAt(0).toUpperCase()}</span>}
       {mine&&<label className="profile-avatar-camera" title="Изменить фото"><span aria-hidden="true">▣</span><input aria-label="Загрузить фото профиля" type="file" accept="image/png,image/jpeg,image/webp" disabled={busy} onChange={e=>{void chooseImage(e.target.files?.[0],"avatar");e.target.value="";}}/></label>}
      </div>
-     {profile?<div className="profile-identity"><h1>{profile.display_name}</h1><p>@{profile.username}</p>
+     {profile?<div className="profile-identity"><h1>{profile.display_name}</h1><p>@{profile.username}</p><p className={userActivity?.status==="в сети"?"ik-profile-activity ik-online-label":"ik-profile-activity"}>{activityLabel(userActivity)}</p>
         {profile.bio&&<div className="profile-bio">{profile.bio}</div>}
         {!mine&&<button type="button" className="accent-button profile-message-button" onClick={()=>onMessage(profile.username)}>Написать сообщение</button>}</div>:<p>Загрузка профиля…</p>}
     </div>
