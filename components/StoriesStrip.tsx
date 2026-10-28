@@ -13,19 +13,28 @@ export default function StoriesStrip({token,userId,contacts,ownProfile}:Props){
  const [error,setError]=useState('');
  const [paused,setPaused]=useState(false);
  const inputRef=useRef<HTMLInputElement>(null);
+ const contactsRef=useRef(contacts);
+ contactsRef.current=contacts;
+ // Stable ID signature prevents refetching stories whenever inbox rows poll.
+ const contactIdsKey=contacts.map(person=>person.id).sort().join(',');
+ const avatarPath=ownProfile?.avatar_path??null;
  const activeStoryId=active?people[active.person]?.stories[active.story]?.id??null:null;
  const progressRef=useStoryProgress(activeStoryId,()=>next(),paused);
  const load=useCallback(async()=>{
-  const ids=[userId,...contacts.map(x=>x.id)];
+  const currentContacts=contactsRef.current;
+  const ids=[userId,...currentContacts.map(person=>person.id)];
   const stories=await getContactsStories(token,ids);
-  const own=stories.filter(x=>x.user_id===userId).sort((a,b)=>a.created_at.localeCompare(b.created_at));
-  const participants:Person[]=[{id:userId,name:'Моя история',avatar:ownProfile?.avatar_path??null,stories:own}];
-  for(const c of contacts){
-   const list=stories.filter(s=>s.user_id===c.id).sort((a,b)=>a.created_at.localeCompare(b.created_at));
-   if(list.length&&!participants.some(p=>p.id===c.id))participants.push({id:c.id,name:c.display_name||c.username,avatar:c.avatar_path??null,stories:list});
+  const own=stories.filter(story=>story.user_id===userId).sort((a,b)=>a.created_at.localeCompare(b.created_at));
+  const participants:Person[]=[{id:userId,name:'Моя история',avatar:avatarPath,stories:own}];
+  for(const contact of currentContacts){
+   const list=stories.filter(story=>story.user_id===contact.id).sort((a,b)=>a.created_at.localeCompare(b.created_at));
+   if(list.length&&!participants.some(person=>person.id===contact.id)){
+     participants.push({id:contact.id,name:contact.display_name||contact.username,avatar:contact.avatar_path??null,stories:list});
+   }
   }
   setPeople(participants);
- },[token,userId,contacts,ownProfile]);
+  return participants;
+ },[token,userId,contactIdsKey,avatarPath]);
  useEffect(()=>{void load().catch(()=>{});},[load]);
 
  useEffect(()=>{if(!active)return;const onKey=(e:KeyboardEvent)=>{if(e.key==='Escape')setActive(null);if(e.key==='ArrowRight')next();if(e.key==='ArrowLeft')prev();};window.addEventListener('keydown',onKey);return()=>window.removeEventListener('keydown',onKey);},[active,people]);
@@ -33,7 +42,9 @@ export default function StoriesStrip({token,userId,contacts,ownProfile}:Props){
  function next(){setActive(prev=>{if(!prev)return null;const group=people[prev.person];if(prev.story+1<group.stories.length)return {...prev,story:prev.story+1};const i=people.findIndex((p,j)=>j>prev.person&&p.stories.length);return i<0?null:{person:i,story:0};});}
  function prev(){setActive(current=>{if(!current)return null;if(current.story>0)return {...current,story:current.story-1};for(let j=current.person-1;j>=0;j--)if(people[j].stories.length)return {person:j,story:people[j].stories.length-1};return {...current,story:0};});}
  async function create(file?:File){if(!file||busy)return;setBusy(true);setError('');try{
-   const path=await uploadPhoto(token,userId,file);await addStory(token,userId,path,'');await load();setActive({person:0,story:0});
+   const path=await uploadPhoto(token,userId,file);await addStory(token,userId,path,'');
+   const updated=await load();
+   setActive({person:0,story:Math.max(0,updated[0].stories.length-1)});
   }catch(e){setError(e instanceof Error?e.message:'Не удалось добавить историю');}finally{setBusy(false);}}
  const person=active?people[active.person]:null;const story=active&&person?person.stories[active.story]:null;
  return <section className="home-stories" aria-label="Истории контактов">
