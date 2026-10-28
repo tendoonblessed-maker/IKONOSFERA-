@@ -2,11 +2,11 @@ import type { Metadata, Viewport } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
 
-const inter = Inter({ subsets: ["latin", "cyrillic"], display: "swap" });
+const inter = Inter({ subsets: ["latin", "cyrillic"], display: "swap", variable:"--font-inter" });
 
 export const metadata: Metadata = {
   title: "IKONOSFERA | Мессенджер",
-  description: "IKONOSFERA — современный мессенджер для iPhone, Android и компьютера.",
+  description: "IKONOSFERA — больше чем просто мессенджер для Android, iPhone, macOS и Windows.",
   applicationName: "IKONOSFERA",
   manifest: "/manifest.webmanifest",
   appleWebApp: { capable: true, title: "IKONOSFERA", statusBarStyle: "default" },
@@ -29,7 +29,7 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="ru" data-theme="light">
-      <body className={inter.className}>{children}</body>
+      <body className={`${inter.className} ${inter.variable}`}>{children}</body>
     </html>
   );
 }
