@@ -172,6 +172,10 @@ export async function sendDirectMedia(token:string,chatId:string,userId:string,f
 const signedMediaCache=new Map<string,{promise:Promise<string>;validUntil:number}>();
 const SIGNED_URL_CACHE_MS=15*60*1000;
 const SIGNED_URL_CACHE_LIMIT=120;
+/** Force a fresh private URL when media loading itself fails. */
+export function invalidateDirectMediaUrl(token:string,path:string):void{
+ signedMediaCache.delete(token+':'+path);
+}
 export async function getDirectMediaUrl(token:string,path:string):Promise<string>{
  if(!/^[a-f0-9-]{36}\/[a-f0-9-]{36}\/[a-f0-9-]{36}\.[a-z0-9]+$/i.test(path)){
    throw Error('Недопустимый путь вложения');

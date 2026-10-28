@@ -463,3 +463,102 @@ test('new chat loading screen does not misrepresent an unopened dialog as empty'
  assert.match(shell,/setLoading\(false\)/);
  assert.match(shell,/transient network failure must not discard valid login credentials/);
 });
+
+
+test('iPhone chat keeps composer visible and never zooms focused inputs',()=>{
+ const css=load('app/globals.css');
+ const shell=load('components/AppShell.tsx');
+ const layout=load('app/layout.tsx');
+ assert.match(layout,/initialScale:\s*1/);
+ assert.ok(!layout.includes('maximumScale'));
+ assert.ok(!layout.includes('userScalable'));
+ assert.match(css,/--ik-visible-viewport-height,100dvh/);
+ assert.match(css,/\.messenger\.is-authenticated \.conversation-pane\.open\{\s*display:flex;flex-direction:column;/);
+ assert.match(css,/\.messenger\.is-authenticated \.conversation-history\{\s*flex:1 1 0%;min-height:0/);
+ assert.match(css,/\.messenger\.is-authenticated \.composer\{\s*position:relative;inset:auto;/);
+ assert.match(css,/font-size:16px!important;line-height:1\.4/);
+ assert.match(css,/\.messenger input:not\(\[type="file"\]\)/);
+ assert.match(shell,/window\.visualViewport/);
+ assert.match(shell,/viewport\?\.addEventListener\('resize',update\)/);
+ assert.match(shell,/viewport\?\.addEventListener\('scroll',update\)/);
+ assert.match(shell,/style\.setProperty\('--ik-visible-viewport-height'/);
+});
+test('chat auto scroll is scoped to message history rather than page on iOS',()=>{
+ const source=load('components/AppShell.tsx');
+ assert.match(source,/conversationHistoryRef=useRef<HTMLDivElement\|null>/);
+ assert.match(source,/history\.scrollTop=history\.scrollHeight/);
+ assert.match(source,/className="conversation-history" ref=\{conversationHistoryRef\}/);
+ assert.ok(!source.includes("scrollIntoView({behavior:'auto'})"));
+});
+
+
+test('rapid chat switching never inserts a sent attachment or edited message in another chat',()=>{
+ const shell=load('components/AppShell.tsx');
+ for(const operation of ['sendMessage','sendAttachment','messageAction','reactToMessage']){
+  const start=shell.indexOf('async function '+operation+'(');
+  assert.ok(start>0,operation+' must exist');
+  const part=shell.slice(start,start+1500);
+  assert.match(part,/const chatId=selected/);
+  assert.match(part,/selectedRef\.current===chatId/);
+ }
+ assert.match(shell,/draftsRef\.current\[chatId\].*\.trim\(\)===body/);
+ assert.match(shell,/setDraft\(current=>current\.trim\(\)===body\?'':current\)/);
+ assert.match(shell,/The next inbox sync will show the successfully sent message/);
+ assert.match(shell,/Do not report a sent attachment as failed during refresh/);
+});
+test('group conversations always fetch newest messages and show real loading/errors',()=>{
+ const api=load('lib/groups.ts');
+ const ui=load('components/GroupPanel.tsx');
+ assert.match(api,/order=created_at\.desc&limit=150/);
+ assert.match(api,/return latest\.reverse\(\)/);
+ assert.match(api,/signal:method==='GET'\?AbortSignal\.timeout\(18000\)/);
+ assert.ok(!api.includes('order=created_at.asc&limit=150'));
+ assert.match(ui,/initialLoading,setInitialLoading/);
+ assert.match(ui,/role="status" aria-label="Загружаем сообщения группы"/);
+ assert.match(ui,/!initialLoading&&!error&&messages\.length===0/);
+ assert.match(ui,/Не удалось загрузить сообщения группы/);
+ assert.match(ui,/Попробовать снова/);
+ assert.match(ui,/window\.setInterval\(sync,6000\)/);
+ assert.match(ui,/window\.setInterval\(updateMembers,120000\)/);
+});
+test('stories do not download on every inbox refresh and open newest uploaded story',()=>{
+ const s=load('components/StoriesStrip.tsx');
+ assert.match(s,/contactsRef=useRef\(contacts\)/);
+ assert.match(s,/contactIdsKey=contacts\.map\(person=>person\.id\)\.sort\(\)\.join\(','\)/);
+ assert.match(s,/\[token,userId,contactIdsKey,avatarPath\]/);
+ assert.match(s,/updated\[0\]\.stories\.length-1/);
+ assert.match(s,/const requestId=\+\+storyRequestRef\.current/);
+ assert.match(s,/requestId===storyRequestRef\.current/);
+});
+
+
+test('failed private media can retry a fresh signed link instead of remaining broken',()=>{
+ const view=load('components/ChatMedia.tsx');
+ const api=load('lib/supabase-rest.ts');
+ const css=load('app/globals.css');
+ assert.match(view,/setRetry\(value=>value\+1\)/);
+ assert.match(view,/onError=\{\(\)=>setError\(true\)\}/);
+ assert.match(view,/invalidateDirectMediaUrl\(token,path\)/);
+ assert.match(api,/export function invalidateDirectMediaUrl/);
+ assert.match(api,/signedMediaCache\.delete\(token\+':\'\+path\)/);
+ assert.match(css,/\.chat-media-retry/);
+});
+
+
+test('opening and polling group chats avoids overlapping requests and stale responses',()=>{
+ const group=load('components/GroupPanel.tsx');
+ assert.match(group,/requestSequenceRef=useRef\(0\)/);
+ assert.match(group,/requestId!==requestSequenceRef\.current/);
+ assert.match(group,/if\(cancelled\|\|inFlight\|\|document\.visibilityState==='hidden'\)return/);
+ assert.match(group,/requestSequenceRef\.current\+\+;window\.clearInterval\(timer\)/);
+ assert.match(group,/lastReadRef\.current===last/);
+});
+test('new incoming messages never force scrolling when reading chat history',()=>{
+ const personal=load('components/AppShell.tsx');
+ const group=load('components/GroupPanel.tsx');
+ assert.match(personal,/chatAutoScrollRef=useRef\(true\)/);
+ assert.match(personal,/if\(!history\|\|!chatAutoScrollRef\.current\)return/);
+ assert.match(personal,/chatAutoScrollRef\.current=area\.scrollHeight-area\.scrollTop-area\.clientHeight<120/);
+ assert.match(group,/followNewestRef=useRef\(true\)/);
+ assert.match(group,/followNewestRef\.current=area\.scrollHeight-area\.scrollTop-area\.clientHeight<120/);
+});

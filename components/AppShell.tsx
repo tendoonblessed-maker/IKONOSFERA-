@@ -94,12 +94,54 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
   const [installHelp,setInstallHelp]=useState(false);
   const [installPrompt,setInstallPrompt]=useState<(Event & {prompt:()=>Promise<void>;userChoice:Promise<{outcome:string}>})|null>(null);
   const messageEnd=useRef<HTMLDivElement|null>(null);
+  const conversationHistoryRef=useRef<HTMLDivElement|null>(null);
+  const chatAutoScrollRef=useRef(true);
   const selectedRef=useRef<string|null>(null);
   const searchInputRef=useRef<HTMLInputElement|null>(null);
   const draftsRef=useRef<Record<string,string>>({});
   const composerRef=useRef<HTMLTextAreaElement|null>(null);
 
   useEffect(()=>{selectedRef.current=selected;},[selected]);
+  // iOS Safari's visual viewport shrinks when the keyboard appears.
+  // Follow that visible area rather than a stale 100dvh layout height,
+  // without disabling the user's ability to pinch-zoom for accessibility.
+  useEffect(()=>{
+    const root=document.documentElement;
+    let animationFrame=0;
+    const setVisibleHeight=()=>{
+      if(!window.matchMedia('(max-width:800px)').matches){
+        root.style.removeProperty('--ik-visible-viewport-height');
+        return;
+      }
+      const viewport=window.visualViewport;
+      if(viewport&&Math.abs(viewport.scale-1)>0.02){
+        root.style.removeProperty('--ik-visible-viewport-height');
+        return;
+      }
+      const height=viewport?.height??window.innerHeight;
+      if(Number.isFinite(height)&&height>200){
+        root.style.setProperty('--ik-visible-viewport-height',Math.round(height)+'px');
+      }
+    };
+    const update=()=>{
+      window.cancelAnimationFrame(animationFrame);
+      animationFrame=window.requestAnimationFrame(setVisibleHeight);
+    };
+    const viewport=window.visualViewport;
+    setVisibleHeight();
+    viewport?.addEventListener('resize',update);
+    viewport?.addEventListener('scroll',update);
+    window.addEventListener('resize',update);
+    window.addEventListener('orientationchange',update);
+    return()=>{
+      window.cancelAnimationFrame(animationFrame);
+      root.style.removeProperty('--ik-visible-viewport-height');
+      viewport?.removeEventListener('resize',update);
+      viewport?.removeEventListener('scroll',update);
+      window.removeEventListener('resize',update);
+      window.removeEventListener('orientationchange',update);
+    };
+  },[]);
   useEffect(()=>{
     const ios=/iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.platform==='MacIntel' && navigator.maxTouchPoints>1);
     const standalone=window.matchMedia('(display-mode: standalone)').matches || Boolean((navigator as Navigator & {standalone?:boolean}).standalone);
@@ -276,7 +318,15 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
     try{await navigator.clipboard.writeText(window.location.origin+'/');setNotice('Скопирована чистая ссылка без меток ChatGPT.');}
     catch{setError('Не удалось скопировать ссылку. Адрес: '+window.location.origin+'/');}
   }
-    useEffect(()=>{messageEnd.current?.scrollIntoView({behavior:'auto'});},[chatMessages.length,selected]);
+  // Scroll only the message history. scrollIntoView() was scrolling the page
+  // itself on iPhone Safari and pushing the composer below the viewport.
+  useEffect(()=>{chatAutoScrollRef.current=true;},[selected]);
+  useEffect(()=>{
+    const history=conversationHistoryRef.current;
+    if(!history||!chatAutoScrollRef.current)return;
+    // Never pull the reader away from older messages during incoming polls.
+    history.scrollTop=history.scrollHeight;
+  },[chatMessages.length,selected]);
   useEffect(()=>{if(selected)setDraft(draftsRef.current[selected]||'');},[selected]);
   useEffect(()=>{const field=composerRef.current;if(!field)return;field.style.height='auto';field.style.height=Math.min(field.scrollHeight,136)+'px';},[draft,selected]);
   useEffect(()=>{
@@ -372,17 +422,22 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
   }
   async function sendMessage(e:React.FormEvent){
     e.preventDefault();if(!session||!selected||!userId||sending||activePartnerBlocked)return;
-    const chatId=selected,body=draft.trim();
+    const chatId=selected,body=draft.trim(),token=session.access_token;
     if(!body||body.length>4000)return;
     setSending(true);setError('');
     try{
-      await postMessage(session.access_token,chatId,userId,body);
-      delete draftsRef.current[chatId];
-      if(selectedRef.current===chatId){
-        setDraft('');
-        try{setChatMessages((await listMessages(session.access_token,chatId)).reverse());}
-        catch{/* The next sync will refresh sent messages without resending. */}
+      await postMessage(token,chatId,userId,body);
+      // Users may type their next message while the previous send is in flight.
+      // Only clear the exact draft that was submitted, not their new text.
+      if((draftsRef.current[chatId]||'').trim()===body){
+        delete draftsRef.current[chatId];
+        if(selectedRef.current===chatId)setDraft(current=>current.trim()===body?'':current);
       }
+      // A sent message is not a failed send just because its refresh failed.
+      try{
+        const updated=(await listMessages(token,chatId)).reverse();
+        if(selectedRef.current===chatId)setChatMessages(updated);
+      }catch{/* The next inbox sync will show the successfully sent message. */}
     }catch(e){setError(userFacingError(e));}
     finally{setSending(false);}
   }
@@ -454,26 +509,41 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
   async function messageAction(messageId:string,action:"hide"|"delete_everyone"|"edit",body?:string){
     if(!session||!selected||!userId)return;
     if(action==="delete_everyone"&&!window.confirm("Удалить сообщение для обоих?"))return;
-    try{await manageMessage(session.access_token,messageId,action,body);
-      setMessageMenuId(null);setEditingMessageId(null);setChatMessages((await listMessages(session.access_token,selected)).reverse());
+    const chatId=selected,token=session.access_token;
+    try{
+      await manageMessage(token,messageId,action,body);
+      if(selectedRef.current===chatId){setMessageMenuId(null);setEditingMessageId(null);}
+      try{
+        const updated=(await listMessages(token,chatId)).reverse();
+        if(selectedRef.current===chatId)setChatMessages(updated);
+      }catch{/* Keep the confirmed action; retry updating the history on polling. */}
     }catch(e){setError(userFacingError(e));}
   }
   async function reactToMessage(messageId:string,emoji:ReactionEmoji){
-    if(!session||!userId||sending)return;
+    if(!session||!selected||!userId||sending)return;
+    const chatId=selected,token=session.access_token,ids=chatMessages.map(m=>m.id);
     const previous=messageReactions.find(r=>r.message_id===messageId&&r.user_id===userId);
     setSending(true);setError("");
-    try{await setMessageReaction(session.access_token,userId,messageId,previous?.emoji===emoji?null:emoji);
-      setMessageReactions(await listMessageReactions(session.access_token,chatMessages.map(m=>m.id)));
-      setMessageReactionPicker(null);
+    try{
+      await setMessageReaction(token,userId,messageId,previous?.emoji===emoji?null:emoji);
+      if(selectedRef.current===chatId)setMessageReactionPicker(null);
+      try{
+        const updated=await listMessageReactions(token,ids);
+        if(selectedRef.current===chatId)setMessageReactions(updated);
+      }catch{/* Reaction was saved; the chat poll will reload its state. */}
     }catch(e){setError(userFacingError(e));}finally{setSending(false);}
   }
   async function sendAttachment(file:File|undefined){
     if(!file||!session||!selected||!userId||sending||activePartnerBlocked)return;
+    const chatId=selected,token=session.access_token;
     setSending(true);setError("");
     try{
-      await sendDirectMedia(session.access_token,selected,userId,file);
-      setChatMessages((await listMessages(session.access_token,selected)).reverse());
+      await sendDirectMedia(token,chatId,userId,file);
       setNotice("Вложение отправлено.");
+      try{
+        const updated=(await listMessages(token,chatId)).reverse();
+        if(selectedRef.current===chatId)setChatMessages(updated);
+      }catch{/* Do not report a sent attachment as failed during refresh. */}
     }catch(e){setError(userFacingError(e));}
     finally{setSending(false);}
   }
@@ -652,7 +722,10 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
   {active.other&&<button type="button" disabled={busy} onClick={()=>void toggleBlockedUser(active.other!)}>{blockedUserIds.has(active.other.id)?'Разблокировать':'Заблокировать'}</button>}
   <button type="button" disabled={busy} onClick={()=>void chatAction(active.chat.id,'delete_self')}>Удалить только у себя</button>
   <button type="button" disabled={busy} onClick={()=>void chatAction(active.chat.id,'delete_everyone')}>Удалить у обоих</button>
-</div></details></header>{activePartnerBlocked&&<div className="ik-chat-blocked-banner" role="status"><span>Собеседник заблокирован. Отправка сообщений отключена.</span><button type="button" onClick={()=>active.other&&void toggleBlockedUser(active.other)}>Разблокировать</button></div>}{searchInConversation&&<div className="ik-conversation-search"><input autoFocus aria-label="Поиск сообщений в текущем чате" placeholder="Найти сообщение…" value={messageSearch} onChange={e=>setMessageSearch(e.target.value)}/><span>{visibleMessages.length} сообщ.</span><button type="button" onClick={()=>{setSearchInConversation(false);setMessageSearch("");}}>✕</button></div>}{selectedMessages.length>0&&<div className="ik-selection-toolbar"><span>Выбрано: {selectedMessages.length}</span><button type="button" onClick={()=>{const text=chatMessages.filter(m=>selectedMessages.includes(m.id)).map(m=>m.body).join("\n\n");void navigator.clipboard.writeText(text).then(()=>setNotice("Сообщения скопированы")).catch(()=>setError("Не удалось скопировать"));}}>Копировать</button><button type="button" onClick={()=>setSelectedMessages([])}>Отмена</button></div>}<div className="conversation-history" aria-live="polite" aria-busy={activeChatLoading}>
+</div></details></header>{activePartnerBlocked&&<div className="ik-chat-blocked-banner" role="status"><span>Собеседник заблокирован. Отправка сообщений отключена.</span><button type="button" onClick={()=>active.other&&void toggleBlockedUser(active.other)}>Разблокировать</button></div>}{searchInConversation&&<div className="ik-conversation-search"><input autoFocus aria-label="Поиск сообщений в текущем чате" placeholder="Найти сообщение…" value={messageSearch} onChange={e=>setMessageSearch(e.target.value)}/><span>{visibleMessages.length} сообщ.</span><button type="button" onClick={()=>{setSearchInConversation(false);setMessageSearch("");}}>✕</button></div>}{selectedMessages.length>0&&<div className="ik-selection-toolbar"><span>Выбрано: {selectedMessages.length}</span><button type="button" onClick={()=>{const text=chatMessages.filter(m=>selectedMessages.includes(m.id)).map(m=>m.body).join("\n\n");void navigator.clipboard.writeText(text).then(()=>setNotice("Сообщения скопированы")).catch(()=>setError("Не удалось скопировать"));}}>Копировать</button><button type="button" onClick={()=>setSelectedMessages([])}>Отмена</button></div>}<div className="conversation-history" ref={conversationHistoryRef} aria-live="polite" aria-busy={activeChatLoading} onScroll={event=>{
+        const area=event.currentTarget;
+        chatAutoScrollRef.current=area.scrollHeight-area.scrollTop-area.clientHeight<120;
+      }}>
       {activeChatLoading&&<div className="ik-chat-loading" role="status" aria-label="Загружаем переписку">
         <div className="ik-chat-loading-line"><span className="ik-chat-loading-avatar"/></div>
         <div className="ik-chat-loading-bubble incoming"/><div className="ik-chat-loading-bubble incoming short"/>
