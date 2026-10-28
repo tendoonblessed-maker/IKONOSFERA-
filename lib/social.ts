@@ -91,3 +91,14 @@ export async function addPostComment(token:string,post_id:string,author_id:strin
   if(!rows[0])throw Error("Комментарий не опубликован");return rows[0];
 }
 export async function removeComment(token:string,id:string):Promise<void>{await api("/rest/v1/channel_comments?id=eq."+encodeURIComponent(id),token,"DELETE");}
+
+export type ChannelSubscription={channel_id:string;user_id:string;created_at:string};
+export async function listMySubscriptions(token:string,userId:string):Promise<ChannelSubscription[]>{
+ return api<ChannelSubscription[]>("/rest/v1/channel_subscriptions?select=channel_id,user_id,created_at&user_id=eq."+encodeURIComponent(userId)+"&limit=1000",token);
+}
+export async function subscribeChannel(token:string,userId:string,channelId:string):Promise<void>{
+ await api("/rest/v1/channel_subscriptions?on_conflict=channel_id,user_id",token,"POST",{channel_id:channelId,user_id:userId});
+}
+export async function unsubscribeChannel(token:string,userId:string,channelId:string):Promise<void>{
+ await api("/rest/v1/channel_subscriptions?channel_id=eq."+encodeURIComponent(channelId)+"&user_id=eq."+encodeURIComponent(userId),token,"DELETE");
+}
