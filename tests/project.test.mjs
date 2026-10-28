@@ -463,3 +463,30 @@ test('new chat loading screen does not misrepresent an unopened dialog as empty'
  assert.match(shell,/setLoading\(false\)/);
  assert.match(shell,/transient network failure must not discard valid login credentials/);
 });
+
+
+test('iPhone chat keeps composer visible and never zooms focused inputs',()=>{
+ const css=load('app/globals.css');
+ const shell=load('components/AppShell.tsx');
+ const layout=load('app/layout.tsx');
+ assert.match(layout,/initialScale:\s*1/);
+ assert.ok(!layout.includes('maximumScale'));
+ assert.ok(!layout.includes('userScalable'));
+ assert.match(css,/--ik-visible-viewport-height,100dvh/);
+ assert.match(css,/\.messenger\.is-authenticated \.conversation-pane\.open\{\s*display:flex;flex-direction:column;/);
+ assert.match(css,/\.messenger\.is-authenticated \.conversation-history\{\s*flex:1 1 0%;min-height:0/);
+ assert.match(css,/\.messenger\.is-authenticated \.composer\{\s*position:relative;inset:auto;/);
+ assert.match(css,/font-size:16px!important;line-height:1\.4/);
+ assert.match(css,/\.messenger input:not\(\[type="file"\]\)/);
+ assert.match(shell,/window\.visualViewport/);
+ assert.match(shell,/viewport\?\.addEventListener\('resize',update\)/);
+ assert.match(shell,/viewport\?\.addEventListener\('scroll',update\)/);
+ assert.match(shell,/style\.setProperty\('--ik-visible-viewport-height'/);
+});
+test('chat auto scroll is scoped to message history rather than page on iOS',()=>{
+ const source=load('components/AppShell.tsx');
+ assert.match(source,/conversationHistoryRef=useRef<HTMLDivElement\|null>/);
+ assert.match(source,/history\.scrollTop=history\.scrollHeight/);
+ assert.match(source,/className="conversation-history" ref=\{conversationHistoryRef\}/);
+ assert.ok(!source.includes("scrollIntoView({behavior:'auto'})"));
+});
