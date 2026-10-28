@@ -1616,10 +1616,11 @@ body{position:relative}
     max-height:var(--ik-visible-viewport-height,100dvh)!important;
     min-height:0;overflow:hidden;
   }
-  .messenger.is-authenticated .conversation-pane,
-  .messenger.is-authenticated .conversation-pane.open{
+  .messenger.is-authenticated .conversation-pane{
     height:100%!important;max-height:100%!important;min-height:0;
     min-width:0;overflow:hidden;
+  }
+  .messenger.is-authenticated .conversation-pane.open{
     display:flex;flex-direction:column;
   }
   .messenger.is-authenticated .conversation-header,
