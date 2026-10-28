@@ -1,6 +1,6 @@
 'use client';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { backendReady, changeProfile, createTemporaryAccount, consumeEmailLinkSession, clearSession, currentUser, listChats, listMessages, manageChat, manageMessage, listMessageReactions, setMessageReaction, markChatRead, listProfiles, myProfile, postMessage, sendDirectMedia, sendEmailCode, signOut, startDirectChat, validSession, verifyEmailCode, type ChatMessage, type MessageReaction, type DirectChat, type Profile, type Session } from '@/lib/supabase-rest';
+import { backendReady, changeProfile, createTemporaryAccount, consumeEmailLinkSession, clearSession, currentUser, findProfileByUsername, listChats, listMessages, manageChat, manageMessage, listMessageReactions, setMessageReaction, markChatRead, listProfiles, myProfile, postMessage, sendDirectMedia, sendEmailCode, signOut, startDirectChat, validSession, verifyEmailCode, type ChatMessage, type MessageReaction, type DirectChat, type Profile, type Session } from '@/lib/supabase-rest';
 
 import ProfilePanel from "@/components/ProfilePanel";
 import ChatMedia from "@/components/ChatMedia";
@@ -138,6 +138,13 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
     }catch(e){setError(userFacingError(e));}
     finally{setBusy(false);}
   }
+  async function searchPerson(username:string){
+    if(!session)return;setError("");setBusy(true);
+    try{const person=await findProfileByUsername(session.access_token,username);
+      if(!person)throw Error("Пользователь с таким юзернеймом не найден.");
+      setSelected(null);setSelectedChannel(null);setProfileTarget(person.id);setLookup("");
+    }catch(e){setError(userFacingError(e));}finally{setBusy(false);}
+  }
   async function openChat(username:string){if(!session||!userId)return;setError('');setBusy(true);try{const id=await startDirectChat(session.access_token,username.replace(/^@/,''));setProfileTarget(null);setSelectedChannel(null);setSelected(id);setTab('chats');setLookup('');setSearch('');await refresh(session.access_token,userId,id);}catch(e){setError(userFacingError(e));}finally{setBusy(false);}}
   async function makeChannel(e:React.FormEvent){
     e.preventDefault();if(!session||!userId||busy)return;
@@ -234,7 +241,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
       {tab==='chats'&&<div className="pane-search"><span aria-hidden="true">⌕</span><input aria-label="Поиск по чатам" placeholder="Поиск" value={search} onChange={e=>setSearch(e.target.value)} disabled={!loggedIn}/></div>}
       <div className="chat-list">
       {tab==='chats'&&(loggedIn?filtered.length?filtered.map(row=><div key={row.chat.id} className="chat-row-wrap"><button type="button" className={`chat-item ${selected===row.chat.id?'active':''}`} onClick={()=>{setSelected(row.chat.id);setSelectedChannel(null);setProfileTarget(null);setChatMessages([]);setError('');}}><span className="contact-avatar">{imageUrl(row.other?.avatar_path)?<img className="avatar-image" src={imageUrl(row.other?.avatar_path)||""} alt=""/>:(row.other?.display_name||'?').slice(0,1).toUpperCase()}</span><span className="contact-info"><strong>{row.other?.display_name??'Собеседник'}</strong><small>@{row.other?.username??'unknown'}</small></span><span className="chat-item-dot"/></button><div className="chat-row-actions"><button type="button" title="Закрепить или открепить" onClick={()=>void chatAction(row.chat.id,row.chat.pinned_for?.includes(userId)?"unpin":"pin")}>{row.chat.pinned_for?.includes(userId)?"📌":"♧"}</button><button type="button" title="Удалить чат для себя" onClick={()=>void chatAction(row.chat.id,"hide")}>Скрыть</button><button type="button" title="Удалить чат для обоих" onClick={()=>void chatAction(row.chat.id,"delete_everyone")}>Удалить всем</button></div></div>):<div className="list-empty"><div className="empty-icon">✉</div><strong>Нет переписок</strong><p>Нажми +, чтобы найти человека по юзернейму и начать общение.</p><button className="secondary-action" onClick={()=>setTab('contacts')}>Новый чат</button></div>:<div className="list-empty"><div className="empty-icon">✉</div><strong>Нет переписок</strong><p>{backendReady?'Войди, чтобы читать сообщения.':'Для переписки осталось подключить сервер.'}</p></div>)}
-      {tab==='contacts'&&<div className="contact-search-panel"><h2>Новый диалог</h2><p>Введи юзернейм другого пользователя IKONOSFERA.</p><form onSubmit={e=>{e.preventDefault();void openChat(lookup.trim());}}><label htmlFor="lookup">Юзернейм</label><input id="lookup" placeholder="например, friend_01" value={lookup} onChange={e=>setLookup(e.target.value)} minLength={3} maxLength={25} disabled={!loggedIn}/><button className="accent-button" disabled={!loggedIn||busy||!lookup.trim()}>{busy?'Открываем…':'Начать переписку'}</button></form></div>}
+      {tab==='contacts'&&<div className="contact-search-panel"><h2>Поиск пользователя</h2><p>Открой профиль по юзернейму. Диалог создастся только после нажатия «Написать сообщение».</p><form onSubmit={e=>{e.preventDefault();void searchPerson(lookup.trim());}}><label htmlFor="lookup">Юзернейм</label><input id="lookup" placeholder="например, friend_01" value={lookup} onChange={e=>setLookup(e.target.value)} minLength={3} maxLength={25} disabled={!loggedIn}/><button className="accent-button" disabled={!loggedIn||busy||!lookup.trim()}>{busy?'Ищем…':'Найти профиль'}</button></form></div>}
 
       {tab==='channels'&&<div className="channel-browser">
         <div className="channel-tools"><input aria-label="Поиск каналов" value={channelSearch} onChange={e=>setChannelSearch(e.target.value)} placeholder="Поиск каналов" disabled={!loggedIn}/><button type="button" className="secondary-action" disabled={!loggedIn} onClick={()=>setChannelCreating(v=>!v)}>{channelCreating?"Закрыть":"＋ Создать канал"}</button></div>
