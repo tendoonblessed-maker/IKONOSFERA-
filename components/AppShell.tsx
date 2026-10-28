@@ -1,6 +1,6 @@
 'use client';
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { backendReady, createTemporaryAccount, consumeEmailLinkSession, clearSession, currentUser, findProfileByUsername, listChats, listChatPreviews, listMessages, manageChat, manageMessage, listBlockedUsers, blockUser, unblockUser, type UserBlock, listMessageReactions, setMessageReaction, markChatRead, listProfiles, myProfile, postMessage, reopenChat, sendDirectMedia, sendEmailCode, signOut, startDirectChat, validSession, type ChatMessage, type MessageReaction, type DirectChat, type Profile, type Session, type ChatPreview } from '@/lib/supabase-rest';
+import { backendReady, createTemporaryAccount, consumeEmailLinkSession, clearSession, currentUser, findProfileByUsername, listChats, listChatPreviews, listMessages, manageChat, manageMessage, listBlockedUsers, blockUser, unblockUser, type UserBlock, listMessageReactions, setMessageReaction, markChatRead, listProfiles, listSavedContactIds, saveContact, deleteContact, myProfile, postMessage, reopenChat, sendDirectMedia, sendEmailCode, signOut, startDirectChat, validSession, type ChatMessage, type MessageReaction, type DirectChat, type Profile, type Session, type ChatPreview } from '@/lib/supabase-rest';
 
 import ProfilePanel from "@/components/ProfilePanel";
 import ChatMedia from "@/components/ChatMedia";
@@ -64,6 +64,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
   const [profile,setProfile]=useState<Profile|null>(null);
   const [anonymous,setAnonymous]=useState(false);
   const [rows,setRows]=useState<ChatRow[]>([]);
+  const [savedContacts,setSavedContacts]=useState<Profile[]>([]);
   const [groups,setGroups]=useState<Group[]>([]);
   const [groupOverviews,setGroupOverviews]=useState<Record<string,GroupOverview>>({});
   const [selectedGroup,setSelectedGroup]=useState<Group|null>(null);
@@ -129,16 +130,17 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
   },[]);
 
   const refresh=useCallback(async (token:string,id:string,activeChat:string|null)=>{
-    const [chats,previews,allChannels,memberships,groupList,groupSummaries]=await Promise.all([listChats(token),listChatPreviews(token).catch(()=>[] as ChatPreview[]),listChannels(token),listMySubscriptions(token,id),listGroups(token),listGroupOverviews(token)]);
+    const [chats,previews,allChannels,memberships,groupList,groupSummaries,contactIds]=await Promise.all([listChats(token),listChatPreviews(token).catch(()=>[] as ChatPreview[]),listChannels(token),listMySubscriptions(token,id),listGroups(token),listGroupOverviews(token),listSavedContactIds(token,id)]);
     setChannels(allChannels);
     const counts=await getChannelSubscriberCounts(token,allChannels.map(ch=>ch.id)).catch(()=>({} as Record<string,number>));
     setSubscriberCounts(counts);
     setGroups(groupList);
     setGroupOverviews(Object.fromEntries(groupSummaries.map(summary=>[summary.group_id,summary])));
     setSubscriptions(memberships.map(m=>m.channel_id));
-    const others=Array.from(new Set(chats.map(c=>c.user_a===id?c.user_b:c.user_a)));
+    const others=Array.from(new Set([...chats.map(c=>c.user_a===id?c.user_b:c.user_a),...contactIds]));
     const profiles=await listProfiles(token,others);
     const byId=new Map(profiles.map(p=>[p.id,p]));
+    setSavedContacts(contactIds.map(personId=>byId.get(personId)).filter((person):person is Profile=>Boolean(person)));
     const overview=new Map(previews.map(p=>[p.chat_id,p]));
     setRows(chats.filter(chat=>!chat.hidden_for?.includes(id))
       .sort((a,b)=>{
@@ -192,7 +194,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
         const valid=await validSession();
         if(cancelled)return;
         if(!valid){
-          setSession(null);setUserId('');setSelected(null);setRows([]);
+          setSession(null);setUserId('');setSelected(null);setRows([]);setSavedContacts([]);
           return;
         }
         if(valid.access_token!==session.access_token)setSession(valid);
@@ -353,6 +355,18 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
     }catch(e){setError(userFacingError(e));}
     finally{setBusy(false);}
   }
+  async function toggleSavedContact(person:Profile){
+    if(!session||!userId||busy||person.id===userId)return;
+    const exists=savedContacts.some(contact=>contact.id===person.id);
+    setBusy(true);setError('');
+    try{
+      if(exists)await deleteContact(session.access_token,userId,person.id);
+      else await saveContact(session.access_token,userId,person.id);
+      setSavedContacts(previous=>exists?previous.filter(contact=>contact.id!==person.id):[...previous.filter(contact=>contact.id!==person.id),person]);
+      setNotice(exists?'Пользователь удалён из контактов.':'Пользователь сохранён в контактах.');
+    }catch(e){setError(userFacingError(e));}
+    finally{setBusy(false);}
+  }
   async function chatAction(chatId:string,action:"hide"|"delete_self"|"pin"|"unpin"|"delete_everyone"|"block"){
     if(!session||!userId||busy)return;
     const item=rows.find(row=>row.chat.id===chatId);
@@ -402,7 +416,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
     }catch(e){setError(userFacingError(e));}
     finally{setSending(false);}
   }
-  async function logout(){if(!session)return;if(anonymous&&!window.confirm('Это временный аккаунт. После выхода восстановить его нельзя. Выйти?'))return;setBusy(true);try{await signOut(session.access_token);}catch(e){setError(userFacingError(e));}finally{clearSession();setSession(null);setUserId('');setProfile(null);setAnonymous(false);setRows([]);setSelected(null);setProfileTarget(null);setSelectedChannel(null);setChannels([]);setBlockedUsers([]);setBlockedProfiles([]);setChatMessages([]);setBusy(false);}}
+  async function logout(){if(!session)return;if(anonymous&&!window.confirm('Это временный аккаунт. После выхода восстановить его нельзя. Выйти?'))return;setBusy(true);try{await signOut(session.access_token);}catch(e){setError(userFacingError(e));}finally{clearSession();setSession(null);setUserId('');setProfile(null);setAnonymous(false);setRows([]);setSavedContacts([]);setSelected(null);setProfileTarget(null);setSelectedChannel(null);setChannels([]);setBlockedUsers([]);setBlockedProfiles([]);setChatMessages([]);setBusy(false);}}
   async function install(){if(installPrompt){await installPrompt.prompt();await installPrompt.userChoice;setInstallPrompt(null);}else setInstallHelp(true);}
   const blockedIds=useMemo(()=>new Set(blockedUsers.map(entry=>entry.blocked_id)),[blockedUsers]);
   const loadBlocked=useCallback(async (token:string,id:string)=>{
@@ -431,8 +445,14 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
     try{await blockUser(session.access_token,userId,targetId);await loadBlocked(session.access_token,userId);setNotice('Пользователь заблокирован. Разблокировать можно в настройках.');}
     catch(e){setError(userFacingError(e));}finally{setBusy(false);}
   }
-  const storyContacts=useMemo(()=>rows.map(row=>row.other).filter((p):p is Profile=>Boolean(p)),[rows]);
-  const contactPeople=useMemo(()=>[...storyContacts].sort((a,b)=>(a.display_name||a.username).localeCompare(b.display_name||b.username,'ru')),[storyContacts]);
+  const storyContacts=useMemo(()=>{
+    const people=new Map<string,Profile>();
+    for(const person of savedContacts)people.set(person.id,person);
+    for(const row of rows)if(row.other)people.set(row.other.id,row.other);
+    return Array.from(people.values());
+  },[rows,savedContacts]);
+  const contactPeople=useMemo(()=>[...savedContacts].sort((a,b)=>(a.display_name||a.username).localeCompare(b.display_name||b.username,'ru')),[savedContacts]);
+  const savedContactIds=useMemo(()=>new Set(savedContacts.map(person=>person.id)),[savedContacts]);
   useEffect(()=>{
     if(tab!=='contacts'||!session||!contactPeople.length)return;
     let cancelled=false;
