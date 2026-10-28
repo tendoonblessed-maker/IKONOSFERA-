@@ -11,6 +11,8 @@ type Props={
  selectionMode?:boolean;
  selectedForBulk?:boolean;
  blocked?:boolean;
+ savedContact?:boolean;
+ onToggleContact:()=>void;
  onOpen:()=>void;
  onAction:(action:'hide'|'delete_self'|'pin'|'unpin'|'delete_everyone'|'block')=>void;
 };
@@ -27,7 +29,7 @@ function timeLabel(input:string|null){
  return date.toLocaleDateString('ru-RU',{day:'2-digit',month:'2-digit'});
 }
 
-export default function ChatInboxRow({row,currentUserId,active,selectionMode=false,selectedForBulk=false,blocked=false,onOpen,onAction}:Props){
+export default function ChatInboxRow({row,currentUserId,active,selectionMode=false,selectedForBulk=false,blocked=false,savedContact=false,onToggleContact,onOpen,onAction}:Props){
  const {chat,other,preview}=row;
  const pinned=Boolean(chat.pinned_for?.includes(currentUserId));
  const unread=Math.max(0,Number(preview?.unread_count||0));
@@ -52,6 +54,7 @@ export default function ChatInboxRow({row,currentUserId,active,selectionMode=fal
    {!selectionMode&&<details className="chat-row-menu ik-chat-row-menu">
      <summary aria-label={'Действия с чатом '+name} title="Управление чатом">···</summary>
      <div className="chat-row-actions">
+       {other&&<button type="button" onClick={e=>{e.currentTarget.closest('details')?.removeAttribute('open');onToggleContact();}}>{savedContact?'Удалить из контактов':'＋ Добавить в контакты'}</button>}
        <button type="button" onClick={()=>onAction(pinned?'unpin':'pin')}>{pinned?'Открепить':'Закрепить'}</button>
        <button type="button" onClick={()=>onAction('delete_self')}>Удалить у себя</button>
        <button type="button" className="ik-danger-action" onClick={()=>onAction('delete_everyone')}>Удалить для обоих</button>
