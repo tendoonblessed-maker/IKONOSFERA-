@@ -7,11 +7,11 @@ import {
  type Channel, type ChannelPost, type PostComment
 } from "@/lib/social";
 
-type Props={token:string;userId:string;channel:Channel;onBack:()=>void;onShowProfile:(id:string)=>void};
+type Props={token:string;userId:string;channel:Channel;onBack:()=>void;onShowProfile:(id:string)=>void;subscribed:boolean;onToggleSubscribe:()=>void;onMessageAuthor:()=>void};
 const readable=(e:unknown)=>e instanceof Error?e.message:"Ошибка соединения";
 const formattedDate=(s:string)=>new Date(s).toLocaleString("ru-RU",{day:"numeric",month:"short",hour:"2-digit",minute:"2-digit"});
 
-export default function ChannelsPanel({token,userId,channel,onBack,onShowProfile}:Props){
+export default function ChannelsPanel({token,userId,channel,onBack,onShowProfile,subscribed,onToggleSubscribe,onMessageAuthor}:Props){
  const mine=channel.owner_id===userId;
  const [posts,setPosts]=useState<ChannelPost[]>([]);
  const [body,setBody]=useState("");const [file,setFile]=useState<File|null>(null);
@@ -73,7 +73,10 @@ export default function ChannelsPanel({token,userId,channel,onBack,onShowProfile
   <div className="channel-feed">
    <div className="channel-cover-card"><div className="channel-emblem">#</div><h1>{channel.title}</h1><p>@{channel.slug}</p>
     {channel.description&&<p className="channel-description">{channel.description}</p>}
-    <span>Канал IKONOSFERA</span></div>
+    <span>Канал IKONOSFERA</span><div className="channel-cover-actions">
+    {!mine&&<button type="button" className="accent-button" onClick={onToggleSubscribe}>{subscribed?"Отписаться":"Подписаться"}</button>}
+    {!mine&&<button type="button" className="secondary-action" onClick={onMessageAuthor}>Написать автору</button>}
+    </div></div>
    {mine&&<form className="channel-compose" onSubmit={post}>
      <h2>Новая публикация</h2>
      <textarea rows={4} maxLength={4000} value={body} onChange={e=>setBody(e.target.value)} placeholder="Напиши что-нибудь подписчикам…"/>

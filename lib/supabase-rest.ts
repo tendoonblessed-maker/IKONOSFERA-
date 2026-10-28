@@ -58,7 +58,23 @@ export async function createTemporaryAccount() {
   return saveSession(response);
 }
 export async function sendEmailCode(email: string) {
-  await http('/auth/v1/otp', {method:'POST',body:{email,create_user:true}});
+  const redirect=typeof window!=='undefined'?`?redirect_to=${encodeURIComponent(window.location.origin+'/')}`:'';
+  await http(`/auth/v1/otp${redirect}`, {method:'POST',body:{email,create_user:true}});
+}
+/** Supabase default email templates often send a magic link, not a 6-digit OTP.
+ * The implicit link redirects back with a session in the URL hash.
+ * Clear credentials from the URL immediately after extracting them. */
+export function consumeEmailLinkSession(): Session | null {
+ if(typeof window==='undefined')return null;
+ const fragment=window.location.hash.replace(/^#/,'');
+ if(!fragment)return null;
+ const params=new URLSearchParams(fragment);
+ const access_token=params.get('access_token');
+ const refresh_token=params.get('refresh_token');
+ if(!access_token||!refresh_token)return null;
+ const expires_in=Number(params.get('expires_in')||3600);
+ window.history.replaceState({},'',window.location.pathname+window.location.search);
+ return saveSession({access_token,refresh_token,expires_in:Number.isFinite(expires_in)?expires_in:3600});
 }
 export async function verifyEmailCode(email: string, token: string) {
   const response = await http<{access_token:string;refresh_token:string;expires_in:number}>(`/auth/v1/verify`,{method:'POST',body:{email,token,type:'email'}});

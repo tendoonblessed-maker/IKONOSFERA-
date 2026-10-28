@@ -9,9 +9,9 @@ import {
 } from "@/lib/social";
 
 const readableError=(e:unknown)=>e instanceof Error?e.message:"Что-то пошло не так";
-type Props={token:string;userId:string;targetId:string;onBack:()=>void;onOwnProfileChange:()=>void};
+type Props={token:string;userId:string;targetId:string;onBack:()=>void;onOwnProfileChange:()=>void;onMessage:(username:string)=>void};
 
-export default function ProfilePanel({token,userId,targetId,onBack,onOwnProfileChange}:Props){
+export default function ProfilePanel({token,userId,targetId,onBack,onOwnProfileChange,onMessage}:Props){
  const mine=targetId===userId;
  const [profile,setProfile]=useState<FullProfile|null>(null);
  const [photos,setPhotos]=useState<ProfilePhoto[]>([]);
@@ -79,12 +79,13 @@ export default function ProfilePanel({token,userId,targetId,onBack,onOwnProfileC
       {mine&&<label className="profile-avatar-camera" title="Изменить фото"><span aria-hidden="true">▣</span><input aria-label="Загрузить фото профиля" type="file" accept="image/png,image/jpeg,image/webp" disabled={busy} onChange={e=>{void chooseImage(e.target.files?.[0],"avatar");e.target.value="";}}/></label>}
      </div>
      {profile?<div className="profile-identity"><h1>{profile.display_name}</h1><p>@{profile.username}</p>
-        {profile.bio&&<div className="profile-bio">{profile.bio}</div>}</div>:<p>Загрузка профиля…</p>}
+        {profile.bio&&<div className="profile-bio">{profile.bio}</div>}
+        {!mine&&<button type="button" className="accent-button profile-message-button" onClick={()=>onMessage(profile.username)}>Написать сообщение</button>}</div>:<p>Загрузка профиля…</p>}
     </div>
     {mine&&editing&&<form className="profile-editor" onSubmit={save}>
      <h2>Изменить профиль</h2>
      <label>Имя<input value={name} onChange={e=>setName(e.target.value)} maxLength={60} required/></label>
-     <label>Имя пользователя<input value={username} onChange={e=>setUsername(e.target.value)} minLength={3} maxLength={24} pattern="[a-z0-9_]{3,24}" required/></label>
+     <label>Юзернейм<input value={username} onChange={e=>setUsername(e.target.value)} minLength={3} maxLength={24} pattern="[a-z0-9_]{3,24}" required/></label>
      <label>О себе<textarea value={bio} onChange={e=>setBio(e.target.value)} maxLength={160} rows={3} placeholder="Расскажи немного о себе"/></label>
      <button className="accent-button" disabled={busy} type="submit">{busy?"Сохраняем…":"Сохранить изменения"}</button>
      <div className="profile-delete-actions">{profile?.avatar_path&&<button type="button" onClick={()=>void clearImage("avatar")} disabled={busy}>Удалить аватар</button>}{profile?.cover_path&&<button type="button" onClick={()=>void clearImage("cover")} disabled={busy}>Удалить обложку</button>}</div>

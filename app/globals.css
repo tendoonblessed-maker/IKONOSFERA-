@@ -174,36 +174,6 @@ textarea:focus-visible{outline:2px solid #111;outline-offset:2px}
 .channel-comment-form button{min-width:48px;min-height:45px}
 .channel-empty{font-size:13px;color:#999;padding:18px}
 
-/* Pixel cat. Entire 8.2s performance is one uninterruptible animation. */
-.conversation-placeholder{position:relative}
-.cat-habitat{margin-top:auto;flex:0 0 auto;display:flex;align-items:center;flex-direction:column;justify-content:flex-end;padding-top:22px;padding-bottom:10px;user-select:none}
-.pixel-cat-button{background:transparent;border:0;padding:0;display:block;width:148px;height:106px;outline-offset:5px;touch-action:manipulation;cursor:pointer}
-.pixel-cat-button:disabled{opacity:1;cursor:default}
-.pixel-cat{display:block;overflow:visible;image-rendering:pixelated}
-.cat-body{transform-origin:72px 77px;animation:ik-cat-breathe 4.4s ease-in-out infinite}
-.cat-sleep-z{animation:ik-cat-z 3.6s ease-in-out infinite}
-.cat-awake-eyes{opacity:0}
-.cat-hint{font-size:10px;color:#a4a4a4;margin-top:0;letter-spacing:.06em}
-.pixel-cat-button.is-awake .cat-body{animation:none}
-.pixel-cat-button.is-awake .cat-head{transform-origin:60px 74px;animation:ik-cat-awaken 8.2s linear both}
-.pixel-cat-button.is-awake .cat-awake-eyes{animation:ik-cat-open-eyes 8.2s steps(1,end) both}
-.pixel-cat-button.is-awake .cat-sleeping-eyes{animation:ik-cat-hide-sleep-eyes 8.2s steps(1,end) both}
-.pixel-cat-button.is-awake .cat-pupils{animation:ik-cat-eye-scan 8.2s steps(1,end) both}
-.pixel-cat-button.is-awake .cat-sleep-z{animation:ik-cat-hide-z 8.2s steps(1,end) both}
-@keyframes ik-cat-breathe{0%,100%{transform:scaleY(1)}50%{transform:scaleY(.975)}}
-@keyframes ik-cat-z{0%,100%{opacity:.25;transform:translateY(3px)}50%{opacity:.75;transform:translateY(-2px)}}
-@keyframes ik-cat-awaken{
-0%,10%{transform:translate(0,0) rotate(0)}
-22%,30%{transform:translate(2px,-11px) rotate(-3deg)}
-40%,51%{transform:translate(-2px,-13px) rotate(-8deg)}
-62%,72%{transform:translate(4px,-12px) rotate(8deg)}
-79%{transform:translate(2px,-9px) rotate(2deg)}
-90%,100%{transform:translate(0,0) rotate(0)}
-}
-@keyframes ik-cat-open-eyes{0%,19%{opacity:0}20%,79%{opacity:1}80%,100%{opacity:0}}
-@keyframes ik-cat-hide-sleep-eyes{0%,19%{opacity:1}20%,79%{opacity:0}80%,100%{opacity:1}}
-@keyframes ik-cat-eye-scan{0%,30%{transform:translateX(0)}31%,50%{transform:translateX(-3px)}51%,71%{transform:translateX(4px)}72%,100%{transform:translateX(0)}}
-@keyframes ik-cat-hide-z{0%,13%{opacity:1}14%,90%{opacity:0}91%,100%{opacity:1}}
 @media(max-width:800px){
  .profile-topbar,.channel-topbar{padding:0 16px;height:56px;min-height:56px}
  .profile-cover{height:165px}
@@ -213,8 +183,6 @@ textarea:focus-visible{outline:2px solid #111;outline-offset:2px}
  .channel-post{padding:14px}
  .channel-compose{padding:13px}
  .pane-nav button{min-width:60px}
- .cat-habitat{padding-top:16px}
- .pixel-cat-button{transform:scale(.87);transform-origin:bottom center;height:92px}
 }
 @media(prefers-reduced-motion:reduce){
  .pixel-cat-button:not(.is-awake) .cat-body,
@@ -346,3 +314,22 @@ textarea:focus-visible{outline:2px solid #111;outline-offset:2px}
  .conversation-pane .channel-view,.channel-post,.profile-grid-cell,.profile-story-thumb,
  .profile-lightbox,.profile-lightbox img{animation:none!important}
 }
+
+/* Opt-in channel discovery, separate from the subscribed feed */
+.channel-browser-tabs{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-top:17px;padding:4px;border-radius:13px;background:#f3f3f3}
+.channel-browser-tabs button{border:0;border-radius:10px;background:transparent;color:#777;font:inherit;font-size:12px;font-weight:600;min-height:39px;cursor:pointer;transition:background .25s ease,color .25s ease,box-shadow .25s ease}
+.channel-browser-tabs button.selected{background:#fff;color:#111;box-shadow:0 2px 8px #00000010}
+.channel-list-row{gap:9px}
+.channel-row-open{display:flex;align-items:center;gap:12px;flex:1;min-width:0;padding:0;border:0;background:transparent;color:#111;text-align:left;cursor:pointer}
+.channel-row-open>span:last-child{display:grid;gap:5px;min-width:0}
+.channel-row-open strong{font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.channel-row-open small{font-size:12px;color:#888}
+.channel-subscribe-button{flex-shrink:0;border:1px solid #dedede;border-radius:11px;padding:9px 10px;background:#fff;color:#111;font-size:11px;font-weight:650;cursor:pointer;transition:transform .2s ease,background .2s ease}
+.channel-subscribe-button:hover{background:#eee}
+.channel-subscribe-button:active{transform:scale(.94)}
+.channel-owner-badge{font-size:11px;color:#999;padding:5px}
+.channel-cover-actions{display:flex;align-items:center;justify-content:center;flex-wrap:wrap;gap:10px;margin-top:17px}
+.channel-cover-actions .secondary-action{margin:0}
+.profile-message-button{display:inline-block;margin:16px auto 0;max-width:260px}
+@media(max-width:400px){.channel-list-row{gap:5px}.channel-row-open{gap:7px}.channel-subscribe-button{font-size:10px;padding:8px 6px}}
+@media(prefers-reduced-motion:reduce){.channel-browser-tabs button,.channel-subscribe-button{transition:none}}
