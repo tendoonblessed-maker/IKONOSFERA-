@@ -21,7 +21,7 @@ export default function BotsPanel({userId,bot,onBack}:{userId:string;bot:BotId;o
  useEffect(()=>{const timer=setInterval(()=>setNow(today()),60000);return()=>clearInterval(timer);},[]);
  const days=life?remaining(life.birth,life.years):null;
  function saveLife(e:React.FormEvent){e.preventDefault();const date=new Date(birth+"T12:00:00");const max=new Date();if(!birth||Number.isNaN(date.getTime())||date>max||date.getFullYear()<1900||years<1||years>130)return;const value={birth,years,lastSeen:today()};localStorage.setItem(key,JSON.stringify(value));setLife(value);}
- function finish(){if(answers.length!==15)return;const score=answers.reduce((sum,v,i)=>sum+(reverse.has(i)?3-v:v),0);setResult(score<=11?"Сейчас ты, похоже, чувствуешь себя довольно устойчиво. Сохраняй привычки, которые помогают тебе восстанавливаться.":score<=25?"Есть признаки напряжения или усталости. Попробуй уделить внимание сну, отдыху и поддержке близких.":"Похоже, в последнее время тебе непросто. Поддержка близкого человека или специалиста может помочь разобраться в самочувствии.");}
+
  return <section className="ik-bot-panel">
  <header className="ik-bot-head"><button type="button" onClick={onBack} aria-label="Назад">‹ Назад</button><span className="ik-bot-face">{bot==="days"?"◷":"✳"}</span><div><strong>{bot==="days"?"Сколько мне осталось?":"Точка равновесия"}</strong><small>Бот IKONOSFERA</small></div></header>
  <div className="ik-bot-thread" key={bot}>
