@@ -11,3 +11,5 @@ test('mobile safe area + reduced motion',()=>{const css=load('app/globals.css');
 
 test('invite URL passes initial username into messenger UI',()=>{const route=load('app/u/[username]/page.tsx');const ui=load('components/AppShell.tsx');assert.ok(route.includes('initialUsername={username'));assert.ok(ui.includes('initialUsername?: string'));});
 test('API permissions limit write actions',()=>{const sql=load('supabase/migrations/20261028_120000_direct_messages.sql');assert.ok(sql.includes('grant insert on public.messages to authenticated'));assert.ok(sql.includes('grant update (username, display_name) on public.profiles to authenticated'));assert.ok(!sql.includes('grant insert on public.chats to authenticated'));});
+
+test('temporary test account uses authenticated Supabase session, not mock messages',()=>{const api=load('lib/supabase-rest.ts');const ui=load('components/AppShell.tsx');assert.match(api,/createTemporaryAccount/);assert.match(api,/\/auth\/v1\/signup/);assert.match(ui,/beginTemporaryAccount/);assert.match(ui,/восстановить его нельзя/);});
