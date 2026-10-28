@@ -586,9 +586,9 @@ test('direct message API supports cursor paging without losing same-timestamp me
 test('loaded chat pages survive message polls, actions and switching conversations',()=>{
  const shell=load('components/AppShell.tsx');
  const css=load('app/globals.css');
- assert.match(shell,/function mergeRecentPage\(previous:ChatMessage\[\],latest:ChatMessage\[\]\)/);
- assert.match(shell,/setChatMessages\(current=>mergeRecentPage\(current,messages\)\)/);
- assert.match(shell,/setChatMessages\(current=>mergeRecentPage\(current,updated\)\)/);
+ assert.match(load('lib/chat-history.ts'),/export function mergeRecentPage/);
+ assert.match(shell,/setChatMessages\(current=>mergeRecentPage\(current,messages,CHAT_MESSAGE_PAGE_SIZE\)\)/);
+ assert.match(shell,/setChatMessages\(current=>mergeRecentPage\(current,updated,CHAT_MESSAGE_PAGE_SIZE\)\)/);
  assert.match(shell,/const \[hasOlderMessages,setHasOlderMessages\]=useState\(false\)/);
  assert.match(shell,/const prependScrollRef=useRef/);
  assert.match(shell,/history\.scrollTop=pending\.top\+\(history\.scrollHeight-pending\.height\)/);
@@ -605,4 +605,13 @@ test('editing old messages keeps their local state and reaction requests are sco
  assert.match(shell,/if\(action==='delete_everyone'\)return \[\{\.\.\.message,deleted_for_everyone:true/);
  assert.match(shell,/listMessageReactions\(token,\[messageId\]\)/);
  assert.match(shell,/current\.filter\(reaction=>reaction\.message_id!==messageId\)/);
+});
+
+test('older message merge helper is testable and sorts chronology with stable IDs',()=>{
+ const helper=load('lib/chat-history.ts'),shell=load('components/AppShell.tsx');
+ assert.match(helper,/export function compareMessages/);
+ assert.match(helper,/export function prependEarlierPage/);
+ assert.match(helper,/message\.id,message/);
+ assert.match(helper,/return Array\.from\(byId\.values\(\)\)\.sort\(compareMessages\)/);
+ assert.match(shell,/setChatMessages\(current=>prependEarlierPage\(current,older\)\)/);
 });
