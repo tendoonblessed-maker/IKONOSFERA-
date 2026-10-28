@@ -815,3 +815,93 @@ html,body{min-height:100%;overflow:hidden}
  .chat-list .chat-item>.contact-avatar{width:44px;height:44px;flex-basis:44px}
  .conversation-history>.chat-message-row>.bubble{max-width:calc(100vw - 60px);padding:8px 11px}
 }
+
+
+/* IKONOSFERA Inbox 2.0 — Telegram-inspired information density, original branding.
+   Original Inter typography, IKONOSFERA wordmark and 3D navigation images retained. */
+.messenger.is-authenticated{--ik-ink:#171a1e;--ik-mute:#7d858d;--ik-line:#eaedf0;--ik-soft:#f3f5f7}
+.messenger.is-authenticated .chats-pane{background:#fff;border-color:var(--ik-line)}
+.messenger.is-authenticated .pane-heading{border-bottom:1px solid var(--ik-line)}
+.messenger.is-authenticated .pane-toolbar{padding-bottom:8px}
+.messenger.is-authenticated .pane-toolbar h1{font-weight:850;letter-spacing:-.055em}
+.messenger.is-authenticated .pane-toolbar .icon-button{border-radius:15px;width:44px;height:44px;box-shadow:0 3px 8px #16191b08;transition:transform .18s ease,box-shadow .18s ease,background .18s ease}
+.messenger.is-authenticated .pane-toolbar .icon-button:hover{transform:translateY(-1px);background:#e9ebed;box-shadow:0 4px 15px #1c1f240d}
+.messenger.is-authenticated .pane-search{border-radius:16px;background:#f2f3f5;border-color:transparent;margin-top:6px;margin-bottom:11px;transition:background .2s ease,border-color .2s ease}
+.messenger.is-authenticated .pane-search:focus-within{background:white;border-color:#bfc6ce}
+.messenger.is-authenticated .pane-search input{font-size:13px;min-height:40px}
+.messenger.is-authenticated .home-stories{padding-top:9px;padding-bottom:8px;background:#fff;border-color:var(--ik-line)}
+.messenger.is-authenticated .home-stories-track{gap:12px}
+.messenger.is-authenticated .home-story-ring{width:55px;height:55px}
+.messenger.is-authenticated .home-story-item{flex-basis:61px}
+.messenger.is-authenticated .home-story-item small{font-size:10px}
+.messenger.is-authenticated .chat-list{padding-top:5px}
+.messenger.is-authenticated .chat-list .chat-row-wrap{align-items:center;min-height:66px;margin:3px 9px;border-radius:15px;transition:background .16s ease;overflow:visible}
+.messenger.is-authenticated .chat-list .chat-row-wrap:hover{background:#f5f6f7}
+.messenger.is-authenticated .chat-list .chat-row-wrap.active{background:#e9edf1}
+.messenger.is-authenticated .chat-list .telegram-chat-row{padding:10px 5px 10px 11px;gap:12px;align-items:center;min-height:67px;flex:1;min-width:0;background:transparent;border:0;border-radius:15px}
+.messenger.is-authenticated .chat-list .telegram-chat-row>.contact-avatar{width:51px;height:51px;flex:0 0 51px;margin:0;align-self:center;box-shadow:0 2px 8px #1a1d230b}
+.messenger.is-authenticated .chat-list .telegram-chat-row>.contact-info{display:flex;flex-direction:column;justify-content:center;align-items:stretch;gap:5px;padding:0;align-self:stretch;min-width:0;flex:1}
+.messenger.is-authenticated .chat-list .telegram-chat-row .ik-chat-title{display:flex;align-items:center;gap:5px;max-width:100%;min-width:0}
+.messenger.is-authenticated .chat-list .telegram-chat-row .ik-chat-title strong{overflow:hidden;white-space:nowrap;text-overflow:ellipsis;font-size:13px;font-weight:790;letter-spacing:-.012em}
+.messenger.is-authenticated .chat-list .telegram-chat-row .ik-pin-mark{flex-shrink:0;color:#a1a7b1;font-size:10px}
+.messenger.is-authenticated .chat-list .telegram-chat-row .ik-chat-preview{display:block;width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;color:#818995;line-height:1.25;text-align:left}
+.messenger.is-authenticated .chat-list .telegram-chat-row .ik-chat-meta{display:flex;flex-direction:column;align-items:flex-end;justify-content:center;gap:7px;flex:0 0 auto;min-width:29px;align-self:stretch}
+.messenger.is-authenticated .chat-list .telegram-chat-row .ik-chat-meta time{font-size:10px;white-space:nowrap;color:#9aa1a9}
+.messenger.is-authenticated .chat-list .telegram-chat-row .ik-unread-count{display:grid;place-items:center;min-width:21px;height:21px;padding:0 5px;border-radius:11px;background:#17191c;color:#fff;font-size:10px;font-weight:800;line-height:1}
+.messenger.is-authenticated .chat-list .ik-chat-row-menu{align-self:center;flex:0 0 auto;margin-right:5px;opacity:.42;transition:opacity .15s ease}
+.messenger.is-authenticated .chat-list .ik-inbox-row:hover .ik-chat-row-menu,.messenger.is-authenticated .chat-list .ik-chat-row-menu:focus-within{opacity:1}
+.messenger.is-authenticated .chat-list .ik-chat-row-menu>summary{min-width:24px;width:24px;min-height:33px}
+.messenger.is-authenticated .chat-list .group-chat-row{border-radius:15px;min-height:66px;width:calc(100% - 18px);margin:3px 9px;padding:11px 14px;align-items:center;gap:12px}
+.messenger.is-authenticated .chat-list .group-chat-row>.contact-avatar{align-self:center;width:48px;height:48px;flex:0 0 48px}
+.messenger.is-authenticated .chat-list .group-chat-row .contact-info{align-self:center;display:flex;flex-direction:column;gap:4px;padding:0}
+.messenger.is-authenticated .chat-list .ik-group-avatar{background:#eaecef;font-size:23px}
+
+.ik-inbox-filters{display:flex;gap:7px;padding:2px 15px 11px;align-items:center;border-bottom:1px solid #f0f1f3}
+.ik-inbox-filters button{display:inline-flex;align-items:center;justify-content:center;gap:6px;border:1px solid transparent;background:transparent;border-radius:12px;min-height:33px;padding:6px 12px;color:#7a828b;font-size:12px;font-weight:730;transition:background .2s ease}
+.ik-inbox-filters button.selected{background:#eff1f3;color:#191b20;border-color:#e8eaed}
+.ik-inbox-filters button:not(.selected):hover{background:#f5f6f7;color:#292d32}
+.ik-filter-count{display:grid;place-items:center;min-width:18px;height:18px;padding:0 4px;border-radius:10px;background:#25282c;color:#fff;font-size:10px;font-weight:800}
+.ik-chat-actions:empty{display:none}
+.ik-chat-actions{position:relative;padding:0 14px 10px;background:#fff}
+.ik-create-menu{display:grid;gap:4px;padding:8px;background:#fff;border:1px solid #e8eaed;box-shadow:0 13px 42px #13171d14;border-radius:17px}
+.ik-create-menu button{display:flex;gap:12px;align-items:center;min-height:42px;border:0;border-radius:11px;background:transparent;color:#24272c;padding:8px 13px;text-align:left;font-size:17px}
+.ik-create-menu button span{font-size:13px;font-weight:700}
+.ik-create-menu button:hover{background:#f2f4f5}
+.ik-chat-actions .group-create-form{border:1px solid #e9ebef;margin:0;border-radius:17px;box-shadow:0 10px 30px #1116}
+.ik-create-title{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.ik-create-title strong{font-size:15px}
+.ik-create-title button{border:0;background:transparent;border-radius:8px;padding:5px 9px;font-size:14px}
+.ik-create-title button:hover{background:#eef0f2}
+.ik-chat-empty{padding-top:40px!important}
+.messenger.is-authenticated .conversation-pane{background:#f6f7f8}
+.messenger.is-authenticated .conversation-header{background:rgba(255,255,255,.98);border-bottom:1px solid #edf0f2;backdrop-filter:blur(16px)}
+.messenger.is-authenticated .conversation-history{background:radial-gradient(ellipse 83% 58% at 80% 30%,#f1f3f5 0%,transparent 85%),#f7f8f9;scroll-behavior:smooth}
+.messenger.is-authenticated .conversation-history>.chat-message-row{gap:4px}
+.messenger.is-authenticated .conversation-history>.chat-message-row>.bubble{border-radius:17px 17px 17px 6px;box-shadow:0 2px 10px #141b2609;line-height:1.42;padding:9px 13px}
+.messenger.is-authenticated .conversation-history>.chat-message-row.mine>.bubble{border-radius:17px 17px 6px 17px}
+.messenger.is-authenticated .conversation-history>.chat-message-row .chat-message-tools{opacity:.42;transition:opacity .18s ease}
+.messenger.is-authenticated .conversation-history>.chat-message-row:hover .chat-message-tools,.messenger.is-authenticated .conversation-history>.chat-message-row:focus-within .chat-message-tools{opacity:1}
+.messenger.is-authenticated .conversation-history>.chat-message-row .reaction-add{border-color:#e6e8ea;background:#fff}
+.messenger.is-authenticated .composer{background:#fff;gap:11px}
+.messenger.is-authenticated .composer textarea{flex:1;resize:none;display:block;width:100%;min-width:0;min-height:47px;max-height:136px;height:auto;field-sizing:content;overflow-y:auto;padding:13px 17px;border-radius:23px;background:#f4f5f6;border:1px solid #e7eaed;color:#181a1e;font:inherit;font-size:14px;line-height:1.45;outline:none}
+.messenger.is-authenticated .composer textarea:focus{background:#fff;border-color:#c2c8ce;box-shadow:0 0 0 3px #9fa7af13}
+.messenger.is-authenticated .composer textarea::placeholder{color:#9da2aa}
+.messenger.is-authenticated .composer .send-button{flex:0 0 45px;height:45px}
+.messenger.is-authenticated .pane-nav button.current{box-shadow:0 7px 22px #13161c10}
+@media(min-width:801px){.messenger.is-authenticated{grid-template-columns:clamp(350px,27vw,430px) minmax(0,1fr)}.messenger.is-authenticated .conversation-history{padding-left:clamp(22px,6vw,105px);padding-right:clamp(22px,6vw,105px)}.messenger.is-authenticated .composer{padding-left:clamp(20px,5vw,92px);padding-right:clamp(20px,5vw,92px)}}
+@media(max-width:800px){
+ .messenger.is-authenticated .chat-list .telegram-chat-row{padding:9px 4px 9px 9px;min-height:60px}
+ .messenger.is-authenticated .chat-list .telegram-chat-row>.contact-avatar{width:47px;height:47px;flex-basis:47px}
+ .messenger.is-authenticated .chat-list .chat-row-wrap{margin:2px 6px}
+ .messenger.is-authenticated .conversation-history{padding:15px 12px}
+ .messenger.is-authenticated .composer{padding:9px 10px max(13px,env(safe-area-inset-bottom,0px))}
+ .messenger.is-authenticated .composer textarea{min-height:43px;padding:10px 14px}
+ .messenger.is-authenticated .pane-heading{border-bottom:1px solid #eef0f2}
+ .messenger.is-authenticated .conversation-history>.chat-message-row .chat-message-tools,.messenger.is-authenticated .chat-list .ik-chat-row-menu{opacity:1}
+}
+@media(max-width:360px){
+ .messenger.is-authenticated .chat-list .telegram-chat-row{gap:9px}
+ .messenger.is-authenticated .chat-list .telegram-chat-row>.contact-avatar{width:42px;height:42px;flex-basis:42px}
+ .messenger.is-authenticated .chat-list .telegram-chat-row .ik-chat-title strong{font-size:12px}
+}
+@media(prefers-reduced-motion:reduce){.ik-inbox-filters button,.ik-create-menu button,.messenger.is-authenticated .chat-list .ik-chat-row-menu,.messenger.is-authenticated .conversation-history>.chat-message-row .chat-message-tools{transition:none}.messenger.is-authenticated .conversation-history{scroll-behavior:auto}}

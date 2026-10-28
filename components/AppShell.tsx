@@ -1,9 +1,10 @@
 'use client';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { backendReady, createTemporaryAccount, consumeEmailLinkSession, clearSession, currentUser, findProfileByUsername, listChats, listMessages, manageChat, manageMessage, listMessageReactions, setMessageReaction, markChatRead, listProfiles, myProfile, postMessage, reopenChat, sendDirectMedia, sendEmailCode, signOut, startDirectChat, validSession, type ChatMessage, type MessageReaction, type DirectChat, type Profile, type Session } from '@/lib/supabase-rest';
+import { backendReady, createTemporaryAccount, consumeEmailLinkSession, clearSession, currentUser, findProfileByUsername, listChats, listChatPreviews, listMessages, manageChat, manageMessage, listMessageReactions, setMessageReaction, markChatRead, listProfiles, myProfile, postMessage, reopenChat, sendDirectMedia, sendEmailCode, signOut, startDirectChat, validSession, type ChatMessage, type MessageReaction, type DirectChat, type Profile, type Session, type ChatPreview } from '@/lib/supabase-rest';
 
 import ProfilePanel from "@/components/ProfilePanel";
 import ChatMedia from "@/components/ChatMedia";
+import ChatInboxRow from "@/components/ChatInboxRow";
 import StoriesStrip from "@/components/StoriesStrip";
 import GroupPanel from "@/components/GroupPanel";
 import {createGroup,listGroups,type Group} from "@/lib/groups";
@@ -12,7 +13,7 @@ import { REACTION_EMOJIS, type ReactionEmoji, createChannel, imageUrl, listChann
 
 type Tab = 'chats' | 'contacts' | 'channels' | 'profile' | 'settings';
 type Platform = { ios: boolean; standalone: boolean };
-type ChatRow = { chat: DirectChat; other: Profile | null };
+type ChatRow = { chat: DirectChat; other: Profile | null; preview:ChatPreview|null };
 const userFacingError = (error: unknown) => {
   const message=error instanceof Error?error.message:'Неизвестная ошибка';
   if(/email.rate.limit.exceeded|email.*rate.*limit|over_email_send_rate_limit/i.test(message))
@@ -52,6 +53,8 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
   const [editingMessageId,setEditingMessageId]=useState<string|null>(null);
   const [editingMessageBody,setEditingMessageBody]=useState("");
   const [search,setSearch]=useState('');
+  const [chatFilter,setChatFilter]=useState<'all'|'unread'>('all');
+  const [createMenuOpen,setCreateMenuOpen]=useState(false);
   const [lookup,setLookup]=useState(initialUsername);
   const [draft,setDraft]=useState('');
   const [email,setEmail]=useState('');
@@ -65,6 +68,9 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
   const [installPrompt,setInstallPrompt]=useState<(Event & {prompt:()=>Promise<void>;userChoice:Promise<{outcome:string}>})|null>(null);
   const messageEnd=useRef<HTMLDivElement|null>(null);
   const selectedRef=useRef<string|null>(null);
+  const searchInputRef=useRef<HTMLInputElement|null>(null);
+  const draftsRef=useRef<Record<string,string>>({});
+  const composerRef=useRef<HTMLTextAreaElement|null>(null);
 
   useEffect(()=>{selectedRef.current=selected;},[selected]);
   useEffect(()=>{
@@ -78,14 +84,23 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
   },[]);
 
   const refresh=useCallback(async (token:string,id:string,activeChat:string|null)=>{
-    const [chats,allChannels,memberships]=await Promise.all([listChats(token),listChannels(token),listMySubscriptions(token,id)]);
+    const [chats,previews,allChannels,memberships,groupList]=await Promise.all([listChats(token),listChatPreviews(token).catch(()=>[] as ChatPreview[]),listChannels(token),listMySubscriptions(token,id),listGroups(token)]);
     setChannels(allChannels);
-    setGroups(await listGroups(token));
+    setGroups(groupList);
     setSubscriptions(memberships.map(m=>m.channel_id));
     const others=Array.from(new Set(chats.map(c=>c.user_a===id?c.user_b:c.user_a)));
     const profiles=await listProfiles(token,others);
     const byId=new Map(profiles.map(p=>[p.id,p]));
-    setRows(chats.filter(chat=>!chat.hidden_for?.includes(id)).sort((a,b)=>Number(Boolean(b.pinned_for?.includes(id)))-Number(Boolean(a.pinned_for?.includes(id)))).map(chat=>({chat,other:byId.get(chat.user_a===id?chat.user_b:chat.user_a)??null})));
+    const overview=new Map(previews.map(p=>[p.chat_id,p]));
+    setRows(chats.filter(chat=>!chat.hidden_for?.includes(id))
+      .sort((a,b)=>{
+        const pinned=Number(Boolean(b.pinned_for?.includes(id)))-Number(Boolean(a.pinned_for?.includes(id)));
+        if(pinned)return pinned;
+        const aTime=overview.get(a.id)?.last_created_at||a.created_at;
+        const bTime=overview.get(b.id)?.last_created_at||b.created_at;
+        return Date.parse(bTime)-Date.parse(aTime);
+      })
+      .map(chat=>({chat,other:byId.get(chat.user_a===id?chat.user_b:chat.user_a)??null,preview:overview.get(chat.id)??null})));
     if(activeChat && chats.some(chat=>chat.id===activeChat)) {
       const messages=await listMessages(token,activeChat);
       const ordered=messages.reverse();
@@ -121,17 +136,44 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
   useEffect(()=>{
     if(!session||!userId)return;
     let cancelled=false;
+    let inFlight=false;
     const run=async()=>{
-      const valid=await validSession();
-      if(!valid||cancelled){if(!cancelled){setSession(null);setUserId('');setSelected(null);}return;}
-      if(valid.access_token!==session.access_token)setSession(valid);
-      try{await refresh(valid.access_token,userId,selectedRef.current);}catch{ /* retry on next poll */ }
+      if(cancelled||inFlight||document.visibilityState==='hidden')return;
+      inFlight=true;
+      try{
+        const valid=await validSession();
+        if(cancelled)return;
+        if(!valid){
+          setSession(null);setUserId('');setSelected(null);setRows([]);
+          return;
+        }
+        if(valid.access_token!==session.access_token)setSession(valid);
+        await refresh(valid.access_token,userId,selectedRef.current);
+      }catch{ /* transient network failure; retry next tick */ }
+      finally{inFlight=false;}
     };
+    const onVisible=()=>{if(document.visibilityState==='visible')void run();};
     const timer=window.setInterval(()=>void run(),3000);
-    return()=>{cancelled=true;window.clearInterval(timer);};
+    document.addEventListener('visibilitychange',onVisible);
+    return()=>{cancelled=true;window.clearInterval(timer);document.removeEventListener('visibilitychange',onVisible);};
   },[session,userId,refresh]);
 
   useEffect(()=>{messageEnd.current?.scrollIntoView({behavior:'auto'});},[chatMessages.length,selected]);
+  useEffect(()=>{if(selected)setDraft(draftsRef.current[selected]||'');},[selected]);
+  useEffect(()=>{const field=composerRef.current;if(!field)return;field.style.height='auto';field.style.height=Math.min(field.scrollHeight,136)+'px';},[draft,selected]);
+  useEffect(()=>{
+    const keyboard=(event:KeyboardEvent)=>{
+      if((event.ctrlKey||event.metaKey)&&event.key.toLowerCase()==='k'){
+        event.preventDefault();setTab('chats');setCreateMenuOpen(false);
+        searchInputRef.current?.focus();searchInputRef.current?.select();
+      }
+      if(event.key==='Escape'&&document.activeElement===searchInputRef.current){
+        setSearch('');searchInputRef.current?.blur();
+      }
+    };
+    window.addEventListener('keydown',keyboard);
+    return()=>window.removeEventListener('keydown',keyboard);
+  },[]);
 
   async function requestSignInLink(e:React.FormEvent){e.preventDefault();setError('');setBusy(true);try{await sendEmailCode(email.trim().toLowerCase());setEmailSent(true);setNotice('Письмо отправлено. Нажми Sign in («Войти») в письме от Supabase Auth.');}catch(e){setError(userFacingError(e));}finally{setBusy(false);}}
   async function beginTemporaryAccount(){
@@ -207,9 +249,24 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
   }
   function switchTab(next:Tab){
     setSelectedGroup(null);setCreatingGroup(false);
-    setTab(next);setSelected(null);setSelectedChannel(null);setProfileTarget(next==="profile"&&userId?userId:null);setShowRecommendations(false);setError("");
+    setCreateMenuOpen(false);setTab(next);setSelected(null);setSelectedChannel(null);setProfileTarget(next==="profile"&&userId?userId:null);setShowRecommendations(false);setError("");
   }
-  async function sendMessage(e:React.FormEvent){e.preventDefault();if(!session||!selected||!userId||sending)return;const body=draft.trim();if(!body||body.length>4000)return;setSending(true);setError('');try{await postMessage(session.access_token,selected,userId,body);setDraft('');setChatMessages((await listMessages(session.access_token,selected)).reverse());}catch(e){setError(userFacingError(e));}finally{setSending(false);}}
+  async function sendMessage(e:React.FormEvent){
+    e.preventDefault();if(!session||!selected||!userId||sending)return;
+    const chatId=selected,body=draft.trim();
+    if(!body||body.length>4000)return;
+    setSending(true);setError('');
+    try{
+      await postMessage(session.access_token,chatId,userId,body);
+      delete draftsRef.current[chatId];
+      if(selectedRef.current===chatId){
+        setDraft('');
+        try{setChatMessages((await listMessages(session.access_token,chatId)).reverse());}
+        catch{/* The next sync will refresh sent messages without resending. */}
+      }
+    }catch(e){setError(userFacingError(e));}
+    finally{setSending(false);}
+  }
   async function chatAction(chatId:string,action:"hide"|"pin"|"unpin"|"delete_everyone"){
     if(!session||!userId)return;
     if(action==="delete_everyone"&&!window.confirm("Удалить диалог и все сообщения у обоих участников?"))return;
@@ -248,7 +305,8 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
   async function install(){if(installPrompt){await installPrompt.prompt();await installPrompt.userChoice;setInstallPrompt(null);}else setInstallHelp(true);}
   const storyContacts=useMemo(()=>rows.map(row=>row.other).filter((p):p is Profile=>Boolean(p)),[rows]);
   const active=rows.find(r=>r.chat.id===selected);
-  const filtered=rows.filter(r=>!search.trim()||`${r.other?.display_name??''} ${r.other?.username??''}`.toLowerCase().includes(search.trim().toLowerCase()));
+  const filtered=rows.filter(r=>(chatFilter==='all'||Number(r.preview?.unread_count||0)>0) && (!search.trim()||`${r.other?.display_name??''} ${r.other?.username??''} ${r.preview?.last_body??''}`.toLowerCase().includes(search.trim().toLowerCase())));
+  const unreadTotal=rows.reduce((sum,row)=>sum+Number(row.preview?.unread_count||0),0);
   const loggedIn=Boolean(session&&userId);
   const detailOpen=Boolean(!loggedIn||selected||profileTarget||selectedChannel||selectedGroup);
   const myChannels=channels.filter(ch=>ch.owner_id===userId||subscriptions.includes(ch.id));
@@ -258,22 +316,32 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
   return <div className={`messenger ${loggedIn?"is-authenticated":"is-guest"}`} data-version="windows-desktop-v3">
     <aside className={`chats-pane ${detailOpen?'has-conversation':''}`}>
       <div className="pane-heading"><div className="brand-label"><img className="brand-mini" src="/branding/ikonosfera-wordmark.svg" alt="IKONOSFERA" width={132} height={70}/></div><button type="button" className="release-pill" onClick={()=>profile?.id&&goToProfile(profile.id)} disabled={!profile}>{profile ? "@"+profile.username : "ALPHA"}</button></div>
-      <div className="pane-toolbar"><h1>{tab==='chats'?'Чаты':tab==='contacts'?'Контакты':tab==='channels'?'Каналы':tab==='profile'?'Профиль':'Настройки'}</h1><button type="button" className="icon-button" title="Создать чат" aria-label="Новый чат" onClick={()=>{if(tab==='channels'){setChannelCreating(true);}else{setCreatingGroup(v=>!v);setTab('chats');}}} disabled={!loggedIn}>＋</button></div>
-      {tab==='chats'&&<div className="pane-search"><span aria-hidden="true">⌕</span><input aria-label="Поиск по чатам" placeholder="Поиск" value={search} onChange={e=>setSearch(e.target.value)} disabled={!loggedIn}/></div>}
+      <div className="pane-toolbar"><h1>{tab==='chats'?'Чаты':tab==='contacts'?'Контакты':tab==='channels'?'Каналы':tab==='profile'?'Профиль':'Настройки'}</h1><button type="button" className="icon-button" title="Создать чат" aria-label="Новый чат" onClick={()=>{if(tab==='channels'){setChannelCreating(v=>!v);}else{setTab('chats');setCreateMenuOpen(v=>!v);}}} disabled={!loggedIn}>＋</button></div>
+      {tab==='chats'&&<div className="pane-search"><span aria-hidden="true">⌕</span><input ref={searchInputRef} aria-label="Поиск по чатам" placeholder="Поиск по чатам и сообщениям" value={search} onChange={e=>setSearch(e.target.value)} disabled={!loggedIn}/></div>}
       {tab==='chats'&&loggedIn&&session&&<StoriesStrip token={session.access_token} userId={userId} contacts={storyContacts} ownProfile={profile}/>}
-      {tab==='chats'&&loggedIn&&<div className="group-create-area">
-        <button type="button" className="secondary-action" onClick={()=>setCreatingGroup(v=>!v)}>{creatingGroup?'Отмена':'＋ Создать группу'}</button>
-        <button type="button" className="secondary-action" onClick={()=>{setTab('channels');setChannelCreating(true);setCreatingGroup(false);}}>＋ Создать канал</button>
+      {tab==='chats'&&loggedIn&&<div className="ik-chat-actions">
+        {createMenuOpen&&<div className="ik-create-menu" role="group" aria-label="Новая беседа">
+          <button type="button" onClick={()=>{setCreateMenuOpen(false);switchTab('contacts');}}>✉ <span>Личное сообщение</span></button>
+          <button type="button" onClick={()=>{setCreatingGroup(true);setCreateMenuOpen(false);}}>♧ <span>Новая группа</span></button>
+          <button type="button" onClick={()=>{setTab('channels');setChannelCreating(true);setCreatingGroup(false);setCreateMenuOpen(false);}}>＃ <span>Новый канал</span></button>
+        </div>}
         {creatingGroup&&<form className="group-create-form" onSubmit={makeGroup}>
+          <div className="ik-create-title"><strong>Новая группа</strong><button type="button" onClick={()=>setCreatingGroup(false)} aria-label="Отменить создание группы">✕</button></div>
           <label>Название группы<input required maxLength={80} value={groupTitle} onChange={e=>setGroupTitle(e.target.value)} placeholder="Наша компания"/></label>
           <strong>Добавить из контактов</strong>
-          <div className="group-contact-list">{storyContacts.length?storyContacts.map(person=><label key={person.id} className="group-contact-choice"><input type="checkbox" checked={groupSelection.includes(person.id)} onChange={e=>setGroupSelection(prev=>e.target.checked?[...prev,person.id]:prev.filter(id=>id!==person.id))}/><span>{person.display_name||person.username} <small>@{person.username}</small></span></label>):<p>Контактов пока нет. Начни личную переписку, чтобы добавить человека в группу.</p>}</div>
+          <div className="group-contact-list">{storyContacts.length?storyContacts.map(person=><label key={person.id} className="group-contact-choice"><input type="checkbox" checked={groupSelection.includes(person.id)} onChange={e=>setGroupSelection(prev=>e.target.checked?[...prev,person.id]:prev.filter(id=>id!==person.id))}/><span>{person.display_name||person.username} <small>@{person.username}</small></span></label>):<p>Контактов пока нет. Начни переписку, чтобы добавить человека в группу.</p>}</div>
           <button type="submit" className="accent-button" disabled={busy||!groupTitle.trim()||!groupSelection.length}>Создать группу ({groupSelection.length+1})</button>
         </form>}
       </div>}
+      {tab==='chats'&&loggedIn&&<div className="ik-inbox-filters" role="group" aria-label="Фильтр переписок">
+        <button type="button" className={chatFilter==='all'?'selected':''} aria-pressed={chatFilter==='all'} onClick={()=>setChatFilter('all')}>Все</button>
+        <button type="button" className={chatFilter==='unread'?'selected':''} aria-pressed={chatFilter==='unread'} onClick={()=>setChatFilter('unread')}>Непрочитанные{unreadTotal>0&&<span className="ik-filter-count">{unreadTotal>99?'99+':unreadTotal}</span>}</button>
+      </div>}
       <div className="chat-list">
-      {tab==='chats'&&groups.map(g=><button type="button" key={g.id} className={'chat-item group-chat-row'+(selectedGroup?.id===g.id?' active':'')} onClick={()=>{setSelectedGroup(g);setSelected(null);setSelectedChannel(null);setProfileTarget(null);}}><span className="contact-avatar">♧</span><span className="contact-info"><strong>{g.title}</strong><small>Групповой чат</small></span></button>)}
-      {tab==='chats'&&(loggedIn?filtered.length?filtered.map(row=><div key={row.chat.id} className="chat-row-wrap"><button type="button" className={`chat-item ${selected===row.chat.id?'active':''}`} onClick={()=>{setSelected(row.chat.id);setSelectedGroup(null);setSelectedChannel(null);setProfileTarget(null);setChatMessages([]);setError('');}}><span className="contact-avatar">{imageUrl(row.other?.avatar_path)?<img className="avatar-image" src={imageUrl(row.other?.avatar_path)||""} alt=""/>:(row.other?.display_name||'?').slice(0,1).toUpperCase()}</span><span className="contact-info"><strong>{row.other?.display_name??'Собеседник'}</strong><small>@{row.other?.username??'unknown'}</small></span><span className="chat-item-dot"/></button><details className="chat-row-menu"><summary aria-label="Действия с чатом" title="Управление чатом">···</summary><div className="chat-row-actions"><button type="button" title="Закрепить или открепить" onClick={()=>void chatAction(row.chat.id,row.chat.pinned_for?.includes(userId)?"unpin":"pin")}>{row.chat.pinned_for?.includes(userId)?"📌":"♧"}</button><button type="button" title="Удалить чат для себя" onClick={()=>void chatAction(row.chat.id,"hide")}>Скрыть</button><button type="button" title="Удалить чат для обоих" onClick={()=>void chatAction(row.chat.id,"delete_everyone")}>Удалить всем</button></div></details></div>):<div className="list-empty"><div className="empty-icon">✉</div><strong>Нет переписок</strong><p>Нажми +, чтобы найти человека по юзернейму и начать общение.</p><button className="secondary-action" onClick={()=>setTab('contacts')}>Новый чат</button></div>:<div className="list-empty"><div className="empty-icon">✉</div><strong>Нет переписок</strong><p>{backendReady?'Войди, чтобы читать сообщения.':'Для переписки осталось подключить сервер.'}</p></div>)}
+      {tab==='chats'&&chatFilter==='all'&&groups.filter(g=>!search.trim()||g.title.toLowerCase().includes(search.trim().toLowerCase())).map(g=><button type="button" key={g.id} className={'chat-item group-chat-row'+(selectedGroup?.id===g.id?' active':'')} onClick={()=>{setSelectedGroup(g);setSelected(null);setSelectedChannel(null);setProfileTarget(null);}}><span className="contact-avatar ik-group-avatar">♧</span><span className="contact-info"><strong>{g.title}</strong><small>Групповой чат</small></span></button>)}
+      {tab==='chats'&&(loggedIn?filtered.length?filtered.map(row=><ChatInboxRow key={row.chat.id} row={row} currentUserId={userId} active={selected===row.chat.id}
+        onOpen={()=>{setSelected(row.chat.id);setSelectedGroup(null);setSelectedChannel(null);setProfileTarget(null);setChatMessages([]);setError('');}}
+        onAction={action=>void chatAction(row.chat.id,action)}/>):groups.length&&chatFilter==='all'?null:<div className="list-empty ik-chat-empty"><div className="empty-icon">✉</div><strong>{chatFilter==='unread'?'Всё прочитано':'Нет переписок'}</strong><p>{chatFilter==='unread'?'Новые сообщения появятся здесь.':'Найди человека по юзернейму или создай группу.'}</p>{chatFilter==='all'&&<button className="secondary-action" onClick={()=>switchTab('contacts')}>Новый чат</button>}</div>:<div className="list-empty"><div className="empty-icon">✉</div><strong>Нет переписок</strong><p>{backendReady?'Войди, чтобы читать сообщения.':'Для переписки осталось подключить сервер.'}</p></div>)}
       {tab==='contacts'&&<div className="contact-search-panel"><h2>Поиск пользователя</h2><p>Открой профиль по юзернейму. Диалог создастся только после нажатия «Написать сообщение».</p><form onSubmit={e=>{e.preventDefault();void searchPerson(lookup.trim());}}><label htmlFor="lookup">Юзернейм</label><input id="lookup" placeholder="например, friend_01" value={lookup} onChange={e=>setLookup(e.target.value)} minLength={3} maxLength={25} disabled={!loggedIn}/><button className="accent-button" disabled={!loggedIn||busy||!lookup.trim()}>{busy?'Ищем…':'Найти профиль'}</button></form></div>}
 
       {tab==='channels'&&<div className="channel-browser">
@@ -308,7 +376,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
  {REACTION_EMOJIS.filter(emoji=>messageReactions.some(r=>r.message_id===message.id&&r.emoji===emoji)).map(emoji=><button key={emoji} type="button" className={"reaction-pill"+(messageReactions.some(r=>r.message_id===message.id&&r.user_id===userId&&r.emoji===emoji)?" mine":"")} onClick={()=>void reactToMessage(message.id,emoji)} disabled={sending}>{emoji} <span>{messageReactions.filter(r=>r.message_id===message.id&&r.emoji===emoji).length}</span></button>)}
  <button type="button" className="reaction-add" aria-label="Добавить реакцию" onClick={()=>setMessageReactionPicker(messageReactionPicker===message.id?null:message.id)}>☺ +</button>
  {messageReactionPicker===message.id&&<div className="reaction-picker">{REACTION_EMOJIS.map(emoji=><button type="button" key={emoji} disabled={sending} onClick={()=>void reactToMessage(message.id,emoji)} aria-label={"Реакция "+emoji}>{emoji}</button>)}</div>}
- </div></div></div>)}<div ref={messageEnd}/></div><form className="composer" onSubmit={sendMessage}><label className="chat-attach-button" title="Прикрепить фото, видео, музыку или файл" aria-label="Прикрепить файл">＋<input type="file" accept="image/*,video/mp4,video/webm,video/quicktime,audio/mpeg,audio/mp4,audio/wav,audio/ogg,.pdf,.txt,.zip,.doc,.docx,.xls,.xlsx" disabled={sending} onChange={e=>{void sendAttachment(e.target.files?.[0]);e.target.value="";}}/></label><input aria-label="Написать сообщение" placeholder="Сообщение…" value={draft} onChange={e=>setDraft(e.target.value)} maxLength={4000}/><button type="submit" className="send-button" disabled={!draft.trim()||sending} aria-label="Отправить сообщение">➤</button></form></>:<div className="conversation-placeholder">{!loggedIn&&<div className="guest-brand"><img src="/branding/ikonosfera-wordmark.svg" alt="IKONOSFERA" width={250} height={108}/><span>© BY TENDO888</span></div>}{loggedIn&&<div className="welcome-mark" aria-hidden="true">IKONOSFERA<span> / DESKTOP</span></div>}<h2>{loggedIn?'Твои разговоры начинаются здесь':emailSent?'Остался один шаг':'Больше чем просто мессенджер'}</h2><p>{loggedIn?'Выбери переписку слева или найди человека по юзернейму.':emailSent?'Открой письмо и перейди по ссылке Sign in.':'IKONOSFERA — современный мессенджер для Android, iPhone, macOS и Windows. Работает без VPN и ограничений!'}</p>{loggedIn&&<div className="desktop-welcome-actions"><button type="button" className="accent-button" onClick={()=>switchTab('contacts')}>＋ Найти человека</button><button type="button" className="secondary-action" onClick={()=>switchTab('channels')}>Открыть каналы</button></div>}{!loggedIn&&(backendReady?<div className="auth-panel"><h3>{emailSent?'Проверь почту':'Войти или зарегистрироваться'}</h3>{!emailSent?<form onSubmit={requestSignInLink}><label htmlFor="authEmail">Электронная почта</label><input id="authEmail" type="email" autoComplete="email" value={email} onChange={e=>setEmail(e.target.value)} placeholder="you@example.com" required/><button className="accent-button" disabled={busy}>{busy?'Отправляем…':'Получить ссылку для входа'}</button></form>:<div className="email-signin-result"><div className="email-signin-guide" role="status"><strong>Письмо отправлено на {email}</strong><p>Открой почту и найди письмо от <b>Supabase Auth</b> с темой <b>Your sign-in link</b>.</p><p>Нажми синюю ссылку <b>Sign in</b> («Войти»). После перехода IKONOSFERA откроется с твоим аккаунтом.</p><small>Если письма нет, проверь «Спам». Ссылка одноразовая; вводить код не требуется.</small></div><button type="button" className="text-button" onClick={()=>{setEmailSent(false);setError('');}}>Использовать другой адрес</button></div>}<div className="temporary-login"><button type="button" className="secondary-action" onClick={()=>void beginTemporaryAccount()} disabled={busy}>Попробовать без почты — тестовый аккаунт</button><p>Бесплатный тестовый вход. Для работы требуется включить Anonymous Sign-Ins в Supabase. Не используй реальные личные данные.</p></div></div>:<div className="setup-notice"><strong>Подключаем сообщения</strong><p>Сервер переписки ещё не настроен. Как только будет подключена база, здесь появится вход.</p></div>)}</div>}
+ </div></div></div>)}<div ref={messageEnd}/></div><form className="composer" onSubmit={sendMessage}><label className="chat-attach-button" title="Прикрепить фото, видео, музыку или файл" aria-label="Прикрепить файл">＋<input type="file" accept="image/*,video/mp4,video/webm,video/quicktime,audio/mpeg,audio/mp4,audio/wav,audio/ogg,.pdf,.txt,.zip,.doc,.docx,.xls,.xlsx" disabled={sending} onChange={e=>{void sendAttachment(e.target.files?.[0]);e.target.value="";}}/></label><textarea ref={composerRef} aria-label="Написать сообщение" placeholder="Сообщение…" rows={1} value={draft} onChange={e=>{setDraft(e.target.value);if(selected)draftsRef.current[selected]=e.target.value;}} onInput={e=>{const element=e.currentTarget;element.style.height='auto';element.style.height=Math.min(element.scrollHeight,136)+'px';}} onKeyDown={e=>{if(e.key==='Enter'&&!e.shiftKey&&!e.nativeEvent.isComposing){e.preventDefault();if(draft.trim()&&!sending)e.currentTarget.form?.requestSubmit();}}} maxLength={4000}/><button type="submit" className="send-button" disabled={!draft.trim()||sending} aria-label="Отправить сообщение">➤</button></form></>:<div className="conversation-placeholder">{!loggedIn&&<div className="guest-brand"><img src="/branding/ikonosfera-wordmark.svg" alt="IKONOSFERA" width={250} height={108}/><span>© BY TENDO888</span></div>}{loggedIn&&<div className="welcome-mark" aria-hidden="true">IKONOSFERA<span> / DESKTOP</span></div>}<h2>{loggedIn?'Твои разговоры начинаются здесь':emailSent?'Остался один шаг':'Больше чем просто мессенджер'}</h2><p>{loggedIn?'Выбери переписку слева или найди человека по юзернейму.':emailSent?'Открой письмо и перейди по ссылке Sign in.':'IKONOSFERA — современный мессенджер для Android, iPhone, macOS и Windows. Работает без VPN и ограничений!'}</p>{loggedIn&&<div className="desktop-welcome-actions"><button type="button" className="accent-button" onClick={()=>switchTab('contacts')}>＋ Найти человека</button><button type="button" className="secondary-action" onClick={()=>switchTab('channels')}>Открыть каналы</button></div>}{!loggedIn&&(backendReady?<div className="auth-panel"><h3>{emailSent?'Проверь почту':'Войти или зарегистрироваться'}</h3>{!emailSent?<form onSubmit={requestSignInLink}><label htmlFor="authEmail">Электронная почта</label><input id="authEmail" type="email" autoComplete="email" value={email} onChange={e=>setEmail(e.target.value)} placeholder="you@example.com" required/><button className="accent-button" disabled={busy}>{busy?'Отправляем…':'Получить ссылку для входа'}</button></form>:<div className="email-signin-result"><div className="email-signin-guide" role="status"><strong>Письмо отправлено на {email}</strong><p>Открой почту и найди письмо от <b>Supabase Auth</b> с темой <b>Your sign-in link</b>.</p><p>Нажми синюю ссылку <b>Sign in</b> («Войти»). После перехода IKONOSFERA откроется с твоим аккаунтом.</p><small>Если письма нет, проверь «Спам». Ссылка одноразовая; вводить код не требуется.</small></div><button type="button" className="text-button" onClick={()=>{setEmailSent(false);setError('');}}>Использовать другой адрес</button></div>}<div className="temporary-login"><button type="button" className="secondary-action" onClick={()=>void beginTemporaryAccount()} disabled={busy}>Попробовать без почты — тестовый аккаунт</button><p>Бесплатный тестовый вход. Для работы требуется включить Anonymous Sign-Ins в Supabase. Не используй реальные личные данные.</p></div></div>:<div className="setup-notice"><strong>Подключаем сообщения</strong><p>Сервер переписки ещё не настроен. Как только будет подключена база, здесь появится вход.</p></div>)}</div>}
     </main>
     {(error||notice)&&<div role="status" className={`toast ${error?'toast-error':''}`}><span>{error||notice}</span><button aria-label="Закрыть уведомление" onClick={()=>{setError('');setNotice('');}}>×</button></div>}
     {installHelp&&<div className="install-backdrop" role="dialog" aria-modal="true" aria-label="Установка приложения"><div className="install-card"><h2>Установить IKONOSFERA</h2><p>{platform.ios?'Открой страницу в Safari → «Поделиться» → «На экран Домой» → «Добавить».':'В Chrome на Android открой меню ⋮ и выбери «Установить приложение» или «Добавить на главный экран».'}</p><button className="accent-button" onClick={()=>setInstallHelp(false)}>Понятно</button></div></div>}

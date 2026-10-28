@@ -97,6 +97,19 @@ export async function startDirectChat(token: string, username: string) {
 export async function listChats(token: string) {
   return http<DirectChat[]>('/rest/v1/rpc/list_active_chats',{token});
 }
+/** Single RLS-protected inbox query for last message previews and unread badges. */
+export type ChatPreview = {
+ chat_id:string;
+ last_body:string|null;
+ last_created_at:string|null;
+ last_media_type:string|null;
+ last_sender_id:string|null;
+ unread_count:number;
+};
+export async function listChatPreviews(token:string):Promise<ChatPreview[]>{
+ return http<ChatPreview[]>('/rest/v1/rpc/list_chat_previews',{token});
+}
+
 export async function listProfiles(token: string, ids: string[]) {
   if (!ids.length) return [];
   return http<Profile[]>(`/rest/v1/profiles?select=id,username,display_name,avatar_path,cover_path,bio&id=in.(${ids.map(encodeURIComponent).join(',')})`,{token});
