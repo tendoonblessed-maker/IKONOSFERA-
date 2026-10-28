@@ -245,3 +245,12 @@ test('Chat dates and accessible conversation actions mimic familiar messenger wo
  assert.ok(css.includes('.ik-conversation-more-menu'));
  assert.ok(css.includes('prefers-reduced-motion:reduce'));
 });
+
+test('featured channels are resolved for visitors and public profile preview hides editing',()=>{
+ const profile=load('components/ProfilePanel.tsx');
+ assert.ok(profile.includes('mine?listOwnedChannels(token,targetId):listChannels(token)'));
+ assert.ok(profile.includes('setFeaturedChannel(owned.find(ch=>ch.id===p?.featured_channel_id)??null)'));
+ assert.ok(profile.includes('visitorPreview'));
+ assert.ok(profile.includes('Как видят другие'));
+ assert.ok(profile.includes('!viewingAsVisitor&&<label className="profile-avatar-camera"'));
+});
