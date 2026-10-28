@@ -2,6 +2,7 @@
 import {useCallback,useEffect,useRef,useState} from 'react';
 import {addStory,getContactsStories,imageUrl,uploadPhoto,type Story} from '@/lib/social';
 import type {Profile} from '@/lib/supabase-rest';
+import {useStoryProgress} from '@/lib/use-story-progress';
 
 type Person={id:string;name:string;avatar:string|null;stories:Story[]};
 type Props={token:string;userId:string;contacts:Profile[];ownProfile:Profile|null};
@@ -12,6 +13,8 @@ export default function StoriesStrip({token,userId,contacts,ownProfile}:Props){
  const [error,setError]=useState('');
  const [paused,setPaused]=useState(false);
  const inputRef=useRef<HTMLInputElement>(null);
+ const activeStoryId=active?people[active.person]?.stories[active.story]?.id??null:null;
+ const progressRef=useStoryProgress(activeStoryId,()=>next(),paused);
  const load=useCallback(async()=>{
   const ids=[userId,...contacts.map(x=>x.id)];
   const stories=await getContactsStories(token,ids);
@@ -24,11 +27,7 @@ export default function StoriesStrip({token,userId,contacts,ownProfile}:Props){
   setPeople(participants);
  },[token,userId,contacts,ownProfile]);
  useEffect(()=>{void load().catch(()=>{});},[load]);
- useEffect(()=>{if(!active||paused)return;const timer=window.setTimeout(()=>{
-   setActive(prev=>{if(!prev)return null;const group=people[prev.person];if(!group)return null;
-    if(prev.story+1<group.stories.length)return {...prev,story:prev.story+1};
-    const next=people.findIndex((p,i)=>i>prev.person&&p.stories.length>0);return next<0?null:{person:next,story:0};});
-  },6000);return()=>clearTimeout(timer);},[active,paused,people]);
+
  useEffect(()=>{if(!active)return;const onKey=(e:KeyboardEvent)=>{if(e.key==='Escape')setActive(null);if(e.key==='ArrowRight')next();if(e.key==='ArrowLeft')prev();};window.addEventListener('keydown',onKey);return()=>window.removeEventListener('keydown',onKey);},[active,people]);
  useEffect(()=>{if(!active)return;const old=document.body.style.overflow;document.body.style.overflow='hidden';return()=>{document.body.style.overflow=old;};},[active]);
  function next(){setActive(prev=>{if(!prev)return null;const group=people[prev.person];if(prev.story+1<group.stories.length)return {...prev,story:prev.story+1};const i=people.findIndex((p,j)=>j>prev.person&&p.stories.length);return i<0?null:{person:i,story:0};});}
@@ -52,7 +51,7 @@ export default function StoriesStrip({token,userId,contacts,ownProfile}:Props){
   {story&&person&&<div className="story-viewer story-viewer-telegram" role="dialog" aria-modal="true" aria-label={'Истории: '+person.name} onPointerDown={()=>setPaused(true)} onPointerUp={()=>setPaused(false)} onPointerCancel={()=>setPaused(false)}>
    <div className="story-viewer-stage">
     <img className="story-viewer-image" src={imageUrl(story.image_path)||''} alt={story.caption||'История'}/>
-    <div className="story-progress">{person.stories.map((s,i)=><span className="story-progress-track" key={s.id}><span className={i<active!.story?'done':i===active!.story?'playing':''} style={i===active!.story&&paused?{animationPlayState:'paused'}:undefined}/></span>)}</div>
+    <div className="story-progress">{person.stories.map((s,i)=><span className="story-progress-track" key={s.id}><span className={i<active!.story?'done':i===active!.story?'playing story-progress-fill':''} ref={i===active!.story?progressRef:undefined}/></span>)}</div>
     <header className="story-viewer-header"><span className="story-viewer-avatar">{imageUrl(person.avatar)?<img src={imageUrl(person.avatar)||''} alt=""/>:person.name.slice(0,1)}</span><span className="story-viewer-author"><strong>{person.name}</strong><small>{new Date(story.created_at).toLocaleString('ru-RU',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'})}</small></span><button type="button" className="story-viewer-close" onClick={()=>setActive(null)} aria-label="Закрыть"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button></header>
     <button type="button" className="story-viewer-prev" aria-label="Предыдущая" onClick={prev}/><button type="button" className="story-viewer-next" aria-label="Следующая" onClick={next}/>
     {story.caption&&<div className="story-viewer-caption">{story.caption}</div>}
