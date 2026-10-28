@@ -4,27 +4,32 @@ import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { changeProfile } from "@/lib/supabase-rest";
 import {
  addProfilePhoto, addStory, deleteProfilePhoto, deleteStory, getFullProfile, getProfilePhotos,
- getStories, imageUrl, removeUpload, updateFullProfile, uploadPhoto,
- type FullProfile, type ProfilePhoto, type Story
+ getStories, imageUrl, listOwnedChannels, removeUpload, updateFullProfile, uploadPhoto,
+ type Channel, type FullProfile, type ProfilePhoto, type Story
 } from "@/lib/social";
 
 const readableError=(e:unknown)=>e instanceof Error?e.message:"Что-то пошло не так";
-type Props={token:string;userId:string;targetId:string;onBack:()=>void;onOwnProfileChange:()=>void;onMessage:(username:string)=>void};
+type Props={token:string;userId:string;targetId:string;onBack:()=>void;onOwnProfileChange:()=>void;onMessage:(username:string)=>void;onOpenChannel:(channel:Channel)=>void};
 
-export default function ProfilePanel({token,userId,targetId,onBack,onOwnProfileChange,onMessage}:Props){
+export default function ProfilePanel({token,userId,targetId,onBack,onOwnProfileChange,onMessage,onOpenChannel}:Props){
  const mine=targetId===userId;
  const [profile,setProfile]=useState<FullProfile|null>(null);
  const [photos,setPhotos]=useState<ProfilePhoto[]>([]);
  const [stories,setStories]=useState<Story[]>([]);
+ const [ownedChannels,setOwnedChannels]=useState<Channel[]>([]);
+ const [featuredChannel,setFeaturedChannel]=useState<Channel|null>(null);
+ const [chosenChannelId,setChosenChannelId]=useState<string>("");
  const [name,setName]=useState("");const [username,setUsername]=useState("");const [bio,setBio]=useState("");
  const [editing,setEditing]=useState(false);const [busy,setBusy]=useState(false);
  const [error,setError]=useState("");const [notice,setNotice]=useState("");
  const [viewer,setViewer]=useState<{url:string;caption:string}|null>(null);
  const reload=useCallback(async()=>{
-  const [p,gallery,active]=await Promise.all([
-   getFullProfile(token,targetId),getProfilePhotos(token,targetId),getStories(token,targetId)
+  const [p,gallery,active,owned]=await Promise.all([
+   getFullProfile(token,targetId),getProfilePhotos(token,targetId),getStories(token,targetId),listOwnedChannels(token,targetId)
   ]);
-  setProfile(p);setPhotos(gallery);setStories(active);
+  setProfile(p);setPhotos(gallery);setStories(active);setOwnedChannels(owned);
+  setFeaturedChannel(owned.find(ch=>ch.id===p?.featured_channel_id)??null);
+  setChosenChannelId(p?.featured_channel_id??"");
   setName(p?.display_name||"");setUsername(p?.username||"");setBio(p?.bio||"");
  },[token,targetId]);
  useEffect(()=>{let mounted=true;void reload().catch(e=>{if(mounted)setError(readableError(e));});return()=>{mounted=false;};},[reload]);
@@ -52,7 +57,7 @@ export default function ProfilePanel({token,userId,targetId,onBack,onOwnProfileC
   e.preventDefault();if(!profile||!mine)return;
   await run(async()=>{
    await changeProfile(token,userId,username.trim().toLowerCase().replace(/^@/,""),name.trim());
-   await updateFullProfile(token,userId,{bio:bio.trim()});
+   await updateFullProfile(token,userId,{bio:bio.trim(),featured_channel_id:chosenChannelId||null});
    onOwnProfileChange();setEditing(false);setNotice("Профиль обновлён.");
   });
  }
@@ -87,9 +92,24 @@ export default function ProfilePanel({token,userId,targetId,onBack,onOwnProfileC
      <label>Имя<input value={name} onChange={e=>setName(e.target.value)} maxLength={60} required/></label>
      <label>Юзернейм<input value={username} onChange={e=>setUsername(e.target.value)} minLength={3} maxLength={24} pattern="[a-z0-9_]{3,24}" required/></label>
      <label>О себе<textarea value={bio} onChange={e=>setBio(e.target.value)} maxLength={160} rows={3} placeholder="Расскажи немного о себе"/></label>
+     <label>Канал в профиле
+       <select value={chosenChannelId} onChange={e=>setChosenChannelId(e.target.value)}>
+         <option value="">Не показывать канал</option>
+         {ownedChannels.map(ch=><option key={ch.id} value={ch.id}>{ch.title} (@{ch.slug})</option>)}
+       </select>
+       <small>Можно закрепить один из каналов, которые ты создал. Его увидят посетители профиля.</small>
+     </label>
      <button className="accent-button" disabled={busy} type="submit">{busy?"Сохраняем…":"Сохранить изменения"}</button>
      <div className="profile-delete-actions">{profile?.avatar_path&&<button type="button" onClick={()=>void clearImage("avatar")} disabled={busy}>Удалить аватар</button>}{profile?.cover_path&&<button type="button" onClick={()=>void clearImage("cover")} disabled={busy}>Удалить обложку</button>}</div>
     </form>}
+    {(featuredChannel||mine)&&<div className="profile-content-section profile-featured-section">
+      <div className="profile-section-title"><div><h2>Мой канал</h2><p>Закреплён в профиле</p></div>
+       {mine&&!editing&&<button type="button" className="profile-action" onClick={()=>setEditing(true)}>Изменить</button>}</div>
+      {featuredChannel?<button type="button" className="profile-featured-channel" onClick={()=>onOpenChannel(featuredChannel)}>
+        <span className="profile-featured-icon">#</span><span className="profile-featured-details"><strong>{featuredChannel.title}</strong><small>@{featuredChannel.slug}</small>
+        {featuredChannel.description&&<span>{featuredChannel.description}</span>}</span><span className="profile-featured-arrow">›</span>
+      </button>:<p className="profile-empty">Здесь можно закрепить свой канал. Открой «Изм.» и выбери канал в настройках профиля.</p>}
+    </div>}
     <div className="profile-content-section">
      <div className="profile-section-title"><div><h2>Истории</h2><p>Доступны 24 часа</p></div>
        {mine&&<label className="profile-action">+ История<input type="file" aria-label="Добавить историю" accept="image/png,image/jpeg,image/webp" disabled={busy} onChange={e=>{void chooseImage(e.target.files?.[0],"story");e.target.value="";}}/></label>}</div>
