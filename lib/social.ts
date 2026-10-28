@@ -61,6 +61,12 @@ export async function deleteProfilePhoto(token:string,id:string):Promise<void>{
 export async function getStories(token:string,userId:string):Promise<Story[]>{
   return api<Story[]>("/rest/v1/stories?select=*&user_id=eq."+encodeURIComponent(userId)+"&expires_at=gt."+encodeURIComponent(new Date().toISOString())+"&order=created_at.desc&limit=40",token);
 }
+export async function getContactsStories(token:string,userIds:string[]):Promise<Story[]>{
+ if(!userIds.length)return [];
+ const ids=Array.from(new Set(userIds)).filter(id=>/^[0-9a-f-]{36}$/i.test(id)).slice(0,100);
+ if(!ids.length)return [];
+ return api<Story[]>("/rest/v1/stories?select=*&user_id=in.("+ids.map(encodeURIComponent).join(",")+")&expires_at=gt."+encodeURIComponent(new Date().toISOString())+"&order=created_at.desc&limit=200",token);
+}
 export async function addStory(token:string,userId:string,image_path:string,caption:string):Promise<Story>{
   const rows=await api<Story[]>("/rest/v1/stories?select=*",token,"POST",{user_id:userId,image_path,caption:caption.slice(0,240)});
   if(!rows[0])throw Error("История не опубликована");return rows[0];
