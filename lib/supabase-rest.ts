@@ -21,6 +21,8 @@ async function http<T>(path: string, options: { method?: string; token?: string;
     headers: headers(options.token, options.extraHeaders),
     body: options.body === undefined ? undefined : JSON.stringify(options.body),
     cache: 'no-store',
+    // Fail visibly instead of showing a perpetual spinner during network stalls.
+    signal: AbortSignal.timeout(18000),
   });
   const raw = await response.text();
   let value: unknown;
@@ -165,15 +167,37 @@ export async function sendDirectMedia(token:string,chatId:string,userId:string,f
   throw e;
  }
 }
+// Signed URLs remain private, short-lived and in memory only. Sharing one
+// in-flight signing request prevents dozens of requests for the same image.
+const signedMediaCache=new Map<string,{promise:Promise<string>;validUntil:number}>();
+const SIGNED_URL_CACHE_MS=15*60*1000;
+const SIGNED_URL_CACHE_LIMIT=120;
 export async function getDirectMediaUrl(token:string,path:string):Promise<string>{
- const res=await fetch(apiUrl+"/storage/v1/object/sign/ikonosfera-direct-media/"+path,{
-  method:"POST",headers:{apikey:anonKey,Authorization:"Bearer "+token,"Content-Type":"application/json"},
-  body:JSON.stringify({expiresIn:3600})
- });
- const value=await res.json().catch(()=>null);
- if(!res.ok||!value?.signedURL)throw Error("Не удалось открыть вложение");
- const signed=value.signedURL as string;
- return signed.startsWith("http")?signed:apiUrl+"/storage/v1"+(signed.startsWith("/")?signed:"/"+signed);
+ if(!/^[a-f0-9-]{36}\/[a-f0-9-]{36}\/[a-f0-9-]{36}\.[a-z0-9]+$/i.test(path)){
+   throw Error('Недопустимый путь вложения');
+ }
+ const key=token+':'+path;
+ const cached=signedMediaCache.get(key);
+ if(cached&&cached.validUntil>Date.now())return cached.promise;
+ if(cached)signedMediaCache.delete(key);
+ const request=(async()=>{
+   const res=await fetch(apiUrl+"/storage/v1/object/sign/ikonosfera-direct-media/"+path,{
+    method:"POST",headers:{apikey:anonKey,Authorization:"Bearer "+token,"Content-Type":"application/json"},
+    body:JSON.stringify({expiresIn:3600}),cache:"no-store",
+    signal:AbortSignal.timeout(18000)
+   });
+   const value=await res.json().catch(()=>null);
+   if(!res.ok||!value?.signedURL)throw Error("Не удалось открыть вложение");
+   const signed=value.signedURL as string;
+   return signed.startsWith("http")?signed:apiUrl+"/storage/v1"+(signed.startsWith("/")?signed:"/"+signed);
+ })();
+ signedMediaCache.set(key,{promise:request,validUntil:Date.now()+SIGNED_URL_CACHE_MS});
+ if(signedMediaCache.size>SIGNED_URL_CACHE_LIMIT){
+   const first=signedMediaCache.keys().next().value;
+   if(first)signedMediaCache.delete(first);
+ }
+ request.catch(()=>signedMediaCache.delete(key));
+ return request;
 }
 
 export async function markChatRead(token:string,chatId:string):Promise<number>{
