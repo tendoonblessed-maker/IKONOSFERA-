@@ -1598,3 +1598,8 @@ body{position:relative}
  .ik-message-menu-buttons button{min-height:46px!important}
 }
 @media(prefers-reduced-motion:reduce){.ik-chat-loading,.ik-message-menu-sheet{animation:none!important}.ik-chat-loading-avatar,.ik-chat-loading-bubble,.ik-chat-loading-spinner{animation:none!important}}
+
+/* The chat shell is visible while a newly started chat is still entering the inbox. */
+.ik-chat-entry-loading{height:100%;display:flex;flex-direction:column;background:#f1f1f3;min-height:0}
+.ik-chat-entry-loading>.conversation-header{flex:0 0 auto;background:#f7f7f9}
+.ik-chat-entry-loading>.ik-chat-loading{flex:1;justify-content:center}
