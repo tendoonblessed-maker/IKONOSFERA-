@@ -145,7 +145,7 @@ export default function ChannelsPanel({token,userId,channel,onBack,onShowProfile
     <label>Описание<textarea maxLength={500} value={settingsDescription} onChange={e=>setSettingsDescription(e.target.value)}/></label>
     <label style={{display:"flex",gap:10,alignItems:"center"}}><input type="checkbox" checked={settingsDiscussion} onChange={e=>setSettingsDiscussion(e.target.checked)}/> Привязать чат обсуждения к каналу</label>
     <button type="submit" className="accent-button" disabled={busy}>Сохранить изменения</button>
-    <button type="button" className="secondary-action" onClick={()=>void eraseChannel()} disabled={busy} style={{color:"#b42318"}}>Удалить канал навсегда</button>
+    <button type="button" className="secondary-action channel-delete-danger" onClick={()=>void eraseChannel()} disabled={busy}>Удалить канал навсегда</button>
    </form>}
    {currentChannel.discussion_enabled&&<div style={{marginBottom:16}}>
     <button type="button" className="secondary-action" onClick={()=>{setDiscussionOpen(v=>!v);if(!discussionOpen)void loadDiscussion();}}>{discussionOpen?"Скрыть обсуждение":"💬 Чат обсуждения"}</button>
