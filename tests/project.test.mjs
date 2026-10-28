@@ -530,3 +530,16 @@ test('stories do not download on every inbox refresh and open newest uploaded st
  assert.match(s,/const requestId=\+\+storyRequestRef\.current/);
  assert.match(s,/requestId===storyRequestRef\.current/);
 });
+
+
+test('failed private media can retry a fresh signed link instead of remaining broken',()=>{
+ const view=load('components/ChatMedia.tsx');
+ const api=load('lib/supabase-rest.ts');
+ const css=load('app/globals.css');
+ assert.match(view,/setRetry\(value=>value\+1\)/);
+ assert.match(view,/onError=\{\(\)=>setError\(true\)\}/);
+ assert.match(view,/invalidateDirectMediaUrl\(token,path\)/);
+ assert.match(api,/export function invalidateDirectMediaUrl/);
+ assert.match(api,/signedMediaCache\.delete\(token\+':\'\+path\)/);
+ assert.match(css,/\.chat-media-retry/);
+});
