@@ -10,7 +10,14 @@ import { REACTION_EMOJIS, type ReactionEmoji, createChannel, imageUrl, listChann
 type Tab = 'chats' | 'contacts' | 'channels' | 'profile' | 'settings';
 type Platform = { ios: boolean; standalone: boolean };
 type ChatRow = { chat: DirectChat; other: Profile | null };
-const userFacingError = (error: unknown) => error instanceof Error ? error.message : 'Неизвестная ошибка';
+const userFacingError = (error: unknown) => {
+  const message=error instanceof Error?error.message:'Неизвестная ошибка';
+  if(/email.rate.limit.exceeded|email.*rate.*limit|over_email_send_rate_limit/i.test(message))
+    return 'Сейчас отправлено слишком много писем. В бесплатной почте Supabase действует общий лимит. Попробуй позднее — повторные нажатия не ускорят вход.';
+  if(/email.*not.*confirmed/i.test(message))return 'Электронная почта ещё не подтверждена. Открой ссылку Sign in в письме.';
+  if(/invalid.*token|otp.*expired|token.*expired/i.test(message))return 'Ссылка устарела или уже была использована. Запроси новое письмо для входа.';
+  return message;
+};
 
 export default function AppShell({ initialUsername = "" }: { initialUsername?: string }) {
   const [tab,setTab]=useState<Tab>(initialUsername ? 'contacts' : 'chats');
