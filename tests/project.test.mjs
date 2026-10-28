@@ -290,3 +290,18 @@ test('story close controls use symmetrical SVG instead of glyph x',()=>{
    assert.match(source,/M6 6l12 12M18 6L6 18/);
  }
 });
+
+test('featured channel can be pinned independently and visitors see only the channel card',()=>{
+ const ui=load('components/ProfilePanel.tsx');
+ const api=load('lib/social.ts');
+ const migration=load('supabase/migrations/20261029_010000_allow_featured_channel_update.sql');
+ assert.match(migration,/grant update \(featured_channel_id\) on public\.profiles to authenticated/);
+ assert.match(ui,/async function pinChannel\(\)/);
+ assert.match(ui,/getChannelById\(token,p\.featured_channel_id\)/);
+ assert.match(ui,/featuredChannel&&<button type="button" className="profile-featured-channel"/);
+ assert.match(ui,/mine&&!visitorPreview&&<div className="ik-profile-pin-area"/);
+ assert.ok(!ui.includes('<h2>Мой канал</h2>'));
+ assert.ok(!ui.includes('<p>Закреплён в профиле</p>'));
+ assert.match(api,/export async function getChannelById/);
+ assert.match(api,/avatar_path/);
+});
