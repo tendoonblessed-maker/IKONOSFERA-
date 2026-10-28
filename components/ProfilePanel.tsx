@@ -1,0 +1,114 @@
+'use client';
+
+import { useCallback, useEffect, useState, type FormEvent } from "react";
+import { changeProfile } from "@/lib/supabase-rest";
+import {
+ addProfilePhoto, addStory, deleteProfilePhoto, deleteStory, getFullProfile, getProfilePhotos,
+ getStories, imageUrl, removeUpload, updateFullProfile, uploadPhoto,
+ type FullProfile, type ProfilePhoto, type Story
+} from "@/lib/social";
+
+const readableError=(e:unknown)=>e instanceof Error?e.message:"Что-то пошло не так";
+type Props={token:string;userId:string;targetId:string;onBack:()=>void;onOwnProfileChange:()=>void};
+
+export default function ProfilePanel({token,userId,targetId,onBack,onOwnProfileChange}:Props){
+ const mine=targetId===userId;
+ const [profile,setProfile]=useState<FullProfile|null>(null);
+ const [photos,setPhotos]=useState<ProfilePhoto[]>([]);
+ const [stories,setStories]=useState<Story[]>([]);
+ const [name,setName]=useState("");const [username,setUsername]=useState("");const [bio,setBio]=useState("");
+ const [editing,setEditing]=useState(false);const [busy,setBusy]=useState(false);
+ const [error,setError]=useState("");const [notice,setNotice]=useState("");
+ const [viewer,setViewer]=useState<{url:string;caption:string}|null>(null);
+ const reload=useCallback(async()=>{
+  const [p,gallery,active]=await Promise.all([
+   getFullProfile(token,targetId),getProfilePhotos(token,targetId),getStories(token,targetId)
+  ]);
+  setProfile(p);setPhotos(gallery);setStories(active);
+  setName(p?.display_name||"");setUsername(p?.username||"");setBio(p?.bio||"");
+ },[token,targetId]);
+ useEffect(()=>{let mounted=true;void reload().catch(e=>{if(mounted)setError(readableError(e));});return()=>{mounted=false;};},[reload]);
+ const run=async(action:()=>Promise<void>)=>{
+  if(busy)return;setBusy(true);setError("");setNotice("");
+  try{await action();await reload();}
+  catch(e){setError(readableError(e));}
+  finally{setBusy(false);}
+ };
+ async function chooseImage(file:File|undefined,kind:"avatar"|"cover"|"photo"|"story"){
+  if(!file||!mine||!profile)return;
+  await run(async()=>{
+   const path=await uploadPhoto(token,userId,file);
+   try{
+    if(kind==="avatar"||kind==="cover"){
+      await updateFullProfile(token,userId,kind==="avatar"?{avatar_path:path}:{cover_path:path});
+      onOwnProfileChange();
+    }else if(kind==="photo")await addProfilePhoto(token,userId,path,"");
+    else await addStory(token,userId,path,"");
+    setNotice(kind==="story"?"История опубликована на 24 часа.":"Изображение сохранено.");
+   }catch(e){await removeUpload(token,path).catch(()=>{});throw e;}
+  });
+ }
+ async function save(e:FormEvent){
+  e.preventDefault();if(!profile||!mine)return;
+  await run(async()=>{
+   await changeProfile(token,userId,username.trim().toLowerCase().replace(/^@/,""),name.trim());
+   await updateFullProfile(token,userId,{bio:bio.trim()});
+   onOwnProfileChange();setEditing(false);setNotice("Профиль обновлён.");
+  });
+ }
+ async function clearImage(kind:"avatar"|"cover"){
+  if(!profile||!mine)return;
+  const path=kind==="avatar"?profile.avatar_path:profile.cover_path;
+  await run(async()=>{
+   await updateFullProfile(token,userId,kind==="avatar"?{avatar_path:null}:{cover_path:null});
+   if(path)await removeUpload(token,path).catch(()=>{});
+   onOwnProfileChange();setNotice("Изображение удалено.");
+  });
+ }
+ const avatar=profile?imageUrl(profile.avatar_path):null;
+ const cover=profile?imageUrl(profile.cover_path):null;
+ return <section className="profile-view" aria-label="Профиль пользователя">
+   <header className="profile-topbar"><button type="button" className="profile-back" onClick={onBack} aria-label="Назад">‹ <span>Назад</span></button>
+     <strong>Профиль</strong>{mine?<button type="button" className="profile-link" onClick={()=>setEditing(v=>!v)}>{editing?"Готово":"Изм."}</button>:<span/>}</header>
+   <div className="profile-scroll">
+    <div className="profile-hero">
+     <div className="profile-cover" style={cover?{backgroundImage:"url("+cover+")"}:undefined}>
+       {mine&&<label className="profile-cover-action">Изменить обложку<input aria-label="Выбрать обложку" type="file" accept="image/png,image/jpeg,image/webp" disabled={busy} onChange={e=>{void chooseImage(e.target.files?.[0],"cover");e.target.value="";}}/></label>}
+     </div>
+     <div className="profile-avatar-large">{avatar?<img src={avatar} alt="Аватар пользователя"/>:<span>{(profile?.display_name||"?").charAt(0).toUpperCase()}</span>}
+      {mine&&<label className="profile-avatar-camera" title="Изменить фото"><span aria-hidden="true">▣</span><input aria-label="Загрузить фото профиля" type="file" accept="image/png,image/jpeg,image/webp" disabled={busy} onChange={e=>{void chooseImage(e.target.files?.[0],"avatar");e.target.value="";}}/></label>}
+     </div>
+     {profile?<div className="profile-identity"><h1>{profile.display_name}</h1><p>@{profile.username}</p>
+        {profile.bio&&<div className="profile-bio">{profile.bio}</div>}</div>:<p>Загрузка профиля…</p>}
+    </div>
+    {mine&&editing&&<form className="profile-editor" onSubmit={save}>
+     <h2>Изменить профиль</h2>
+     <label>Имя<input value={name} onChange={e=>setName(e.target.value)} maxLength={60} required/></label>
+     <label>Имя пользователя<input value={username} onChange={e=>setUsername(e.target.value)} minLength={3} maxLength={24} pattern="[a-z0-9_]{3,24}" required/></label>
+     <label>О себе<textarea value={bio} onChange={e=>setBio(e.target.value)} maxLength={160} rows={3} placeholder="Расскажи немного о себе"/></label>
+     <button className="accent-button" disabled={busy} type="submit">{busy?"Сохраняем…":"Сохранить изменения"}</button>
+     <div className="profile-delete-actions">{profile?.avatar_path&&<button type="button" onClick={()=>void clearImage("avatar")} disabled={busy}>Удалить аватар</button>}{profile?.cover_path&&<button type="button" onClick={()=>void clearImage("cover")} disabled={busy}>Удалить обложку</button>}</div>
+    </form>}
+    <div className="profile-content-section">
+     <div className="profile-section-title"><div><h2>Истории</h2><p>Доступны 24 часа</p></div>
+       {mine&&<label className="profile-action">+ История<input type="file" aria-label="Добавить историю" accept="image/png,image/jpeg,image/webp" disabled={busy} onChange={e=>{void chooseImage(e.target.files?.[0],"story");e.target.value="";}}/></label>}</div>
+     {stories.length?<div className="profile-stories">{stories.map(st=><div className="profile-story" key={st.id}>
+      <button type="button" className="profile-story-thumb" onClick={()=>{const url=imageUrl(st.image_path);if(url)setViewer({url,caption:st.caption});}}><img src={imageUrl(st.image_path)||""} alt="История пользователя"/></button>
+      <small>{new Date(st.expires_at).toLocaleTimeString("ru-RU",{hour:"2-digit",minute:"2-digit"})}</small>
+      {mine&&<button disabled={busy} className="profile-small-delete" type="button" onClick={()=>void run(async()=>{await deleteStory(token,st.id);await removeUpload(token,st.image_path).catch(()=>{});})}>Удалить</button>}
+     </div>)}</div>:<p className="profile-empty">Пока нет активных историй.</p>}
+    </div>
+    <div className="profile-content-section">
+     <div className="profile-section-title"><div><h2>Фото профиля</h2><p>Твоя галерея</p></div>
+       {mine&&<label className="profile-action">+ Фото<input aria-label="Выложить фото в профиль" type="file" accept="image/png,image/jpeg,image/webp" disabled={busy} onChange={e=>{void chooseImage(e.target.files?.[0],"photo");e.target.value="";}}/></label>}</div>
+     {photos.length?<div className="profile-photo-grid">{photos.map(photo=><div className="profile-grid-cell" key={photo.id}>
+      <button type="button" onClick={()=>{const url=imageUrl(photo.image_path);if(url)setViewer({url,caption:photo.caption});}}><img src={imageUrl(photo.image_path)||""} alt="Фото в профиле"/></button>
+      {mine&&<button type="button" className="profile-grid-delete" disabled={busy} title="Удалить фото" onClick={()=>void run(async()=>{await deleteProfilePhoto(token,photo.id);await removeUpload(token,photo.image_path).catch(()=>{});})}>×</button>}
+     </div>)}</div>:<p className="profile-empty">В галерее пока нет фотографий.</p>}
+    </div>
+    <p className="profile-privacy">Фото и истории доступны другим зарегистрированным пользователям. Не публикуй личные документы.</p>
+    {(error||notice)&&<p role="status" className={error?"profile-error":"profile-success"}>{error||notice}</p>}
+   </div>
+   {viewer&&<div className="profile-lightbox" role="dialog" aria-modal="true" aria-label="Просмотр фото"><button className="profile-lightbox-close" type="button" onClick={()=>setViewer(null)}>Закрыть ×</button><img src={viewer.url} alt={viewer.caption||"Фото пользователя"}/>{viewer.caption&&<p>{viewer.caption}</p>}</div>}
+ </section>;
+}
