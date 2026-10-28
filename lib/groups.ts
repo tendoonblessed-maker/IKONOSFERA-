@@ -4,7 +4,7 @@ export type Group={id:string;owner_id:string;title:string;created_at:string};
 export type GroupMessage={id:string;group_id:string;sender_id:string;body:string;created_at:string};
 export type GroupOverview={group_id:string;last_body:string|null;last_created_at:string|null;unread_count:number;member_count:number};
 async function request<T>(token:string,path:string,method='GET',body?:unknown):Promise<T>{
- const res=await fetch(apiUrl+path,{method,headers:{apikey:key,Authorization:'Bearer '+token,'Content-Type':'application/json',...(method==='POST'?{Prefer:'return=representation'}:{})},body:body===undefined?undefined:JSON.stringify(body),cache:'no-store'});
+ const res=await fetch(apiUrl+path,{method,headers:{apikey:key,Authorization:'Bearer '+token,'Content-Type':'application/json',...(method==='POST'?{Prefer:'return=representation'}:{})},body:body===undefined?undefined:JSON.stringify(body),cache:'no-store',signal:method==='GET'?AbortSignal.timeout(18000):undefined});
  const data=await res.json().catch(()=>null);if(!res.ok)throw Error(data?.message||'Ошибка группы');return data as T;
 }
 export async function createGroup(token:string,title:string,ids:string[]){return request<string>(token,'/rest/v1/rpc/create_group_chat','POST',{p_title:title,p_members:ids});}
