@@ -9,7 +9,7 @@ export const metadata: Metadata = {
   description: "Мессенджер, который помогает вернуть контроль над перепиской. Первая техническая версия.",
   applicationName: "IKONOSFERA",
   manifest: "/manifest.webmanifest",
-  appleWebApp: { capable: true, title: "IKONOSFERA", statusBarStyle: "black-translucent" },
+  appleWebApp: { capable: true, title: "IKONOSFERA", statusBarStyle: "black" },
   icons: {
     icon: [
       { url: "/favicon.ico", sizes: "any" },
