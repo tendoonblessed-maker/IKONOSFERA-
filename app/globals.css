@@ -120,8 +120,14 @@ button:active:not(:disabled) { opacity: .82; }
   .shell { display: block; min-height: 100dvh; }
   .sidebar { display: none; }
   .page-area { min-height: 100dvh; }
-  .topbar { height: 73px; padding: 0 22px; }
-  .home-screen { min-height: calc(100dvh - 73px - 74px - env(safe-area-inset-bottom)); }
+  /* iOS Home Screen: never draw navigation underneath the system status bar. */
+  .topbar {
+    height: calc(73px + env(safe-area-inset-top, 0px));
+    padding: env(safe-area-inset-top, 0px) max(22px, env(safe-area-inset-right, 0px)) 0 max(22px, env(safe-area-inset-left, 0px));
+    flex-shrink: 0;
+  }
+  .topbar .breadcrumb, .topbar .sep { display: none; }
+  .home-screen { min-height: calc(100dvh - 73px - env(safe-area-inset-top, 0px) - 74px - env(safe-area-inset-bottom, 0px)); }
   .ambient-mark { width: 440px; height: 440px; right: -290px; top: 10%; opacity: .75; }
   .home-content { padding: 65px 24px 70px; }
   .home-content h2 { font-size: clamp(40px, 8vw, 54px); }
@@ -138,7 +144,7 @@ button:active:not(:disabled) { opacity: .82; }
   .settings-screen { padding: 42px 24px 70px; }
 }
 @media (max-width: 420px) {
-  .topbar { padding: 0 17px; }
+  .topbar { padding: env(safe-area-inset-top, 0px) max(17px, env(safe-area-inset-right, 0px)) 0 max(17px, env(safe-area-inset-left, 0px)); }
   .topbar-name { gap: 8px; }
   .breadcrumb { font-size: 10px; }
   .stage-indicator { font-size: 11px; }
