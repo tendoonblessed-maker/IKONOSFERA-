@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState, type FormEvent } from "react";
-import { changeProfile } from "@/lib/supabase-rest";
+import { changeProfile, explainProfileError, validateUsername } from "@/lib/supabase-rest";
 import {
  addProfilePhoto, addStory, deleteProfilePhoto, deleteStory, getFullProfile, getProfilePhotos,
  getStories, imageUrl, listOwnedChannels, removeUpload, updateFullProfile, uploadPhoto,
@@ -20,7 +20,9 @@ export default function ProfilePanel({token,userId,targetId,onBack,onOwnProfileC
  const [featuredChannel,setFeaturedChannel]=useState<Channel|null>(null);
  const [chosenChannelId,setChosenChannelId]=useState<string>("");
  const [name,setName]=useState("");const [username,setUsername]=useState("");const [bio,setBio]=useState("");
- const [editing,setEditing]=useState(false);const [busy,setBusy]=useState(false);
+ const [editing,setEditing]=useState(false);
+ const [usernameTouched,setUsernameTouched]=useState(false);
+ const usernameError=usernameTouched?validateUsername(username):null;const [busy,setBusy]=useState(false);
  const [error,setError]=useState("");const [notice,setNotice]=useState("");
  const [viewer,setViewer]=useState<{url:string;caption:string}|null>(null);
  const [storyIndex,setStoryIndex]=useState<number|null>(null);
@@ -57,8 +59,13 @@ export default function ProfilePanel({token,userId,targetId,onBack,onOwnProfileC
  }
  async function save(e:FormEvent){
   e.preventDefault();if(!profile||!mine)return;
+  setUsernameTouched(true);
+  const validation=validateUsername(username);
+  if(validation){setError(validation);return;}
+  if(!name.trim()){setError("Имя не может быть пустым.");return;}
   await run(async()=>{
-   await changeProfile(token,userId,username.trim().toLowerCase().replace(/^@/,""),name.trim());
+   try{await changeProfile(token,userId,username.trim().toLowerCase().replace(/^@/,""),name.trim());}
+   catch(e){throw Error(explainProfileError(e));}
    await updateFullProfile(token,userId,{bio:bio.trim(),featured_channel_id:chosenChannelId||null});
    onOwnProfileChange();setEditing(false);setNotice("Профиль обновлён.");
   });
@@ -104,7 +111,7 @@ export default function ProfilePanel({token,userId,targetId,onBack,onOwnProfileC
     {mine&&editing&&<form className="profile-editor" onSubmit={save}>
      <h2>Редактирование профиля</h2><p className="profile-editor-intro">Измени информацию о себе и нажми «Сохранить изменения».</p>
      <label>Имя<input value={name} onChange={e=>setName(e.target.value)} maxLength={60} required/></label>
-     <label>Юзернейм<input value={username} onChange={e=>setUsername(e.target.value)} minLength={3} maxLength={24} pattern="[a-z0-9_]{3,24}" required/></label>
+     <label>Юзернейм<input value={username} onChange={e=>{setUsername(e.target.value);setUsernameTouched(true);}} onBlur={()=>setUsernameTouched(true)} maxLength={48} aria-invalid={Boolean(usernameError)} aria-describedby="username-feedback" required/><small id="username-feedback" className={usernameError?"profile-field-error":"profile-field-hint"}>{usernameError||"От 3 до 24 символов: латинские буквы, цифры и _. Например, tendo888."}</small></label>
      <label>О себе<textarea value={bio} onChange={e=>setBio(e.target.value)} maxLength={160} rows={3} placeholder="Расскажи немного о себе"/></label>
      <label>Канал в профиле
        <select value={chosenChannelId} onChange={e=>setChosenChannelId(e.target.value)}>

@@ -2,9 +2,9 @@
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { listProfiles, type Profile } from "@/lib/supabase-rest";
 import {
- addPostComment, deletePost, imageUrl, listChannelPosts, listPostComments, publishPost,
+ addPostComment, deletePost, imageUrl, listChannelPosts, listPostComments, listPostReactions, setPostReaction, REACTION_EMOJIS, publishPost,
  removeComment, removeUpload, uploadPhoto,
- type Channel, type ChannelPost, type PostComment
+ type Channel, type ChannelPost, type PostComment, type PostReaction, type ReactionEmoji
 } from "@/lib/social";
 
 type Props={token:string;userId:string;channel:Channel;onBack:()=>void;onShowProfile:(id:string)=>void;subscribed:boolean;onToggleSubscribe:()=>void;onMessageAuthor:()=>void};
@@ -14,13 +14,22 @@ const formattedDate=(s:string)=>new Date(s).toLocaleString("ru-RU",{day:"numeric
 export default function ChannelsPanel({token,userId,channel,onBack,onShowProfile,subscribed,onToggleSubscribe,onMessageAuthor}:Props){
  const mine=channel.owner_id===userId;
  const [posts,setPosts]=useState<ChannelPost[]>([]);
+ const [reactions,setReactions]=useState<PostReaction[]>([]);
+ const [reactionPicker,setReactionPicker]=useState<string|null>(null);
  const [body,setBody]=useState("");const [file,setFile]=useState<File|null>(null);
  const [openComments,setOpenComments]=useState<string|null>(null);
  const [comments,setComments]=useState<PostComment[]>([]);
  const [authors,setAuthors]=useState<Record<string,Profile>>({});
  const [commentDraft,setCommentDraft]=useState("");
  const [busy,setBusy]=useState(false);const [error,setError]=useState("");const [notice,setNotice]=useState("");
- const reload=useCallback(async()=>setPosts(await listChannelPosts(token,channel.id)),[token,channel.id]);
+ const reload=useCallback(async()=>{const list=await listChannelPosts(token,channel.id);setPosts(list);setReactions(await listPostReactions(token,list.map(p=>p.id)));},[token,channel.id]);
+ async function react(postId:string,emoji:ReactionEmoji){
+  if(busy)return;setBusy(true);setError("");
+  const mine=reactions.find(r=>r.post_id===postId&&r.user_id===userId);
+  try{await setPostReaction(token,userId,postId,mine?.emoji===emoji?null:emoji);
+   setReactions(await listPostReactions(token,posts.map(p=>p.id)));setReactionPicker(null);
+  }catch(e){setError(readable(e));}finally{setBusy(false);}
+ }
  useEffect(()=>{void reload().catch(e=>setError(readable(e)));setOpenComments(null);setComments([]);setBody("");setFile(null);},[reload]);
  async function showComments(postId:string){
   if(openComments===postId){setOpenComments(null);return;}
@@ -90,6 +99,11 @@ export default function ChannelsPanel({token,userId,channel,onBack,onShowProfile
     <div className="channel-post-meta"><span className="channel-post-icon">#</span><strong>{channel.title}</strong><time dateTime={post.created_at}>{formattedDate(post.created_at)}</time></div>
     {post.body&&<p className="channel-post-body">{post.body}</p>}
     {imageUrl(post.image_path)&&<img className="channel-post-image" src={imageUrl(post.image_path)||""} alt="Изображение к публикации"/>}
+    <div className="reaction-bar channel-reaction-bar">
+     {REACTION_EMOJIS.filter(emoji=>reactions.some(r=>r.post_id===post.id&&r.emoji===emoji)).map(emoji=><button type="button" key={emoji} className={"reaction-pill"+(reactions.some(r=>r.post_id===post.id&&r.user_id===userId&&r.emoji===emoji)?" mine":"")} disabled={busy} onClick={()=>void react(post.id,emoji)}>{emoji} <span>{reactions.filter(r=>r.post_id===post.id&&r.emoji===emoji).length}</span></button>)}
+     <button type="button" className="reaction-add" onClick={()=>setReactionPicker(reactionPicker===post.id?null:post.id)} aria-label="Поставить реакцию">☺ +</button>
+     {reactionPicker===post.id&&<div className="reaction-picker">{REACTION_EMOJIS.map(emoji=><button key={emoji} type="button" disabled={busy} onClick={()=>void react(post.id,emoji)} aria-label={"Реакция "+emoji}>{emoji}</button>)}</div>}
+    </div>
     <div className="channel-post-actions"><button type="button" onClick={()=>void showComments(post.id)}>{openComments===post.id?"Скрыть комментарии":"Комментарии"}</button>
     {mine&&<button type="button" disabled={busy} onClick={()=>void erasePost(post)}>Удалить пост</button>}</div>
     {openComments===post.id&&<div className="channel-comments">

@@ -149,3 +149,29 @@ export async function getDirectMediaUrl(token:string,path:string):Promise<string
 export async function markChatRead(token:string,chatId:string):Promise<number>{
  return http<number>('/rest/v1/rpc/mark_chat_messages_read',{token,method:'POST',body:{p_chat_id:chatId}});
 }
+
+export type MessageReaction={message_id:string;user_id:string;emoji:string};
+export async function listMessageReactions(token:string,messageIds:string[]):Promise<MessageReaction[]>{
+ if(!messageIds.length)return [];
+ return http<MessageReaction[]>('/rest/v1/message_reactions?select=message_id,user_id,emoji&message_id=in.('+messageIds.map(encodeURIComponent).join(',')+')&limit=3000',{token});
+}
+export async function setMessageReaction(token:string,userId:string,messageId:string,emoji:string|null):Promise<void>{
+ await http('/rest/v1/message_reactions?message_id=eq.'+encodeURIComponent(messageId)+'&user_id=eq.'+encodeURIComponent(userId),{token,method:'DELETE'});
+ if(emoji)await http('/rest/v1/message_reactions',{token,method:'POST',body:{message_id:messageId,user_id:userId,emoji}});
+}
+export function validateUsername(username:string):string|null{
+ const value=username.trim().replace(/^@/,'').toLowerCase();
+ if(!value)return 'Введи юзернейм.';
+ if(value.length<3)return 'Юзернейм слишком короткий: нужно минимум 3 символа.';
+ if(value.length>24)return 'Юзернейм слишком длинный: максимум 24 символа.';
+ if(!/^[a-z0-9_]+$/.test(value))return 'Разрешены только латинские буквы a–z, цифры 0–9 и нижнее подчёркивание _.';
+ if(/^_+$/.test(value))return 'Юзернейм не может состоять только из подчёркиваний.';
+ return null;
+}
+export function explainProfileError(error:unknown):string{
+ const text=error instanceof Error?error.message:String(error);
+ if(/23505|duplicate key|unique constraint|profiles_username_key/i.test(text))return 'Этот юзернейм уже занят. Попробуй другой.';
+ if(/23514|check constraint|username_check/i.test(text))return 'Недопустимый юзернейм. Используй 3–24 символа: латинские буквы, цифры и _.';
+ if(/42501|permission denied|row-level security/i.test(text))return 'Не удалось сохранить профиль: нет доступа. Войди в аккаунт заново.';
+ return text;
+}

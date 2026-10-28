@@ -107,3 +107,15 @@ export async function unsubscribeChannel(token:string,userId:string,channelId:st
 export async function listOwnedChannels(token:string,ownerId:string):Promise<Channel[]>{
  return api<Channel[]>("/rest/v1/channels?select=id,owner_id,title,slug,description,created_at&owner_id=eq."+encodeURIComponent(ownerId)+"&order=created_at.desc&limit=100",token);
 }
+
+export const REACTION_EMOJIS=['👍🏻','👎🏻','✌🏻','👌🏻','🖕🏻','🫶🏻','🕊️'] as const;
+export type ReactionEmoji=typeof REACTION_EMOJIS[number];
+export type PostReaction={post_id:string;user_id:string;emoji:ReactionEmoji};
+export async function listPostReactions(token:string,postIds:string[]):Promise<PostReaction[]>{
+ if(!postIds.length)return [];
+ return api<PostReaction[]>("/rest/v1/channel_post_reactions?select=post_id,user_id,emoji&post_id=in.("+postIds.map(encodeURIComponent).join(",")+")&limit=3000",token);
+}
+export async function setPostReaction(token:string,userId:string,postId:string,emoji:ReactionEmoji|null):Promise<void>{
+ await api("/rest/v1/channel_post_reactions?post_id=eq."+encodeURIComponent(postId)+"&user_id=eq."+encodeURIComponent(userId),token,"DELETE");
+ if(emoji)await api("/rest/v1/channel_post_reactions",token,"POST",{post_id:postId,user_id:userId,emoji});
+}
