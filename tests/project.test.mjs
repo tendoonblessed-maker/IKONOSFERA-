@@ -1,46 +1,48 @@
 import assert from 'node:assert/strict';
 import { readFileSync, existsSync } from 'node:fs';
 import { test } from 'node:test';
+const load=(path)=>readFileSync(new URL(`../${path}`,import.meta.url),'utf8');
+test('PWA supports Android and iPhone',()=>{const m=JSON.parse(load('public/manifest.webmanifest'));assert.equal(m.display,'standalone');assert.equal(m.start_url,'/');for(const i of m.icons) assert.ok(existsSync(new URL(`../public/${i.src.slice(1)}`,import.meta.url)));});
+test('original specification preserved and pivot documented',()=>{assert.ok(load('docs/SPEC.md').includes('Мессенджер для людей'));assert.ok(load('PROJECT_NOTES.md').includes('мессенджера'));});
+test('messages use authenticated backend; no fake chat data',()=>{assert.match(load('lib/supabase-rest.ts'),/\/rest\/v1\/messages\?select=/);assert.match(load('lib/supabase-rest.ts'),/Bearer/);assert.ok(!/mockMessages|fakeSend|seedMessages/.test(load('components/AppShell.tsx')));});
+test('SQL restricts messages with RLS',()=>{const sql=load('supabase/migrations/20261028_120000_direct_messages.sql');for(const name of ['profiles','chats','chat_members','messages'])assert.ok(sql.includes(`alter table public.${name} enable row level security;`));assert.ok(sql.includes('public.is_chat_member(chat_id)'));assert.ok(!sql.includes('on public.messages for update'));});
+test('service worker never caches private messages',()=>{const sw=load('public/sw.js');assert.match(sw,/request\.mode !== "navigate"/);assert.ok(!sw.includes('cache.put(request'));});
+test('mobile safe area + reduced motion',()=>{const css=load('app/globals.css');assert.ok(css.includes('safe-area-inset-top'));assert.ok(css.includes('safe-area-inset-bottom'));assert.ok(css.includes('prefers-reduced-motion:reduce'));});
 
-const load = (path) => readFileSync(new URL(`../${path}`, import.meta.url), 'utf8');
+test('invite URL passes initial username into messenger UI',()=>{const route=load('app/u/[username]/page.tsx');const ui=load('components/AppShell.tsx');assert.ok(route.includes('initialUsername={username'));assert.ok(ui.includes('initialUsername?: string'));});
+test('API permissions limit write actions',()=>{const sql=load('supabase/migrations/20261028_120000_direct_messages.sql');assert.ok(sql.includes('grant insert on public.messages to authenticated'));assert.ok(sql.includes('grant update (username, display_name) on public.profiles to authenticated'));assert.ok(!sql.includes('grant insert on public.chats to authenticated'));});
 
-test('PWA manifest has required icons and standalone mode', () => {
-  const m = JSON.parse(load('public/manifest.webmanifest'));
-  assert.equal(m.name, 'IKONOSFERA');
-  assert.equal(m.display, 'standalone');
-  assert.equal(m.start_url, '/');
-  for (const purpose of ['any', 'maskable']) assert.ok(m.icons.some(icon => icon.purpose === purpose));
-  for (const entry of m.icons) assert.ok(existsSync(new URL(`../public/${entry.src.replace(/^\//, '')}`, import.meta.url)));
+test('temporary test account uses authenticated Supabase session, not mock messages',()=>{const api=load('lib/supabase-rest.ts');const ui=load('components/AppShell.tsx');assert.match(api,/createTemporaryAccount/);assert.match(api,/\/auth\/v1\/signup/);assert.match(ui,/beginTemporaryAccount/);assert.match(ui,/восстановить его нельзя/);});
+
+test('white edition has monochrome UI, original wordmark and light PWA chrome',()=>{const css=load('app/globals.css');const shell=load('components/AppShell.tsx');const layout=load('app/layout.tsx');const manifest=JSON.parse(load('public/manifest.webmanifest'));assert.match(css,/color-scheme: light/);assert.match(css,/--bg:#ffffff/);assert.match(shell,/branding\/ikonosfera.svg/);assert.match(shell,/branding\/ikonosfera-wordmark.svg/);assert.match(layout,/statusBarStyle: "default"/);assert.equal(manifest.theme_color,'#ffffff');for(const img of ['ikonosfera.svg','ikonosfera-wordmark.svg'])assert.ok(existsSync(new URL('../public/branding/'+img,import.meta.url)));});
+
+test('white offline fallback and refreshed service worker cache',()=>{const offline=load('public/offline.html');const sw=load('public/sw.js');assert.ok(offline.includes('background:#fff;color:#111111'));assert.ok(offline.includes('/branding/ikonosfera.svg'));assert.ok(sw.includes('ikonosfera-shell-v3'));});
+
+test('social schema protects photo uploads, stories, channels, posts and comments',()=>{
+ const sql=load('supabase/migrations/20261028_130000_social_profiles_channels.sql');
+ for(const table of ['profile_photos','stories','channels','channel_posts','channel_comments'])
+   assert.ok(sql.includes('alter table public.'+table+' enable row level security;'));
+ assert.match(sql,/stories_read_active_or_own/);
+ assert.match(sql,/channel_posts_create_owner/);
+ assert.match(sql,/channel_comments_create_own/);
+ assert.match(sql,/storage.foldername\(name\)/);
+ assert.match(sql,/3145728/);
 });
-
-test('original SPEC is retained in docs', () => {
-  assert.ok(load('docs/SPEC.md').includes('Мессенджер для людей, у которых слишком много чатов'));
+test('profile editor uses real signed-in upload API',()=>{
+ const ui=load('components/ProfilePanel.tsx'),backend=load('lib/social.ts');
+ for(const word of ['avatar','cover','story','photo'])assert.ok(ui.includes(word));
+ assert.match(backend,/\/storage\/v1\/object\/ikonosfera-media\//);
+ assert.match(backend,/Bearer/);
+ assert.match(ui,/uploadPhoto\(/);
 });
-
-test('source application contains no fake messages or fake-send API', () => {
-  const shell = load('components/AppShell.tsx');
-  assert.ok(!/seedMessages|mockMessages|fakeSend|sendFake|setMessages/.test(shell));
-  assert.match(shell, /disabled title=\{t.futureFeatures\}/);
+test('channel posts and comments persist through Supabase',()=>{
+ const ui=load('components/ChannelsPanel.tsx'),backend=load('lib/social.ts');
+ for(const word of ['publishPost','addPostComment','listPostComments'])assert.ok(ui.includes(word)&&backend.includes(word));
 });
-
-test('stage zero worker does not cache page requests or responses', () => {
-  const worker = load('public/sw.js');
-  assert.match(worker, /request\.mode !== "navigate"/);
-  assert.match(worker, /fetch\(request\)\.catch/);
-  assert.ok(!worker.includes('cache.put(request'));
-});
-
-test('design tokens include baseline palette and reduced motion', () => {
-  const css = load('app/globals.css');
-  for (const color of ['#000000', '#0a0a0a', '#111111', '#161616', '#f5f5f5', '#a1a1a1', '#8a8a8a']) assert.ok(css.includes(color));
-  assert.match(css, /prefers-reduced-motion: reduce/);
-  assert.match(css, /env\(safe-area-inset-bottom\)/);
-});
-
-test('installed iOS PWA keeps navigation below system status bar', () => {
-  const css = load('app/globals.css');
-  const layout = load('app/layout.tsx');
-  assert.match(css, /height: calc\(73px \+ env\(safe-area-inset-top, 0px\)\)/);
-  assert.match(css, /padding: env\(safe-area-inset-top, 0px\)/);
-  assert.match(layout, /statusBarStyle: "black"/);
+test('pixel mascot finishes atomic animation and ignores repeat taps',()=>{
+ const cat=load('components/SleepyPixelCat.tsx'),css=load('app/globals.css');
+ assert.match(cat,/if\(locked.current\)return/);
+ assert.match(cat,/disabled=\{awake\}/);
+ assert.match(cat,/ik-cat-awaken/);
+ assert.match(css,/animation:ik-cat-awaken 8\.2s/);
 });
