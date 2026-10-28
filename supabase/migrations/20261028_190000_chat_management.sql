@@ -1,0 +1,2 @@
+-- Chat and message management; RLS-safe security-definer RPCs.
+-- See applied migration in Supabase project (chat_management_and_channel_editing).
