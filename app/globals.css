@@ -905,3 +905,41 @@ html,body{min-height:100%;overflow:hidden}
  .messenger.is-authenticated .chat-list .telegram-chat-row .ik-chat-title strong{font-size:12px}
 }
 @media(prefers-reduced-motion:reduce){.ik-inbox-filters button,.ik-create-menu button,.messenger.is-authenticated .chat-list .ik-chat-row-menu,.messenger.is-authenticated .conversation-history>.chat-message-row .chat-message-tools{transition:none}.messenger.is-authenticated .conversation-history{scroll-behavior:auto}}
+
+
+/* Privacy-first online status and Telegram-like channel/group member summaries. */
+.ik-online-label{color:#25875b!important;font-weight:700}
+.conversation-heading .ik-online-label{color:#208c63}
+.ik-profile-activity{font-size:12px!important;color:#777d87!important;line-height:1.3;margin:4px 0 12px!important}
+.ik-profile-activity.ik-online-label{color:#25875b!important}
+.ik-privacy-settings{display:grid;gap:9px;margin:18px 0;padding:18px 16px;border:1px solid #e9eaed;background:#f9fafb;border-radius:16px}
+.ik-privacy-settings h3{font-size:15px;font-weight:850;letter-spacing:-.025em;margin:0}
+.ik-privacy-settings p{font-size:12px;line-height:1.5;color:#737882;margin:0}
+.ik-privacy-settings label{font-size:12px;font-weight:750;color:#424a51}
+.ik-privacy-settings select{width:100%;min-height:43px;max-width:100%;padding:10px;border:1px solid #dce0e4;border-radius:11px;background:white;color:#1a1e23;font:inherit;font-size:12px}
+.ik-privacy-settings .ik-privacy-note{font-size:11px}
+.ik-copy-link{margin:8px 0;min-height:42px}
+.channel-subscribers{font-size:13px!important;opacity:.72;margin:0 0 7px!important}
+.group-member-trigger{cursor:pointer;display:flex;flex-direction:column;align-items:flex-start;gap:5px;max-width:100%;text-align:left;border:0;background:transparent;padding:4px 8px;border-radius:10px}
+.group-member-trigger:hover{background:#f4f5f6}
+.group-member-trigger small{font-size:12px;color:#797e86}
+.ik-members-backdrop{position:fixed;z-index:1300;inset:0;background:#0d10189e;backdrop-filter:blur(6px);display:flex;align-items:center;justify-content:center;padding:20px}
+.ik-members-modal{display:flex;flex-direction:column;width:min(430px,100%);max-height:min(700px,90dvh);overflow:hidden;background:#fff;border:1px solid #e1e4e7;box-shadow:0 22px 78px #080d1938;border-radius:23px;color:#17191c;animation:ik-members-in .22s cubic-bezier(.2,.8,.2,1) both}
+@keyframes ik-members-in{from{opacity:0;transform:translateY(10px) scale(.98)}to{opacity:1;transform:translateY(0) scale(1)}}
+.ik-members-header{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:22px 23px 13px}
+.ik-members-header>div{display:grid;gap:6px}.ik-members-header strong{font-size:20px;line-height:1.1;letter-spacing:-.04em}.ik-members-header small{font-size:12px;color:#828892}
+.ik-members-header button{display:grid;place-items:center;width:33px;height:33px;background:#f3f4f6;border:0;border-radius:11px}
+.ik-members-search{width:calc(100% - 38px);margin:6px 19px 10px;border-radius:13px;min-height:41px;background:#f4f5f7}
+.ik-members-list{min-height:0;overflow-y:auto;padding:5px 11px 16px}
+.ik-member-row{display:flex;align-items:center;gap:12px;width:100%;padding:11px;border:0;border-radius:14px;text-align:left;background:transparent}
+.ik-member-row:hover{background:#f2f4f6}
+.ik-member-avatar{display:grid;place-items:center;flex:0 0 47px;width:47px;height:47px;border-radius:50%;background:#e8eaed;font-size:18px;font-weight:750;overflow:hidden}
+.ik-member-avatar img{width:100%;height:100%;object-fit:cover}
+.ik-member-info{display:grid;gap:5px;min-width:0;flex:1}
+.ik-member-info strong{display:flex;align-items:center;gap:6px;flex-wrap:wrap;font-size:13px}
+.ik-member-info small{font-size:11px;color:#818892}
+.ik-member-owner{font-size:9px;color:#656b75;background:#f1f2f4;border-radius:6px;padding:4px 6px;font-weight:700}
+.ik-member-arrow{font-size:21px;color:#9ea3ab}
+.ik-member-empty{padding:24px;text-align:center;font-size:13px;color:#9399a1}
+@media(max-width:800px){.ik-members-backdrop{padding:8px}.ik-members-modal{max-height:87dvh;border-radius:20px}.ik-privacy-settings{padding:15px}.ik-members-header{padding:19px 16px 10px}}
+@media(prefers-reduced-motion:reduce){.ik-members-modal{animation:none}}
