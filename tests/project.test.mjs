@@ -490,3 +490,40 @@ test('chat auto scroll is scoped to message history rather than page on iOS',()=
  assert.match(source,/className="conversation-history" ref=\{conversationHistoryRef\}/);
  assert.ok(!source.includes("scrollIntoView({behavior:'auto'})"));
 });
+
+
+test('rapid chat switching never inserts a sent attachment or edited message in another chat',()=>{
+ const shell=load('components/AppShell.tsx');
+ for(const operation of ['sendMessage','sendAttachment','messageAction','reactToMessage']){
+  const start=shell.indexOf('async function '+operation+'(');
+  assert.ok(start>0,operation+' must exist');
+  const part=shell.slice(start,start+1500);
+  assert.match(part,/const chatId=selected/);
+  assert.match(part,/selectedRef\.current===chatId/);
+ }
+ assert.match(shell,/draftsRef\.current\[chatId\].*\.trim\(\)===body/);
+ assert.match(shell,/setDraft\(current=>current\.trim\(\)===body\?'':current\)/);
+ assert.match(shell,/The next inbox sync will show the successfully sent message/);
+ assert.match(shell,/Do not report a sent attachment as failed during refresh/);
+});
+test('group conversations always fetch newest messages and show real loading/errors',()=>{
+ const api=load('lib/groups.ts');
+ const ui=load('components/GroupPanel.tsx');
+ assert.match(api,/order=created_at\.desc&limit=150/);
+ assert.match(api,/return latest\.reverse\(\)/);
+ assert.ok(!api.includes('order=created_at.asc&limit=150'));
+ assert.match(ui,/initialLoading,setInitialLoading/);
+ assert.match(ui,/role="status" aria-label="Загружаем сообщения группы"/);
+ assert.match(ui,/!initialLoading&&!error&&messages\.length===0/);
+ assert.match(ui,/Не удалось загрузить сообщения группы/);
+ assert.match(ui,/Попробовать снова/);
+ assert.match(ui,/window\.setInterval\(sync,6000\)/);
+ assert.match(ui,/window\.setInterval\(updateMembers,120000\)/);
+});
+test('stories do not download on every inbox refresh and open newest uploaded story',()=>{
+ const s=load('components/StoriesStrip.tsx');
+ assert.match(s,/contactsRef=useRef\(contacts\)/);
+ assert.match(s,/contactIdsKey=contacts\.map\(person=>person\.id\)\.sort\(\)\.join\(','\)/);
+ assert.match(s,/\[token,userId,contactIdsKey,avatarPath\]/);
+ assert.match(s,/updated\[0\]\.stories\.length-1/);
+});
