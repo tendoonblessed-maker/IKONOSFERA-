@@ -1,6 +1,6 @@
 'use client';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { backendReady, changeProfile, createTemporaryAccount, consumeEmailLinkSession, clearSession, currentUser, findProfileByUsername, listChats, listMessages, manageChat, manageMessage, listMessageReactions, setMessageReaction, markChatRead, listProfiles, myProfile, postMessage, sendDirectMedia, sendEmailCode, signOut, startDirectChat, validSession, verifyEmailCode, type ChatMessage, type MessageReaction, type DirectChat, type Profile, type Session } from '@/lib/supabase-rest';
+import { backendReady, changeProfile, createTemporaryAccount, consumeEmailLinkSession, clearSession, currentUser, findProfileByUsername, listChats, listMessages, manageChat, manageMessage, listMessageReactions, setMessageReaction, markChatRead, listProfiles, myProfile, postMessage, reopenChat, sendDirectMedia, sendEmailCode, signOut, startDirectChat, validSession, verifyEmailCode, type ChatMessage, type MessageReaction, type DirectChat, type Profile, type Session } from '@/lib/supabase-rest';
 
 import ProfilePanel from "@/components/ProfilePanel";
 import ChatMedia from "@/components/ChatMedia";
@@ -145,7 +145,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
       setSelected(null);setSelectedChannel(null);setProfileTarget(person.id);setLookup("");
     }catch(e){setError(userFacingError(e));}finally{setBusy(false);}
   }
-  async function openChat(username:string){if(!session||!userId)return;setError('');setBusy(true);try{const id=await startDirectChat(session.access_token,username.replace(/^@/,''));setProfileTarget(null);setSelectedChannel(null);setSelected(id);setTab('chats');setLookup('');setSearch('');await refresh(session.access_token,userId,id);}catch(e){setError(userFacingError(e));}finally{setBusy(false);}}
+  async function openChat(username:string){if(!session||!userId)return;setError('');setBusy(true);try{const id=await startDirectChat(session.access_token,username.replace(/^@/,''));await reopenChat(session.access_token,id);setProfileTarget(null);setSelectedChannel(null);setSelected(id);setTab('chats');setLookup('');setSearch('');await refresh(session.access_token,userId,id);}catch(e){setError(userFacingError(e));}finally{setBusy(false);}}
   async function makeChannel(e:React.FormEvent){
     e.preventDefault();if(!session||!userId||busy)return;
     setBusy(true);setError("");
