@@ -511,6 +511,7 @@ test('group conversations always fetch newest messages and show real loading/err
  const ui=load('components/GroupPanel.tsx');
  assert.match(api,/order=created_at\.desc&limit=150/);
  assert.match(api,/return latest\.reverse\(\)/);
+ assert.match(api,/signal:method==='GET'\?AbortSignal\.timeout\(18000\)/);
  assert.ok(!api.includes('order=created_at.asc&limit=150'));
  assert.match(ui,/initialLoading,setInitialLoading/);
  assert.match(ui,/role="status" aria-label="Загружаем сообщения группы"/);
@@ -526,4 +527,6 @@ test('stories do not download on every inbox refresh and open newest uploaded st
  assert.match(s,/contactIdsKey=contacts\.map\(person=>person\.id\)\.sort\(\)\.join\(','\)/);
  assert.match(s,/\[token,userId,contactIdsKey,avatarPath\]/);
  assert.match(s,/updated\[0\]\.stories\.length-1/);
+ assert.match(s,/const requestId=\+\+storyRequestRef\.current/);
+ assert.match(s,/requestId===storyRequestRef\.current/);
 });
