@@ -138,6 +138,26 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
     void activeChat;
   },[]);
 
+  // Fast inbox refresh: keep channels, group feeds and contacts out of the
+  // high-frequency path. Their full state is synced separately at a slower cadence.
+  const refreshInbox=useCallback(async(token:string,id:string)=>{
+    const [chats,previews]=await Promise.all([
+      listChats(token),listChatPreviews(token).catch(()=>[] as ChatPreview[])
+    ]);
+    const others=Array.from(new Set(chats.map(chat=>chat.user_a===id?chat.user_b:chat.user_a)));
+    const profiles=await listProfiles(token,others);
+    const byId=new Map(profiles.map(person=>[person.id,person]));
+    const overview=new Map(previews.map(preview=>[preview.chat_id,preview]));
+    setRows(chats.filter(chat=>!chat.hidden_for?.includes(id))
+      .sort((a,b)=>{
+        const pinned=Number(Boolean(b.pinned_for?.includes(id)))-Number(Boolean(a.pinned_for?.includes(id)));
+        if(pinned)return pinned;
+        return Date.parse(overview.get(b.id)?.last_created_at||b.created_at)
+          -Date.parse(overview.get(a.id)?.last_created_at||a.created_at);
+      })
+      .map(chat=>({chat,other:byId.get(chat.user_a===id?chat.user_b:chat.user_a)??null,preview:overview.get(chat.id)??null})));
+  },[]);
+
   useEffect(()=>{
     if(!selected||!session?.access_token||!userId)return;
     let cancelled=false;
@@ -199,7 +219,8 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
     if(!session||!userId)return;
     let cancelled=false;
     let inFlight=false;
-    const run=async()=>{
+    let cycles=0;
+    const run=async(forceFull=false)=>{
       if(cancelled||inFlight||document.visibilityState==='hidden')return;
       inFlight=true;
       try{
@@ -210,15 +231,18 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
           return;
         }
         if(valid.access_token!==session.access_token)setSession(valid);
-        await refresh(valid.access_token,userId,selectedRef.current);
-      }catch{ /* transient network failure; retry next tick */ }
+        // Only every ~72 seconds refresh large data (channels/groups/subscriptions).
+        // The lightweight inbox refresh is enough to keep badges and new chats fresh.
+        if(forceFull||++cycles%6===0)await refresh(valid.access_token,userId,null);
+        else await refreshInbox(valid.access_token,userId);
+      }catch{ /* transient network failure; retry on the next poll */ }
       finally{inFlight=false;}
     };
-    const onVisible=()=>{if(document.visibilityState==='visible')void run();};
-    const timer=window.setInterval(()=>void run(),15000);
+    const onVisible=()=>{if(document.visibilityState==='visible')void run(true);};
+    const timer=window.setInterval(()=>void run(),12000);
     document.addEventListener('visibilitychange',onVisible);
     return()=>{cancelled=true;window.clearInterval(timer);document.removeEventListener('visibilitychange',onVisible);};
-  },[session,userId,refresh]);
+  },[session,userId,refresh,refreshInbox]);
 
   useEffect(()=>{
     if(!session||!userId)return;
