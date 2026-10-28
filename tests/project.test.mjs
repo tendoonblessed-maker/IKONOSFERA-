@@ -93,8 +93,8 @@ test('no pixel cat remains in the active interface or styles',()=>{
  assert.ok(!load('app/globals.css').includes('pixel-cat-button'));
 });
 test('message/chat actions open contextual menus, not a stack of destructive buttons',()=>{
- const ui=load('components/AppShell.tsx');
- assert.match(ui,/chat-row-menu/);
+ const ui=load('components/AppShell.tsx'), inbox=load('components/ChatInboxRow.tsx');
+ assert.match(inbox,/chat-row-menu/);
  assert.match(ui,/message-menu/);
  assert.match(ui,/settings-edit-button/);
 });
@@ -122,4 +122,25 @@ test('Direct messages have a content-sized bubble and separate reaction controls
  assert.match(css,/width:fit-content;min-width:0/);
  assert.match(css,/\.chat-list \.chat-item>\.contact-info/);
  assert.match(css,/\.chat-list \.chat-row-wrap>\.chat-item/);
+});
+
+
+test('Telegram-inspired inbox keeps IKONOSFERA branding and supplies private previews',()=>{
+ const shell=load('components/AppShell.tsx');
+ const inbox=load('components/ChatInboxRow.tsx');
+ const api=load('lib/supabase-rest.ts');
+ const sql=load('supabase/migrations/20261028_260000_chat_previews.sql');
+ const css=load('app/globals.css');
+ assert.match(shell,/branding\\/ikonosfera-wordmark\\.svg/);
+ for(const original of ['nav-chats.webp','nav-contacts.webp','nav-profile.webp','nav-settings.webp'])assert.ok(shell.includes(original));
+ assert.match(shell,/listChatPreviews\\(token\\)/);
+ assert.match(shell,/chatFilter==='unread'/);
+ assert.match(shell,/createMenuOpen/);
+ assert.match(shell,/e\\.nativeEvent\\.isComposing/);
+ assert.match(inbox,/ik-unread-count/);
+ assert.match(inbox,/ik-chat-preview/);
+ assert.match(api,/rpc\\/list_chat_previews/);
+ assert.match(sql,/security invoker/);
+ assert.match(sql,/not \\(\\(select auth\\.uid\\(\\)\\)=any\\(c\\.hidden_for\\)\\)/);
+ assert.match(css,/\\.ik-inbox-filters/);
 });
