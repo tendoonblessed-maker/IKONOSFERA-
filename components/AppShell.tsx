@@ -111,31 +111,44 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
   },[]);
 
   const refresh=useCallback(async (token:string,id:string,activeChat:string|null)=>{
-    const [chats,previews,allChannels,memberships,groupList,groupSummaries,contactIds,blockedIds]=await Promise.all([listChats(token),listChatPreviews(token).catch(()=>[] as ChatPreview[]),listChannels(token),listMySubscriptions(token,id),listGroups(token),listGroupOverviews(token),listSavedContacts(token,id),listBlockedUsers(token,id)]);
-    setChannels(allChannels);
-    const counts=await getChannelSubscriberCounts(token,allChannels.map(ch=>ch.id)).catch(()=>({} as Record<string,number>));
-    setSubscriberCounts(counts);
-    setGroups(groupList);
-    setGroupOverviews(Object.fromEntries(groupSummaries.map(summary=>[summary.group_id,summary])));
-    setSubscriptions(memberships.map(m=>m.channel_id));
-    const others=Array.from(new Set([...chats.map(c=>c.user_a===id?c.user_b:c.user_a),...contactIds,...blockedIds]));
-    const profiles=await listProfiles(token,others);
-    const byId=new Map(profiles.map(p=>[p.id,p]));
-    setSavedContacts(contactIds.map(personId=>byId.get(personId)).filter((p):p is Profile=>Boolean(p)));
-    setBlockedUsers(blockedIds.map(personId=>byId.get(personId)).filter((p):p is Profile=>Boolean(p)));
-    const overview=new Map(previews.map(p=>[p.chat_id,p]));
+    // Start slow discovery in parallel, but never delay the inbox on those calls.
+    const extrasPromise=Promise.all([
+      listChannels(token),listMySubscriptions(token,id),listGroups(token),
+      listGroupOverviews(token),listSavedContacts(token,id),listBlockedUsers(token,id)
+    ]).catch(()=>null);
+    const [chats,previews]=await Promise.all([
+      listChats(token),listChatPreviews(token).catch(()=>[] as ChatPreview[])
+    ]);
+    const chatPartnerIds=Array.from(new Set(chats.map(chat=>chat.user_a===id?chat.user_b:chat.user_a)));
+    const chatProfiles=await listProfiles(token,chatPartnerIds);
+    const chatById=new Map(chatProfiles.map(person=>[person.id,person]));
+    const overview=new Map(previews.map(preview=>[preview.chat_id,preview]));
     setRows(chats.filter(chat=>!chat.hidden_for?.includes(id))
       .sort((a,b)=>{
         const pinned=Number(Boolean(b.pinned_for?.includes(id)))-Number(Boolean(a.pinned_for?.includes(id)));
         if(pinned)return pinned;
-        const aTime=overview.get(a.id)?.last_created_at||a.created_at;
-        const bTime=overview.get(b.id)?.last_created_at||b.created_at;
-        return Date.parse(bTime)-Date.parse(aTime);
+        return Date.parse(overview.get(b.id)?.last_created_at||b.created_at)
+          -Date.parse(overview.get(a.id)?.last_created_at||a.created_at);
       })
-      .map(chat=>({chat,other:byId.get(chat.user_a===id?chat.user_b:chat.user_a)??null,preview:overview.get(chat.id)??null})));
-    // Conversation messages are fetched independently and immediately on selection.
-    // Avoid waiting for channels, groups, presence and subscriber counts.
+      .map(chat=>({chat,other:chatById.get(chat.user_a===id?chat.user_b:chat.user_a)??null,preview:overview.get(chat.id)??null})));
+    // Chat list may now render, even if discovery or membership queries are slow.
+    setLoading(false);
+    const extras=await extrasPromise;
+    if(!extras)return; // Preserve last good channels/groups on an unrelated API error.
+    const [allChannels,memberships,groupList,groupSummaries,contactIds,blockedIds]=extras;
+    setChannels(allChannels);
+    setGroups(groupList);
+    setGroupOverviews(Object.fromEntries(groupSummaries.map(summary=>[summary.group_id,summary])));
+    setSubscriptions(memberships.map(m=>m.channel_id));
+    const moreIds=Array.from(new Set([...contactIds,...blockedIds].filter(pid=>!chatById.has(pid))));
+    const moreProfiles=moreIds.length?await listProfiles(token,moreIds):[];
+    const peopleById=new Map([...chatProfiles,...moreProfiles].map(person=>[person.id,person]));
+    setSavedContacts(contactIds.map(personId=>peopleById.get(personId)).filter((p):p is Profile=>Boolean(p)));
+    setBlockedUsers(blockedIds.map(personId=>peopleById.get(personId)).filter((p):p is Profile=>Boolean(p)));
+    void getChannelSubscriberCounts(token,allChannels.map(channel=>channel.id))
+      .then(counts=>setSubscriberCounts(counts)).catch(()=>{});
     void activeChat;
+
   },[]);
 
   // Fast inbox refresh: keep channels, group feeds and contacts out of the
