@@ -3,17 +3,27 @@ import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { listProfiles, type Profile } from "@/lib/supabase-rest";
 import {
  addPostComment, deletePost, editChannelPost, manageChannelComment, imageUrl, listChannelPosts, listPostComments, listPostReactions, setPostReaction, REACTION_EMOJIS, publishPost,
- removeUpload, uploadChannelAttachment,
- type Channel, type ChannelPost, type PostComment, type PostReaction, type ReactionEmoji
+ removeUpload, uploadChannelAttachment, updateChannel, deleteChannel, listDiscussionMessages, sendDiscussionMessage, deleteDiscussionMessage, listDiscussionComments,
+ type Channel, type ChannelPost, type PostComment, type PostReaction, type ReactionEmoji, type DiscussionMessage
 } from "@/lib/social";
 
-type Props={token:string;userId:string;channel:Channel;onBack:()=>void;onShowProfile:(id:string)=>void;subscribed:boolean;onToggleSubscribe:()=>void;onMessageAuthor:()=>void};
+type Props={token:string;userId:string;channel:Channel;onBack:()=>void;onShowProfile:(id:string)=>void;subscribed:boolean;onToggleSubscribe:()=>void;onMessageAuthor:()=>void;onChannelUpdated?:(channel:Channel)=>void;onChannelDeleted?:()=>void};
 const readable=(e:unknown)=>e instanceof Error?e.message:"Ошибка соединения";
 const formattedDate=(s:string)=>new Date(s).toLocaleString("ru-RU",{day:"numeric",month:"short",hour:"2-digit",minute:"2-digit"});
 
-export default function ChannelsPanel({token,userId,channel,onBack,onShowProfile,subscribed,onToggleSubscribe,onMessageAuthor}:Props){
+export default function ChannelsPanel({token,userId,channel,onBack,onShowProfile,subscribed,onToggleSubscribe,onMessageAuthor,onChannelUpdated,onChannelDeleted}:Props){
  const mine=channel.owner_id===userId;
- const [posts,setPosts]=useState<ChannelPost[]>([]);
+ const [currentChannel,setCurrentChannel]=useState(channel);
+ const [settingsOpen,setSettingsOpen]=useState(false);
+ const [settingsTitle,setSettingsTitle]=useState(channel.title);
+ const [settingsSlug,setSettingsSlug]=useState(channel.slug);
+ const [settingsDescription,setSettingsDescription]=useState(channel.description);
+ const [settingsDiscussion,setSettingsDiscussion]=useState(Boolean(channel.discussion_enabled));
+ const [discussionOpen,setDiscussionOpen]=useState(false);
+ const [discussionMessages,setDiscussionMessages]=useState<DiscussionMessage[]>([]);
+ const [discussionComments,setDiscussionComments]=useState<(PostComment & {channel_posts:{body:string;channel_id:string}|null})[]>([]);
+ const [discussionDraft,setDiscussionDraft]=useState("");
+  const [posts,setPosts]=useState<ChannelPost[]>([]);
  const [reactions,setReactions]=useState<PostReaction[]>([]);
  const [reactionPicker,setReactionPicker]=useState<string|null>(null);
  const [body,setBody]=useState("");const [file,setFile]=useState<File|null>(null);
@@ -26,7 +36,35 @@ export default function ChannelsPanel({token,userId,channel,onBack,onShowProfile
  const [editingBody,setEditingBody]=useState("");
  const [busy,setBusy]=useState(false);const [error,setError]=useState("");const [notice,setNotice]=useState("");
  const reload=useCallback(async()=>{const list=await listChannelPosts(token,channel.id);setPosts(list);setReactions(await listPostReactions(token,list.map(p=>p.id)));},[token,channel.id]);
- async function react(postId:string,emoji:ReactionEmoji){
+ const loadDiscussion=useCallback(async()=>{
+  const [messages,replies]=await Promise.all([listDiscussionMessages(token,channel.id),listDiscussionComments(token,channel.id)]);
+  setDiscussionMessages(messages);setDiscussionComments(replies);
+ },[token,channel.id]);
+ async function saveSettings(e:FormEvent){
+  e.preventDefault();if(!mine||busy)return;setBusy(true);setError("");
+  try{const updated=await updateChannel(token,channel.id,userId,settingsTitle,settingsSlug,settingsDescription,settingsDiscussion);
+   setCurrentChannel(updated);onChannelUpdated?.(updated);setSettingsOpen(false);setNotice("Настройки канала сохранены.");
+  }catch(e){setError(readable(e));}finally{setBusy(false);}
+ }
+ async function eraseChannel(){
+  if(!mine||busy||!window.confirm("Удалить канал и все публикации, комментарии и обсуждения без возможности восстановления?"))return;
+  const answer=window.prompt('Для полного удаления введи УДАЛИТЬ');
+  if(answer!=="УДАЛИТЬ")return;
+  setBusy(true);setError("");
+  try{await deleteChannel(token,channel.id,userId);onChannelDeleted?.();}catch(e){setError(readable(e));}finally{setBusy(false);}
+ }
+ async function sendDiscussion(e:FormEvent){
+  e.preventDefault();if(!currentChannel.discussion_enabled||busy||!discussionDraft.trim())return;
+  setBusy(true);setError("");
+  try{await sendDiscussionMessage(token,channel.id,userId,discussionDraft);setDiscussionDraft("");await loadDiscussion();}
+  catch(e){setError(readable(e));}finally{setBusy(false);}
+ }
+ async function eraseDiscussion(id:string){
+  if(busy||!window.confirm("Удалить сообщение из обсуждения?"))return;
+  setBusy(true);setError("");try{await deleteDiscussionMessage(token,id);await loadDiscussion();}
+  catch(e){setError(readable(e));}finally{setBusy(false);}
+ }
+  async function react(postId:string,emoji:ReactionEmoji){
   if(busy)return;setBusy(true);setError("");
   const mine=reactions.find(r=>r.post_id===postId&&r.user_id===userId);
   try{await setPostReaction(token,userId,postId,mine?.emoji===emoji?null:emoji);
@@ -64,6 +102,7 @@ export default function ChannelsPanel({token,userId,channel,onBack,onShowProfile
    setCommentDraft("");
    const list=await listPostComments(token,openComments);
    setComments(list);
+   if(currentChannel.discussion_enabled)await loadDiscussion();
    if(!authors[userId]){const mine=await listProfiles(token,[userId]);if(mine[0])setAuthors(prev=>({...prev,[userId]:mine[0]}));}
   }catch(e){setError(readable(e));}finally{setBusy(false);}
  }
@@ -75,7 +114,7 @@ export default function ChannelsPanel({token,userId,channel,onBack,onShowProfile
  async function saveCommentEdit(id:string){
   if(busy)return;setBusy(true);setError("");
   try{await manageChannelComment(token,id,"edit",editingBody);setEditingCommentId(null);
-   if(openComments)setComments(await listPostComments(token,openComments));
+   if(openComments)setComments(await listPostComments(token,openComments));if(currentChannel.discussion_enabled)await loadDiscussion();
   }catch(e){setError(readable(e));}finally{setBusy(false);}
  }
  async function erasePost(p:ChannelPost){
@@ -87,16 +126,48 @@ export default function ChannelsPanel({token,userId,channel,onBack,onShowProfile
  async function eraseComment(c:PostComment){
   if((c.author_id!==userId&&!mine)||busy)return;
   setBusy(true);
-  try{await manageChannelComment(token,c.id,"delete");setComments(old=>old.filter(x=>x.id!==c.id));}
+  try{await manageChannelComment(token,c.id,"delete");setComments(old=>old.filter(x=>x.id!==c.id));if(currentChannel.discussion_enabled)await loadDiscussion();}
   catch(e){setError(readable(e));}finally{setBusy(false);}
  }
  return <section className="channel-view">
   <header className="channel-topbar"><button type="button" className="profile-back" onClick={onBack} aria-label="Назад">‹ <span>Назад</span></button>
-   <div className="channel-top-title"><strong>{channel.title}</strong><small>@{channel.slug}</small></div>
+   <div className="channel-top-title"><strong>{currentChannel.title}</strong><small>@{currentChannel.slug}</small></div>
    <button type="button" className="channel-owner-link" onClick={()=>onShowProfile(channel.owner_id)}>Автор</button></header>
   <div className="channel-feed">
-   <div className="channel-cover-card"><div className="channel-emblem">#</div><h1>{channel.title}</h1><p>@{channel.slug}</p>
-    {channel.description&&<p className="channel-description">{channel.description}</p>}
+   {mine&&<div className="channel-management" style={{display:"flex",gap:10,flexWrap:"wrap",marginBottom:16}}>
+     <button type="button" className="secondary-action" onClick={()=>setSettingsOpen(v=>!v)}>⚙ Настроить канал</button>
+     {currentChannel.discussion_enabled&&<button type="button" className="secondary-action" onClick={()=>{setDiscussionOpen(true);void loadDiscussion();}}>Открыть обсуждение</button>}
+   </div>}
+   {mine&&settingsOpen&&<form className="channel-compose" onSubmit={saveSettings} style={{display:"grid",gap:12,marginBottom:20}}>
+    <h2>Настройки канала</h2>
+    <label>Название<input required minLength={1} maxLength={80} value={settingsTitle} onChange={e=>setSettingsTitle(e.target.value)}/></label>
+    <label>Адрес канала<input required minLength={3} maxLength={32} pattern="[a-z0-9_]{3,32}" value={settingsSlug} onChange={e=>setSettingsSlug(e.target.value.toLowerCase())}/></label>
+    <label>Описание<textarea maxLength={500} value={settingsDescription} onChange={e=>setSettingsDescription(e.target.value)}/></label>
+    <label style={{display:"flex",gap:10,alignItems:"center"}}><input type="checkbox" checked={settingsDiscussion} onChange={e=>setSettingsDiscussion(e.target.checked)}/> Привязать чат обсуждения к каналу</label>
+    <button type="submit" className="accent-button" disabled={busy}>Сохранить изменения</button>
+    <button type="button" className="secondary-action" onClick={()=>void eraseChannel()} disabled={busy} style={{color:"#b42318"}}>Удалить канал навсегда</button>
+   </form>}
+   {currentChannel.discussion_enabled&&<div style={{marginBottom:16}}>
+    <button type="button" className="secondary-action" onClick={()=>{setDiscussionOpen(v=>!v);if(!discussionOpen)void loadDiscussion();}}>{discussionOpen?"Скрыть обсуждение":"💬 Чат обсуждения"}</button>
+   </div>}
+   {currentChannel.discussion_enabled&&discussionOpen&&<section className="channel-compose" style={{marginBottom:22}}>
+    <h2>Обсуждение канала</h2><p style={{fontSize:12,opacity:.7}}>Сообщения участников и комментарии к публикациям отображаются вместе. Ответы к постам также видны под публикациями.</p>
+    <div style={{maxHeight:400,overflowY:"auto",display:"grid",gap:10,padding:"12px 0"}}>
+    {([
+     ...discussionMessages.map(m=>({...m,kind:"message" as const})),
+     ...discussionComments.map(m=>({...m,kind:"comment" as const}))
+    ].sort((a,b)=>a.created_at.localeCompare(b.created_at))).map(item=><div key={item.kind+item.id} style={{padding:12,border:"1px solid #ececec",borderRadius:12,background:"#fff"}}>
+      <small>{item.author_id===userId?"Вы":"Участник "+item.author_id.slice(0,6)} · {formattedDate(item.created_at)}</small>
+      {item.kind==="comment"&&<small style={{display:"block",opacity:.6}}>Ответ на публикацию: {item.channel_posts?.body?.slice(0,100)||"Медиа-публикация"}</small>}
+      <p style={{margin:"6px 0"}}>{item.body}</p>
+      {(mine||item.author_id===userId)&&<button type="button" disabled={busy} className="channel-delete-comment" onClick={()=>void (item.kind==="comment"?eraseComment(item):eraseDiscussion(item.id))}>Удалить</button>}
+     </div>)}
+    </div>
+    <form onSubmit={sendDiscussion} style={{display:"flex",gap:8}}><input aria-label="Сообщение в обсуждении" placeholder="Сообщение участникам…" value={discussionDraft} maxLength={1500} onChange={e=>setDiscussionDraft(e.target.value)} style={{flex:1,minWidth:0}}/><button className="accent-button" type="submit" disabled={busy||!discussionDraft.trim()}>Отправить</button></form>
+   </section>}
+
+   <div className="channel-cover-card"><div className="channel-emblem">#</div><h1>{currentChannel.title}</h1><p>@{currentChannel.slug}</p>
+    {channel.description&&<p className="channel-description">{currentChannel.description}</p>}
     <span>Канал IKONOSFERA</span><div className="channel-cover-actions">
     {!mine&&<button type="button" className="accent-button" onClick={onToggleSubscribe}>{subscribed?"Отписаться":"Подписаться"}</button>}
     {!mine&&<button type="button" className="secondary-action" onClick={onMessageAuthor}>Написать автору</button>}
@@ -111,7 +182,7 @@ export default function ChannelsPanel({token,userId,channel,onBack,onShowProfile
    <div className="channel-section-heading">Публикации</div>
    {posts.length===0&&<div className="channel-empty">Публикаций пока нет.</div>}
    {posts.map(post=><article className="channel-post" key={post.id}>
-    <div className="channel-post-meta"><span className="channel-post-icon">#</span><strong>{channel.title}</strong><time dateTime={post.created_at}>{formattedDate(post.created_at)}</time></div>
+    <div className="channel-post-meta"><span className="channel-post-icon">#</span><strong>{currentChannel.title}</strong><time dateTime={post.created_at}>{formattedDate(post.created_at)}</time></div>
     {editingPostId===post.id?<form className="channel-inline-editor" onSubmit={e=>{e.preventDefault();void savePostEdit(post.id);}}><textarea value={editingBody} maxLength={4000} onChange={e=>setEditingBody(e.target.value)}/><button type="submit">Сохранить</button><button type="button" onClick={()=>setEditingPostId(null)}>Отмена</button></form>:post.body&&<p className="channel-post-body">{post.body}</p>}
     {imageUrl(post.image_path)&&<img className="channel-post-image" src={imageUrl(post.image_path)||""} alt="Изображение к публикации"/>}
     {post.attachment_path&&post.attachment_type==="image"&&<img className="channel-post-image" src={imageUrl(post.attachment_path)||""} alt="Фото к посту"/>}
