@@ -370,15 +370,15 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
   async function chatAction(chatId:string,action:"hide"|"pin"|"unpin"|"delete_self"|"delete_everyone"){
     if(!session||!userId||busy)return;
     if(action==="delete_everyone"&&!window.confirm("Удалить диалог и всю историю у вас обоих? Это действие необратимо."))return;
-    if(action==="delete_for_me"&&!window.confirm("Удалить этот чат и его историю только у себя? У собеседника история останется."))return;
+    if(action==="delete_self"&&!window.confirm("Удалить этот чат и его историю только у себя? У собеседника история останется."))return;
     if(action==="hide"&&!window.confirm("Скрыть диалог только у себя?"))return;
     setBusy(true);setError("");
     try{
       await manageChat(session.access_token,chatId,action);
-      const deleted=action==="hide"||action==="delete_for_me"||action==="delete_everyone";
+      const deleted=action==="hide"||action==="delete_self"||action==="delete_everyone";
       if(deleted&&selected===chatId){setSelected(null);setMessageMenuId(null);setChatMessages([]);}
       await refresh(session.access_token,userId,deleted?null:selected);
-      setNotice(deleted?(action==="delete_everyone"?"Чат удалён для обоих.":action==="delete_for_me"?"Чат и его история удалены у тебя.":"Чат скрыт."):(action==="pin"?"Чат закреплён.":"Чат откреплён."));
+      setNotice(deleted?(action==="delete_everyone"?"Чат удалён для обоих.":action==="delete_self"?"Чат и его история удалены у тебя.":"Чат скрыт."):(action==="pin"?"Чат закреплён.":"Чат откреплён."));
     }catch(e){setError(userFacingError(e));}
     finally{setBusy(false);}
   }
