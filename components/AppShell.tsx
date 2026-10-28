@@ -95,6 +95,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
   const [installPrompt,setInstallPrompt]=useState<(Event & {prompt:()=>Promise<void>;userChoice:Promise<{outcome:string}>})|null>(null);
   const messageEnd=useRef<HTMLDivElement|null>(null);
   const conversationHistoryRef=useRef<HTMLDivElement|null>(null);
+  const chatAutoScrollRef=useRef(true);
   const selectedRef=useRef<string|null>(null);
   const searchInputRef=useRef<HTMLInputElement|null>(null);
   const draftsRef=useRef<Record<string,string>>({});
@@ -319,9 +320,11 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
   }
   // Scroll only the message history. scrollIntoView() was scrolling the page
   // itself on iPhone Safari and pushing the composer below the viewport.
+  useEffect(()=>{chatAutoScrollRef.current=true;},[selected]);
   useEffect(()=>{
     const history=conversationHistoryRef.current;
-    if(!history)return;
+    if(!history||!chatAutoScrollRef.current)return;
+    // Never pull the reader away from older messages during incoming polls.
     history.scrollTop=history.scrollHeight;
   },[chatMessages.length,selected]);
   useEffect(()=>{if(selected)setDraft(draftsRef.current[selected]||'');},[selected]);
@@ -719,7 +722,10 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
   {active.other&&<button type="button" disabled={busy} onClick={()=>void toggleBlockedUser(active.other!)}>{blockedUserIds.has(active.other.id)?'Разблокировать':'Заблокировать'}</button>}
   <button type="button" disabled={busy} onClick={()=>void chatAction(active.chat.id,'delete_self')}>Удалить только у себя</button>
   <button type="button" disabled={busy} onClick={()=>void chatAction(active.chat.id,'delete_everyone')}>Удалить у обоих</button>
-</div></details></header>{activePartnerBlocked&&<div className="ik-chat-blocked-banner" role="status"><span>Собеседник заблокирован. Отправка сообщений отключена.</span><button type="button" onClick={()=>active.other&&void toggleBlockedUser(active.other)}>Разблокировать</button></div>}{searchInConversation&&<div className="ik-conversation-search"><input autoFocus aria-label="Поиск сообщений в текущем чате" placeholder="Найти сообщение…" value={messageSearch} onChange={e=>setMessageSearch(e.target.value)}/><span>{visibleMessages.length} сообщ.</span><button type="button" onClick={()=>{setSearchInConversation(false);setMessageSearch("");}}>✕</button></div>}{selectedMessages.length>0&&<div className="ik-selection-toolbar"><span>Выбрано: {selectedMessages.length}</span><button type="button" onClick={()=>{const text=chatMessages.filter(m=>selectedMessages.includes(m.id)).map(m=>m.body).join("\n\n");void navigator.clipboard.writeText(text).then(()=>setNotice("Сообщения скопированы")).catch(()=>setError("Не удалось скопировать"));}}>Копировать</button><button type="button" onClick={()=>setSelectedMessages([])}>Отмена</button></div>}<div className="conversation-history" ref={conversationHistoryRef} aria-live="polite" aria-busy={activeChatLoading}>
+</div></details></header>{activePartnerBlocked&&<div className="ik-chat-blocked-banner" role="status"><span>Собеседник заблокирован. Отправка сообщений отключена.</span><button type="button" onClick={()=>active.other&&void toggleBlockedUser(active.other)}>Разблокировать</button></div>}{searchInConversation&&<div className="ik-conversation-search"><input autoFocus aria-label="Поиск сообщений в текущем чате" placeholder="Найти сообщение…" value={messageSearch} onChange={e=>setMessageSearch(e.target.value)}/><span>{visibleMessages.length} сообщ.</span><button type="button" onClick={()=>{setSearchInConversation(false);setMessageSearch("");}}>✕</button></div>}{selectedMessages.length>0&&<div className="ik-selection-toolbar"><span>Выбрано: {selectedMessages.length}</span><button type="button" onClick={()=>{const text=chatMessages.filter(m=>selectedMessages.includes(m.id)).map(m=>m.body).join("\n\n");void navigator.clipboard.writeText(text).then(()=>setNotice("Сообщения скопированы")).catch(()=>setError("Не удалось скопировать"));}}>Копировать</button><button type="button" onClick={()=>setSelectedMessages([])}>Отмена</button></div>}<div className="conversation-history" ref={conversationHistoryRef} aria-live="polite" aria-busy={activeChatLoading} onScroll={event=>{
+        const area=event.currentTarget;
+        chatAutoScrollRef.current=area.scrollHeight-area.scrollTop-area.clientHeight<120;
+      }}>
       {activeChatLoading&&<div className="ik-chat-loading" role="status" aria-label="Загружаем переписку">
         <div className="ik-chat-loading-line"><span className="ik-chat-loading-avatar"/></div>
         <div className="ik-chat-loading-bubble incoming"/><div className="ik-chat-loading-bubble incoming short"/>
