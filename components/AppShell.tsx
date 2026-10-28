@@ -5,6 +5,7 @@ import { backendReady, createTemporaryAccount, consumeEmailLinkSession, clearSes
 import ProfilePanel from "@/components/ProfilePanel";
 import ChatMedia from "@/components/ChatMedia";
 import ChatInboxRow from "@/components/ChatInboxRow";
+import {listSavedContacts,addSavedContact,removeSavedContact,listBlockedUsers,addBlockedUser,removeBlockedUser} from "@/lib/contacts";
 import {pingActivity,myActivityVisibility,getUserActivities,activityLabel,type ActivityVisibility,type UserActivity} from '@/lib/activity';
 import StoriesStrip from "@/components/StoriesStrip";
 import GroupPanel from "@/components/GroupPanel";
@@ -41,6 +42,9 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
   const [profile,setProfile]=useState<Profile|null>(null);
   const [anonymous,setAnonymous]=useState(false);
   const [rows,setRows]=useState<ChatRow[]>([]);
+  const [savedContacts,setSavedContacts]=useState<Profile[]>([]);
+  const [blockedUsers,setBlockedUsers]=useState<Profile[]>([]);
+  const [blocklistOpen,setBlocklistOpen]=useState(false);
   const [groups,setGroups]=useState<Group[]>([]);
   const [groupOverviews,setGroupOverviews]=useState<Record<string,GroupOverview>>({});
   const [selectedGroup,setSelectedGroup]=useState<Group|null>(null);
@@ -74,6 +78,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
   const [messageSearch,setMessageSearch]=useState('');
   const [searchInConversation,setSearchInConversation]=useState(false);
   const [selectedMessages,setSelectedMessages]=useState<string[]>([]);
+  const [messageMenuId,setMessageMenuId]=useState<string|null>(null);
   const [createMenuOpen,setCreateMenuOpen]=useState(false);
   const [lookup,setLookup]=useState(initialUsername);
   const [draft,setDraft]=useState('');
@@ -104,16 +109,18 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
   },[]);
 
   const refresh=useCallback(async (token:string,id:string,activeChat:string|null)=>{
-    const [chats,previews,allChannels,memberships,groupList,groupSummaries]=await Promise.all([listChats(token),listChatPreviews(token).catch(()=>[] as ChatPreview[]),listChannels(token),listMySubscriptions(token,id),listGroups(token),listGroupOverviews(token)]);
+    const [chats,previews,allChannels,memberships,groupList,groupSummaries,contactIds,blockedIds]=await Promise.all([listChats(token),listChatPreviews(token).catch(()=>[] as ChatPreview[]),listChannels(token),listMySubscriptions(token,id),listGroups(token),listGroupOverviews(token),listSavedContacts(token,id),listBlockedUsers(token,id)]);
     setChannels(allChannels);
     const counts=await getChannelSubscriberCounts(token,allChannels.map(ch=>ch.id)).catch(()=>({} as Record<string,number>));
     setSubscriberCounts(counts);
     setGroups(groupList);
     setGroupOverviews(Object.fromEntries(groupSummaries.map(summary=>[summary.group_id,summary])));
     setSubscriptions(memberships.map(m=>m.channel_id));
-    const others=Array.from(new Set(chats.map(c=>c.user_a===id?c.user_b:c.user_a)));
+    const others=Array.from(new Set([...chats.map(c=>c.user_a===id?c.user_b:c.user_a),...contactIds,...blockedIds]));
     const profiles=await listProfiles(token,others);
     const byId=new Map(profiles.map(p=>[p.id,p]));
+    setSavedContacts(contactIds.map(personId=>byId.get(personId)).filter((p):p is Profile=>Boolean(p)));
+    setBlockedUsers(blockedIds.map(personId=>byId.get(personId)).filter((p):p is Profile=>Boolean(p)));
     const overview=new Map(previews.map(p=>[p.chat_id,p]));
     setRows(chats.filter(chat=>!chat.hidden_for?.includes(id))
       .sort((a,b)=>{
@@ -167,7 +174,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
         const valid=await validSession();
         if(cancelled)return;
         if(!valid){
-          setSession(null);setUserId('');setSelected(null);setRows([]);
+          setSession(null);setUserId('');setSelected(null);setRows([]);setSavedContacts([]);setBlockedUsers([]);
           return;
         }
         if(valid.access_token!==session.access_token)setSession(valid);
@@ -290,7 +297,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
     if(!id)return;setSelected(null);setSelectedChannel(null);setProfileTarget(id);setError("");
   }
   function switchTab(next:Tab){
-    setEditingChats(false);setSelectedChatIds([]);
+    setEditingChats(false);setSelectedChatIds([]);setMessageMenuId(null);
     setSelectedGroup(null);setSelectedBot(null);setCreatingGroup(false);
     setMessageSearch("");setSearchInConversation(false);setSelectedMessages([]);setCreateMenuOpen(false);setTab(next);setSelected(null);setSelectedChannel(null);setProfileTarget(next==="profile"&&userId?userId:null);setShowRecommendations(false);setError("");
   }
@@ -361,10 +368,17 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
     }catch(e){setError(userFacingError(e));}
     finally{setSending(false);}
   }
-  async function logout(){if(!session)return;if(anonymous&&!window.confirm('Это временный аккаунт. После выхода восстановить его нельзя. Выйти?'))return;setBusy(true);try{await signOut(session.access_token);}catch(e){setError(userFacingError(e));}finally{clearSession();setSession(null);setUserId('');setProfile(null);setAnonymous(false);setRows([]);setSelected(null);setProfileTarget(null);setSelectedChannel(null);setChannels([]);setChatMessages([]);setBusy(false);}}
+  async function logout(){if(!session)return;if(anonymous&&!window.confirm('Это временный аккаунт. После выхода восстановить его нельзя. Выйти?'))return;setBusy(true);try{await signOut(session.access_token);}catch(e){setError(userFacingError(e));}finally{clearSession();setSession(null);setUserId('');setProfile(null);setAnonymous(false);setRows([]);setSavedContacts([]);setBlockedUsers([]);setSelected(null);setProfileTarget(null);setSelectedChannel(null);setChannels([]);setChatMessages([]);setBusy(false);}}
   async function install(){if(installPrompt){await installPrompt.prompt();await installPrompt.userChoice;setInstallPrompt(null);}else setInstallHelp(true);}
-  const storyContacts=useMemo(()=>rows.map(row=>row.other).filter((p):p is Profile=>Boolean(p)),[rows]);
-  const contactPeople=useMemo(()=>[...storyContacts].sort((a,b)=>(a.display_name||a.username).localeCompare(b.display_name||b.username,'ru')),[storyContacts]);
+  const storyContacts=useMemo(()=>{
+    const byId=new Map<string,Profile>();
+    for(const person of savedContacts)byId.set(person.id,person);
+    for(const row of rows)if(row.other)byId.set(row.other.id,row.other);
+    return Array.from(byId.values());
+  },[rows,savedContacts]);
+  const contactPeople=useMemo(()=>[...savedContacts].sort((a,b)=>(a.display_name||a.username).localeCompare(b.display_name||b.username,'ru')),[savedContacts]);
+  const savedContactIds=useMemo(()=>new Set(savedContacts.map(person=>person.id)),[savedContacts]);
+  const blockedUserIds=useMemo(()=>new Set(blockedUsers.map(person=>person.id)),[blockedUsers]);
   useEffect(()=>{
     if(tab!=='contacts'||!session||!contactPeople.length)return;
     let cancelled=false;
@@ -374,6 +388,8 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
   },[tab,session,contactPeople]);
     const active=rows.find(r=>r.chat.id===selected);
   const activePartnerId=active?.other?.id??null;
+  const activePartnerBlocked=Boolean(activePartnerId&&blockedUserIds.has(activePartnerId));
+  const menuMessage=chatMessages.find(message=>message.id===messageMenuId)||null;
   useEffect(()=>{
     if(!session||!activePartnerId)return;
     let gone=false;
