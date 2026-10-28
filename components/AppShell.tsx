@@ -1,206 +1,123 @@
-"use client";
+'use client';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { backendReady, changeProfile, clearSession, currentUser, listChats, listMessages, listProfiles, myProfile, postMessage, sendEmailCode, signOut, startDirectChat, validSession, verifyEmailCode, type ChatMessage, type DirectChat, type Profile, type Session } from '@/lib/supabase-rest';
 
-import { useEffect, useState } from "react";
-import { messages, isLocale, type Locale } from "@/lib/i18n";
+type Tab = 'chats' | 'contacts' | 'settings';
+type Platform = { ios: boolean; standalone: boolean };
+type ChatRow = { chat: DirectChat; other: Profile | null };
+const userFacingError = (error: unknown) => error instanceof Error ? error.message : 'Неизвестная ошибка';
 
-type Screen = "chats" | "settings";
-type InstallPromptEvent = Event & {
-  prompt: () => Promise<void>;
-  userChoice: Promise<{ outcome: "accepted" | "dismissed" }>;
-};
+export default function AppShell({ initialUsername = "" }: { initialUsername?: string }) {
+  const [tab,setTab]=useState<Tab>(initialUsername ? 'contacts' : 'chats');
+  const [platform,setPlatform]=useState<Platform>({ios:false,standalone:false});
+  const [session,setSession]=useState<Session|null>(null);
+  const [userId,setUserId]=useState('');
+  const [profile,setProfile]=useState<Profile|null>(null);
+  const [rows,setRows]=useState<ChatRow[]>([]);
+  const [selected,setSelected]=useState<string|null>(null);
+  const [chatMessages,setChatMessages]=useState<ChatMessage[]>([]);
+  const [search,setSearch]=useState('');
+  const [lookup,setLookup]=useState(initialUsername);
+  const [draft,setDraft]=useState('');
+  const [email,setEmail]=useState('');
+  const [code,setCode]=useState('');
+  const [codeSent,setCodeSent]=useState(false);
+  const [busy,setBusy]=useState(false);
+  const [sending,setSending]=useState(false);
+  const [loading,setLoading]=useState(true);
+  const [error,setError]=useState('');
+  const [notice,setNotice]=useState('');
+  const [editName,setEditName]=useState('');
+  const [editUsername,setEditUsername]=useState('');
+  const [installHelp,setInstallHelp]=useState(false);
+  const [installPrompt,setInstallPrompt]=useState<(Event & {prompt:()=>Promise<void>;userChoice:Promise<{outcome:string}>})|null>(null);
+  const messageEnd=useRef<HTMLDivElement|null>(null);
+  const selectedRef=useRef<string|null>(null);
 
-type PlatformInfo = {
-  ios: boolean;
-  standalone: boolean;
-  online: boolean;
-};
+  useEffect(()=>{selectedRef.current=selected;},[selected]);
+  useEffect(()=>{
+    const ios=/iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.platform==='MacIntel' && navigator.maxTouchPoints>1);
+    const standalone=window.matchMedia('(display-mode: standalone)').matches || Boolean((navigator as Navigator & {standalone?:boolean}).standalone);
+    setPlatform({ios,standalone});
+    const onInstall=(e:Event)=>{e.preventDefault();setInstallPrompt(e as Event & {prompt:()=>Promise<void>;userChoice:Promise<{outcome:string}>});};
+    window.addEventListener('beforeinstallprompt',onInstall);
+    if('serviceWorker' in navigator && window.isSecureContext) void navigator.serviceWorker.register('/sw.js').catch(()=>{});
+    return ()=>window.removeEventListener('beforeinstallprompt',onInstall);
+  },[]);
 
-export default function AppShell() {
-  const [locale, setLocale] = useState<Locale>("ru");
-  const [screen, setScreen] = useState<Screen>("chats");
-  const [platform, setPlatform] = useState<PlatformInfo>({ ios: false, standalone: false, online: true });
-  const [installPrompt, setInstallPrompt] = useState<InstallPromptEvent | null>(null);
-  const [showInstall, setShowInstall] = useState(false);
-  const t = messages[locale];
+  const refresh=useCallback(async (token:string,id:string,activeChat:string|null)=>{
+    const [chats]=await Promise.all([listChats(token)]);
+    const others=Array.from(new Set(chats.map(c=>c.user_a===id?c.user_b:c.user_a)));
+    const profiles=await listProfiles(token,others);
+    const byId=new Map(profiles.map(p=>[p.id,p]));
+    setRows(chats.map(chat=>({chat,other:byId.get(chat.user_a===id?chat.user_b:chat.user_a)??null})));
+    if(activeChat && chats.some(chat=>chat.id===activeChat)) {
+      const messages=await listMessages(token,activeChat);
+      setChatMessages(messages.reverse());
+    } else if(activeChat) {setSelected(null);setChatMessages([]);}
+  },[]);
 
-  useEffect(() => {
-    const stored = localStorage.getItem("ikonosfera-locale");
-    const initial = isLocale(stored ?? "") ? (stored as Locale) : navigator.language.toLowerCase().startsWith("en") ? "en" : "ru";
-    setLocale(initial);
-    document.documentElement.lang = initial;
+  useEffect(()=>{
+    let cancelled=false;
+    (async()=>{
+      try {
+        if(!backendReady){setLoading(false);return;}
+        const valid=await validSession();if(!valid||cancelled){return;}
+        const user=await currentUser(valid.access_token);
+        if(cancelled)return;
+        const p=await myProfile(valid.access_token,user.id);
+        setSession(valid);setUserId(user.id);setProfile(p);
+        setEditName(p?.display_name??'');setEditUsername(p?.username??'');
+        await refresh(valid.access_token,user.id,null);
+      } catch(e){if(!cancelled){clearSession();setError(userFacingError(e));}}
+      finally{if(!cancelled)setLoading(false);}
+    })();
+    return()=>{cancelled=true;};
+  },[refresh]);
 
-    const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent) ||
-      (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
-    const isStandalone = window.matchMedia("(display-mode: standalone)").matches ||
-      Boolean((navigator as Navigator & { standalone?: boolean }).standalone);
-
-    const refresh = () => setPlatform({ ios: isIOS, standalone: isStandalone, online: navigator.onLine });
-    refresh();
-    window.addEventListener("online", refresh);
-    window.addEventListener("offline", refresh);
-
-    const onPrompt = (event: Event) => {
-      event.preventDefault();
-      setInstallPrompt(event as InstallPromptEvent);
+  useEffect(()=>{
+    if(!session||!userId)return;
+    let cancelled=false;
+    const run=async()=>{
+      const valid=await validSession();
+      if(!valid||cancelled){if(!cancelled){setSession(null);setUserId('');setSelected(null);}return;}
+      if(valid.access_token!==session.access_token)setSession(valid);
+      try{await refresh(valid.access_token,userId,selectedRef.current);}catch{ /* retry on next poll */ }
     };
-    const onInstalled = () => {
-      setShowInstall(false);
-      setInstallPrompt(null);
-      setPlatform({ ios: isIOS, standalone: true, online: navigator.onLine });
-    };
-    window.addEventListener("beforeinstallprompt", onPrompt);
-    window.addEventListener("appinstalled", onInstalled);
+    const timer=window.setInterval(()=>void run(),3000);
+    return()=>{cancelled=true;window.clearInterval(timer);};
+  },[session,userId,refresh]);
 
-    if (isIOS && !isStandalone && localStorage.getItem("ikonosfera-install-tip-dismissed") !== "1") {
-      setShowInstall(true);
-    }
+  useEffect(()=>{messageEnd.current?.scrollIntoView({behavior:'auto'});},[chatMessages.length,selected]);
 
-    if ("serviceWorker" in navigator && window.isSecureContext) {
-      navigator.serviceWorker.register("/sw.js").catch(() => {
-        // Installation may be unavailable in private browsing or restricted environments.
-      });
-    }
-    return () => {
-      window.removeEventListener("online", refresh);
-      window.removeEventListener("offline", refresh);
-      window.removeEventListener("beforeinstallprompt", onPrompt);
-      window.removeEventListener("appinstalled", onInstalled);
-    };
-  }, []);
+  async function requestCode(e:React.FormEvent){e.preventDefault();setError('');setBusy(true);try{await sendEmailCode(email.trim().toLowerCase());setCodeSent(true);setNotice('Проверь почту. Введи полученный шестизначный код.');}catch(e){setError(userFacingError(e));}finally{setBusy(false);}}
+  async function confirmCode(e:React.FormEvent){e.preventDefault();setError('');setBusy(true);try{const next=await verifyEmailCode(email.trim().toLowerCase(),code.trim());const user=await currentUser(next.access_token);const p=await myProfile(next.access_token,user.id);setUserId(user.id);setSession(next);setProfile(p);setEditUsername(p?.username??'');setEditName(p?.display_name??'');await refresh(next.access_token,user.id,null);setCode('');setNotice('');}catch(e){setError(userFacingError(e));}finally{setBusy(false);}}
+  async function openChat(username:string){if(!session||!userId)return;setError('');setBusy(true);try{const id=await startDirectChat(session.access_token,username.replace(/^@/,''));setSelected(id);setTab('chats');setLookup('');setSearch('');await refresh(session.access_token,userId,id);}catch(e){setError(userFacingError(e));}finally{setBusy(false);}}
+  async function sendMessage(e:React.FormEvent){e.preventDefault();if(!session||!selected||!userId||sending)return;const body=draft.trim();if(!body||body.length>4000)return;setSending(true);setError('');try{await postMessage(session.access_token,selected,userId,body);setDraft('');setChatMessages((await listMessages(session.access_token,selected)).reverse());}catch(e){setError(userFacingError(e));}finally{setSending(false);}}
+  async function saveProfile(e:React.FormEvent){e.preventDefault();if(!session||!userId)return;setBusy(true);setError('');try{const p=await changeProfile(session.access_token,userId,editUsername.trim().toLowerCase().replace(/^@/,''),editName.trim());setProfile(p);setNotice('Профиль сохранён');}catch(e){setError(userFacingError(e));}finally{setBusy(false);}}
+  async function logout(){if(!session)return;setBusy(true);try{await signOut(session.access_token);}catch(e){setError(userFacingError(e));}finally{clearSession();setSession(null);setUserId('');setProfile(null);setRows([]);setSelected(null);setChatMessages([]);setBusy(false);}}
+  async function install(){if(installPrompt){await installPrompt.prompt();await installPrompt.userChoice;setInstallPrompt(null);}else setInstallHelp(true);}
+  const active=rows.find(r=>r.chat.id===selected);
+  const filtered=rows.filter(r=>!search.trim()||`${r.other?.display_name??''} ${r.other?.username??''}`.toLowerCase().includes(search.trim().toLowerCase()));
+  const loggedIn=Boolean(session&&userId);
 
-  useEffect(() => {
-    if (!showInstall) return;
-    const onEscape = (event: KeyboardEvent) => {
-      if (event.key === "Escape") dismissInstall();
-    };
-    window.addEventListener("keydown", onEscape);
-    return () => window.removeEventListener("keydown", onEscape);
-  }, [showInstall, platform.ios]);
-
-  function switchLocale() {
-    const next: Locale = locale === "ru" ? "en" : "ru";
-    localStorage.setItem("ikonosfera-locale", next);
-    document.documentElement.lang = next;
-    setLocale(next);
-  }
-
-  async function install() {
-    if (installPrompt) {
-      await installPrompt.prompt();
-      await installPrompt.userChoice;
-      setInstallPrompt(null);
-      return;
-    }
-    setShowInstall(true);
-  }
-
-  function dismissInstall() {
-    setShowInstall(false);
-    if (platform.ios) localStorage.setItem("ikonosfera-install-tip-dismissed", "1");
-  }
-
-  return (
-    <div className="shell">
-      <aside className="sidebar" aria-label={t.conversations}>
-        <div className="identity">
-          <div className="brand-symbol" aria-hidden="true"><span /></div>
-          <div className="brand-copy"><strong>ikonosfera</strong><span>{t.subtitle}</span></div>
-          <span className="version-mark" aria-label={t.beta}>00</span>
-        </div>
-
-        <div className="sidebar-content">
-          <div className="sidebar-head"><h1>{t.listTitle}</h1><span className="number-count">0</span></div>
-          <button type="button" className="new-chat" disabled title={t.futureFeatures} aria-label={`${t.newMessage}. ${t.notYet}`}>
-            <span aria-hidden="true">+</span>{t.newMessage}
-          </button>
-          <div className="empty-contacts" role="status">
-            <span className="empty-contacts-icon" aria-hidden="true" />
-            <strong>{t.zero}</strong>
-            <p>{t.listHint}</p>
-          </div>
-        </div>
-
-        <div className="sidebar-navigation" aria-label={t.shell}>
-          <button type="button" className={screen === "chats" ? "side-nav-active" : ""} aria-current={screen === "chats" ? "page" : undefined} onClick={() => setScreen("chats")}>{t.conversations}</button>
-          <button type="button" className={screen === "settings" ? "side-nav-active" : ""} aria-current={screen === "settings" ? "page" : undefined} onClick={() => setScreen("settings")}>{t.settings}</button>
-        </div>
-        <div className="sidebar-footer">
-          <span className="small-status-dot" aria-hidden="true" />
-          <span>{t.technical}</span>
-          <span className="edition">alpha 0.1</span>
-        </div>
-      </aside>
-
-      <div className="page-area">
-        <header className="topbar">
-          <div className="topbar-name"><span className="breadcrumb">IKONOSFERA</span><span className="sep" aria-hidden="true">/</span><span>{screen === "chats" ? t.conversations : t.settings}</span></div>
-          <div className="topbar-actions">
-            <span className="stage-indicator">{t.beta}</span>
-            <button type="button" className="language-button" onClick={switchLocale} aria-label={t.switchLanguage}>{locale.toUpperCase()} <span aria-hidden="true">↕</span></button>
-          </div>
-        </header>
-
-        <main className="main-area" id="main-content">
-          {screen === "chats" ? (
-            <div className="home-screen">
-              <div className="ambient-mark" aria-hidden="true"><span className="ring-one"/><span className="ring-two"/><span className="ring-three"/><span className="ring-core"/></div>
-              <div className="home-content">
-                <p className="eyebrow"><span className="eyebrow-stroke" />{t.beginning}</p>
-                <h2>{t.heading}</h2>
-                <p className="intro-text">{t.headingText}</p>
-                <div className="stage-grid" aria-label={t.currentStatus}>
-                  <div className="stage-card"><span className="card-meta">01 / Interface</span><span className="card-value">{t.working}</span><span className="state-label ready"><span />{t.beta}</span></div>
-                  <div className="stage-card"><span className="card-meta">02 / Messaging</span><span className="card-value">{t.unavailable}</span><span className="state-label pending"><span />{t.disconnected}</span></div>
-                </div>
-                <p className="subnote">{t.next}</p>
-              </div>
-              <div className="bottom-hint" role="status"><span className="hint-symbol" aria-hidden="true">i</span>{t.demoNotice}</div>
-            </div>
-          ) : (
-            <div className="settings-screen">
-              <p className="eyebrow"><span className="eyebrow-stroke" />{t.technical}</p>
-              <h2>{t.settings}</h2>
-              <p className="intro-text">{t.futureFeatures}</p>
-              <section className="settings-card" aria-label={t.currentStatus}>
-                <h3>{t.currentStatus}</h3>
-                <div className="settings-line"><span>{t.backend}</span><strong>{t.disconnected}</strong></div>
-                <div className="settings-line"><span>{t.platform}</span><strong>{platform.ios ? t.iphone : t.desktop}</strong></div>
-                <div className="settings-line"><span>{t.appMode}</span><strong>{platform.standalone ? t.standalone : t.browser}</strong></div>
-                <div className="settings-line"><span>{t.connectivity}</span><strong>{platform.online ? t.online : t.offline}</strong></div>
-                <div className="settings-line"><span>{t.locale}</span><button type="button" className="inline-control" onClick={switchLocale}>{locale.toUpperCase()}</button></div>
-              </section>
-              <section className="settings-card" aria-label={t.pwaSettings}>
-                <h3>{t.pwaSettings}</h3>
-                <p className="settings-text">{t.accessibility}</p>
-                {!platform.standalone && <button type="button" className="outline-button" onClick={install}>{installPrompt ? t.install : t.openInstall}</button>}
-              </section>
-            </div>
-          )}
-        </main>
-
-        <nav className="bottom-nav" aria-label={t.shell}>
-          <button type="button" aria-current={screen === "chats" ? "page" : undefined} className={screen === "chats" ? "bottom-nav-active" : ""} onClick={() => setScreen("chats")}>
-            <span className="nav-circle" aria-hidden="true" />{t.conversations}
-          </button>
-          <button type="button" aria-current={screen === "settings" ? "page" : undefined} className={screen === "settings" ? "bottom-nav-active" : ""} onClick={() => setScreen("settings")}>
-            <span className="nav-settings" aria-hidden="true" />{t.settings}
-          </button>
-        </nav>
+  return <div className="messenger" data-version="classic-mvp-1">
+    <aside className={`chats-pane ${(!loggedIn || selected)?'has-conversation':''}`}>
+      <div className="pane-heading"><span className="brand-emblem">◉</span><div className="brand-label"><strong>IKONOSFERA</strong><small>MESSENGER</small></div><span className="release-pill">ALPHA</span></div>
+      <div className="pane-toolbar"><h1>{tab==='chats'?'Чаты':tab==='contacts'?'Контакты':'Настройки'}</h1><button type="button" className="icon-button" title="Создать чат" aria-label="Новый чат" onClick={()=>{setTab('contacts');setSelected(null);}} disabled={!loggedIn}>＋</button></div>
+      {tab==='chats'&&<div className="pane-search"><span aria-hidden="true">⌕</span><input aria-label="Поиск по чатам" placeholder="Поиск" value={search} onChange={e=>setSearch(e.target.value)} disabled={!loggedIn}/></div>}
+      <div className="chat-list">
+      {tab==='chats'&&(loggedIn?filtered.length?filtered.map(row=><button type="button" key={row.chat.id} className={`chat-item ${selected===row.chat.id?'active':''}`} onClick={()=>{setSelected(row.chat.id);setChatMessages([]);setError('');}}><span className="contact-avatar">{(row.other?.display_name||'?').slice(0,1).toUpperCase()}</span><span className="contact-info"><strong>{row.other?.display_name??'Собеседник'}</strong><small>@{row.other?.username??'unknown'}</small></span><span className="chat-item-dot"/></button>):<div className="list-empty"><div className="empty-icon">✉</div><strong>Нет переписок</strong><p>Нажми +, чтобы найти человека по юзернейму и начать общение.</p><button className="secondary-action" onClick={()=>setTab('contacts')}>Новый чат</button></div>:<div className="list-empty"><div className="empty-icon">✉</div><strong>Нет переписок</strong><p>{backendReady?'Войди, чтобы читать сообщения.':'Для переписки осталось подключить сервер.'}</p></div>)}
+      {tab==='contacts'&&<div className="contact-search-panel"><h2>Новый диалог</h2><p>Введи юзернейм другого пользователя IKONOSFERA.</p><form onSubmit={e=>{e.preventDefault();void openChat(lookup.trim());}}><label htmlFor="lookup">Юзернейм</label><input id="lookup" placeholder="например, friend_01" value={lookup} onChange={e=>setLookup(e.target.value)} minLength={3} maxLength={25} disabled={!loggedIn}/><button className="accent-button" disabled={!loggedIn||busy||!lookup.trim()}>{busy?'Открываем…':'Начать переписку'}</button></form></div>}
+      {tab==='settings'&&<div className="settings-panel"><h2>Мой профиль</h2>{loggedIn?<><p>Люди могут найти тебя по уникальному имени.</p><form onSubmit={saveProfile}><label htmlFor="username">Юзернейм</label><input id="username" value={editUsername} onChange={e=>setEditUsername(e.target.value)} minLength={3} maxLength={24} pattern="[a-z0-9_]{3,24}" required/><label htmlFor="displayName">Отображаемое имя</label><input id="displayName" value={editName} onChange={e=>setEditName(e.target.value)} maxLength={60} required/><button className="accent-button" disabled={busy}>Сохранить профиль</button></form><button className="secondary-action" onClick={logout} disabled={busy}>Выйти из аккаунта</button></>:<p>Войди, чтобы настроить профиль.</p>}<div className="settings-meta"><span>Платформа</span><strong>{platform.ios?'iPhone / iPad':'Android / Desktop'}</strong><span>Запуск</span><strong>{platform.standalone?'Установленное приложение':'Браузер'}</strong><span>Сервер</span><strong>{backendReady?'Настроен':'Не подключён'}</strong></div>{!platform.standalone&&<button className="secondary-action" onClick={()=>void install()}>Установить приложение</button>}</div>}
       </div>
-
-      {showInstall && !platform.standalone && (
-        <div className="install-panel" role="dialog" aria-modal="true" aria-labelledby="install-title">
-          <div className="install-sheet">
-            <div className="install-drag" aria-hidden="true" />
-            <span className="install-tag">IKONOSFERA / PWA</span>
-            <h2 id="install-title">{platform.ios ? t.installInstructions : t.install}</h2>
-            <p>{platform.ios ? t.iosInstruction : t.otherInstall}</p>
-            <div className="install-steps" aria-hidden="true"><span>Safari</span><span>▢↑</span><span>+</span><span>IKONOSFERA</span></div>
-            <p className="install-caption">{t.installationDescription}</p>
-            <button type="button" className="primary-button" onClick={dismissInstall} autoFocus>{t.dismiss}</button>
-          </div>
-        </div>
-      )}
-    </div>
-  );
+      <nav className="pane-nav" aria-label="Основные разделы"><button className={tab==='chats'?'current':''} onClick={()=>{setTab('chats');setSelected(null);}}><span>◉</span>Чаты</button><button className={tab==='contacts'?'current':''} onClick={()=>{setTab('contacts');setSelected(null);}}><span>♧</span>Контакты</button><button className={tab==='settings'?'current':''} onClick={()=>{setTab('settings');setSelected(null);}}><span>⚙</span>Настройки</button></nav>
+    </aside>
+    <main className={`conversation-pane ${(!loggedIn || selected)?'open':''}`}>
+      {active&&loggedIn?<><header className="conversation-header"><button className="back-button" onClick={()=>setSelected(null)} aria-label="Назад к чатам">‹</button><span className="contact-avatar small">{(active.other?.display_name||'?').slice(0,1).toUpperCase()}</span><div className="conversation-heading"><strong>{active.other?.display_name??'Собеседник'}</strong><small>@{active.other?.username??'unknown'}</small></div></header><div className="conversation-history" aria-live="polite">{!chatMessages.length&&<div className="conversation-blank"><span>Начало переписки</span><p>Сообщения видны только участникам диалога.</p></div>}{chatMessages.map(message=><div key={message.id} className={`bubble ${message.sender_id===userId?'mine':'theirs'}`}><span>{message.body}</span><time dateTime={message.created_at}>{new Date(message.created_at).toLocaleTimeString('ru-RU',{hour:'2-digit',minute:'2-digit'})}</time></div>)}<div ref={messageEnd}/></div><form className="composer" onSubmit={sendMessage}><input aria-label="Написать сообщение" placeholder="Сообщение…" value={draft} onChange={e=>setDraft(e.target.value)} maxLength={4000}/><button type="submit" className="send-button" disabled={!draft.trim()||sending} aria-label="Отправить сообщение">➤</button></form></>:<div className="conversation-placeholder"><div className="placeholder-symbol">◉</div><h2>{loggedIn?'Выбери чат':'Общайся без лишнего'}</h2><p>{loggedIn?'Открой существующий диалог или найди друга по имени.':'IKONOSFERA — современный мессенджер для Android, iPhone и компьютера.'}</p>{!loggedIn&&(backendReady?<div className="auth-panel"><h3>{codeSent?'Подтверди вход':'Войти или зарегистрироваться'}</h3>{!codeSent?<form onSubmit={requestCode}><label htmlFor="authEmail">Электронная почта</label><input id="authEmail" type="email" autoComplete="email" value={email} onChange={e=>setEmail(e.target.value)} placeholder="you@example.com" required/><button className="accent-button" disabled={busy}>{busy?'Отправляем…':'Получить код'}</button></form>:<form onSubmit={confirmCode}><p>Код отправлен на {email}</p><label htmlFor="authCode">Код из письма</label><input id="authCode" type="text" inputMode="numeric" autoComplete="one-time-code" value={code} onChange={e=>setCode(e.target.value)} placeholder="123456" required minLength={6} maxLength={8}/><button className="accent-button" disabled={busy}>{busy?'Проверяем…':'Войти'}</button><button type="button" className="text-button" onClick={()=>{setCodeSent(false);setCode('');setError('');}}>Другой адрес</button></form>}</div>:<div className="setup-notice"><strong>Подключаем сообщения</strong><p>Сервер переписки ещё не настроен. Как только будет подключена база, здесь появится вход.</p></div>)}</div>}
+    </main>
+    {(error||notice)&&<div role="status" className={`toast ${error?'toast-error':''}`}><span>{error||notice}</span><button aria-label="Закрыть уведомление" onClick={()=>{setError('');setNotice('');}}>×</button></div>}
+    {installHelp&&<div className="install-backdrop" role="dialog" aria-modal="true" aria-label="Установка приложения"><div className="install-card"><h2>Установить IKONOSFERA</h2><p>{platform.ios?'Открой страницу в Safari → «Поделиться» → «На экран Домой» → «Добавить».':'В Chrome на Android открой меню ⋮ и выбери «Установить приложение» или «Добавить на главный экран».'}</p><button className="accent-button" onClick={()=>setInstallHelp(false)}>Понятно</button></div></div>}
+    {loading&&<div className="initializing">Загрузка IKONOSFERA…</div>}
+  </div>;
 }
