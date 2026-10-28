@@ -1,6 +1,6 @@
 'use client';
 import {useCallback,useEffect,useRef,useState} from 'react';
-import {addStory,getContactsStories,getStories,imageUrl,uploadPhoto,type Story} from '@/lib/social';
+import {addStory,getContactsStories,imageUrl,uploadPhoto,type Story} from '@/lib/social';
 import type {Profile} from '@/lib/supabase-rest';
 
 type Person={id:string;name:string;avatar:string|null;stories:Story[]};
@@ -16,7 +16,7 @@ export default function StoriesStrip({token,userId,contacts,ownProfile}:Props){
   const ids=[userId,...contacts.map(x=>x.id)];
   const stories=await getContactsStories(token,ids);
   const own=stories.filter(x=>x.user_id===userId).sort((a,b)=>a.created_at.localeCompare(b.created_at));
-  const participants:Person[]=[{id:userId,name:'Моя история',avatar:ownProfile?.avatar_path||null,stories:own}];
+  const participants:Person[]=[{id:userId,name:'Моя история',avatar:ownProfile?.avatar_path??null,stories:own}];
   for(const c of contacts){
    const list=stories.filter(s=>s.user_id===c.id).sort((a,b)=>a.created_at.localeCompare(b.created_at));
    if(list.length&&!participants.some(p=>p.id===c.id))participants.push({id:c.id,name:c.display_name||c.username,avatar:c.avatar_path,stories:list});
