@@ -119,3 +119,10 @@ export async function setPostReaction(token:string,userId:string,postId:string,e
  await api("/rest/v1/channel_post_reactions?post_id=eq."+encodeURIComponent(postId)+"&user_id=eq."+encodeURIComponent(userId),token,"DELETE");
  if(emoji)await api("/rest/v1/channel_post_reactions",token,"POST",{post_id:postId,user_id:userId,emoji});
 }
+
+export async function editChannelPost(token:string,postId:string,body:string):Promise<void>{
+ await api('/rest/v1/rpc/edit_channel_post',token,'POST',{p_post_id:postId,p_body:body});
+}
+export async function manageChannelComment(token:string,commentId:string,action:"edit"|"delete",body?:string):Promise<void>{
+ await api('/rest/v1/rpc/manage_channel_comment',token,'POST',{p_comment_id:commentId,p_action:action,p_body:body??null});
+}
