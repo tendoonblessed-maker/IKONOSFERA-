@@ -455,3 +455,11 @@ test('edit history RLS optimization preserves owner restriction',()=>{
  assert.match(sql,/alter policy message_edit_history_read_own/);
  assert.match(sql,/editor_id=\(select auth\.uid\(\)\)/);
 });
+
+test('new chat loading screen does not misrepresent an unopened dialog as empty',()=>{
+ const shell=load('components/AppShell.tsx');
+ assert.match(shell,/selected&&loggedIn\?<div className="ik-chat-entry-loading"/);
+ assert.match(shell,/Открываем диалог/);
+ assert.match(shell,/setLoading\(false\)/);
+ assert.match(shell,/transient network failure must not discard valid login credentials/);
+});
