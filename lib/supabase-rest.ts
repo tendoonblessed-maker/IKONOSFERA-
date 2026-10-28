@@ -191,7 +191,7 @@ export function explainProfileError(error:unknown):string{
  return text;
 }
 
-export async function manageChat(token:string,chatId:string,action:"hide"|"pin"|"unpin"|"delete_everyone"){
+export async function manageChat(token:string,chatId:string,action:"hide"|"pin"|"unpin"|"delete_for_me"|"delete_everyone"){
  return http('/rest/v1/rpc/manage_direct_chat',{token,method:'POST',body:{p_chat_id:chatId,p_action:action}});
 }
 export async function manageMessage(token:string,messageId:string,action:"hide"|"delete_everyone"|"edit",body?:string){
