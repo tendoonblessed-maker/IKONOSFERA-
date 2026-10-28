@@ -68,6 +68,8 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
   const [editingMessageBody,setEditingMessageBody]=useState("");
   const [search,setSearch]=useState('');
   const [chatFilter,setChatFilter]=useState<'all'|'private'|'groups'|'unread'|'bots'>('all');
+  const [editingChats,setEditingChats]=useState(false);
+  const [selectedChatIds,setSelectedChatIds]=useState<string[]>([]);
   const [selectedBot,setSelectedBot]=useState<'days'|'mood'|null>(null);
   const [messageSearch,setMessageSearch]=useState('');
   const [searchInConversation,setSearchInConversation]=useState(false);
@@ -288,6 +290,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
     if(!id)return;setSelected(null);setSelectedChannel(null);setProfileTarget(id);setError("");
   }
   function switchTab(next:Tab){
+    setEditingChats(false);setSelectedChatIds([]);
     setSelectedGroup(null);setSelectedBot(null);setCreatingGroup(false);
     setMessageSearch("");setSearchInConversation(false);setSelectedMessages([]);setCreateMenuOpen(false);setTab(next);setSelected(null);setSelectedChannel(null);setProfileTarget(next==="profile"&&userId?userId:null);setShowRecommendations(false);setError("");
   }
@@ -306,6 +309,23 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
       }
     }catch(e){setError(userFacingError(e));}
     finally{setSending(false);}
+  }
+  function toggleChatSelection(chatId:string){
+    setSelectedChatIds(previous=>previous.includes(chatId)?previous.filter(id=>id!==chatId):[...previous,chatId]);
+  }
+  async function applyBulkChatAction(action:'read'|'hide'){
+    if(!session||!userId||busy||!selectedChatIds.length)return;
+    if(action==='hide'&&!window.confirm('Скрыть выбранные чаты только у себя?'))return;
+    setBusy(true);setError('');
+    try{
+      for(const id of selectedChatIds){
+        if(action==='read')await markChatRead(session.access_token,id);
+        else await manageChat(session.access_token,id,'hide');
+      }
+      await refresh(session.access_token,userId,null);
+      setSelectedChatIds([]);setEditingChats(false);
+    }catch(e){setError(userFacingError(e));}
+    finally{setBusy(false);}
   }
   async function chatAction(chatId:string,action:"hide"|"pin"|"unpin"|"delete_everyone"){
     if(!session||!userId)return;
@@ -344,6 +364,14 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
   async function logout(){if(!session)return;if(anonymous&&!window.confirm('Это временный аккаунт. После выхода восстановить его нельзя. Выйти?'))return;setBusy(true);try{await signOut(session.access_token);}catch(e){setError(userFacingError(e));}finally{clearSession();setSession(null);setUserId('');setProfile(null);setAnonymous(false);setRows([]);setSelected(null);setProfileTarget(null);setSelectedChannel(null);setChannels([]);setChatMessages([]);setBusy(false);}}
   async function install(){if(installPrompt){await installPrompt.prompt();await installPrompt.userChoice;setInstallPrompt(null);}else setInstallHelp(true);}
   const storyContacts=useMemo(()=>rows.map(row=>row.other).filter((p):p is Profile=>Boolean(p)),[rows]);
+  const contactPeople=useMemo(()=>[...storyContacts].sort((a,b)=>(a.display_name||a.username).localeCompare(b.display_name||b.username,'ru')),[storyContacts]);
+  useEffect(()=>{
+    if(tab!=='contacts'||!session||!contactPeople.length)return;
+    let cancelled=false;
+    const check=()=>{if(document.visibilityState==='hidden')return;void getUserActivities(session.access_token,contactPeople.slice(0,60).map(p=>p.id)).then(activities=>{if(!cancelled)setUserActivities(previous=>({...previous,...activities}));}).catch(()=>{});};
+    check();const poll=window.setInterval(check,45000);
+    return()=>{cancelled=true;window.clearInterval(poll);};
+  },[tab,session,contactPeople]);
     const active=rows.find(r=>r.chat.id===selected);
   const activePartnerId=active?.other?.id??null;
   useEffect(()=>{
@@ -372,7 +400,13 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
   return <div className={`messenger ${loggedIn?"is-authenticated":"is-guest"}`} data-version="windows-desktop-v3">
     <aside className={`chats-pane ${detailOpen?'has-conversation':''}`}>
       <div className="pane-heading"><div className="brand-label"><img className="brand-mini" src="/branding/ikonosfera-wordmark.svg" alt="IKONOSFERA" width={132} height={70}/></div><button type="button" className="release-pill" onClick={()=>profile?.id&&goToProfile(profile.id)} disabled={!profile}>{profile ? "@"+profile.username : "ALPHA"}</button></div>
-      <div className="pane-toolbar"><h1>{tab==='chats'?'Чаты':tab==='contacts'?'Контакты':tab==='channels'?'Каналы':tab==='profile'?'Профиль':'Настройки'}</h1><button type="button" className="icon-button" title="Создать чат" aria-label="Новый чат" onClick={()=>{if(tab==='channels'){setChannelCreating(v=>!v);}else{setTab('chats');setCreateMenuOpen(v=>!v);}}} disabled={!loggedIn}>＋</button></div>
+      <div className="pane-toolbar">
+        {tab==='chats'&&loggedIn?<button type="button" className="ik-edit-toggle" aria-pressed={editingChats} onClick={()=>{setEditingChats(value=>!value);setSelectedChatIds([]);}}>{editingChats?'Готово':'Изм.'}</button>:<span className="ik-toolbar-spacer" aria-hidden="true"/>}
+        <h1>{tab==='chats'?'Чаты':tab==='contacts'?'Контакты':tab==='channels'?'Каналы':tab==='profile'?'Профиль':'Настройки'}</h1>
+        <button type="button" className="icon-button ik-compose-button" title={tab==='channels'?'Создать канал':'Новое сообщение'} aria-label={tab==='channels'?'Создать канал':'Новое сообщение'} onClick={()=>{if(tab==='channels'){setChannelCreating(v=>!v);}else{setTab('chats');setCreateMenuOpen(v=>!v);}}} disabled={!loggedIn||editingChats}>
+          {tab==='chats'?<svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 5H5a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-7"/><path d="m13 11 7.5-7.5a2.1 2.1 0 0 1 3 3L16 14l-4 1 1-4Z"/></svg>:<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>}
+        </button>
+      </div>
       {tab==='chats'&&loggedIn&&session&&<StoriesStrip token={session.access_token} userId={userId} contacts={storyContacts} ownProfile={profile}/>}
       {tab==='chats'&&<div className="pane-search"><span aria-hidden="true">⌕</span><input ref={searchInputRef} aria-label="Поиск по чатам" placeholder="Поиск по чатам и сообщениям" value={search} onChange={e=>setSearch(e.target.value)} disabled={!loggedIn}/></div>}
       {tab==='chats'&&loggedIn&&<div className="ik-chat-actions">
@@ -396,15 +430,35 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
         <button type="button" className={chatFilter==='bots'?'selected':''} aria-pressed={chatFilter==='bots'} onClick={()=>{setChatFilter('bots');setSelectedBot(null);}}>Боты</button>
         <button type="button" className={chatFilter==='unread'?'selected':''} aria-pressed={chatFilter==='unread'} onClick={()=>setChatFilter('unread')}>Непрочитанные{unreadTotal>0&&<span className="ik-filter-count">{unreadTotal>99?'99+':unreadTotal}</span>}</button>
       </div>}
+      {tab==='chats'&&editingChats&&<div className="ik-bulk-actions" role="toolbar" aria-label="Выбранные чаты"><span>{selectedChatIds.length?'Выбрано: '+selectedChatIds.length:'Выбери переписки'}</span><button type="button" disabled={!selectedChatIds.length||busy} onClick={()=>void applyBulkChatAction('read')}>Прочитать</button><button type="button" disabled={!selectedChatIds.length||busy} onClick={()=>void applyBulkChatAction('hide')}>Скрыть</button></div>}
       <div className="chat-list">
       {tab==='chats'&&loggedIn&&chatFilter==='bots'&&<div className="ik-bot-list"><button type="button" onClick={()=>{setSelectedBot('days');setSelected(null);setSelectedGroup(null);setSelectedChannel(null);setProfileTarget(null);}}><span>◷</span><strong>Сколько мне осталось?<small>Счётчик дней до выбранной даты</small></strong><b>›</b></button><button type="button" onClick={()=>{setSelectedBot('mood');setSelected(null);setSelectedGroup(null);setSelectedChannel(null);setProfileTarget(null);}}><span>✳</span><strong>Точка равновесия<small>15 вопросов о самочувствии</small></strong><b>›</b></button></div>}
       {tab==='chats'&&chatFilter!=='bots'&&(loggedIn?inboxItems.length?inboxItems.map(item=>item.kind==='group'
        ? <GroupInboxRow key={'g-'+item.group.id} group={item.group} overview={groupOverviews[item.group.id]} active={selectedGroup?.id===item.group.id} onOpen={()=>{setSelectedGroup(item.group);setSelected(null);setSelectedChannel(null);setProfileTarget(null);}}/>
-       : <ChatInboxRow key={'c-'+item.row.chat.id} row={item.row} currentUserId={userId} active={selected===item.row.chat.id}
-          onOpen={()=>{setSelected(item.row.chat.id);setSelectedGroup(null);setSelectedChannel(null);setProfileTarget(null);setChatMessages([]);setError('');}}
+       : <ChatInboxRow key={'c-'+item.row.chat.id} row={item.row} currentUserId={userId} active={selected===item.row.chat.id} selectionMode={editingChats} selectedForBulk={selectedChatIds.includes(item.row.chat.id)}
+          onOpen={()=>{if(editingChats){toggleChatSelection(item.row.chat.id);return;}setSelected(item.row.chat.id);setSelectedGroup(null);setSelectedChannel(null);setProfileTarget(null);setChatMessages([]);setError('');}}
           onAction={action=>void chatAction(item.row.chat.id,action)}/>
        ):<div className="list-empty ik-chat-empty"><div className="empty-icon">✉</div><strong>{chatFilter==='unread'?'Всё прочитано':chatFilter==='groups'?'Нет групп':'Нет переписок'}</strong><p>{chatFilter==='unread'?'Новые сообщения появятся здесь.':chatFilter==='groups'?'Создай группу и пригласи участников.':'Найди человека по юзернейму или создай группу.'}</p>{chatFilter==='all'&&<button className="secondary-action" onClick={()=>switchTab('contacts')}>Новый чат</button>}</div>:<div className="list-empty"><div className="empty-icon">✉</div><strong>Нет переписок</strong><p>{backendReady?'Войди, чтобы читать сообщения.':'Для переписки осталось подключить сервер.'}</p></div>)}
-      {tab==='contacts'&&<div className="contact-search-panel"><h2>Поиск пользователя</h2><p>Открой профиль по юзернейму. Диалог создастся только после нажатия «Написать сообщение».</p><form onSubmit={e=>{e.preventDefault();void searchPerson(lookup.trim());}}><label htmlFor="lookup">Юзернейм</label><input id="lookup" placeholder="например, friend_01" value={lookup} onChange={e=>setLookup(e.target.value)} minLength={3} maxLength={25} disabled={!loggedIn}/><button className="accent-button" disabled={!loggedIn||busy||!lookup.trim()}>{busy?'Ищем…':'Найти профиль'}</button></form></div>}
+      {tab==='contacts'&&<div className="contact-search-panel">
+        <form className="ik-contact-lookup" onSubmit={e=>{e.preventDefault();void searchPerson(lookup.trim().replace(/^@/,''));}}>
+          <label className="ik-visually-hidden" htmlFor="lookup">Найти пользователя</label>
+          <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.5"/><path d="m16 16 4.6 4.6"/></svg>
+          <input id="lookup" placeholder="Поиск по контактам и @username" value={lookup} onChange={e=>setLookup(e.target.value)} maxLength={25} disabled={!loggedIn}/>
+          <button type="submit" disabled={!loggedIn||busy||lookup.trim().replace(/^@/,'').length<3}>{busy?'…':'Найти'}</button>
+        </form>
+        <div className="ik-contact-invite"><span aria-hidden="true">＋</span><div><strong>Контакты IKONOSFERA</strong><small>Открой профиль или найди пользователя выше</small></div></div>
+        <div className="ik-contact-section-label">КОНТАКТЫ <span>{contactPeople.length}</span></div>
+        <div className="ik-contact-people">
+          {contactPeople.filter(person=>!lookup.trim()||((person.display_name||'')+' '+person.username).toLowerCase().includes(lookup.trim().replace(/^@/,'').toLowerCase())).map(person=>
+            <button type="button" key={person.id} className="ik-contact-person" onClick={()=>goToProfile(person.id)}>
+              <span className="contact-avatar">{imageUrl(person.avatar_path)?<img className="avatar-image" src={imageUrl(person.avatar_path)||''} alt=""/>:(person.display_name||person.username).slice(0,1).toUpperCase()}</span>
+              <span className="ik-contact-person-text"><strong>{person.display_name||person.username}</strong><small>{activityLabel(userActivities[person.id])}</small></span>
+              <span className="ik-contact-chevron" aria-hidden="true">›</span>
+            </button>
+          )}
+          {!contactPeople.length&&<p className="ik-contacts-empty">Контакты появятся здесь после переписки. Нового человека можно найти по @username выше.</p>}
+        </div>
+      </div>}
 
       {tab==='channels'&&<div className="channel-browser">
         <div className="channel-tools"><input aria-label="Поиск каналов" value={channelSearch} onChange={e=>setChannelSearch(e.target.value)} placeholder="Поиск каналов" disabled={!loggedIn}/><button type="button" className="secondary-action" disabled={!loggedIn} onClick={()=>setChannelCreating(v=>!v)}>{channelCreating?"Закрыть":"＋ Создать канал"}</button></div>
@@ -427,11 +481,10 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
 <button type="button" className="secondary-action ik-copy-link" onClick={()=>void copyCleanLink()}>Копировать ссылку на IKONOSFERA</button><button className="secondary-action" onClick={logout} disabled={busy}>Выйти из аккаунта</button></>:<p>Войди, чтобы настроить профиль.</p>}<div className="settings-meta"><span>Платформа</span><strong>{platform.ios?'iPhone / iPad':'Android / Desktop'}</strong><span>Запуск</span><strong>{platform.standalone?'Установленное приложение':'Браузер'}</strong><span>Сервер</span><strong>{backendReady?'Настроен':'Не подключён'}</strong></div>{!platform.standalone&&<button className="secondary-action" onClick={()=>void install()}>Установить приложение</button>}</div>}
       </div>
       <nav className="pane-nav" aria-label="Основные разделы">
-  <button type="button" aria-label="Чаты" aria-current={tab==='chats'?'page':undefined} className={tab==='chats'?'current':''} onClick={()=>switchTab('chats')}><span className="nav-art"><img src="/nav-chats.webp" alt="" width="64" height="64"/></span><span className="nav-label">Чаты</span></button>
-  <button type="button" aria-label="Контакты" aria-current={tab==='contacts'?'page':undefined} className={tab==='contacts'?'current':''} onClick={()=>switchTab('contacts')}><span className="nav-art"><img src="/nav-contacts.webp" alt="" width="64" height="64"/></span><span className="nav-label">Контакты</span></button>
-  <button type="button" aria-label="Каналы" aria-current={tab==='channels'?'page':undefined} className={tab==='channels'?'current':''} onClick={()=>switchTab('channels')}><span className="nav-art nav-art-channel"><span className="channel-nav-symbol">#</span></span><span className="nav-label">Каналы</span></button>
-  <button type="button" aria-label="Профиль" aria-current={tab==='profile'?'page':undefined} className={tab==='profile'?'current':''} onClick={()=>switchTab('profile')}><span className="nav-art"><img src="/nav-profile.webp" alt="" width="64" height="64"/></span><span className="nav-label">Профиль</span></button>
-  <button type="button" aria-label="Настройки" aria-current={tab==='settings'?'page':undefined} className={tab==='settings'?'current':''} onClick={()=>switchTab('settings')}><span className="nav-art"><img src="/nav-settings.webp" alt="" width="64" height="64"/></span><span className="nav-label">Настройки</span></button>
+  <button type="button" aria-label="Контакты" aria-current={tab==='contacts'?'page':undefined} className={tab==='contacts'?'current':''} onClick={()=>switchTab('contacts')}><span className="nav-art"><svg viewBox="0 0 28 28" width="25" height="25" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="14" cy="9" r="5"/><path d="M4 25v-2.5c0-5 4.3-8 10-8s10 3 10 8V25"/></svg></span><span className="nav-label">Контакты</span></button>
+  <button type="button" aria-label="Каналы" aria-current={tab==='channels'?'page':undefined} className={tab==='channels'?'current':''} onClick={()=>switchTab('channels')}><span className="nav-art"><svg viewBox="0 0 28 28" width="25" height="25" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M5 13v-3a3 3 0 0 1 3-3h7l7-4v21l-7-4H8a3 3 0 0 1-3-3v-4Z"/><path d="m9 21 2 5h4l-3-6"/></svg></span><span className="nav-label">Каналы</span></button>
+  <button type="button" aria-label="Чаты" aria-current={tab==='chats'?'page':undefined} className={tab==='chats'?'current':''} onClick={()=>switchTab('chats')}><span className="nav-art"><svg viewBox="0 0 28 28" width="25" height="25" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M4 6.5C4 4.6 5.6 3 7.5 3h13C22.4 3 24 4.6 24 6.5v12c0 2-1.6 3.5-3.5 3.5H11l-7 4V6.5Z"/><path d="M8 10h12M8 15h8"/></svg></span><span className="nav-label">Чаты</span></button>
+  <button type="button" aria-label="Настройки" aria-current={tab==='settings'||tab==='profile'?'page':undefined} className={tab==='settings'||tab==='profile'?'current':''} onClick={()=>switchTab('settings')}><span className="nav-art">{imageUrl(profile?.avatar_path)?<img className="nav-profile-avatar" src={imageUrl(profile?.avatar_path)||''} alt=""/>:<svg viewBox="0 0 28 28" width="25" height="25" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="14" cy="9" r="5"/><path d="M5 25v-2c0-5 4-8 9-8s9 3 9 8v2"/></svg>}</span><span className="nav-label">Настройки</span></button>
 </nav>
     </aside>
     <main className={`conversation-pane ${detailOpen?'open':''}`}>

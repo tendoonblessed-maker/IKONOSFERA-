@@ -133,7 +133,8 @@ test('Telegram-inspired inbox keeps IKONOSFERA branding and supplies private pre
  const css=load('app/globals.css');
  assert.ok(shell.includes('/branding/ikonosfera-wordmark.svg'));
  for(const original of ['nav-chats.webp','nav-contacts.webp','nav-profile.webp','nav-settings.webp'])
-   assert.ok(shell.includes(original));
+   assert.ok(existsSync(new URL('../public/'+original,import.meta.url)));
+ for(const tab of ['Контакты','Каналы','Чаты','Настройки'])assert.ok(shell.includes('aria-label="'+tab+'"'));
  assert.ok(shell.includes('listChatPreviews(token)'));
  assert.ok(shell.includes("chatFilter==='unread'"));
  assert.ok(shell.includes('createMenuOpen'));
@@ -221,7 +222,9 @@ test('Telegram-like layout retains IKONOSFERA assets and sorts personal and grou
  const shell=load('components/AppShell.tsx');
  const css=load('app/globals.css');
  assert.ok(shell.includes('/branding/ikonosfera-wordmark.svg'));
- for(const asset of ['nav-chats.webp','nav-contacts.webp','nav-profile.webp','nav-settings.webp'])assert.ok(shell.includes(asset));
+ for(const asset of ['nav-chats.webp','nav-contacts.webp','nav-profile.webp','nav-settings.webp'])assert.ok(existsSync(new URL('../public/'+asset,import.meta.url)));
+ assert.match(shell,/className="pane-nav"/);
+ assert.match(shell,/ik-contact-person/);
  assert.match(shell,/kind:'chat' as const/);
  assert.match(shell,/kind:'group' as const/);
  assert.match(shell,/Number\(b.pinned\)-Number\(a.pinned\)/);
@@ -258,4 +261,47 @@ test('Chat search and multi-select are accessible and do not change backend perm
  assert.ok(shell.includes('aria-pressed={selectedMessages.includes(message.id)}'));
  assert.ok(css.includes('.ik-conversation-search'));
  assert.ok(css.includes('.ik-selection-toolbar'));
+});
+
+test('monochrome iPhone refresh keeps functional navigation and edit actions',()=>{
+ const shell=load('components/AppShell.tsx'),css=load('app/globals.css');
+ assert.match(shell,/contactPeople\.filter\(/);
+ assert.match(shell,/ik-contact-lookup/);
+ assert.match(shell,/selectedChatIds/);
+ assert.match(shell,/applyBulkChatAction/);
+ assert.match(shell,/markChatRead\(session\.access_token,id\)/);
+ assert.match(css,/ik-ios-canvas/);
+ assert.match(css,/story-viewer-close svg/);
+ assert.match(css,/max-width:800px/);
+});
+test('life bot allows blank age while editing and validates before persistence',()=>{
+ const source=load('components/BotsPanel.tsx');
+ assert.match(source,/useState\("85"\)/);
+ assert.match(source,/!years\.trim\(\)/);
+ assert.match(source,/Number\.isInteger\(yearsNumber\)/);
+ assert.match(source,/inputMode="numeric"/);
+ assert.ok(!source.includes('setYears(Number(e.target.value))'));
+});
+test('story close controls use symmetrical SVG instead of glyph x',()=>{
+ const stories=load('components/StoriesStrip.tsx'),profile=load('components/ProfilePanel.tsx');
+ for(const source of [stories,profile]){
+   assert.match(source,/className="story-viewer-close"/);
+   assert.match(source,/viewBox="0 0 24 24"/);
+   assert.match(source,/M6 6l12 12M18 6L6 18/);
+ }
+});
+
+test('featured channel can be pinned independently and visitors see only the channel card',()=>{
+ const ui=load('components/ProfilePanel.tsx');
+ const api=load('lib/social.ts');
+ const migration=load('supabase/migrations/20261029_010000_allow_featured_channel_update.sql');
+ assert.match(migration,/grant update \(featured_channel_id\) on public\.profiles to authenticated/);
+ assert.match(ui,/async function pinChannel\(\)/);
+ assert.match(ui,/getChannelById\(token,p\.featured_channel_id\)/);
+ assert.match(ui,/featuredChannel&&<button type="button" className="profile-featured-channel"/);
+ assert.match(ui,/mine&&!visitorPreview&&<div className="ik-profile-pin-area"/);
+ assert.ok(!ui.includes('<h2>Мой канал</h2>'));
+ assert.ok(!ui.includes('<p>Закреплён в профиле</p>'));
+ assert.match(api,/export async function getChannelById/);
+ assert.match(api,/avatar_path/);
 });
