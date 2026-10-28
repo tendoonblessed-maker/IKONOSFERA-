@@ -1,6 +1,25 @@
--- Chat actions: reuse existing public.user_blocks(owner_id,blocked_id) and its RLS policies.
--- Messages already pass through enforce_direct_message_blocks trigger.
--- Do not create a second block table or duplicate delivery guard.
+-- Chat privacy and blocklist. Existing installs retain their user_blocks rows.
+-- The block table may already exist in development; keep this idempotent for new installs.
+create table if not exists public.user_blocks(
+ owner_id uuid not null references public.profiles(id) on delete cascade,
+ blocked_id uuid not null references public.profiles(id) on delete cascade,
+ created_at timestamptz not null default now(),
+ constraint user_blocks_pair_pk primary key(owner_id,blocked_id),
+ constraint user_blocks_not_self check(owner_id<>blocked_id)
+);
+create index if not exists user_blocks_blocked_idx on public.user_blocks(blocked_id);
+alter table public.user_blocks enable row level security;
+revoke all on public.user_blocks from public,anon,authenticated;
+grant select,insert,delete on public.user_blocks to authenticated;
+drop policy if exists user_blocks_select_self on public.user_blocks;
+create policy user_blocks_select_self on public.user_blocks for select to authenticated
+ using(owner_id=(select auth.uid()));
+drop policy if exists user_blocks_insert_self on public.user_blocks;
+create policy user_blocks_insert_self on public.user_blocks for insert to authenticated
+ with check(owner_id=(select auth.uid()) and owner_id<>blocked_id);
+drop policy if exists user_blocks_delete_self on public.user_blocks;
+create policy user_blocks_delete_self on public.user_blocks for delete to authenticated
+ using(owner_id=(select auth.uid()));
 -- Existing pin/unpin/delete-everyone keep their behavior; delete_self additionally
 -- masks all previous messages for one participant and removes their inbox entry.
 create or replace function public.manage_direct_chat(p_chat_id uuid,p_action text)
