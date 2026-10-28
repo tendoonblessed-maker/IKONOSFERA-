@@ -45,7 +45,7 @@ export async function getFullProfile(token:string,userId:string):Promise<FullPro
   return rows[0]??null;
 }
 export async function updateFullProfile(token:string,userId:string,fields:Partial<Pick<FullProfile,"avatar_path"|"cover_path"|"bio"|"featured_channel_id">>):Promise<FullProfile>{
-  const rows=await api<FullProfile[]>("/rest/v1/profiles?select=id,username,display_name,bio,avatar_path,cover_path&id=eq."+encodeURIComponent(userId),token,"PATCH",fields);
+  const rows=await api<FullProfile[]>("/rest/v1/profiles?select=id,username,display_name,bio,avatar_path,cover_path,featured_channel_id&id=eq."+encodeURIComponent(userId),token,"PATCH",fields);
   if(!rows[0])throw Error("Профиль не найден");return rows[0];
 }
 export async function getProfilePhotos(token:string,userId:string):Promise<ProfilePhoto[]>{
@@ -82,6 +82,12 @@ export async function getChannelSubscriberCounts(token:string,ids:string[]):Prom
 }
 export async function listChannels(token:string):Promise<Channel[]>{
   return api<Channel[]>("/rest/v1/channels?select=*&order=created_at.desc&limit=100",token);
+}
+/** Fetch one selected channel even if it is outside the first page of discovery. */
+export async function getChannelById(token:string,channelId:string):Promise<Channel|null>{
+ if(!/^[a-f0-9-]{36}$/i.test(channelId))return null;
+ const channels=await api<Channel[]>("/rest/v1/channels?select=*&id=eq."+encodeURIComponent(channelId)+"&limit=1",token);
+ return channels[0]??null;
 }
 export async function createChannel(token:string,owner_id:string,title:string,slug:string,description:string):Promise<Channel>{
   const rows=await api<Channel[]>("/rest/v1/channels?select=*",token,"POST",{owner_id,title:title.trim(),slug:slug.trim().toLowerCase(),description:description.trim()});
@@ -148,7 +154,7 @@ export async function unsubscribeChannel(token:string,userId:string,channelId:st
 
 /** Channels created by this user; used in profile's featured-channel picker. */
 export async function listOwnedChannels(token:string,ownerId:string):Promise<Channel[]>{
- return api<Channel[]>("/rest/v1/channels?select=id,owner_id,title,slug,description,created_at&owner_id=eq."+encodeURIComponent(ownerId)+"&order=created_at.desc&limit=100",token);
+ return api<Channel[]>("/rest/v1/channels?select=*&owner_id=eq."+encodeURIComponent(ownerId)+"&order=created_at.desc&limit=100",token);
 }
 
 export const REACTION_EMOJIS=['👍🏻','👎🏻','✌🏻','👌🏻','🖕🏻','🫶🏻','🕊️'] as const;
