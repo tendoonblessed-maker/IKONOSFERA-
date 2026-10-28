@@ -66,6 +66,8 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
   const [channelSlug,setChannelSlug]=useState("");
   const [channelDescription,setChannelDescription]=useState("");
   const [chatMessages,setChatMessages]=useState<ChatMessage[]>([]);
+  const [chatLoad,setChatLoad]=useState<{id:string;status:'loading'|'ready'|'error'}|null>(null);
+  const [chatReloadNonce,setChatReloadNonce]=useState(0);
   const [messageReactions,setMessageReactions]=useState<MessageReaction[]>([]);
   const [messageReactionPicker,setMessageReactionPicker]=useState<string|null>(null);
   const [editingMessageId,setEditingMessageId]=useState<string|null>(null);
@@ -131,20 +133,50 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
         return Date.parse(bTime)-Date.parse(aTime);
       })
       .map(chat=>({chat,other:byId.get(chat.user_a===id?chat.user_b:chat.user_a)??null,preview:overview.get(chat.id)??null})));
-    if(activeChat && chats.some(chat=>chat.id===activeChat)) {
-      const messages=await listMessages(token,activeChat);
-      const ordered=messages.reverse();
-      setChatMessages(ordered);
-      setMessageReactions(await listMessageReactions(token,ordered.map(m=>m.id)));
-      if(typeof document!=='undefined'&&document.visibilityState==='visible'){
-        if(ordered.some(m=>m.sender_id!==id&&!m.read_at)){
-          void markChatRead(token,activeChat).then(()=>listMessages(token,activeChat)).then(fresh=>{
-            if(selectedRef.current===activeChat)setChatMessages(fresh.reverse());
-          }).catch(()=>{});
-        }
-      }
-    } else if(activeChat) {setSelected(null);setChatMessages([]);}
+    // Conversation messages are fetched independently and immediately on selection.
+    // Avoid waiting for channels, groups, presence and subscriber counts.
+    void activeChat;
   },[]);
+
+  useEffect(()=>{
+    if(!selected||!session?.access_token||!userId)return;
+    let cancelled=false;
+    let inFlight=false;
+    const chatId=selected;
+    const token=session.access_token;
+    setChatLoad({id:chatId,status:'loading'});
+    setChatMessages([]);
+    setMessageReactions([]);
+    setSelectedMessages([]);
+    setMessageMenuId(null);
+    const sync=async(first=false)=>{
+      if(cancelled||inFlight||document.visibilityState==='hidden')return;
+      inFlight=true;
+      try{
+        const messages=(await listMessages(token,chatId)).reverse();
+        if(cancelled)return;
+        setChatMessages(messages);
+        setChatLoad({id:chatId,status:'ready'});
+        // Reactions must not block displaying text and attachments.
+        void listMessageReactions(token,messages.map(message=>message.id))
+          .then(reactions=>{if(!cancelled)setMessageReactions(reactions);})
+          .catch(()=>{});
+        if(messages.some(message=>message.sender_id!==userId&&!message.read_at)){
+          void markChatRead(token,chatId).catch(()=>{});
+        }
+      }catch(e){
+        if(!cancelled&&first){
+          setChatLoad({id:chatId,status:'error'});
+          setError(userFacingError(e));
+        }
+      }finally{inFlight=false;}
+    };
+    void sync(true);
+    const timer=window.setInterval(()=>void sync(),6000);
+    const onVisible=()=>{if(document.visibilityState==='visible')void sync();};
+    document.addEventListener('visibilitychange',onVisible);
+    return()=>{cancelled=true;window.clearInterval(timer);document.removeEventListener('visibilitychange',onVisible);};
+  },[selected,session?.access_token,userId,chatReloadNonce]);
 
   useEffect(()=>{
     let cancelled=false;
@@ -183,7 +215,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
       finally{inFlight=false;}
     };
     const onVisible=()=>{if(document.visibilityState==='visible')void run();};
-    const timer=window.setInterval(()=>void run(),3000);
+    const timer=window.setInterval(()=>void run(),15000);
     document.addEventListener('visibilitychange',onVisible);
     return()=>{cancelled=true;window.clearInterval(timer);document.removeEventListener('visibilitychange',onVisible);};
   },[session,userId,refresh]);
@@ -452,6 +484,8 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
     ...filtered.map(row=>({kind:'chat' as const,row,pinned:Boolean(row.chat.pinned_for?.includes(userId)),time:Date.parse(row.preview?.last_created_at||row.chat.created_at)})),
     ...visibleGroups.map(group=>({kind:'group' as const,group,pinned:false,time:Date.parse(groupOverviews[group.id]?.last_created_at||group.created_at)}))
   ].sort((a,b)=>Number(b.pinned)-Number(a.pinned)||(b.time||0)-(a.time||0));
+  const activeChatLoading=Boolean(selected&&(chatLoad?.id!==selected||chatLoad.status==='loading'));
+  const activeChatLoadError=Boolean(selected&&chatLoad?.id===selected&&chatLoad.status==='error');
   const visibleMessages=chatMessages.filter(message=>!message.deleted_for?.includes(userId)&&(!searchInConversation||!messageSearch.trim()||message.body.toLocaleLowerCase('ru').includes(messageSearch.trim().toLocaleLowerCase('ru'))));
   const loggedIn=Boolean(session&&userId);
   const detailOpen=Boolean(!loggedIn||selected||profileTarget||selectedChannel||selectedGroup||selectedBot);
@@ -581,7 +615,15 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
   {active.other&&<button type="button" disabled={busy} onClick={()=>void toggleBlockedUser(active.other!)}>{blockedUserIds.has(active.other.id)?'Разблокировать':'Заблокировать'}</button>}
   <button type="button" disabled={busy} onClick={()=>void chatAction(active.chat.id,'delete_self')}>Удалить только у себя</button>
   <button type="button" disabled={busy} onClick={()=>void chatAction(active.chat.id,'delete_everyone')}>Удалить у обоих</button>
-</div></details></header>{activePartnerBlocked&&<div className="ik-chat-blocked-banner" role="status"><span>Собеседник заблокирован. Отправка сообщений отключена.</span><button type="button" onClick={()=>active.other&&void toggleBlockedUser(active.other)}>Разблокировать</button></div>}{searchInConversation&&<div className="ik-conversation-search"><input autoFocus aria-label="Поиск сообщений в текущем чате" placeholder="Найти сообщение…" value={messageSearch} onChange={e=>setMessageSearch(e.target.value)}/><span>{visibleMessages.length} сообщ.</span><button type="button" onClick={()=>{setSearchInConversation(false);setMessageSearch("");}}>✕</button></div>}{selectedMessages.length>0&&<div className="ik-selection-toolbar"><span>Выбрано: {selectedMessages.length}</span><button type="button" onClick={()=>{const text=chatMessages.filter(m=>selectedMessages.includes(m.id)).map(m=>m.body).join("\n\n");void navigator.clipboard.writeText(text).then(()=>setNotice("Сообщения скопированы")).catch(()=>setError("Не удалось скопировать"));}}>Копировать</button><button type="button" onClick={()=>setSelectedMessages([])}>Отмена</button></div>}<div className="conversation-history" aria-live="polite">{!chatMessages.length&&<div className="conversation-blank"><span>Начало переписки</span><p>Сообщения видны только участникам диалога.</p></div>}{visibleMessages.map((message,index)=><Fragment key={message.id}>{(index===0||new Date(visibleMessages[index-1].created_at).toDateString()!==new Date(message.created_at).toDateString())&&<div className="ik-chat-day-separator" role="separator"><span>{dayLabel(message.created_at)}</span></div>}<div className={`chat-message-row ${message.sender_id===userId?'mine':'theirs'}`}><div className={`bubble ${message.sender_id===userId?'mine':'theirs'}`}>{!message.deleted_for_everyone&&message.media_path&&message.media_type&&session&&<ChatMedia token={session.access_token} path={message.media_path} type={message.media_type}/>} {message.deleted_for_everyone?<span className="message-deleted">Сообщение удалено</span>:editingMessageId===message.id?<form className="message-edit-form" onSubmit={e=>{e.preventDefault();void messageAction(message.id,"edit",editingMessageBody);}}><input value={editingMessageBody} onChange={e=>setEditingMessageBody(e.target.value)} maxLength={4000}/><button type="submit">Сохранить</button><button type="button" onClick={()=>setEditingMessageId(null)}>Отмена</button></form>:message.body&&<span>{message.body}</span>}<time dateTime={message.created_at}>{message.edited_at&&!message.deleted_for_everyone&&<span className="message-edited-label" title="Сообщение отредактировано">изм. · </span>}{message.sender_id===userId&&<span className={"message-receipt"+(message.read_at?" read":"")} title={message.read_at?"Просмотрено":"Отправлено"}>{message.read_at?"✓✓":"✓"}</span>}{new Date(message.created_at).toLocaleTimeString('ru-RU',{hour:'2-digit',minute:'2-digit'})}</time></div><div className="chat-message-tools">{!message.deleted_for_everyone&&<button type="button" className="ik-message-menu-toggle" aria-label="Действия с сообщением" onClick={()=>{setMessageMenuId(message.id);setMessageReactionPicker(null);}}>···</button>}<div className="reaction-bar message-reaction-bar">
+</div></details></header>{activePartnerBlocked&&<div className="ik-chat-blocked-banner" role="status"><span>Собеседник заблокирован. Отправка сообщений отключена.</span><button type="button" onClick={()=>active.other&&void toggleBlockedUser(active.other)}>Разблокировать</button></div>}{searchInConversation&&<div className="ik-conversation-search"><input autoFocus aria-label="Поиск сообщений в текущем чате" placeholder="Найти сообщение…" value={messageSearch} onChange={e=>setMessageSearch(e.target.value)}/><span>{visibleMessages.length} сообщ.</span><button type="button" onClick={()=>{setSearchInConversation(false);setMessageSearch("");}}>✕</button></div>}{selectedMessages.length>0&&<div className="ik-selection-toolbar"><span>Выбрано: {selectedMessages.length}</span><button type="button" onClick={()=>{const text=chatMessages.filter(m=>selectedMessages.includes(m.id)).map(m=>m.body).join("\n\n");void navigator.clipboard.writeText(text).then(()=>setNotice("Сообщения скопированы")).catch(()=>setError("Не удалось скопировать"));}}>Копировать</button><button type="button" onClick={()=>setSelectedMessages([])}>Отмена</button></div>}<div className="conversation-history" aria-live="polite" aria-busy={activeChatLoading}>
+      {activeChatLoading&&<div className="ik-chat-loading" role="status" aria-label="Загружаем переписку">
+        <div className="ik-chat-loading-line"><span className="ik-chat-loading-avatar"/></div>
+        <div className="ik-chat-loading-bubble incoming"/><div className="ik-chat-loading-bubble incoming short"/>
+        <div className="ik-chat-loading-bubble outgoing"/><div className="ik-chat-loading-bubble incoming"/>
+        <span className="ik-chat-loading-label"><span className="ik-chat-loading-spinner" aria-hidden="true"/>Загружаем сообщения…</span>
+      </div>}
+      {activeChatLoadError&&<div className="ik-chat-load-error" role="alert"><strong>Не удалось загрузить переписку</strong><p>Проверь подключение к интернету. История сообщений не удалена.</p><button type="button" onClick={()=>{setError('');setChatReloadNonce(n=>n+1);}}>Попробовать снова</button></div>}
+      {!activeChatLoading&&!activeChatLoadError&&!chatMessages.length&&<div className="conversation-blank"><span>Начало переписки</span><p>Сообщения видны только участникам диалога.</p></div>}{visibleMessages.map((message,index)=><Fragment key={message.id}>{(index===0||new Date(visibleMessages[index-1].created_at).toDateString()!==new Date(message.created_at).toDateString())&&<div className="ik-chat-day-separator" role="separator"><span>{dayLabel(message.created_at)}</span></div>}<div className={`chat-message-row ${message.sender_id===userId?'mine':'theirs'}`}><div className={`bubble ${message.sender_id===userId?'mine':'theirs'}`}>{!message.deleted_for_everyone&&message.media_path&&message.media_type&&session&&<ChatMedia token={session.access_token} path={message.media_path} type={message.media_type}/>} {message.deleted_for_everyone?<span className="message-deleted">Сообщение удалено</span>:editingMessageId===message.id?<form className="message-edit-form" onSubmit={e=>{e.preventDefault();void messageAction(message.id,"edit",editingMessageBody);}}><input value={editingMessageBody} onChange={e=>setEditingMessageBody(e.target.value)} maxLength={4000}/><button type="submit">Сохранить</button><button type="button" onClick={()=>setEditingMessageId(null)}>Отмена</button></form>:message.body&&<span>{message.body}</span>}<time dateTime={message.created_at}>{message.edited_at&&!message.deleted_for_everyone&&<span className="message-edited-label" title="Сообщение отредактировано">изм. · </span>}{message.sender_id===userId&&<span className={"message-receipt"+(message.read_at?" read":"")} title={message.read_at?"Просмотрено":"Отправлено"}>{message.read_at?"✓✓":"✓"}</span>}{new Date(message.created_at).toLocaleTimeString('ru-RU',{hour:'2-digit',minute:'2-digit'})}</time></div><div className="chat-message-tools">{!message.deleted_for_everyone&&<button type="button" className="ik-message-menu-toggle" aria-label="Действия с сообщением" onClick={()=>{setMessageMenuId(message.id);setMessageReactionPicker(null);}}>···</button>}<div className="reaction-bar message-reaction-bar">
  {REACTION_EMOJIS.filter(emoji=>messageReactions.some(r=>r.message_id===message.id&&r.emoji===emoji)).map(emoji=><button key={emoji} type="button" className={"reaction-pill"+(messageReactions.some(r=>r.message_id===message.id&&r.user_id===userId&&r.emoji===emoji)?" mine":"")} onClick={()=>void reactToMessage(message.id,emoji)} disabled={sending}>{emoji} <span>{messageReactions.filter(r=>r.message_id===message.id&&r.emoji===emoji).length}</span></button>)}
  <button type="button" className="reaction-add" aria-label="Добавить реакцию" onClick={()=>setMessageReactionPicker(messageReactionPicker===message.id?null:message.id)}>☺ +</button>
  {messageReactionPicker===message.id&&<div className="reaction-picker">{REACTION_EMOJIS.map(emoji=><button type="button" key={emoji} disabled={sending} onClick={()=>void reactToMessage(message.id,emoji)} aria-label={"Реакция "+emoji}>{emoji}</button>)}</div>}
