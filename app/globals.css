@@ -184,15 +184,6 @@ textarea:focus-visible{outline:2px solid #111;outline-offset:2px}
  .channel-compose{padding:13px}
  .pane-nav button{min-width:60px}
 }
-@media(prefers-reduced-motion:reduce){
- .pixel-cat-button:not(.is-awake) .cat-body,
- .pixel-cat-button:not(.is-awake) .cat-sleep-z{animation:none}
- .pixel-cat-button.is-awake .cat-head,
- .pixel-cat-button.is-awake .cat-awake-eyes,
- .pixel-cat-button.is-awake .cat-sleeping-eyes,
- .pixel-cat-button.is-awake .cat-pupils,
- .pixel-cat-button.is-awake .cat-sleep-z{animation-duration:1ms!important}
-}
 
 
 /* 3D glass-plastic navigation, original glossy icon artwork */
@@ -525,3 +516,100 @@ textarea:focus-visible{outline:2px solid #111;outline-offset:2px}
  .messenger.is-guest .temporary-login{margin-top:9px;padding-top:8px}
  .messenger.is-guest .temporary-login p{font-size:10px}
 }
+
+/* Pre-release design system: strong, comfortably wide Inter lettering. */
+:root{--ui-surface:#ffffff;--ui-canvas:#f9fafb;--ui-border:#ebedf0;--ui-muted:#78808b;--ui-radius:16px}
+html,body{font-family:var(--font-inter),Inter,"Segoe UI Variable","Segoe UI",Arial,sans-serif;font-optical-sizing:auto;letter-spacing:.002em}
+button,input,textarea,select{font-family:inherit}
+h1,h2,h3,strong{font-synthesis:none}
+.pane-heading,.conversation-header{background:#fff}
+.brand-label .brand-mini{object-position:left center}
+.pane-toolbar h1{font-size:29px;font-weight:800;letter-spacing:-.027em}
+.contact-info strong,.conversation-heading strong{font-size:14px;font-weight:760;letter-spacing:.005em}
+.conversation-heading strong{font-size:16px}
+.conversation-heading small,.contact-info small{font-weight:530;letter-spacing:.006em}
+.settings-panel h2,.contact-search-panel h2{font-weight:800;letter-spacing:-.018em}
+.list-empty strong,.channel-section-heading{font-weight:800}
+.chat-item{border-bottom:none;border-radius:13px;min-height:65px;padding:11px 12px;transition:background .18s ease,transform .18s ease}
+.chat-item:hover{background:#f5f6f7}
+.chat-item:active{transform:scale(.991)}
+.chat-item.active{background:#f1f3f5}
+.contact-avatar{background:#f0f1f2;font-weight:780}
+.pane-search{border-color:var(--ui-border);background:#f6f7f8;border-radius:15px}
+.conversation-pane{background:var(--ui-canvas)}
+.conversation-header{box-shadow:0 1px 0 var(--ui-border);border:0}
+.conversation-history{scroll-behavior:smooth}
+.bubble{border-radius:19px 19px 19px 7px;background:#fff;border:1px solid #ebedf0;color:#20232a;box-shadow:0 2px 10px #0a0d1705;line-height:1.45;font-size:14px}
+.bubble.mine{border-radius:19px 19px 7px 19px;background:#18191c;color:#fff;border-color:#18191c}
+.composer{border-top:1px solid var(--ui-border);box-shadow:0 -4px 24px #00000004}
+.composer input{background:#f6f7f8;border:1px solid #e8ebef;padding-left:18px;font-size:14px}
+.send-button{transition:transform .18s ease,background .18s ease}
+.send-button:not(:disabled):hover{background:#343434;transform:translateY(-1px)}
+.send-button:not(:disabled):active{transform:scale(.9)}
+.pane-nav .nav-label{font-weight:700;letter-spacing:.02em}
+.pane-nav button:active .nav-art{transform:translateY(2px) scale(.91)!important}
+.settings-edit-button{display:block;width:100%;margin:18px 0 24px;border:1px solid #d7dbe0;background:#fff;color:#17191d;font-weight:740;border-radius:14px;min-height:47px;transition:transform .2s ease,background .2s ease}
+.settings-edit-button:hover{background:#f4f6f8;transform:translateY(-2px)}
+.settings-edit-button:active{transform:scale(.98)}
+/* All destructive operations are tucked into a familiar contextual menu. */
+.chat-row-wrap{display:flex;align-items:center;min-width:0;margin:3px 8px;border-radius:14px;position:relative}
+.chat-row-wrap>.chat-item{min-width:0;flex:1;width:auto}
+.chat-row-wrap:has(.chat-item.active){background:#f1f3f5}
+.chat-row-menu{flex-shrink:0;position:relative;z-index:5;margin-right:7px}
+.chat-row-menu>summary,.message-menu>summary{display:grid;place-items:center;list-style:none;border:0;background:transparent;color:#969ba4;border-radius:11px;min-width:32px;min-height:34px;font-size:22px;font-weight:800;line-height:1;cursor:pointer}
+.chat-row-menu>summary::-webkit-details-marker,.message-menu>summary::-webkit-details-marker{display:none}
+.chat-row-menu>summary:hover,.message-menu>summary:hover,.chat-row-menu[open]>summary,.message-menu[open]>summary{background:#e9ecef;color:#292b2e}
+.chat-row-menu .chat-row-actions{position:absolute;right:0;top:35px;display:grid;width:210px;gap:4px;padding:9px;background:#fff;border:1px solid #eceef1;box-shadow:0 14px 45px #00000016;border-radius:15px;z-index:50}
+.chat-row-menu .chat-row-actions button{text-align:left;padding:11px 12px;border:0;background:transparent;border-radius:9px;font-size:12px;font-weight:700;min-height:36px}
+.chat-row-menu .chat-row-actions button:hover{background:#f5f6f7}
+.message-menu{position:relative;justify-self:end}
+.message-menu>summary{font-size:18px;min-height:25px;min-width:31px}
+.message-menu .message-manage-actions{position:absolute;right:0;top:28px;width:165px;display:grid;gap:4px;padding:8px;border-radius:13px;background:#fff;border:1px solid #ebedf0;box-shadow:0 10px 36px #00000018;z-index:20}
+.message-menu .message-manage-actions button{text-align:left;padding:9px 10px;border:0;border-radius:8px;background:transparent;color:#30343b;font-size:11px;min-height:33px}
+.message-menu .message-manage-actions button:hover{background:#f2f3f5}
+.bubble.mine .message-menu>summary{color:#ddd}
+.bubble.mine .message-menu>summary:hover{background:#ffffff20}
+.email-code-fallback{display:none!important}
+.email-signin-result{display:grid;gap:12px}
+.email-signin-result>.text-button{text-align:center;min-height:38px;border-radius:10px}
+.email-signin-guide{padding:17px 18px;gap:11px;background:#f9fafb}
+.email-signin-guide strong{font-size:14px;font-weight:820}
+.email-signin-guide p{font-size:12px;line-height:1.65}
+.email-signin-guide small{font-size:11px;line-height:1.6}
+.messenger.is-guest .conversation-pane{background:#fff}
+.messenger.is-guest .conversation-placeholder{overflow:hidden;padding:18px 22px}
+.messenger.is-guest .guest-brand{margin-bottom:17px}
+.messenger.is-guest .guest-brand img{width:min(218px,50vw);max-height:67px}
+.messenger.is-guest .conversation-placeholder h2{font-size:clamp(25px,2.6vw,36px);font-weight:830;letter-spacing:-.036em;line-height:1.14;margin-bottom:11px}
+.messenger.is-guest .conversation-placeholder>p{max-width:570px;font-size:14px;line-height:1.55;color:#59606a}
+.messenger.is-guest .auth-panel{margin-top:23px;width:min(100%,445px);max-width:445px;border-radius:20px;border-color:#e5e8ec;box-shadow:0 15px 55px #191e2510}
+.messenger.is-guest .auth-panel h3{font-weight:820}
+@media(min-width:801px){
+ .messenger{grid-template-columns:clamp(330px,25vw,420px) minmax(0,1fr)}
+ .chats-pane{background:#fff}
+ .chat-list{padding:4px 8px 16px}
+ .pane-nav{background:#fbfcfd;border-color:#e9ecef;box-shadow:0 4px 16px #00000006}
+ .conversation-pane{min-width:0}
+ .conversation-history{padding-left:clamp(27px,6vw,120px);padding-right:clamp(27px,6vw,120px)}
+ .composer{padding-left:clamp(27px,6vw,120px);padding-right:clamp(27px,6vw,120px)}
+ .conversation-placeholder h2{font-weight:820;letter-spacing:-.04em}
+ .messenger.is-guest .guest-brand{margin-top:0}
+}
+@media(max-height:710px) and (min-width:801px){
+ .messenger.is-guest .guest-brand{margin-bottom:8px}
+ .messenger.is-guest .guest-brand img{max-height:48px}
+ .messenger.is-guest .auth-panel{margin-top:10px;padding:13px 18px}
+ .messenger.is-guest .auth-panel form{margin-top:10px;gap:7px}
+ .messenger.is-guest .conversation-placeholder>p{font-size:12px}
+ .messenger.is-guest .conversation-placeholder h2{font-size:27px;margin-bottom:4px}
+ .messenger.is-guest .temporary-login{margin-top:8px}
+}
+@media(max-width:800px){
+ .messenger.is-guest .conversation-placeholder{overflow-y:auto}
+ .messenger.is-guest .guest-brand{margin-bottom:14px}
+ .messenger.is-guest .guest-brand img{width:min(185px,65vw);max-height:60px}
+ .messenger.is-guest .auth-panel{margin-top:18px;padding:20px}
+ .pane-nav .nav-art{max-height:40px}
+ .chat-row-wrap{margin:2px 5px}
+}
+@media(prefers-reduced-motion:reduce){.chat-item,.send-button,.settings-edit-button{transition:none}}
