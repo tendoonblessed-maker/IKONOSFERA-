@@ -1121,3 +1121,33 @@ html,body{min-height:100%;overflow:hidden}
  .messenger.is-authenticated .pane-nav{flex-shrink:0}
  .messenger.is-authenticated .chat-list{overscroll-behavior:contain;-webkit-overflow-scrolling:touch}
 }
+
+
+/* iOS Safari: lock the viewport horizontally; allow vertical scrolling only inside panels */
+html,body,#__next{max-width:100%;overflow-x:hidden!important;overscroll-behavior-x:none}
+.messenger,.messenger.is-authenticated,.conversation-pane,.chats-pane,.profile-view,.channel-view{min-width:0;max-width:100%;overflow-x:clip}
+.profile-scroll,.channel-feed{width:100%;max-width:100%;min-width:0;overflow-x:hidden!important;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior-x:none;touch-action:pan-y}
+.profile-hero,.profile-cover,.profile-content-section,.profile-identity,.profile-topbar{min-width:0;max-width:100%;box-sizing:border-box}
+.profile-content-section *{box-sizing:border-box}
+.profile-content-section p,.profile-featured-details{overflow-wrap:anywhere}
+.profile-stories{max-width:100%;overscroll-behavior-x:contain}
+@media(max-width:800px){
+ .profile-view,.channel-view{width:100%;min-width:0;overflow:hidden}
+ .profile-topbar{width:100%;gap:6px}
+ .profile-topbar>strong{min-width:0}
+ .profile-cover{width:100%;background-position:center}
+ .profile-scroll{width:100%;overflow-x:hidden}
+ .profile-hero{width:100%}
+ .profile-content-section{width:100%}
+ .profile-featured-section{max-width:100%}
+}
+
+
+.ik-photo-editor{position:fixed;inset:0;z-index:9999;background:#0009;display:grid;place-items:center;padding:16px}
+.ik-photo-editor-card{background:white;color:#111;border-radius:20px;padding:20px;width:min(100%,420px);max-height:90dvh;overflow-y:auto;box-shadow:0 18px 60px #0003}
+.ik-photo-editor-card h2{font-size:22px;margin:0 0 8px}.ik-photo-editor-card p{font-size:13px;color:#667;margin:0 0 15px}
+.ik-photo-preview{height:min(65vw,320px);aspect-ratio:1;margin:0 auto 18px;border-radius:14px;overflow:hidden;display:grid;place-items:center;background:#e6e6e6}
+.ik-photo-preview.is-cover{width:100%;height:auto;aspect-ratio:2.5}
+.ik-photo-preview img{width:100%;height:100%;object-fit:cover;transition:transform .12s ease}
+.ik-photo-editor-card label{display:grid;gap:6px;font-size:13px}.ik-photo-editor-card input[type=range]{width:100%}
+.ik-photo-editor-actions{display:flex;gap:9px;margin-top:18px}.ik-photo-editor-actions button{flex:1;border:1px solid #ddd;border-radius:11px;padding:12px 9px;background:#f5f5f5;font:inherit;font-weight:700}.ik-photo-editor-actions button:last-child{background:#111;color:#fff}
