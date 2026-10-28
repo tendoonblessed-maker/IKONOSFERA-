@@ -562,3 +562,47 @@ test('new incoming messages never force scrolling when reading chat history',()=
  assert.match(group,/followNewestRef=useRef\(true\)/);
  assert.match(group,/followNewestRef\.current=area\.scrollHeight-area\.scrollTop-area\.clientHeight<120/);
 });
+
+
+test('temporary Supabase outages never silently erase a valid saved session',()=>{
+ const auth=load('lib/supabase-rest.ts');
+ assert.match(auth,/class SupabaseHttpError extends Error/);
+ assert.match(auth,/let sessionRefreshPromise:Promise<Session\|null>\|null=null/);
+ assert.match(auth,/if\(sessionRefreshPromise\)return sessionRefreshPromise/);
+ assert.match(auth,/if\(error instanceof SupabaseHttpError&&\[400,401,403\]\.includes\(error\.status\)\)/);
+ assert.match(auth,/if\(loadSession\(\)\?\.refresh_token===s\.refresh_token\)clearSession\(\)/);
+ assert.match(auth,/throw error;/);
+ assert.ok(!auth.includes('catch { clearSession(); return null; }'));
+});
+test('direct message API supports cursor paging without losing same-timestamp messages',()=>{
+ const api=load('lib/supabase-rest.ts');
+ assert.match(api,/CHAT_MESSAGE_PAGE_SIZE=100/);
+ assert.match(api,/export async function listOlderMessages/);
+ assert.match(api,/created_at\.lt\.\$\{time\}/);
+ assert.match(api,/created_at\.eq\.\$\{time\},id\.lt\.\$\{id\}/);
+ assert.match(api,/order=created_at\.desc,id\.desc&limit=\$\{CHAT_MESSAGE_PAGE_SIZE\}/);
+ assert.match(api,/before:Pick<ChatMessage,'id'\|'created_at'>/);
+});
+test('loaded chat pages survive message polls, actions and switching conversations',()=>{
+ const shell=load('components/AppShell.tsx');
+ const css=load('app/globals.css');
+ assert.match(shell,/function mergeRecentPage\(previous:ChatMessage\[\],latest:ChatMessage\[\]\)/);
+ assert.match(shell,/setChatMessages\(current=>mergeRecentPage\(current,messages\)\)/);
+ assert.match(shell,/setChatMessages\(current=>mergeRecentPage\(current,updated\)\)/);
+ assert.match(shell,/const \[hasOlderMessages,setHasOlderMessages\]=useState\(false\)/);
+ assert.match(shell,/const prependScrollRef=useRef/);
+ assert.match(shell,/history\.scrollTop=pending\.top\+\(history\.scrollHeight-pending\.height\)/);
+ assert.match(shell,/if\(selectedRef\.current!==chatId\)return/);
+ assert.match(shell,/loadingOlderRef\.current=true/);
+ assert.match(shell,/className="ik-chat-older-button"/);
+ assert.match(shell,/Показать предыдущие сообщения/);
+ assert.match(shell,/olderMessagesError\?'Не удалось загрузить\. Повторить'/);
+ assert.match(css,/\.ik-chat-older-button:focus-visible/);
+});
+test('editing old messages keeps their local state and reaction requests are scoped',()=>{
+ const shell=load('components/AppShell.tsx');
+ assert.match(shell,/if\(action==='hide'\)return \[\]/);
+ assert.match(shell,/if\(action==='delete_everyone'\)return \[\{\.\.\.message,deleted_for_everyone:true/);
+ assert.match(shell,/listMessageReactions\(token,\[messageId\]\)/);
+ assert.match(shell,/current\.filter\(reaction=>reaction\.message_id!==messageId\)/);
+});
