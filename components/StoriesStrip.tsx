@@ -14,6 +14,7 @@ export default function StoriesStrip({token,userId,contacts,ownProfile}:Props){
  const [paused,setPaused]=useState(false);
  const inputRef=useRef<HTMLInputElement>(null);
  const contactsRef=useRef(contacts);
+ const storyRequestRef=useRef(0);
  contactsRef.current=contacts;
  // Stable ID signature prevents refetching stories whenever inbox rows poll.
  const contactIdsKey=contacts.map(person=>person.id).sort().join(',');
@@ -21,6 +22,7 @@ export default function StoriesStrip({token,userId,contacts,ownProfile}:Props){
  const activeStoryId=active?people[active.person]?.stories[active.story]?.id??null:null;
  const progressRef=useStoryProgress(activeStoryId,()=>next(),paused);
  const load=useCallback(async()=>{
+  const requestId=++storyRequestRef.current;
   const currentContacts=contactsRef.current;
   const ids=[userId,...currentContacts.map(person=>person.id)];
   const stories=await getContactsStories(token,ids);
@@ -32,7 +34,8 @@ export default function StoriesStrip({token,userId,contacts,ownProfile}:Props){
      participants.push({id:contact.id,name:contact.display_name||contact.username,avatar:contact.avatar_path??null,stories:list});
    }
   }
-  setPeople(participants);
+  // A slower old request must not replace a newer story list.
+  if(requestId===storyRequestRef.current)setPeople(participants);
   return participants;
  },[token,userId,contactIdsKey,avatarPath]);
  useEffect(()=>{void load().catch(()=>{});},[load]);
