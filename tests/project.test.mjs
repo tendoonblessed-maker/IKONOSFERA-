@@ -39,10 +39,33 @@ test('channel posts and comments persist through Supabase',()=>{
  const ui=load('components/ChannelsPanel.tsx'),backend=load('lib/social.ts');
  for(const word of ['publishPost','addPostComment','listPostComments'])assert.ok(ui.includes(word)&&backend.includes(word));
 });
-test('pixel mascot finishes atomic animation and ignores repeat taps',()=>{
- const cat=load('components/SleepyPixelCat.tsx'),css=load('app/globals.css');
- assert.match(cat,/if\(locked.current\)return/);
- assert.match(cat,/disabled=\{awake\}/);
- assert.match(cat,/ik-cat-awaken/);
- assert.match(css,/animation:ik-cat-awaken 8\.2s/);
+test('channels require explicit opt-in and separate discovery from subscriptions',()=>{
+ const sql=load('supabase/migrations/20261028_140000_subscriptions_and_short_usernames.sql');
+ const ui=load('components/AppShell.tsx');
+ const api=load('lib/social.ts');
+ assert.match(sql,/channel_subscriptions/);
+ assert.match(sql,/channel_subscriptions_join_self/);
+ assert.match(ui,/Мои каналы/);
+ assert.match(ui,/Рекомендации/);
+ assert.match(ui,/subscribeChannel/);
+ assert.match(ui,/unsubscribeChannel/);
+ assert.match(api,/listMySubscriptions/);
+});
+test('removed mascot does not appear in the UI',()=>{
+ assert.ok(!existsSync(new URL('../components/SleepyPixelCat.tsx',import.meta.url)));
+ assert.ok(!load('components/AppShell.tsx').includes('SleepyPixelCat'));
+});
+test('profile messaging and shorter generated usernames',()=>{
+ const profile=load('components/ProfilePanel.tsx');
+ const sql=load('supabase/migrations/20261028_140000_subscriptions_and_short_usernames.sql');
+ assert.match(profile,/Написать сообщение/);
+ assert.match(profile,/Юзернейм/);
+ assert.match(sql,/profile.*nextval/);
+});
+test('email authentication accepts magic link or one-time code',()=>{
+ const api=load('lib/supabase-rest.ts');
+ const ui=load('components/AppShell.tsx');
+ assert.match(api,/consumeEmailLinkSession/);
+ assert.match(api,/verifyEmailCode/);
+ assert.match(ui,/ссылку из письма/);
 });
