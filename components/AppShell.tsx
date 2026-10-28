@@ -5,6 +5,8 @@ import { backendReady, createTemporaryAccount, consumeEmailLinkSession, clearSes
 import ProfilePanel from "@/components/ProfilePanel";
 import ChatMedia from "@/components/ChatMedia";
 import StoriesStrip from "@/components/StoriesStrip";
+import GroupPanel from "@/components/GroupPanel";
+import {createGroup,listGroups,type Group} from "@/lib/groups";
 import ChannelsPanel from "@/components/ChannelsPanel";
 import { REACTION_EMOJIS, type ReactionEmoji, createChannel, imageUrl, listChannels, listMySubscriptions, subscribeChannel, unsubscribeChannel, type Channel } from "@/lib/social";
 
@@ -28,6 +30,11 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
   const [profile,setProfile]=useState<Profile|null>(null);
   const [anonymous,setAnonymous]=useState(false);
   const [rows,setRows]=useState<ChatRow[]>([]);
+  const [groups,setGroups]=useState<Group[]>([]);
+  const [selectedGroup,setSelectedGroup]=useState<Group|null>(null);
+  const [creatingGroup,setCreatingGroup]=useState(false);
+  const [groupTitle,setGroupTitle]=useState('');
+  const [groupSelection,setGroupSelection]=useState<string[]>([]);
   const [selected,setSelected]=useState<string|null>(null);
   const [profileTarget,setProfileTarget]=useState<string|null>(null);
   const [selectedChannel,setSelectedChannel]=useState<Channel|null>(null);
@@ -73,6 +80,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
   const refresh=useCallback(async (token:string,id:string,activeChat:string|null)=>{
     const [chats,allChannels,memberships]=await Promise.all([listChats(token),listChannels(token),listMySubscriptions(token,id)]);
     setChannels(allChannels);
+    setGroups(await listGroups(token));
     setSubscriptions(memberships.map(m=>m.channel_id));
     const others=Array.from(new Set(chats.map(c=>c.user_a===id?c.user_b:c.user_a)));
     const profiles=await listProfiles(token,others);
@@ -148,6 +156,16 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
     }catch(e){setError(userFacingError(e));}finally{setBusy(false);}
   }
   async function openChat(username:string){if(!session||!userId)return;setError('');setBusy(true);try{const id=await startDirectChat(session.access_token,username.replace(/^@/,''));await reopenChat(session.access_token,id);setProfileTarget(null);setSelectedChannel(null);setSelected(id);setTab('chats');setLookup('');setSearch('');await refresh(session.access_token,userId,id);}catch(e){setError(userFacingError(e));}finally{setBusy(false);}}
+  async function makeGroup(e:React.FormEvent){
+    e.preventDefault();if(!session||!userId||busy||!groupSelection.length||!groupTitle.trim())return;
+    setBusy(true);setError('');
+    try{const id=await createGroup(session.access_token,groupTitle,groupSelection);
+      const updated=await listGroups(session.access_token);setGroups(updated);
+      setSelectedGroup(updated.find(g=>g.id===id)||null);setCreatingGroup(false);
+      setGroupTitle('');setGroupSelection([]);setSelected(null);setSelectedChannel(null);setProfileTarget(null);setTab('chats');
+      setNotice('Группа создана.');
+    }catch(e){setError(userFacingError(e));}finally{setBusy(false);}
+  }
   async function makeChannel(e:React.FormEvent){
     e.preventDefault();if(!session||!userId||busy)return;
     setBusy(true);setError("");
@@ -188,6 +206,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
     if(!id)return;setSelected(null);setSelectedChannel(null);setProfileTarget(id);setError("");
   }
   function switchTab(next:Tab){
+    setSelectedGroup(null);setCreatingGroup(false);
     setTab(next);setSelected(null);setSelectedChannel(null);setProfileTarget(next==="profile"&&userId?userId:null);setShowRecommendations(false);setError("");
   }
   async function sendMessage(e:React.FormEvent){e.preventDefault();if(!session||!selected||!userId||sending)return;const body=draft.trim();if(!body||body.length>4000)return;setSending(true);setError('');try{await postMessage(session.access_token,selected,userId,body);setDraft('');setChatMessages((await listMessages(session.access_token,selected)).reverse());}catch(e){setError(userFacingError(e));}finally{setSending(false);}}
@@ -231,7 +250,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
   const active=rows.find(r=>r.chat.id===selected);
   const filtered=rows.filter(r=>!search.trim()||`${r.other?.display_name??''} ${r.other?.username??''}`.toLowerCase().includes(search.trim().toLowerCase()));
   const loggedIn=Boolean(session&&userId);
-  const detailOpen=Boolean(!loggedIn||selected||profileTarget||selectedChannel);
+  const detailOpen=Boolean(!loggedIn||selected||profileTarget||selectedChannel||selectedGroup);
   const myChannels=channels.filter(ch=>ch.owner_id===userId||subscriptions.includes(ch.id));
   const recommendedChannels=channels.filter(ch=>ch.owner_id!==userId&&!subscriptions.includes(ch.id));
   const filteredChannels=(showRecommendations?recommendedChannels:myChannels).filter(ch=>!channelSearch.trim()||((ch.title+" "+ch.slug).toLowerCase().includes(channelSearch.trim().toLowerCase())));
@@ -239,11 +258,22 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
   return <div className={`messenger ${loggedIn?"is-authenticated":"is-guest"}`} data-version="windows-desktop-v3">
     <aside className={`chats-pane ${detailOpen?'has-conversation':''}`}>
       <div className="pane-heading"><div className="brand-label"><img className="brand-mini" src="/branding/ikonosfera-wordmark.svg" alt="IKONOSFERA" width={132} height={70}/></div><button type="button" className="release-pill" onClick={()=>profile?.id&&goToProfile(profile.id)} disabled={!profile}>{profile ? "@"+profile.username : "ALPHA"}</button></div>
-      <div className="pane-toolbar"><h1>{tab==='chats'?'Чаты':tab==='contacts'?'Контакты':tab==='channels'?'Каналы':tab==='profile'?'Профиль':'Настройки'}</h1><button type="button" className="icon-button" title="Создать чат" aria-label="Новый чат" onClick={()=>{switchTab(tab==='channels'?'channels':'contacts');if(tab==='channels')setChannelCreating(true);}} disabled={!loggedIn}>＋</button></div>
+      <div className="pane-toolbar"><h1>{tab==='chats'?'Чаты':tab==='contacts'?'Контакты':tab==='channels'?'Каналы':tab==='profile'?'Профиль':'Настройки'}</h1><button type="button" className="icon-button" title="Создать чат" aria-label="Новый чат" onClick={()=>{if(tab==='channels'){setChannelCreating(true);}else{setCreatingGroup(v=>!v);setTab('chats');}}} disabled={!loggedIn}>＋</button></div>
       {tab==='chats'&&<div className="pane-search"><span aria-hidden="true">⌕</span><input aria-label="Поиск по чатам" placeholder="Поиск" value={search} onChange={e=>setSearch(e.target.value)} disabled={!loggedIn}/></div>}
       {tab==='chats'&&loggedIn&&session&&<StoriesStrip token={session.access_token} userId={userId} contacts={storyContacts} ownProfile={profile}/>}
+      {tab==='chats'&&loggedIn&&<div className="group-create-area">
+        <button type="button" className="secondary-action" onClick={()=>setCreatingGroup(v=>!v)}>{creatingGroup?'Отмена':'＋ Создать группу'}</button>
+        <button type="button" className="secondary-action" onClick={()=>{setTab('channels');setChannelCreating(true);setCreatingGroup(false);}}>＋ Создать канал</button>
+        {creatingGroup&&<form className="group-create-form" onSubmit={makeGroup}>
+          <label>Название группы<input required maxLength={80} value={groupTitle} onChange={e=>setGroupTitle(e.target.value)} placeholder="Наша компания"/></label>
+          <strong>Добавить из контактов</strong>
+          <div className="group-contact-list">{storyContacts.length?storyContacts.map(person=><label key={person.id} className="group-contact-choice"><input type="checkbox" checked={groupSelection.includes(person.id)} onChange={e=>setGroupSelection(prev=>e.target.checked?[...prev,person.id]:prev.filter(id=>id!==person.id))}/><span>{person.display_name||person.username} <small>@{person.username}</small></span></label>):<p>Контактов пока нет. Начни личную переписку, чтобы добавить человека в группу.</p>}</div>
+          <button type="submit" className="accent-button" disabled={busy||!groupTitle.trim()||!groupSelection.length}>Создать группу ({groupSelection.length+1})</button>
+        </form>}
+      </div>}
       <div className="chat-list">
-      {tab==='chats'&&(loggedIn?filtered.length?filtered.map(row=><div key={row.chat.id} className="chat-row-wrap"><button type="button" className={`chat-item ${selected===row.chat.id?'active':''}`} onClick={()=>{setSelected(row.chat.id);setSelectedChannel(null);setProfileTarget(null);setChatMessages([]);setError('');}}><span className="contact-avatar">{imageUrl(row.other?.avatar_path)?<img className="avatar-image" src={imageUrl(row.other?.avatar_path)||""} alt=""/>:(row.other?.display_name||'?').slice(0,1).toUpperCase()}</span><span className="contact-info"><strong>{row.other?.display_name??'Собеседник'}</strong><small>@{row.other?.username??'unknown'}</small></span><span className="chat-item-dot"/></button><details className="chat-row-menu"><summary aria-label="Действия с чатом" title="Управление чатом">···</summary><div className="chat-row-actions"><button type="button" title="Закрепить или открепить" onClick={()=>void chatAction(row.chat.id,row.chat.pinned_for?.includes(userId)?"unpin":"pin")}>{row.chat.pinned_for?.includes(userId)?"📌":"♧"}</button><button type="button" title="Удалить чат для себя" onClick={()=>void chatAction(row.chat.id,"hide")}>Скрыть</button><button type="button" title="Удалить чат для обоих" onClick={()=>void chatAction(row.chat.id,"delete_everyone")}>Удалить всем</button></div></details></div>):<div className="list-empty"><div className="empty-icon">✉</div><strong>Нет переписок</strong><p>Нажми +, чтобы найти человека по юзернейму и начать общение.</p><button className="secondary-action" onClick={()=>setTab('contacts')}>Новый чат</button></div>:<div className="list-empty"><div className="empty-icon">✉</div><strong>Нет переписок</strong><p>{backendReady?'Войди, чтобы читать сообщения.':'Для переписки осталось подключить сервер.'}</p></div>)}
+      {tab==='chats'&&groups.map(g=><button type="button" key={g.id} className={'chat-item group-chat-row'+(selectedGroup?.id===g.id?' active':'')} onClick={()=>{setSelectedGroup(g);setSelected(null);setSelectedChannel(null);setProfileTarget(null);}}><span className="contact-avatar">♧</span><span className="contact-info"><strong>{g.title}</strong><small>Групповой чат</small></span></button>)}
+      {tab==='chats'&&(loggedIn?filtered.length?filtered.map(row=><div key={row.chat.id} className="chat-row-wrap"><button type="button" className={`chat-item ${selected===row.chat.id?'active':''}`} onClick={()=>{setSelected(row.chat.id);setSelectedGroup(null);setSelectedChannel(null);setProfileTarget(null);setChatMessages([]);setError('');}}><span className="contact-avatar">{imageUrl(row.other?.avatar_path)?<img className="avatar-image" src={imageUrl(row.other?.avatar_path)||""} alt=""/>:(row.other?.display_name||'?').slice(0,1).toUpperCase()}</span><span className="contact-info"><strong>{row.other?.display_name??'Собеседник'}</strong><small>@{row.other?.username??'unknown'}</small></span><span className="chat-item-dot"/></button><details className="chat-row-menu"><summary aria-label="Действия с чатом" title="Управление чатом">···</summary><div className="chat-row-actions"><button type="button" title="Закрепить или открепить" onClick={()=>void chatAction(row.chat.id,row.chat.pinned_for?.includes(userId)?"unpin":"pin")}>{row.chat.pinned_for?.includes(userId)?"📌":"♧"}</button><button type="button" title="Удалить чат для себя" onClick={()=>void chatAction(row.chat.id,"hide")}>Скрыть</button><button type="button" title="Удалить чат для обоих" onClick={()=>void chatAction(row.chat.id,"delete_everyone")}>Удалить всем</button></div></details></div>):<div className="list-empty"><div className="empty-icon">✉</div><strong>Нет переписок</strong><p>Нажми +, чтобы найти человека по юзернейму и начать общение.</p><button className="secondary-action" onClick={()=>setTab('contacts')}>Новый чат</button></div>:<div className="list-empty"><div className="empty-icon">✉</div><strong>Нет переписок</strong><p>{backendReady?'Войди, чтобы читать сообщения.':'Для переписки осталось подключить сервер.'}</p></div>)}
       {tab==='contacts'&&<div className="contact-search-panel"><h2>Поиск пользователя</h2><p>Открой профиль по юзернейму. Диалог создастся только после нажатия «Написать сообщение».</p><form onSubmit={e=>{e.preventDefault();void searchPerson(lookup.trim());}}><label htmlFor="lookup">Юзернейм</label><input id="lookup" placeholder="например, friend_01" value={lookup} onChange={e=>setLookup(e.target.value)} minLength={3} maxLength={25} disabled={!loggedIn}/><button className="accent-button" disabled={!loggedIn||busy||!lookup.trim()}>{busy?'Ищем…':'Найти профиль'}</button></form></div>}
 
       {tab==='channels'&&<div className="channel-browser">
@@ -270,7 +300,8 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
 </nav>
     </aside>
     <main className={`conversation-pane ${detailOpen?'open':''}`}>
-      {profileTarget&&session&&loggedIn?<ProfilePanel key={profileTarget} token={session.access_token} userId={userId} targetId={profileTarget} onBack={()=>{setProfileTarget(null);if(tab==='profile')setTab('chats');}} onOwnProfileChange={()=>{void myProfile(session.access_token,userId).then(setProfile).catch(()=>{});}} onMessage={openDirectFromProfile} onOpenChannel={channel=>{setProfileTarget(null);setSelected(null);setSelectedChannel(channel);setTab("channels");}}/>:
+      {selectedGroup&&session&&loggedIn?<GroupPanel key={selectedGroup.id} token={session.access_token} userId={userId} group={selectedGroup} onBack={()=>setSelectedGroup(null)}/>:
+      profileTarget&&session&&loggedIn?<ProfilePanel key={profileTarget} token={session.access_token} userId={userId} targetId={profileTarget} onBack={()=>{setProfileTarget(null);if(tab==='profile')setTab('chats');}} onOwnProfileChange={()=>{void myProfile(session.access_token,userId).then(setProfile).catch(()=>{});}} onMessage={openDirectFromProfile} onOpenChannel={channel=>{setProfileTarget(null);setSelected(null);setSelectedChannel(channel);setTab("channels");}}/>:
       selectedChannel&&session&&loggedIn?<ChannelsPanel key={selectedChannel.id} token={session.access_token} userId={userId} channel={selectedChannel} onBack={()=>setSelectedChannel(null)} onShowProfile={goToProfile} subscribed={subscriptions.includes(selectedChannel.id)||selectedChannel.owner_id===userId} onToggleSubscribe={()=>void toggleSubscription(selectedChannel.id)} onMessageAuthor={()=>void getChannelOwnerAndChat(selectedChannel.owner_id)} onChannelUpdated={updated=>{setSelectedChannel(updated);setChannels(old=>old.map(ch=>ch.id===updated.id?updated:ch));}} onChannelDeleted={()=>{setSelectedChannel(null);setChannels(old=>old.filter(ch=>ch.id!==selectedChannel.id));setTab("channels");}}/>:
       
       active&&loggedIn?<><header className="conversation-header"><button className="back-button" onClick={()=>setSelected(null)} aria-label="Назад к чатам">‹</button><button type="button" className="contact-avatar small contact-avatar-button" onClick={()=>active.other&&goToProfile(active.other.id)} title="Открыть профиль">{imageUrl(active.other?.avatar_path)?<img className="avatar-image" src={imageUrl(active.other?.avatar_path)||""} alt=""/>:(active.other?.display_name||'?').slice(0,1).toUpperCase()}</button><button type="button" className="conversation-heading conversation-heading-link" onClick={()=>active.other&&goToProfile(active.other.id)}><strong>{active.other?.display_name??'Собеседник'}</strong><small>@{active.other?.username??'unknown'}</small></button></header><div className="conversation-history" aria-live="polite">{!chatMessages.length&&<div className="conversation-blank"><span>Начало переписки</span><p>Сообщения видны только участникам диалога.</p></div>}{chatMessages.filter(message=>!message.deleted_for?.includes(userId)).map(message=><div key={message.id} className={`bubble ${message.sender_id===userId?'mine':'theirs'}`}>{!message.deleted_for_everyone&&message.media_path&&message.media_type&&session&&<ChatMedia token={session.access_token} path={message.media_path} type={message.media_type}/>} {message.deleted_for_everyone?<span className="message-deleted">Сообщение удалено</span>:editingMessageId===message.id?<form className="message-edit-form" onSubmit={e=>{e.preventDefault();void messageAction(message.id,"edit",editingMessageBody);}}><input value={editingMessageBody} onChange={e=>setEditingMessageBody(e.target.value)} maxLength={4000}/><button type="submit">Сохранить</button><button type="button" onClick={()=>setEditingMessageId(null)}>Отмена</button></form>:message.body&&<span>{message.body}</span>}<time dateTime={message.created_at}>{message.edited_at&&!message.deleted_for_everyone&&<span className="message-edited-label" title="Сообщение отредактировано">изм. · </span>}{message.sender_id===userId&&<span className={"message-receipt"+(message.read_at?" read":"")} title={message.read_at?"Просмотрено":"Отправлено"}>{message.read_at?"✓✓":"✓"}</span>}{new Date(message.created_at).toLocaleTimeString('ru-RU',{hour:'2-digit',minute:'2-digit'})}</time>{!message.deleted_for_everyone&&<details className="message-menu"><summary aria-label="Действия с сообщением" title="Действия с сообщением">···</summary><div className="message-manage-actions">{message.sender_id===userId&&<button type="button" onClick={()=>{setEditingMessageId(message.id);setEditingMessageBody(message.body);}}>Изменить</button>}<button type="button" onClick={()=>void messageAction(message.id,"hide")}>Удалить у себя</button>{message.sender_id===userId&&<button type="button" onClick={()=>void messageAction(message.id,"delete_everyone")}>Удалить у всех</button>}</div></details>}<div className="reaction-bar message-reaction-bar">
