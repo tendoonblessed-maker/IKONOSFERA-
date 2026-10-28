@@ -1173,3 +1173,28 @@ body{position:relative}
 .ik-bot-card small{font-size:12px;line-height:1.5;color:#777}
 .ik-bot-answers{display:grid;gap:9px}.ik-bot-answers button{border:1px solid #ddd;border-radius:13px;background:#f8f8f8;padding:13px;text-align:left}
 .ik-bot-progress{color:#888;font-size:12px}.ik-bot-card .ik-bot-back{background:transparent;border:0;color:#666;text-align:left}
+
+
+/* IKONOSFERA monochrome iOS visual refinement; retain existing typography. */
+.messenger.is-authenticated{--bg:#f2f2f4;--layer:#fff;--raised:#ededf0;--raised-2:#f6f6f7;--text:#111;--secondary:#737378;--subdued:#8e8e93;--accent:#111;--border:#e6e6e9}
+.messenger.is-authenticated .chats-pane{background:#f8f8fa;border-color:#e6e6e9}
+.messenger.is-authenticated .pane-toolbar .icon-button,.messenger.is-authenticated .pane-search,.messenger.is-authenticated .ik-inbox-filters{border-radius:999px}
+.messenger.is-authenticated .pane-search{background:#ededf0;border-color:transparent}
+.messenger.is-authenticated .ik-inbox-filters{background:#fff;border:1px solid #eee;box-shadow:0 6px 24px #00000009}
+.messenger.is-authenticated .ik-inbox-filters button[aria-pressed="true"],.messenger.is-authenticated .ik-inbox-filters button.active{background:#e7e7e9;color:#111}
+.messenger.is-authenticated .chat-list{background:#fff}
+.messenger.is-authenticated .chat-list .telegram-chat-row,.messenger.is-authenticated .chat-list .ik-group-inbox{background:#fff}
+.messenger.is-authenticated .chat-list .chat-row-wrap:active,.messenger.is-authenticated .chat-list .ik-group-inbox:active{background:#ededf0!important}
+.messenger.is-authenticated .conversation-history{background-color:#f1f1f3;background-image:none}
+.messenger.is-authenticated .ik-chat-day-separator span{background:#dfdfe2;color:#5e5e63}
+.messenger.is-authenticated .pane-nav{background:#ffffffd9;border:1px solid #ffffffa6;border-radius:999px;box-shadow:0 10px 35px #00000017;backdrop-filter:blur(22px);-webkit-backdrop-filter:blur(22px)}
+.messenger.is-authenticated .pane-nav button.current::before{background:#e9e9eb;border-color:transparent;box-shadow:none}
+.messenger.is-authenticated .pane-nav button.current .nav-label{color:#111!important}
+.story-viewer-close{display:grid!important;place-items:center!important;padding:0!important;line-height:1!important;text-align:center!important;aspect-ratio:1;flex-shrink:0}
+.story-viewer-close svg{display:block;margin:auto}
+@media(max-width:800px){
+ .messenger.is-authenticated .pane-nav{margin:0 12px max(8px,env(safe-area-inset-bottom,0px));padding:5px!important;width:calc(100% - 24px);align-self:center}
+ .messenger.is-authenticated .pane-toolbar{background:#f8f8fa}
+ .messenger.is-authenticated .chat-list .telegram-chat-row{min-height:75px!important}
+ .messenger.is-authenticated .chat-list .telegram-chat-row>.contact-avatar{width:55px;height:55px;flex-basis:55px}
+}
