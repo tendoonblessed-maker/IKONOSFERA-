@@ -242,7 +242,7 @@ test('Chat dates and accessible conversation actions mimic familiar messenger wo
  assert.ok(shell.includes('dayLabel(message.created_at)'));
  assert.ok(shell.includes('ik-chat-day-separator'));
  assert.ok(shell.includes('ik-conversation-more'));
- assert.ok(shell.includes('aria-label="Действия с чатом"'));
+ assert.ok(shell.includes('label="Действия с чатом"'));
  assert.ok(shell.includes('chatAction(active.chat.id'));
  assert.ok(css.includes('.ik-chat-day-separator'));
  assert.ok(css.includes('.ik-conversation-more-menu'));
@@ -501,8 +501,8 @@ test('rapid chat switching never inserts a sent attachment or edited message in 
   assert.match(part,/const chatId=selected/);
   assert.match(part,/selectedRef\.current===chatId/);
  }
- assert.match(shell,/draftsRef\.current\[chatId\].*\.trim\(\)===body/);
- assert.match(shell,/setDraft\(current=>current\.trim\(\)===body\?'':current\)/);
+ assert.match(shell,/draftsRef\.current\[chatId\].*\.trim\(\)===plainText/);
+ assert.match(shell,/setDraft\(current=>current\.trim\(\)===plainText\?'':current\)/);
  assert.match(shell,/The next inbox sync will show the successfully sent message/);
  assert.match(shell,/Do not report a sent attachment as failed during refresh/);
 });
@@ -614,4 +614,44 @@ test('older message merge helper is testable and sorts chronology with stable ID
  assert.match(helper,/message\.id,message/);
  assert.match(helper,/return Array\.from\(byId\.values\(\)\)\.sort\(compareMessages\)/);
  assert.match(shell,/setChatMessages\(current=>prependEarlierPage\(current,older\)\)/);
+});
+
+
+test('MIT open-source gesture and popover libraries are integrated without GPL code',()=>{
+ const deps=JSON.parse(load('package.json')).dependencies;
+ assert.equal(deps['react-swipeable'],'7.0.2');
+ assert.equal(deps['@floating-ui/react'],'0.27.20');
+ const swipe=load('components/SwipeReplyMessage.tsx');
+ const panel=load('components/FloatingActionMenu.tsx');
+ const inbox=load('components/ChatInboxRow.tsx');
+ const shell=load('components/AppShell.tsx');
+ assert.match(swipe,/useSwipeable/);
+ assert.match(swipe,/absX>=54/);
+ assert.match(swipe,/preventScrollOnSwipe:false/);
+ assert.match(panel,/flip\(\{padding:12\}\)/);
+ assert.match(panel,/shift\(\{padding:12,crossAxis:true\}\)/);
+ assert.match(panel,/FloatingPortal/);
+ assert.match(panel,/FloatingFocusManager/);
+ assert.match(inbox,/FloatingActionMenu/);
+ assert.match(shell,/SwipeReplyMessage/);
+ assert.match(shell,/onReply=\{\(\)=>replyToMessage\(message\)\}/);
+ assert.match(shell,/ik-inline-reply/);
+ assert.match(shell,/setReplyingTo\(current=>current\?\.id===reply\.id/);
+ const manifest=load('docs/OPEN_SOURCE_INTEGRATIONS.md');
+ assert.match(manifest,/GPLv3/);
+ assert.match(manifest,/MIT/);
+});
+test('Telegram-inspired monochrome UI keeps fonts and responsive mobile keyboard',()=>{
+ const css=load('app/globals.css');
+ const app=load('components/AppShell.tsx');
+ assert.match(css,/Telegram-inspired layout and interactions/);
+ assert.match(css,/\.ik-floating-menu-panel\.chat-row-actions/);
+ assert.match(css,/\.ik-inline-reply/);
+ assert.match(css,/\.ik-swipe-message/);
+ assert.match(css,/\.messenger\.is-authenticated \.pane-nav\{/);
+ assert.match(css,/\.messenger\.is-authenticated \.ik-inbox-filters button\.selected::after/);
+ assert.match(css,/\.messenger\.is-authenticated \.conversation-history/);
+ assert.match(css,/font-size:16px!important/);
+ assert.match(app,/aria-label="Написать сообщение"/);
+ assert.match(app,/className=\{`chat-message-row/);
 });
