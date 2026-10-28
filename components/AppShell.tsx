@@ -59,7 +59,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
   const [editingMessageId,setEditingMessageId]=useState<string|null>(null);
   const [editingMessageBody,setEditingMessageBody]=useState("");
   const [search,setSearch]=useState('');
-  const [chatFilter,setChatFilter]=useState<'all'|'unread'>('all');
+  const [chatFilter,setChatFilter]=useState<'all'|'private'|'groups'|'unread'>('all');
   const [createMenuOpen,setCreateMenuOpen]=useState(false);
   const [lookup,setLookup]=useState(initialUsername);
   const [draft,setDraft]=useState('');
@@ -343,9 +343,13 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
     refreshActivity();const timer=window.setInterval(refreshActivity,30000);
     return()=>{gone=true;window.clearInterval(timer);};
   },[session,activePartnerId]);
-  const filtered=rows.filter(r=>(chatFilter==='all'||Number(r.preview?.unread_count||0)>0) && (!search.trim()||`${r.other?.display_name??''} ${r.other?.username??''} ${r.preview?.last_body??''}`.toLowerCase().includes(search.trim().toLowerCase())));
+  const filtered=rows.filter(r=>chatFilter!=='groups'&&(chatFilter!=='unread'||Number(r.preview?.unread_count||0)>0) && (!search.trim()||`${r.other?.display_name??''} ${r.other?.username??''} ${r.preview?.last_body??''}`.toLowerCase().includes(search.trim().toLowerCase())));
   const unreadTotal=rows.reduce((sum,row)=>sum+Number(row.preview?.unread_count||0),0)+groups.reduce((sum,group)=>sum+Number(groupOverviews[group.id]?.unread_count||0),0);
-  const visibleGroups=groups.filter(g=>(chatFilter==='all'||Number(groupOverviews[g.id]?.unread_count||0)>0)&&(!search.trim()||((g.title+' '+(groupOverviews[g.id]?.last_body||'')).toLowerCase().includes(search.trim().toLowerCase())))).sort((a,b)=>Date.parse(groupOverviews[b.id]?.last_created_at||b.created_at)-Date.parse(groupOverviews[a.id]?.last_created_at||a.created_at));
+  const visibleGroups=groups.filter(g=>chatFilter!=='private'&&(chatFilter!=='unread'||Number(groupOverviews[g.id]?.unread_count||0)>0)&&(!search.trim()||((g.title+' '+(groupOverviews[g.id]?.last_body||'')).toLowerCase().includes(search.trim().toLowerCase()))));
+  const inboxItems=[
+    ...filtered.map(row=>({kind:'chat' as const,row,pinned:Boolean(row.chat.pinned_for?.includes(userId)),time:Date.parse(row.preview?.last_created_at||row.chat.created_at)})),
+    ...visibleGroups.map(group=>({kind:'group' as const,group,pinned:false,time:Date.parse(groupOverviews[group.id]?.last_created_at||group.created_at)}))
+  ].sort((a,b)=>Number(b.pinned)-Number(a.pinned)||(b.time||0)-(a.time||0));
   const loggedIn=Boolean(session&&userId);
   const detailOpen=Boolean(!loggedIn||selected||profileTarget||selectedChannel||selectedGroup);
   const myChannels=channels.filter(ch=>ch.owner_id===userId||subscriptions.includes(ch.id));
@@ -356,8 +360,8 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
     <aside className={`chats-pane ${detailOpen?'has-conversation':''}`}>
       <div className="pane-heading"><div className="brand-label"><img className="brand-mini" src="/branding/ikonosfera-wordmark.svg" alt="IKONOSFERA" width={132} height={70}/></div><button type="button" className="release-pill" onClick={()=>profile?.id&&goToProfile(profile.id)} disabled={!profile}>{profile ? "@"+profile.username : "ALPHA"}</button></div>
       <div className="pane-toolbar"><h1>{tab==='chats'?'Чаты':tab==='contacts'?'Контакты':tab==='channels'?'Каналы':tab==='profile'?'Профиль':'Настройки'}</h1><button type="button" className="icon-button" title="Создать чат" aria-label="Новый чат" onClick={()=>{if(tab==='channels'){setChannelCreating(v=>!v);}else{setTab('chats');setCreateMenuOpen(v=>!v);}}} disabled={!loggedIn}>＋</button></div>
-      {tab==='chats'&&<div className="pane-search"><span aria-hidden="true">⌕</span><input ref={searchInputRef} aria-label="Поиск по чатам" placeholder="Поиск по чатам и сообщениям" value={search} onChange={e=>setSearch(e.target.value)} disabled={!loggedIn}/></div>}
       {tab==='chats'&&loggedIn&&session&&<StoriesStrip token={session.access_token} userId={userId} contacts={storyContacts} ownProfile={profile}/>}
+      {tab==='chats'&&<div className="pane-search"><span aria-hidden="true">⌕</span><input ref={searchInputRef} aria-label="Поиск по чатам" placeholder="Поиск по чатам и сообщениям" value={search} onChange={e=>setSearch(e.target.value)} disabled={!loggedIn}/></div>}
       {tab==='chats'&&loggedIn&&<div className="ik-chat-actions">
         {createMenuOpen&&<div className="ik-create-menu" role="group" aria-label="Новая беседа">
           <button type="button" onClick={()=>{setCreateMenuOpen(false);switchTab('contacts');}}>✉ <span>Личное сообщение</span></button>
@@ -374,13 +378,17 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
       </div>}
       {tab==='chats'&&loggedIn&&<div className="ik-inbox-filters" role="group" aria-label="Фильтр переписок">
         <button type="button" className={chatFilter==='all'?'selected':''} aria-pressed={chatFilter==='all'} onClick={()=>setChatFilter('all')}>Все</button>
+        <button type="button" className={chatFilter==='private'?'selected':''} aria-pressed={chatFilter==='private'} onClick={()=>setChatFilter('private')}>Личные</button>
+        <button type="button" className={chatFilter==='groups'?'selected':''} aria-pressed={chatFilter==='groups'} onClick={()=>setChatFilter('groups')}>Группы</button>
         <button type="button" className={chatFilter==='unread'?'selected':''} aria-pressed={chatFilter==='unread'} onClick={()=>setChatFilter('unread')}>Непрочитанные{unreadTotal>0&&<span className="ik-filter-count">{unreadTotal>99?'99+':unreadTotal}</span>}</button>
       </div>}
       <div className="chat-list">
-      {tab==='chats'&&visibleGroups.map(g=><GroupInboxRow key={g.id} group={g} overview={groupOverviews[g.id]} active={selectedGroup?.id===g.id} onOpen={()=>{setSelectedGroup(g);setSelected(null);setSelectedChannel(null);setProfileTarget(null);}}/>)}
-      {tab==='chats'&&(loggedIn?filtered.length?filtered.map(row=><ChatInboxRow key={row.chat.id} row={row} currentUserId={userId} active={selected===row.chat.id}
-        onOpen={()=>{setSelected(row.chat.id);setSelectedGroup(null);setSelectedChannel(null);setProfileTarget(null);setChatMessages([]);setError('');}}
-        onAction={action=>void chatAction(row.chat.id,action)}/>):visibleGroups.length?null:<div className="list-empty ik-chat-empty"><div className="empty-icon">✉</div><strong>{chatFilter==='unread'?'Всё прочитано':'Нет переписок'}</strong><p>{chatFilter==='unread'?'Новые сообщения появятся здесь.':'Найди человека по юзернейму или создай группу.'}</p>{chatFilter==='all'&&<button className="secondary-action" onClick={()=>switchTab('contacts')}>Новый чат</button>}</div>:<div className="list-empty"><div className="empty-icon">✉</div><strong>Нет переписок</strong><p>{backendReady?'Войди, чтобы читать сообщения.':'Для переписки осталось подключить сервер.'}</p></div>)}
+      {tab==='chats'&&(loggedIn?inboxItems.length?inboxItems.map(item=>item.kind==='group'
+       ? <GroupInboxRow key={'g-'+item.group.id} group={item.group} overview={groupOverviews[item.group.id]} active={selectedGroup?.id===item.group.id} onOpen={()=>{setSelectedGroup(item.group);setSelected(null);setSelectedChannel(null);setProfileTarget(null);}}/>
+       : <ChatInboxRow key={'c-'+item.row.chat.id} row={item.row} currentUserId={userId} active={selected===item.row.chat.id}
+          onOpen={()=>{setSelected(item.row.chat.id);setSelectedGroup(null);setSelectedChannel(null);setProfileTarget(null);setChatMessages([]);setError('');}}
+          onAction={action=>void chatAction(item.row.chat.id,action)}/>
+       ):<div className="list-empty ik-chat-empty"><div className="empty-icon">✉</div><strong>{chatFilter==='unread'?'Всё прочитано':chatFilter==='groups'?'Нет групп':'Нет переписок'}</strong><p>{chatFilter==='unread'?'Новые сообщения появятся здесь.':chatFilter==='groups'?'Создай группу и пригласи участников.':'Найди человека по юзернейму или создай группу.'}</p>{chatFilter==='all'&&<button className="secondary-action" onClick={()=>switchTab('contacts')}>Новый чат</button>}</div>:<div className="list-empty"><div className="empty-icon">✉</div><strong>Нет переписок</strong><p>{backendReady?'Войди, чтобы читать сообщения.':'Для переписки осталось подключить сервер.'}</p></div>)}
       {tab==='contacts'&&<div className="contact-search-panel"><h2>Поиск пользователя</h2><p>Открой профиль по юзернейму. Диалог создастся только после нажатия «Написать сообщение».</p><form onSubmit={e=>{e.preventDefault();void searchPerson(lookup.trim());}}><label htmlFor="lookup">Юзернейм</label><input id="lookup" placeholder="например, friend_01" value={lookup} onChange={e=>setLookup(e.target.value)} minLength={3} maxLength={25} disabled={!loggedIn}/><button className="accent-button" disabled={!loggedIn||busy||!lookup.trim()}>{busy?'Ищем…':'Найти профиль'}</button></form></div>}
 
       {tab==='channels'&&<div className="channel-browser">
