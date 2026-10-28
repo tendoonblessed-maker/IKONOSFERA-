@@ -12,6 +12,10 @@
     "check": "npm run typecheck && npm run lint && npm test"
   },
   "dependencies": {
+    "@livekit/components-react": "^2.0.0",
+    "@livekit/components-styles": "^1.0.0",
+    "livekit-client": "^2.0.0",
+    "livekit-server-sdk": "^2.0.0",
     "next": "16.4.3",
     "react": "19.3.1",
     "react-dom": "19.3.1"
