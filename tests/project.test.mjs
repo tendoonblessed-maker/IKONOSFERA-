@@ -84,7 +84,7 @@ test('pre-release sign-in directs users to Sign in link and never asks for a cod
 test('guest UI occupies full viewport while the messenger waits for authentication',()=>{
  const ui=load('components/AppShell.tsx'),css=load('app/globals.css');
  assert.match(ui,/is-guest/);
- assert.match(css,/\.messenger\.is-guest\.chats-pane\{display:none!important\}/);
+ assert.match(css,/\.messenger\.is-guest \.chats-pane\{display:none!important\}/);
  assert.match(css,/\.messenger\.is-guest \.conversation-placeholder\{overflow:hidden/);
  assert.match(ui,/Больше чем просто мессенджер/);
 });
