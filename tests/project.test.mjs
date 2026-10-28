@@ -358,3 +358,11 @@ test('mobile message actions open a viewport-bound action sheet with no extra ti
  assert.match(css,/\.ik-message-menu-sheet\{/);
  assert.match(css,/align-items:flex-end/);
 });
+
+test('deleted chat returns on a new message without exposing deleted history',()=>{
+ const sql=load('supabase/migrations/20261029_021000_reopen_deleted_chat_on_new_message.sql');
+ assert.match(sql,/create trigger reopen_chat_after_new_message after insert on public\.messages/);
+ assert.match(sql,/update public\.chats c/);
+ assert.match(sql,/array_remove\(array_remove\(c\.hidden_for,c\.user_a\),c\.user_b\)/);
+ assert.ok(!sql.includes('deleted_for ='));
+});
