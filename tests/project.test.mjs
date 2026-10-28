@@ -250,17 +250,17 @@ test('Chat dates and accessible conversation actions mimic familiar messenger wo
 });
 
 
-test('Chat search and multi-select are accessible and do not change backend permissions',()=>{
+test('Chat search and bulk chat actions remain, while unused message checkbox is removed',()=>{
  const shell=load('components/AppShell.tsx');
  const css=load('app/globals.css');
  assert.ok(shell.includes('searchInConversation'));
  assert.ok(shell.includes('messageSearch'));
  assert.ok(shell.includes('Поиск сообщений в текущем чате'));
- assert.ok(shell.includes('selectedMessages'));
- assert.ok(shell.includes('navigator.clipboard.writeText'));
- assert.ok(shell.includes('aria-pressed={selectedMessages.includes(message.id)}'));
+ assert.ok(shell.includes('selectedChatIds'));
+ assert.ok(shell.includes('applyBulkChatAction'));
+ assert.ok(!shell.includes('aria-pressed={selectedMessages.includes(message.id)}'));
+ assert.ok(!shell.includes('className={"ik-select-message"'));
  assert.ok(css.includes('.ik-conversation-search'));
- assert.ok(css.includes('.ik-selection-toolbar'));
 });
 
 test('monochrome iPhone refresh keeps functional navigation and edit actions',()=>{
@@ -304,4 +304,46 @@ test('featured channel can be pinned independently and visitors see only the cha
  assert.ok(!ui.includes('<p>Закреплён в профиле</p>'));
  assert.match(api,/export async function getChannelById/);
  assert.match(api,/avatar_path/);
+});
+
+test('chat privacy actions are server-authorized and separate for me and everyone',()=>{
+ const api=load('lib/supabase-rest.ts');
+ const shell=load('components/AppShell.tsx');
+ const row=load('components/ChatInboxRow.tsx');
+ const sql=load('supabase/migrations/20261029_030000_chat_privacy_blocklist.sql');
+ assert.match(api,/delete_self/);
+ assert.match(row,/Удалить у себя/);
+ assert.match(row,/Удалить для обоих/);
+ assert.match(shell,/Удалить всю переписку у тебя и собеседника/);
+ assert.match(shell,/applyBulkChatAction\('delete_self'\)/);
+ assert.match(sql,/p_action='delete_self'/);
+ assert.match(sql,/update public.messages set deleted_for=array_append/);
+ assert.match(sql,/delete from public.chats where id=p_chat_id/);
+ assert.match(sql,/me<>c.user_a and me<>c.user_b/);
+});
+test('blocklist is accessible through settings and enforced at SQL trigger',()=>{
+ const ui=load('components/AppShell.tsx');
+ const api=load('lib/supabase-rest.ts');
+ const sql=load('supabase/migrations/20261029_030000_chat_privacy_blocklist.sql');
+ assert.match(ui,/Чёрный список/);
+ assert.match(ui,/Разблокировать/);
+ assert.match(ui,/blockPerson\(/);
+ assert.match(ui,/unblockPerson\(/);
+ assert.match(api,/user_blocks\?on_conflict=owner_id,blocked_id/);
+ assert.match(api,/user_blocks\?owner_id=eq\./);
+ assert.match(sql,/owner_id=new.sender_id and b.blocked_id=recipient/);
+ assert.match(sql,/owner_id=recipient and b.blocked_id=new.sender_id/);
+ assert.match(sql,/where \(b.owner_id=new.sender_id/);
+ assert.match(sql,/auth.uid\(\)/);
+});
+test('mobile message actions stay in viewport and read receipts remain',()=>{
+ const shell=load('components/AppShell.tsx');
+ const css=load('app/globals.css');
+ assert.match(shell,/positionMobileMessageMenu/);
+ assert.match(shell,/window.visualViewport/);
+ assert.match(shell,/className="message-menu" onToggle=/);
+ assert.match(css,/position:fixed!important/);
+ assert.match(css,/max-width:calc\(100dvw - 24px\)/);
+ assert.match(shell,/message\.read_at\?"✓✓":"✓"/);
+ assert.ok(!shell.includes('ik-select-message'));
 });
