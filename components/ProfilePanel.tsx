@@ -23,6 +23,8 @@ export default function ProfilePanel({token,userId,targetId,onBack,onOwnProfileC
  const [editing,setEditing]=useState(false);const [busy,setBusy]=useState(false);
  const [error,setError]=useState("");const [notice,setNotice]=useState("");
  const [viewer,setViewer]=useState<{url:string;caption:string}|null>(null);
+ const [storyIndex,setStoryIndex]=useState<number|null>(null);
+ const activeStory=storyIndex===null?null:stories[storyIndex]??null;
  const reload=useCallback(async()=>{
   const [p,gallery,active,owned]=await Promise.all([
    getFullProfile(token,targetId),getProfilePhotos(token,targetId),getStories(token,targetId),listOwnedChannels(token,targetId)
@@ -70,6 +72,18 @@ export default function ProfilePanel({token,userId,targetId,onBack,onOwnProfileC
    onOwnProfileChange();setNotice("Изображение удалено.");
   });
  }
+ useEffect(()=>{
+  if(storyIndex===null||!activeStory)return;
+  const timer=window.setTimeout(()=>setStoryIndex(index=>index===null?null:index+1>=stories.length?null:index+1),6000);
+  return()=>window.clearTimeout(timer);
+ },[storyIndex,activeStory?.id,stories.length]);
+ useEffect(()=>{
+  if(storyIndex===null)return;
+  const onKey=(event:KeyboardEvent)=>{if(event.key==='Escape')setStoryIndex(null);
+   if(event.key==='ArrowRight')setStoryIndex(i=>i===null?null:i+1>=stories.length?null:i+1);
+   if(event.key==='ArrowLeft')setStoryIndex(i=>i===null?null:Math.max(0,i-1));};
+  window.addEventListener('keydown',onKey);return()=>window.removeEventListener('keydown',onKey);
+ },[storyIndex,stories.length]);
  const avatar=profile?imageUrl(profile.avatar_path):null;
  const cover=profile?imageUrl(profile.cover_path):null;
  return <section className="profile-view" aria-label="Профиль пользователя">
@@ -80,7 +94,7 @@ export default function ProfilePanel({token,userId,targetId,onBack,onOwnProfileC
      <div className="profile-cover" style={cover?{backgroundImage:"url("+cover+")"}:undefined}>
        {mine&&<label className="profile-cover-action">Изменить обложку<input aria-label="Выбрать обложку" type="file" accept="image/png,image/jpeg,image/webp" disabled={busy} onChange={e=>{void chooseImage(e.target.files?.[0],"cover");e.target.value="";}}/></label>}
      </div>
-     <div className="profile-avatar-large">{avatar?<img src={avatar} alt="Аватар пользователя"/>:<span>{(profile?.display_name||"?").charAt(0).toUpperCase()}</span>}
+     <div className={"profile-avatar-large"+(stories.length?" profile-avatar-has-story":"")} onClick={()=>{if(stories.length)setStoryIndex(0);}} role={stories.length?"button":undefined} tabIndex={stories.length?0:undefined} onKeyDown={e=>{if(stories.length&&(e.key==="Enter"||e.key===" ")){e.preventDefault();setStoryIndex(0);}}} aria-label={stories.length?"Посмотреть истории":undefined}>{avatar?<img src={avatar} alt="Аватар пользователя"/>:<span>{(profile?.display_name||"?").charAt(0).toUpperCase()}</span>}
       {mine&&<label className="profile-avatar-camera" title="Изменить фото"><span aria-hidden="true">▣</span><input aria-label="Загрузить фото профиля" type="file" accept="image/png,image/jpeg,image/webp" disabled={busy} onChange={e=>{void chooseImage(e.target.files?.[0],"avatar");e.target.value="";}}/></label>}
      </div>
      {profile?<div className="profile-identity"><h1>{profile.display_name}</h1><p>@{profile.username}</p>
@@ -114,7 +128,7 @@ export default function ProfilePanel({token,userId,targetId,onBack,onOwnProfileC
      <div className="profile-section-title"><div><h2>Истории</h2><p>Доступны 24 часа</p></div>
        {mine&&<label className="profile-action">+ История<input type="file" aria-label="Добавить историю" accept="image/png,image/jpeg,image/webp" disabled={busy} onChange={e=>{void chooseImage(e.target.files?.[0],"story");e.target.value="";}}/></label>}</div>
      {stories.length?<div className="profile-stories">{stories.map(st=><div className="profile-story" key={st.id}>
-      <button type="button" className="profile-story-thumb" onClick={()=>{const url=imageUrl(st.image_path);if(url)setViewer({url,caption:st.caption});}}><img src={imageUrl(st.image_path)||""} alt="История пользователя"/></button>
+      <button type="button" className="profile-story-thumb" onClick={()=>setStoryIndex(stories.findIndex(item=>item.id===st.id))}><img src={imageUrl(st.image_path)||""} alt="История пользователя"/></button>
       <small>{new Date(st.expires_at).toLocaleTimeString("ru-RU",{hour:"2-digit",minute:"2-digit"})}</small>
       {mine&&<button disabled={busy} className="profile-small-delete" type="button" onClick={()=>void run(async()=>{await deleteStory(token,st.id);await removeUpload(token,st.image_path).catch(()=>{});})}>Удалить</button>}
      </div>)}</div>:<p className="profile-empty">Пока нет активных историй.</p>}
@@ -130,6 +144,19 @@ export default function ProfilePanel({token,userId,targetId,onBack,onOwnProfileC
     <p className="profile-privacy">Фото и истории доступны другим зарегистрированным пользователям. Не публикуй личные документы.</p>
     {(error||notice)&&<p role="status" className={error?"profile-error":"profile-success"}>{error||notice}</p>}
    </div>
+   {activeStory&&<div className="story-viewer" role="dialog" aria-modal="true" aria-label="Просмотр историй">
+    <div className="story-viewer-stage" key={activeStory.id}>
+     <div className="story-progress">{stories.map((st,i)=><span key={st.id} className="story-progress-track"><span className={i<storyIndex!?"done":i===storyIndex?"playing":""}/></span>)}</div>
+     <header className="story-viewer-header"><span className="story-viewer-avatar">{avatar?<img src={avatar} alt=""/>:(profile?.display_name||"?").charAt(0)}</span>
+      <span className="story-viewer-author"><strong>{profile?.display_name}</strong><small>{new Date(activeStory.created_at).toLocaleString("ru-RU",{hour:"2-digit",minute:"2-digit",day:"numeric",month:"short"})}</small></span>
+      <button type="button" className="story-viewer-close" onClick={()=>setStoryIndex(null)} aria-label="Закрыть историю">×</button>
+     </header>
+     <img className="story-viewer-image" src={imageUrl(activeStory.image_path)||""} alt={activeStory.caption||"История"}/>
+     <button type="button" className="story-viewer-prev" onClick={()=>setStoryIndex(i=>i===null?null:Math.max(0,i-1))} aria-label="Предыдущая история"/>
+     <button type="button" className="story-viewer-next" onClick={()=>setStoryIndex(i=>i===null?null:i+1>=stories.length?null:i+1)} aria-label="Следующая история"/>
+     {activeStory.caption&&<div className="story-viewer-caption">{activeStory.caption}</div>}
+    </div>
+   </div>}
    {viewer&&<div className="profile-lightbox" role="dialog" aria-modal="true" aria-label="Просмотр фото"><button className="profile-lightbox-close" type="button" onClick={()=>setViewer(null)}>Закрыть ×</button><img src={viewer.url} alt={viewer.caption||"Фото пользователя"}/>{viewer.caption&&<p>{viewer.caption}</p>}</div>}
  </section>;
 }
