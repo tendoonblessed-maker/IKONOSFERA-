@@ -634,3 +634,39 @@ html,body{min-height:100%;overflow:hidden}
  html,body{overflow:hidden}
  .messenger.is-guest .conversation-placeholder{overflow-y:auto!important}
 }
+
+/* Story tray and navigation usability: responsive desktop / touch */
+.home-stories{padding:10px 13px 11px;border-bottom:1px solid #ededed;flex-shrink:0;min-width:0;background:#fff}
+.home-stories-header{display:flex;align-items:baseline;justify-content:space-between;gap:6px;margin-bottom:9px}
+.home-stories-header strong{font-size:13px;font-weight:800}
+.home-stories-header span{font-size:10px;color:#83868e}
+.home-stories-track{display:flex;align-items:flex-start;gap:12px;overflow-x:auto;scrollbar-width:thin;padding:2px 1px 6px}
+.home-story-item{flex:0 0 66px;display:flex;align-items:center;flex-direction:column;gap:6px;padding:0;border:0;background:transparent;cursor:pointer;color:#24262a}
+.home-story-ring{position:relative;display:block;width:62px;height:62px;border-radius:50%;padding:3px;background:#ebedf0;flex-shrink:0}
+.home-story-item.has-stories .home-story-ring{background:conic-gradient(#151515,#a6a6a6,#151515)}
+.home-story-avatar{display:grid;place-items:center;width:100%;height:100%;border-radius:50%;overflow:hidden;border:3px solid #fff;background:#f0f0f0;font-size:22px;font-weight:800}
+.home-story-avatar img{width:100%;height:100%;object-fit:cover}
+.home-story-plus{position:absolute;bottom:0;right:-2px;border:2px solid white;background:#151515;color:white;border-radius:50%;font-size:15px;font-style:normal;font-weight:800;width:22px;height:22px;display:grid;place-items:center}
+.home-story-item small{text-align:center;max-width:72px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px}
+.home-stories-empty{font-size:11px;line-height:1.4;color:#929292;margin:14px 0 0;min-width:150px}
+.home-story-add{font-size:11px;border:0;background:transparent;padding:5px 0;color:#555;cursor:pointer}
+.story-viewer-telegram{background:rgba(8,9,13,.89);backdrop-filter:blur(16px);animation:story-telegram-fade .22s ease both}
+.story-viewer-telegram .story-viewer-stage{animation:story-telegram-stage .32s cubic-bezier(.2,.86,.25,1) both;max-height:92dvh;aspect-ratio:9/16}
+@keyframes story-telegram-fade{from{opacity:0}to{opacity:1}}
+@keyframes story-telegram-stage{from{opacity:.65;transform:translateY(14px) scale(.945)}to{opacity:1;transform:translateY(0) scale(1)}}
+@media(min-width:801px){
+ .pane-nav .nav-art{width:45px;height:45px;max-height:none}
+ .pane-nav button{min-height:80px;gap:3px}
+ .pane-nav .nav-art-channel{width:45px;height:45px}
+ .pane-nav{gap:7px;padding-top:78px}
+}
+@media(max-width:800px){
+ .pane-nav .nav-art{width:54px;height:54px;max-height:54px}
+ .pane-nav .nav-art-channel{width:48px;height:48px}
+ .pane-nav button{min-height:84px}
+ .home-stories{padding:10px 15px}
+ .story-viewer-telegram .story-viewer-stage{max-height:100dvh;height:100dvh;aspect-ratio:auto}
+}
+@media(max-width:380px){.pane-nav .nav-art{width:45px;height:45px}.pane-nav button{min-height:73px}.pane-nav .nav-label{font-size:9px!important}}
+@media(max-height:610px) and (min-width:801px){.pane-nav{gap:0;padding-top:15px}.pane-nav button{min-height:68px}.pane-nav .nav-art{width:37px;height:37px}}
+@media(prefers-reduced-motion:reduce){.story-viewer-telegram,.story-viewer-telegram .story-viewer-stage{animation:none}}
