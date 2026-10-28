@@ -95,7 +95,7 @@ export async function startDirectChat(token: string, username: string) {
   return http<string>('/rest/v1/rpc/start_direct_chat',{token,method:'POST',body:{target_username:username}});
 }
 export async function listChats(token: string) {
-  return http<DirectChat[]>('/rest/v1/chats?select=id,user_a,user_b,created_at,hidden_for,pinned_for&order=created_at.desc&limit=100',{token});
+  return http<DirectChat[]>('/rest/v1/rpc/list_active_chats',{token});
 }
 export async function listProfiles(token: string, ids: string[]) {
   if (!ids.length) return [];
@@ -104,9 +104,11 @@ export async function listProfiles(token: string, ids: string[]) {
 export async function listMessages(token: string, chatId: string) {
   return http<ChatMessage[]>(`/rest/v1/messages?select=id,chat_id,sender_id,body,created_at,media_path,media_type,read_at,edited_at,deleted_for,deleted_for_everyone&chat_id=eq.${encodeURIComponent(chatId)}&order=created_at.desc&limit=100`,{token});
 }
-export async function postMessage(token: string, chatId: string, userId: string, body: string) {
-  const result=await http<ChatMessage[]>('/rest/v1/messages?select=id,chat_id,sender_id,body,created_at,media_path,media_type,read_at',{token,method:'POST',body:{chat_id:chatId,sender_id:userId,body},extraHeaders:{Prefer:'return=representation'}});
-  if (!result[0]) throw Error('Сообщение не сохранено'); return result[0];
+export async function postMessage(token: string, chatId: string, userId: string, body: string, clientMessageId: string = crypto.randomUUID()) {
+  void userId;
+  const message=await http<ChatMessage>('/rest/v1/rpc/send_direct_message',{token,method:'POST',body:{p_chat_id:chatId,p_body:body,p_client_message_id:clientMessageId}});
+  if(!message?.id)throw Error('Сообщение не сохранено');
+  return message;
 }
 
 export async function uploadDirectMedia(token:string,chatId:string,userId:string,file:File):Promise<{path:string;type:"image"|"video"|"audio"|"file"}>{
