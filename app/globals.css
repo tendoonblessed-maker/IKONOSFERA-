@@ -8,3 +8,9 @@
 @media(max-width:800px){.messenger{display:block;height:100dvh;overflow:hidden}.chats-pane{height:100%;padding-top:env(safe-area-inset-top,0px);border:0}.pane-heading{height:62px;padding:9px 20px}.pane-toolbar{padding:7px 18px}.conversation-pane{display:none;height:100%;padding-top:env(safe-area-inset-top,0px)}.conversation-pane.open{display:flex}.chats-pane.has-conversation{display:none}.conversation-header{padding:10px 14px;min-height:67px}.back-button{display:block}.conversation-history{padding:20px 14px}.composer{padding-left:12px;padding-right:12px}.bubble{max-width:85%}.pane-nav{padding-bottom:max(10px,env(safe-area-inset-bottom,0px))}.conversation-placeholder{padding-bottom:max(22px,env(safe-area-inset-bottom,0px))}.toast{left:12px;right:12px;bottom:max(16px,env(safe-area-inset-bottom,0px))}.install-backdrop{align-items:end;padding:0}.install-card{border-radius:20px 20px 0 0;width:100%;max-width:none;padding-bottom:max(24px,env(safe-area-inset-bottom,0px))}}
 @media(prefers-reduced-motion:no-preference){button{transition:background-color .15s ease,color .15s ease}}
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:0s!important;transition-duration:0s!important;scroll-behavior:auto!important}}
+
+/* Development-only account entry. All messages remain server-side; no fake chat state. */
+.temporary-login { margin-top: 16px; padding-top: 17px; border-top: 1px solid var(--border); }
+.temporary-login .secondary-action { width: 100%; text-align: center; }
+.temporary-login p, .test-account-warning { margin: 12px 0 0; font-size: 12px; line-height: 1.55; color: var(--secondary); }
+.test-account-warning { margin: 12px 0 16px; padding: 11px 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--layer); }
