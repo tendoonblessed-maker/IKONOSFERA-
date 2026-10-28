@@ -1,0 +1,2 @@
+alter table public.profiles add column if not exists onboarding_completed boolean not null default false;
+update public.profiles set onboarding_completed=true where username !~* '^profile_?[0-9]+$' and display_name !~* '^profile_?[0-9]+$' and trim(display_name)<>'';
