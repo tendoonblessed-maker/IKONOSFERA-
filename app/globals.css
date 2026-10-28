@@ -1441,3 +1441,28 @@ body{position:relative}
   transform:none!important;overflow:hidden;
 }
 .messenger.is-authenticated .home-story-plus svg{display:block;width:13px;height:13px;flex:0 0 13px;transform:none;margin:0;}
+
+
+/* Saved contact rows retain native iOS spacing without stretching the list. */
+.messenger.is-authenticated .ik-contact-person-row{
+  display:flex;align-items:center;width:100%;min-width:0;background:#fff;
+  border-bottom:1px solid #f0f0f2;
+}
+.messenger.is-authenticated .ik-contact-person-row .ik-contact-person{
+  flex:1;min-width:0;border-bottom:0;overflow:hidden;
+}
+.messenger.is-authenticated .ik-contact-remove{
+  display:grid;place-items:center;flex:0 0 36px;width:36px;height:36px;
+  margin:0 11px 0 4px;padding:0;line-height:1;
+  border:0;border-radius:50%;background:#f2f2f4;color:#83838b;
+  font-size:24px;cursor:pointer;
+}
+.messenger.is-authenticated .ik-contact-remove:disabled{opacity:.4}
+
+/* Pixel-accurate center of the add-story cross on iPhone Safari. */
+.messenger.is-authenticated .home-story-plus{display:block!important;overflow:hidden!important;box-sizing:border-box!important}
+.messenger.is-authenticated .home-story-plus svg{
+  position:absolute!important;top:50%!important;left:50%!important;
+  width:13px!important;height:13px!important;margin:0!important;
+  display:block!important;transform:translate(-50%,-50%)!important;
+}
