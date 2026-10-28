@@ -30,7 +30,7 @@ export async function uploadPhoto(token:string,userId:string,file:File):Promise<
   const path=userId+"/"+crypto.randomUUID()+"."+ext;
   const res=await fetch(apiUrl+"/storage/v1/object/ikonosfera-media/"+path,{
     method:"POST",headers:{apikey:publicKey,Authorization:"Bearer "+token,"Content-Type":file.type,
-      "Cache-Control":"max-age=3600","x-upsert":"false"},body:file});
+      "Cache-Control":"max-age=31536000","x-upsert":"false"},body:file});
   if(!res.ok){const value=await res.json().catch(()=>null);throw Error(value?.message||value?.error||"Ошибка загрузки фотографии");}
   return path;
 }
