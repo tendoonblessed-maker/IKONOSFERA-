@@ -3,6 +3,7 @@ import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, use
 import { backendReady, createTemporaryAccount, consumeEmailLinkSession, clearSession, currentUser, findProfileByUsername, listChats, listChatPreviews, listMessages, listOlderMessages, CHAT_MESSAGE_PAGE_SIZE, manageChat, manageMessage, listMessageReactions, setMessageReaction, markChatRead, listProfiles, myProfile, postMessage, reopenChat, sendDirectMedia, sendEmailCode, signOut, startDirectChat, validSession, type ChatMessage, type MessageReaction, type DirectChat, type Profile, type Session, type ChatPreview } from '@/lib/supabase-rest';
 
 import ProfilePanel from "@/components/ProfilePanel";
+import {mergeRecentPage,prependEarlierPage} from "@/lib/chat-history";
 import ChatMedia from "@/components/ChatMedia";
 import ChatInboxRow from "@/components/ChatInboxRow";
 import {listSavedContacts,addSavedContact,removeSavedContact,listBlockedUsers,addBlockedUser,removeBlockedUser} from "@/lib/contacts";
@@ -33,18 +34,6 @@ const userFacingError = (error: unknown) => {
   if(/invalid.*token|otp.*expired|token.*expired/i.test(message))return 'Ссылка устарела или уже была использована. Запроси новое письмо для входа.';
   return message;
 };
-
-/** Keep older loaded pages when the first 100 messages are polled again. */
-function compareMessages(a:ChatMessage,b:ChatMessage):number{
-  const timeDiff=Date.parse(a.created_at)-Date.parse(b.created_at);
-  return timeDiff||a.id.localeCompare(b.id);
-}
-function mergeRecentPage(previous:ChatMessage[],latest:ChatMessage[]):ChatMessage[]{
-  if(latest.length<CHAT_MESSAGE_PAGE_SIZE)return latest;
-  const first=latest[0];
-  const older=previous.filter(message=>compareMessages(message,first)<0);
-  return [...older,...latest];
-}
 
 export default function AppShell({ initialUsername = "" }: { initialUsername?: string }) {
   const [tab,setTab]=useState<Tab>(initialUsername ? 'contacts' : 'chats');
@@ -252,7 +241,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
       try{
         const messages=(await listMessages(token,chatId)).reverse();
         if(cancelled)return;
-        setChatMessages(current=>mergeRecentPage(current,messages));
+        setChatMessages(current=>mergeRecentPage(current,messages,CHAT_MESSAGE_PAGE_SIZE));
         if(first)setHasOlderMessages(messages.length===CHAT_MESSAGE_PAGE_SIZE);
         setChatLoad({id:chatId,status:'ready'});
         // Reactions must not block displaying text and attachments.
@@ -466,12 +455,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
       if(selectedRef.current!==chatId)return;
       setHasOlderMessages(older.length===CHAT_MESSAGE_PAGE_SIZE);
       if(older.length){
-        setChatMessages(current=>{
-          const byId=new Map<string,ChatMessage>();
-          for(const message of older)byId.set(message.id,message);
-          for(const message of current)byId.set(message.id,message);
-          return Array.from(byId.values()).sort(compareMessages);
-        });
+        setChatMessages(current=>prependEarlierPage(current,older));
         // Older reactions load on demand rather than during every 6s poll.
         void listMessageReactions(token,older.map(message=>message.id))
           .then(reactions=>{
@@ -508,7 +492,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
       // A sent message is not a failed send just because its refresh failed.
       try{
         const updated=(await listMessages(token,chatId)).reverse();
-        if(selectedRef.current===chatId)setChatMessages(current=>mergeRecentPage(current,updated));
+        if(selectedRef.current===chatId)setChatMessages(current=>mergeRecentPage(current,updated,CHAT_MESSAGE_PAGE_SIZE));
       }catch{/* The next inbox sync will show the successfully sent message. */}
     }catch(e){setError(userFacingError(e));}
     finally{setSending(false);}
@@ -596,7 +580,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
       }
       try{
         const updated=(await listMessages(token,chatId)).reverse();
-        if(selectedRef.current===chatId)setChatMessages(current=>mergeRecentPage(current,updated));
+        if(selectedRef.current===chatId)setChatMessages(current=>mergeRecentPage(current,updated,CHAT_MESSAGE_PAGE_SIZE));
       }catch{/* Keep the confirmed action; retry updating the history on polling. */}
     }catch(e){setError(userFacingError(e));}
   }
@@ -625,7 +609,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
       setNotice("Вложение отправлено.");
       try{
         const updated=(await listMessages(token,chatId)).reverse();
-        if(selectedRef.current===chatId)setChatMessages(current=>mergeRecentPage(current,updated));
+        if(selectedRef.current===chatId)setChatMessages(current=>mergeRecentPage(current,updated,CHAT_MESSAGE_PAGE_SIZE));
       }catch{/* Do not report a sent attachment as failed during refresh. */}
     }catch(e){setError(userFacingError(e));}
     finally{setSending(false);}
