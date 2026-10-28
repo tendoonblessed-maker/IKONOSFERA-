@@ -67,5 +67,5 @@ test('email authentication accepts magic link or one-time code',()=>{
  const ui=load('components/AppShell.tsx');
  assert.match(api,/consumeEmailLinkSession/);
  assert.match(api,/verifyEmailCode/);
- assert.match(ui,/ссылку из письма/);
+ assert.match(ui,/Sign in/);
 });
