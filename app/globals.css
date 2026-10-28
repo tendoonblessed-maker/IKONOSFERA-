@@ -1685,3 +1685,310 @@ body{position:relative}
 .messenger.is-authenticated .ik-chat-older-button:focus-visible{
  outline:2px solid #333;outline-offset:2px;
 }
+
+
+/* IKONOSFERA Messaging 2026: original Telegram-inspired layout and interactions.
+   Uses only original UI styles and MIT OSS utilities; preserves app typography. */
+.ik-floating-menu-anchor{position:relative;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0}
+.ik-floating-menu-trigger{display:grid;place-items:center;min-width:35px;min-height:40px;padding:6px;border:0;border-radius:12px;background:transparent;color:#8c8c91;cursor:pointer}
+.ik-floating-menu-trigger:active,.ik-floating-menu-trigger[aria-expanded="true"]{background:#e9e9eb;color:#1c1c20}
+.ik-floating-menu-panel{
+  box-sizing:border-box;z-index:2600!important;
+  width:min(268px,calc(100vw - 24px))!important;
+  max-height:min(480px,calc(100dvh - 30px))!important;
+  overflow:auto!important;
+  background:rgba(250,250,252,.97)!important;
+  border:1px solid #eaeaec!important;
+  border-radius:17px!important;
+  box-shadow:0 18px 44px #00000024!important;
+  -webkit-backdrop-filter:blur(24px);backdrop-filter:blur(24px);
+  padding:6px!important;display:flex!important;flex-direction:column!important;
+  opacity:1!important;visibility:visible!important;
+}
+.ik-floating-menu-panel.chat-row-actions{
+  top:auto!important;left:auto!important;right:auto!important;bottom:auto!important;
+  position:fixed!important;transform:none;min-width:0!important;
+}
+.ik-floating-menu-panel button{
+  display:flex!important;align-items:center!important;width:100%!important;
+  padding:11px 12px!important;min-height:41px!important;
+  border:0!important;border-radius:11px!important;
+  background:transparent!important;color:#262629!important;
+  font:inherit!important;font-size:13px!important;font-weight:580!important;
+  text-align:left!important;line-height:1.28!important;
+  white-space:normal!important;cursor:pointer;
+}
+.ik-floating-menu-panel button:hover,.ik-floating-menu-panel button:focus-visible{background:#eaeaed!important;outline:none}
+.ik-floating-menu-panel .ik-danger-menu-action{color:#ca3d45!important}
+.ik-floating-menu-panel .ik-danger-menu-action:hover{background:#fcebec!important}
+.ik-floating-menu-panel button+.ik-danger-menu-action{border-top:1px solid #e5e5e8!important;border-radius:0 0 10px 10px!important}
+.messenger.is-authenticated .chat-list .ik-chat-row-menu{z-index:2;margin-right:5px}
+.messenger.is-authenticated .chat-list .ik-chat-row-trigger{min-height:44px;width:35px}
+.messenger.is-authenticated .chat-list .ik-chat-row-trigger svg{display:block}
+
+.ik-swipe-message{position:relative;touch-action:pan-y;will-change:transform;transition:transform .2s cubic-bezier(.2,.8,.2,1)}
+.ik-swipe-message:active{transition:none}
+.ik-swipe-reply-icon{
+  position:absolute;z-index:0;top:50%;left:-26px;
+  height:34px;width:34px;border-radius:50%;display:grid;place-items:center;
+  background:#262629;color:#fff;pointer-events:none;box-shadow:0 4px 12px #00000018;
+}
+.ik-swipe-message.mine .ik-swipe-reply-icon{left:auto;right:-26px}
+.ik-inline-reply{
+  display:flex;align-items:center;gap:11px;flex:0 0 auto;
+  min-height:57px;padding:9px 14px;
+  background:rgba(255,255,255,.97);border-top:1px solid #ededf0;
+  color:#242428;animation:ik-reply-preview-in .18s ease-out;
+}
+.ik-inline-reply-mark{height:38px;width:3px;border-radius:5px;background:#27272a;flex:0 0 3px}
+.ik-inline-reply-copy{flex:1;min-width:0;display:flex;flex-direction:column;gap:3px}
+.ik-inline-reply-copy strong{font-size:12px;font-weight:750}
+.ik-inline-reply-copy span{font-size:12px;color:#85858a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ik-inline-reply>button{border:0;background:#ededf0;color:#88888c;border-radius:50%;width:31px;height:31px;flex:0 0 31px;display:grid;place-items:center;cursor:pointer}
+@keyframes ik-reply-preview-in{from{opacity:.3;transform:translateY(7px)}to{opacity:1;transform:translateY(0)}}
+
+/* A cohesive Telegram-like monochrome desktop layout. */
+@media(min-width:801px){
+ .messenger.is-authenticated{background:#f5f5f7}
+ .messenger.is-authenticated .pane-toolbar{background:#fff;border-bottom:1px solid #ededf0}
+ .messenger.is-authenticated .chats-pane{background:#fff}
+ .messenger.is-authenticated .pane-search{border-radius:13px!important}
+ .messenger.is-authenticated .ik-inbox-filters{background:#fff;box-shadow:none;border:0;border-bottom:1px solid #ececef;border-radius:0;margin:0;padding:0 10px}
+ .messenger.is-authenticated .ik-inbox-filters button{position:relative;background:transparent!important;border-radius:0!important;min-height:46px}
+ .messenger.is-authenticated .ik-inbox-filters button.selected{color:#17171b!important}
+ .messenger.is-authenticated .ik-inbox-filters button.selected::after{content:"";position:absolute;bottom:0;left:11px;right:11px;height:2px;background:#1c1c20;border-radius:5px}
+ .messenger.is-authenticated .chat-list .chat-row-wrap{border-radius:0;margin:0;width:100%}
+ .messenger.is-authenticated .chat-list .chat-row-wrap.active{background:#eeeef1}
+ .messenger.is-authenticated .conversation-history{background-color:#eeedf0;background-image:none}
+}
+
+/* On phones, replace the floating navigation and pill filters with the
+   familiar full-width iOS tab bar + folder underline treatment. */
+@media(max-width:800px){
+ .messenger.is-authenticated .chats-pane{background:#fff!important}
+ .messenger.is-authenticated .pane-toolbar{
+   background:#fff!important;
+   height:63px!important;min-height:63px!important;
+   border-bottom:0!important;
+   padding:8px 15px 7px!important;
+ }
+ .messenger.is-authenticated .pane-toolbar h1{
+   font-size:20px!important;font-weight:800!important;
+   line-height:1.1;letter-spacing:-.035em;
+ }
+ .messenger.is-authenticated .ik-edit-toggle{
+   background:transparent!important;box-shadow:none!important;
+   border:0!important;border-radius:8px!important;
+   padding:8px 1px!important;min-width:43px;font-size:15px!important;
+ }
+ .messenger.is-authenticated .ik-compose-button{
+   background:transparent!important;box-shadow:none!important;
+   color:#1d1d22!important;border-radius:10px!important;
+   height:40px!important;width:40px!important;flex-basis:40px!important;
+ }
+ .messenger.is-authenticated .ik-compose-button svg{width:24px;height:24px}
+ .messenger.is-authenticated .home-stories{
+   background:#fff!important;padding:2px 13px 7px!important;
+   border-bottom:0!important;
+ }
+ .messenger.is-authenticated .home-stories-track{
+   padding:4px 1px 8px!important;gap:13px!important;
+   scrollbar-width:none;
+ }
+ .messenger.is-authenticated .home-stories-track::-webkit-scrollbar{display:none}
+ .messenger.is-authenticated .home-story-item{flex-basis:62px!important;gap:6px!important}
+ .messenger.is-authenticated .home-story-ring{
+   width:58px!important;height:58px!important;
+   background:#ededf0;border-radius:50%;
+ }
+ .messenger.is-authenticated .home-story-item.has-stories .home-story-ring{
+   background:conic-gradient(#242428,#777781,#242428)!important;
+ }
+ .messenger.is-authenticated .home-story-item small{font-size:11px!important;max-width:65px;color:#67676f;font-weight:540}
+ .messenger.is-authenticated .pane-search{
+   margin:2px 15px 12px!important;
+   background:#ededf0!important;
+   border-radius:12px!important;min-height:38px!important;
+ }
+ .messenger.is-authenticated .pane-search input{min-height:38px!important;font-size:16px!important}
+ .messenger.is-authenticated .ik-inbox-filters{
+   display:flex!important;gap:0!important;
+   border-radius:0!important;border:0!important;border-bottom:1px solid #eaeaec!important;
+   background:#fff!important;box-shadow:none!important;
+   padding:0 8px!important;margin:0!important;
+   min-height:43px!important;flex-shrink:0;
+   overflow-x:auto;scrollbar-width:none;
+ }
+ .messenger.is-authenticated .ik-inbox-filters button{
+   position:relative;min-height:43px!important;
+   background:transparent!important;box-shadow:none!important;
+   border-radius:0!important;white-space:nowrap;
+   padding:9px 14px!important;flex:0 0 auto;
+   font-size:13px!important;font-weight:680!important;color:#99999f!important;
+ }
+ .messenger.is-authenticated .ik-inbox-filters button.selected{color:#1c1c21!important}
+ .messenger.is-authenticated .ik-inbox-filters button.selected::after{
+   content:"";position:absolute;bottom:0;left:13px;right:13px;
+   height:3px;background:#242428;border-radius:3px 3px 0 0;
+ }
+ .messenger.is-authenticated .chat-list{background:#fff!important;padding:0!important}
+ .messenger.is-authenticated .chat-list .chat-row-wrap{
+   display:flex!important;align-items:center!important;
+   width:100%!important;min-height:78px!important;
+   margin:0!important;padding:0!important;
+   border-radius:0!important;background:#fff!important;
+   box-shadow:none!important;border-bottom:1px solid #f0f0f1!important;
+ }
+ .messenger.is-authenticated .chat-list .chat-row-wrap.active{background:#eeeef0!important}
+ .messenger.is-authenticated .chat-list .chat-row-wrap:active{background:#f1f1f3!important}
+ .messenger.is-authenticated .chat-list .telegram-chat-row{
+   flex:1 1 0;width:0!important;min-width:0;
+   min-height:78px!important;
+   padding:11px 4px 11px 14px!important;
+   gap:11px!important;border-radius:0!important;
+ }
+ .messenger.is-authenticated .chat-list .telegram-chat-row>.contact-avatar{
+   width:57px!important;height:57px!important;flex:0 0 57px!important;
+ }
+ .messenger.is-authenticated .chat-list .telegram-chat-row .ik-chat-title strong{
+   font-size:16px!important;font-weight:740!important;letter-spacing:-.02em;
+ }
+ .messenger.is-authenticated .chat-list .telegram-chat-row .ik-chat-preview{
+   font-size:13px!important;line-height:1.33!important;
+   color:#94949a!important;white-space:nowrap;
+ }
+ .messenger.is-authenticated .chat-list .ik-chat-row-menu{
+   margin-right:8px!important;opacity:.58;
+ }
+ .messenger.is-authenticated .chat-list .ik-chat-row-trigger{
+   height:43px;width:30px;min-width:30px;padding:3px;
+ }
+ .messenger.is-authenticated .ik-group-inbox{
+   min-height:78px!important;
+   margin:0!important;width:100%!important;
+   border-radius:0!important;background:#fff!important;
+   padding:10px 15px!important;gap:11px!important;
+   border-bottom:1px solid #f0f0f1!important;
+ }
+ .messenger.is-authenticated .ik-group-inbox .contact-avatar{
+   width:57px!important;height:57px!important;flex:0 0 57px!important;
+ }
+ .messenger.is-authenticated .pane-nav{
+   width:100%!important;max-width:100%!important;
+   margin:0!important;align-self:stretch!important;
+   padding:6px 9px max(7px,env(safe-area-inset-bottom,0px))!important;
+   border-radius:0!important;border:0!important;
+   border-top:1px solid #e7e7ea!important;
+   background:rgba(250,250,252,.94)!important;
+   box-shadow:0 -4px 20px #00000008!important;
+   -webkit-backdrop-filter:blur(24px);backdrop-filter:blur(24px);
+   min-height:65px;max-height:none!important;
+   z-index:22;
+ }
+ .messenger.is-authenticated .pane-nav button{
+   flex:1;min-width:0;min-height:52px!important;gap:2px!important;
+   padding:3px 1px!important;color:#99999e;
+   border-radius:10px!important;
+ }
+ .messenger.is-authenticated .pane-nav button.current{color:#16161b!important;box-shadow:none!important}
+ .messenger.is-authenticated .pane-nav button.current::before{display:none!important}
+ .messenger.is-authenticated .pane-nav .nav-art{
+   height:27px!important;width:27px!important;color:inherit!important;
+ }
+ .messenger.is-authenticated .pane-nav .nav-art svg{width:25px;height:25px}
+ .messenger.is-authenticated .pane-nav .nav-label{
+   font-size:10px!important;font-weight:630!important;line-height:1.1;
+   color:inherit!important;
+ }
+ .messenger.is-authenticated .pane-nav .nav-profile-avatar{width:27px;height:27px}
+ .messenger.is-authenticated .conversation-header{
+   background:rgba(255,255,255,.98)!important;
+   min-height:61px!important;flex-shrink:0;
+   padding:7px 13px!important;border-bottom:1px solid #ececef!important;
+ }
+ .messenger.is-authenticated .conversation-heading strong{font-size:16px!important;font-weight:740}
+ .messenger.is-authenticated .conversation-heading small{font-size:11px!important;color:#99999f}
+ .messenger.is-authenticated .conversation-header .contact-avatar.small{
+   width:40px!important;height:40px!important;border-radius:50%;
+ }
+ .messenger.is-authenticated .conversation-history{
+   background:#eeedf0!important;background-image:none!important;
+   padding:12px 9px 18px!important;gap:5px!important;
+ }
+ .messenger.is-authenticated .conversation-history>.chat-message-row>.bubble{
+   max-width:min(84vw,450px)!important;
+   padding:9px 12px!important;font-size:14px!important;
+   border-radius:16px 16px 16px 5px!important;
+   box-shadow:0 1px 2px #0000000a;
+ }
+ .messenger.is-authenticated .conversation-history>.chat-message-row.mine>.bubble{
+   border-radius:16px 16px 5px 16px!important;
+   background:#dadade!important;color:#1e1e22!important;
+ }
+ .messenger.is-authenticated .conversation-history>.chat-message-row.theirs>.bubble{
+   background:#fff!important;color:#232328!important;
+ }
+ .messenger.is-authenticated .ik-chat-day-separator span{
+   background:#bdbdc3b8!important;color:#fff!important;
+   font-size:11px!important;border:0!important;
+ }
+ .messenger.is-authenticated .composer{
+   background:#f8f8f9!important;
+   border-top:1px solid #e6e6e9!important;
+   gap:9px!important;
+   padding:8px 11px max(9px,env(safe-area-inset-bottom,0px))!important;
+ }
+ .messenger.is-authenticated .composer textarea{
+   background:#fff!important;border:1px solid #e4e4e8!important;
+   border-radius:20px!important;padding:10px 14px!important;
+   font-size:16px!important;min-height:43px!important;
+   box-shadow:none!important;
+ }
+ .messenger.is-authenticated .composer .send-button{
+   width:41px!important;height:41px!important;flex:0 0 41px!important;
+   border-radius:50%!important;background:#242428!important;color:#fff!important;
+   display:grid!important;place-items:center!important;padding:0!important;
+ }
+ .messenger.is-authenticated .composer .chat-attach-button{
+   display:grid!important;place-items:center!important;
+   width:39px!important;height:39px!important;flex:0 0 39px!important;
+   border-radius:50%!important;background:transparent!important;
+   color:#85858d!important;font-size:24px!important;padding:0!important;
+ }
+ .messenger.is-authenticated .settings-panel{
+   background:#f2f2f5!important;padding:16px 14px 34px!important;
+ }
+ .messenger.is-authenticated .settings-panel h2{
+   font-size:11px!important;font-weight:680!important;text-transform:uppercase;
+   color:#96969e!important;letter-spacing:.065em;
+ }
+ .messenger.is-authenticated .open-own-profile{
+   border:0!important;border-radius:15px!important;
+   padding:15px!important;box-shadow:none!important;
+ }
+ .messenger.is-authenticated .ik-privacy-settings,
+ .messenger.is-authenticated .ik-blocklist-settings,
+ .messenger.is-authenticated .settings-meta{
+   background:#fff!important;border:0!important;border-radius:16px!important;
+   box-shadow:none!important;
+ }
+ .messenger.is-authenticated .profile-content-section{
+   border-radius:17px!important;padding:16px!important;
+   margin:10px 13px!important;
+ }
+ .messenger.is-authenticated .profile-featured-section{
+   padding:0!important;margin:9px 13px 5px!important;
+ }
+ .messenger.is-authenticated .profile-featured-channel{
+   border-radius:17px!important;
+ }
+}
+@media(max-width:360px){
+ .messenger.is-authenticated .ik-inbox-filters button{padding:8px 10px!important}
+ .messenger.is-authenticated .pane-toolbar h1{font-size:19px!important}
+ .messenger.is-authenticated .chat-list .telegram-chat-row>.contact-avatar{width:51px!important;height:51px!important;flex-basis:51px!important}
+ .messenger.is-authenticated .chat-list .ik-chat-row-menu{margin-right:4px!important}
+}
+@media(prefers-reduced-motion:reduce){
+ .ik-swipe-message,.ik-inline-reply{transition:none!important;animation:none!important}
+}
