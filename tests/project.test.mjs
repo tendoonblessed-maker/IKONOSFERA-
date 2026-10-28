@@ -250,17 +250,19 @@ test('Chat dates and accessible conversation actions mimic familiar messenger wo
 });
 
 
-test('Chat search and bulk chat actions remain, while unused message checkbox is removed',()=>{
+test('Chat search and multi-select are accessible and do not change backend permissions',()=>{
  const shell=load('components/AppShell.tsx');
  const css=load('app/globals.css');
  assert.ok(shell.includes('searchInConversation'));
  assert.ok(shell.includes('messageSearch'));
  assert.ok(shell.includes('Поиск сообщений в текущем чате'));
- assert.ok(shell.includes('selectedChatIds'));
- assert.ok(shell.includes('applyBulkChatAction'));
+ assert.ok(shell.includes('selectedMessages'));
+ assert.ok(shell.includes('navigator.clipboard.writeText'));
+ assert.ok(shell.includes('setMessageMenuId(message.id)'));
+ assert.ok(shell.includes('Выбрать сообщение'));
  assert.ok(!shell.includes('aria-pressed={selectedMessages.includes(message.id)}'));
- assert.ok(!shell.includes('className={"ik-select-message"'));
  assert.ok(css.includes('.ik-conversation-search'));
+ assert.ok(css.includes('.ik-selection-toolbar'));
 });
 
 test('monochrome iPhone refresh keeps functional navigation and edit actions',()=>{
@@ -306,82 +308,92 @@ test('featured channel can be pinned independently and visitors see only the cha
  assert.match(api,/avatar_path/);
 });
 
-test('chat privacy actions are server-authorized and separate for me and everyone',()=>{
- const api=load('lib/supabase-rest.ts');
- const shell=load('components/AppShell.tsx');
- const row=load('components/ChatInboxRow.tsx');
- const sql=load('supabase/migrations/20261029_030000_chat_privacy_blocklist.sql');
- assert.match(api,/delete_self/);
- assert.match(row,/Удалить у себя/);
- assert.match(row,/Удалить для обоих/);
- assert.match(shell,/Удалить всю переписку у тебя и собеседника/);
- assert.match(shell,/applyBulkChatAction\('delete_self'\)/);
- assert.match(sql,/p_action='delete_self'/);
- assert.match(sql,/update public.messages set deleted_for=array_append/);
- assert.match(sql,/delete from public.chats where id=p_chat_id/);
- assert.match(sql,/me<>c.user_a and me<>c.user_b/);
-});
-test('blocklist is accessible through settings and enforced at SQL trigger',()=>{
- const ui=load('components/AppShell.tsx');
- const api=load('lib/supabase-rest.ts');
- const sql=load('supabase/migrations/20261029_030000_chat_privacy_blocklist.sql');
- assert.match(ui,/Чёрный список/);
- assert.match(ui,/Разблокировать/);
- assert.match(ui,/blockPerson\(/);
- assert.match(ui,/unblockPerson\(/);
- assert.match(api,/user_blocks\?on_conflict=owner_id,blocked_id/);
- assert.match(api,/user_blocks\?owner_id=eq\./);
- assert.match(sql,/owner_id=new.sender_id and b.blocked_id=recipient/);
- assert.match(sql,/owner_id=recipient and b.blocked_id=new.sender_id/);
- assert.match(sql,/where \(b.owner_id=new.sender_id/);
- assert.match(sql,/auth.uid\(\)/);
-});
-test('mobile message actions stay in viewport and read receipts remain',()=>{
- const shell=load('components/AppShell.tsx');
- const css=load('app/globals.css');
- assert.match(shell,/positionMobileMessageMenu/);
- assert.match(shell,/window.visualViewport/);
- assert.match(shell,/className="message-menu" onToggle=/);
- assert.match(css,/position:fixed!important/);
- assert.match(css,/max-width:calc\(100dvw - 24px\)/);
- assert.match(shell,/message\.read_at\?"✓✓":"✓"/);
- assert.ok(!shell.includes('ik-select-message'));
-});
 
-test('own story badge has a centered svg plus',()=>{
- const source=load('components/StoriesStrip.tsx'),css=load('app/globals.css');
- assert.match(source,/className="home-story-plus" aria-hidden="true"/);
- assert.match(source,/M12 5v14M5 12h14/);
- assert.match(css,/home-story-plus svg/);
- assert.match(css,/align-items:center!important;justify-content:center!important/);
-});
-
-
-test('saved contacts are durable and independent of chat visibility',()=>{
- const sql=load('supabase/migrations/20261029_040000_saved_contacts.sql');
- const api=load('lib/supabase-rest.ts');
+test('contacts are persisted per user and can be managed from chat or contacts',()=>{
  const shell=load('components/AppShell.tsx');
- const row=load('components/ChatInboxRow.tsx');
- assert.match(sql,/create table if not exists public\.user_contacts/);
- assert.match(sql,/create policy user_contacts_select_self/);
- assert.match(sql,/owner_id=\(select auth\.uid\(\)\)/);
- assert.match(sql,/user_contacts_pair_pk primary key/);
- for(const key of ['listSavedContactIds','saveContact','deleteContact'])
-   assert.ok(api.includes('function '+key+'('));
- assert.match(shell,/setSavedContacts\(contactIds\.map/);
+ const inbox=load('components/ChatInboxRow.tsx');
+ const api=load('lib/contacts.ts');
+ const sql=load('supabase/migrations/20261029_020000_persistent_contacts_blocklist_chat_cleanup.sql');
+ for(const action of ['listSavedContacts','addSavedContact','removeSavedContact','listBlockedUsers','addBlockedUser','removeBlockedUser'])
+   assert.ok(api.includes('function '+action+'('));
+ assert.match(shell,/toggleSavedContact\(person:Profile\)/);
+ assert.match(shell,/listSavedContacts\(token,id\)/);
  assert.match(shell,/const contactPeople=useMemo\(\(\)=>\[\.\.\.savedContacts\]/);
- assert.match(shell,/savedContact=\{Boolean\(/);
- assert.match(shell,/onToggleContact=\{/);
- assert.match(shell,/toggleSavedContact\(active\.other!\)/);
- assert.match(row,/Добавить в контакты/);
- assert.match(row,/Удалить из контактов/);
- assert.match(shell,/className="ik-contact-remove"/);
+ assert.match(inbox,/Добавить в контакты/);
+ assert.match(inbox,/Удалить из контактов/);
+ assert.match(sql,/create table if not exists public\.user_contacts/);
+ assert.match(sql,/owner_id = \(select auth\.uid\(\)\)/);
+ assert.match(sql,/user_contacts_pair_pk primary key/);
 });
-test('small circle for My Story centers vector cross even on iPhone',()=>{
- const css=load('app/globals.css');
- const stories=load('components/StoriesStrip.tsx');
- assert.match(stories,/className="home-story-plus" aria-hidden="true"/);
- assert.match(css,/Pixel-accurate center of the add-story cross/);
- assert.match(css,/position:absolute!important;top:50%!important;left:50%!important/);
- assert.match(css,/transform:translate\(-50%,-50%\)!important/);
+test('blocklist is private and blocks delivery server-side for text and files',()=>{
+ const shell=load('components/AppShell.tsx'),sql=load('supabase/migrations/20261029_020000_persistent_contacts_blocklist_chat_cleanup.sql');
+ assert.match(sql,/create table if not exists public\.user_blocks/);
+ assert.match(sql,/create trigger enforce_direct_message_blocks before insert on public\.messages/);
+ assert.match(sql,/b\.owner_id = recipient and b\.blocked_id = new\.sender_id/);
+ assert.match(sql,/revoke all on function public\.enforce_direct_message_blocks\(\) from public, anon, authenticated/);
+ assert.match(shell,/className="ik-blocklist-settings"/);
+ assert.match(shell,/Разблокировать/);
+ assert.match(shell,/disabled=\{sending\|\|activePartnerBlocked\}/);
+});
+test('chat removal for me erases own history without deleting recipient data',()=>{
+ const sql=load('supabase/migrations/20261029_020000_persistent_contacts_blocklist_chat_cleanup.sql');
+ const shell=load('components/AppShell.tsx');
+ const api=load('lib/supabase-rest.ts');
+ assert.match(sql,/p_action = 'delete_for_me'/);
+ assert.match(sql,/update public\.messages set deleted_for = array_append/);
+ assert.match(sql,/update public\.chats/);
+ assert.match(sql,/p_action = 'delete_everyone'/);
+ assert.match(shell,/Удалить только у себя/);
+ assert.match(shell,/Удалить у обоих/);
+ assert.match(api,/"delete_self"/);
+});
+test('mobile message actions open a viewport-bound action sheet with no extra tick icon',()=>{
+ const shell=load('components/AppShell.tsx'),css=load('app/globals.css');
+ assert.match(shell,/className="ik-message-menu-backdrop"/);
+ assert.match(shell,/className="ik-message-menu-sheet"/);
+ assert.match(shell,/className="ik-message-menu-toggle"/);
+ assert.ok(!shell.includes('className={"ik-select-message"'));
+ assert.match(css,/\.ik-message-menu-backdrop\{/);
+ assert.match(css,/position:fixed;inset:0;z-index:3000/);
+ assert.match(css,/\.ik-message-menu-sheet\{/);
+ assert.match(css,/align-items:flex-end/);
+});
+
+test('deleted chat returns on a new message without exposing deleted history',()=>{
+ const sql=load('supabase/migrations/20261029_021000_reopen_deleted_chat_on_new_message.sql');
+ assert.match(sql,/create trigger reopen_chat_after_new_message after insert on public\.messages/);
+ assert.match(sql,/update public\.chats c/);
+ assert.match(sql,/array_remove\(array_remove\(c\.hidden_for,c\.user_a\),c\.user_b\)/);
+ assert.ok(!sql.includes('deleted_for ='));
+});
+
+test('own story add badge uses centered vector icon on iPhone',()=>{
+ const story=load('components/StoriesStrip.tsx'),css=load('app/globals.css');
+ assert.match(story,/className="home-story-plus" aria-hidden="true"/);
+ assert.match(story,/M10 4v12M4 10h12/);
+ assert.match(css,/\.home-story-item \.home-story-plus\{/);
+ assert.match(css,/display:flex;align-items:center;justify-content:center/);
+ assert.match(css,/\.home-story-item \.home-story-plus svg/);
+});
+test('story timeline fills before advancing, both in chat and profile',()=>{
+ const story=load('components/StoriesStrip.tsx'),profile=load('components/ProfilePanel.tsx');
+ const clock=load('lib/use-story-progress.ts'),css=load('app/globals.css');
+ assert.match(story,/useStoryProgress\(activeStoryId/);
+ assert.match(profile,/useStoryProgress\(activeStory\?\.id/);
+ assert.ok(!story.includes('setTimeout(()=>{'));
+ assert.ok(!profile.includes('setTimeout(()=>setStoryIndex('));
+ assert.match(clock,/STORY_DURATION_MS=6000/);
+ assert.match(clock,/requestAnimationFrame\(tick\)/);
+ assert.match(clock,/pausedRef\.current/);
+ assert.match(clock,/callbackRef\.current\(\)/);
+ assert.match(css,/span\.playing\.story-progress-fill/);
+ assert.match(css,/animation:none!important/);
+});
+
+test('profile direct-message controls respect the personal blacklist',()=>{
+ const shell=load('components/AppShell.tsx'),profile=load('components/ProfilePanel.tsx');
+ assert.match(profile,/isBlocked\?:boolean/);
+ assert.match(profile,/onBlockUser\?:\(targetId:string\)=>void/);
+ assert.match(profile,/disabled=\{isBlocked\}/);
+ assert.match(shell,/onBlockUser=\{id=>void toggleProfileBlock\(id\)\}/);
 });

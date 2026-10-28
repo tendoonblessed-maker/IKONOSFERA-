@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { changeProfile, explainProfileError, validateUsername } from "@/lib/supabase-rest";
 import {getUserActivities,activityLabel,type UserActivity} from "@/lib/activity";
+import {useStoryProgress} from "@/lib/use-story-progress";
 import {
  addProfilePhoto, addStory, deleteProfilePhoto, deleteStory, getFullProfile, getProfilePhotos,
  getStories, imageUrl, listOwnedChannels, getChannelById, removeUpload, updateFullProfile, uploadPhoto,
@@ -30,7 +31,9 @@ export default function ProfilePanel({token,userId,targetId,onBack,onOwnProfileC
  const [error,setError]=useState("");const [notice,setNotice]=useState("");
  const [viewer,setViewer]=useState<{url:string;caption:string}|null>(null);
  const [storyIndex,setStoryIndex]=useState<number|null>(null);
+ const [storyPaused,setStoryPaused]=useState(false);
  const activeStory=storyIndex===null?null:stories[storyIndex]??null;
+ const progressRef=useStoryProgress(activeStory?.id??null,()=>setStoryIndex(i=>i===null?null:i+1>=stories.length?null:i+1),storyPaused);
  const reload=useCallback(async()=>{
   const [p,gallery,active,owned]=await Promise.all([
    getFullProfile(token,targetId),getProfilePhotos(token,targetId),getStories(token,targetId),mine?listOwnedChannels(token,targetId):Promise.resolve([] as Channel[])
@@ -98,11 +101,7 @@ export default function ProfilePanel({token,userId,targetId,onBack,onOwnProfileC
    onOwnProfileChange();setNotice("Изображение удалено.");
   });
  }
- useEffect(()=>{
-  if(storyIndex===null||!activeStory)return;
-  const timer=window.setTimeout(()=>setStoryIndex(index=>index===null?null:index+1>=stories.length?null:index+1),6000);
-  return()=>window.clearTimeout(timer);
- },[storyIndex,activeStory?.id,stories.length]);
+
  useEffect(()=>{
   if(storyIndex===null)return;
   const onKey=(event:KeyboardEvent)=>{if(event.key==='Escape')setStoryIndex(null);
@@ -179,9 +178,9 @@ export default function ProfilePanel({token,userId,targetId,onBack,onOwnProfileC
     <p className="profile-privacy">Фото и истории доступны другим зарегистрированным пользователям. Не публикуй личные документы.</p>
     {(error||notice)&&<p role="status" className={error?"profile-error":"profile-success"}>{error||notice}</p>}
    </div>
-   {activeStory&&<div className="story-viewer story-viewer-telegram" role="dialog" aria-modal="true" aria-label="Просмотр историй">
+   {activeStory&&<div className="story-viewer story-viewer-telegram" role="dialog" aria-modal="true" aria-label="Просмотр историй" onPointerDown={()=>setStoryPaused(true)} onPointerUp={()=>setStoryPaused(false)} onPointerCancel={()=>setStoryPaused(false)}>
     <div className="story-viewer-stage">
-     <div className="story-progress">{stories.map((st,i)=><span key={st.id} className="story-progress-track"><span className={i<(storyIndex??0)?"done":i===storyIndex?"playing":""}/></span>)}</div>
+     <div className="story-progress">{stories.map((st,i)=><span key={st.id} className="story-progress-track"><span className={i<(storyIndex??0)?"done":i===storyIndex?"playing story-progress-fill":""} ref={i===storyIndex?progressRef:undefined}/></span>)}</div>
      <header className="story-viewer-header"><span className="story-viewer-avatar">{avatar?<img src={avatar} alt=""/>:(profile?.display_name||"?").charAt(0)}</span>
       <span className="story-viewer-author"><strong>{profile?.display_name}</strong><small>{new Date(activeStory.created_at).toLocaleString("ru-RU",{hour:"2-digit",minute:"2-digit",day:"numeric",month:"short"})}</small></span>
       <button type="button" className="story-viewer-close" onClick={()=>setStoryIndex(null)} aria-label="Закрыть историю"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
