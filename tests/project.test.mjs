@@ -202,3 +202,16 @@ test('Group inbox previews and unread counts remain scoped to group members',()=
  assert.match(row,/ik-unread-count/);
  assert.match(group,/markGroupRead/);
 });
+
+
+test('Chat inbox rows stay horizontal on iPhone and desktop instead of stacking centrally',()=>{
+ const css=load('app/globals.css');
+ const component=load('components/ChatInboxRow.tsx');
+ assert.match(css,/\.chat-row-wrap\{display:flex;flex-direction:row;/);
+ assert.match(css,/\.messenger\.is-authenticated \.chat-list \.chat-row-wrap\{display:flex;flex-direction:row;justify-content:flex-start/);
+ assert.match(css,/\.messenger\.is-authenticated \.chat-list \.telegram-chat-row\{display:flex;flex-direction:row;justify-content:flex-start/);
+ assert.match(css,/\.messenger\.is-authenticated \.chat-list \.chat-row-wrap\{flex-direction:row;width:calc\(100% - 12px\)/);
+ assert.match(component,/className=\{'chat-row-wrap ik-inbox-row'/);
+ assert.match(component,/className="contact-info"/);
+ assert.match(component,/className="ik-chat-meta"/);
+});
