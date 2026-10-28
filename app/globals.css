@@ -1384,3 +1384,97 @@ body{position:relative}
  .messenger.is-authenticated .profile-featured-section{margin:8px 12px 5px!important;padding:0!important;border-radius:0!important}
  .messenger.is-authenticated .profile-featured-channel{border-radius:22px;padding:12px 15px}
 }
+
+
+/* Private contacts and blocklist: monochrome iOS rows, accessible actions. */
+.messenger.is-authenticated .ik-contact-person-row{
+ display:flex;align-items:center;background:#fff;border-bottom:1px solid #efeff1;min-width:0;
+}
+.messenger.is-authenticated .ik-contact-person-row .ik-contact-person{min-width:0;flex:1}
+.messenger.is-authenticated .ik-contact-remove{
+ width:38px;height:38px;flex:0 0 38px;margin-right:10px;border:0;
+ background:#f3f3f5;border-radius:50%;font-size:22px;color:#77777e;
+ display:grid;place-items:center;
+}
+.messenger.is-authenticated .ik-contact-remove:disabled{opacity:.4}
+.messenger.is-authenticated .ik-blocklist-settings{margin:13px 0;border-radius:22px;overflow:hidden;background:#fff;box-shadow:0 1px 3px #00000006}
+.messenger.is-authenticated .ik-blocklist-toggle{
+ display:flex;align-items:center;width:100%;min-height:68px;padding:12px 16px;
+ gap:12px;background:#fff;color:#151519;text-align:left;border:0;
+}
+.messenger.is-authenticated .ik-settings-lock{
+ display:grid;place-items:center;width:36px;height:36px;flex:0 0 36px;
+ border-radius:12px;background:#222226;color:#fff;font-size:25px;
+}
+.messenger.is-authenticated .ik-settings-row-text{display:flex;flex:1;flex-direction:column;gap:4px;min-width:0}
+.messenger.is-authenticated .ik-settings-row-text strong{font-size:15px}
+.messenger.is-authenticated .ik-settings-row-text small{font-size:12px;color:#8d8d95}
+.messenger.is-authenticated .ik-block-count{font-size:12px;font-weight:700;color:#898990}
+.messenger.is-authenticated .ik-block-chevron{font-size:23px;color:#b0b0b5}
+.messenger.is-authenticated .ik-blocklist-content{border-top:1px solid #ededf0;background:#fff;padding:5px 0}
+.messenger.is-authenticated .ik-blocked-person{display:flex;align-items:center;gap:12px;padding:11px 15px;min-width:0;border-bottom:1px solid #f2f2f4}
+.messenger.is-authenticated .ik-blocked-person:last-child{border-bottom:0}
+.messenger.is-authenticated .ik-blocked-person .contact-avatar{width:42px;height:42px;flex:0 0 42px}
+.messenger.is-authenticated .ik-blocked-person-info{display:flex;flex-direction:column;gap:4px;min-width:0;flex:1}
+.messenger.is-authenticated .ik-blocked-person-info strong{font-size:13px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.messenger.is-authenticated .ik-blocked-person-info small{color:#9999a1;font-size:11px}
+.messenger.is-authenticated .ik-blocked-person>button{border:0;border-radius:14px;background:#f2f2f5;font-size:11px;font-weight:700;color:#252529;padding:11px 10px}
+.messenger.is-authenticated .ik-empty-blocklist{margin:0;padding:15px 18px;font-size:13px;color:#888891}
+.messenger.is-authenticated .ik-chat-blocked-banner{display:flex;align-items:center;justify-content:space-between;gap:8px;background:#ededf0;color:#5b5b62;padding:10px 14px;font-size:12px}
+.messenger.is-authenticated .ik-chat-blocked-banner button{border:0;background:#17171a;color:#fff;padding:9px 11px;border-radius:12px;white-space:nowrap;font-weight:700;font-size:11px}
+.messenger.is-authenticated .chat-row-actions .ik-danger-menu-action{color:#9b3434}
+.messenger.is-authenticated .ik-message-menu-toggle{
+ background:transparent;color:#88888d;border:0;min-width:32px;
+ min-height:32px;border-radius:12px;font-size:23px;font-weight:700;
+ display:grid;place-items:center;padding:0 4px;line-height:1;
+}
+.messenger.is-authenticated .ik-message-menu-toggle:active{background:#e8e8eb}
+/* This action sheet lives under the messenger root, outside scrolling bubbles.
+   Fixed positioning prevents clipping when a message is near either screen edge. */
+.ik-message-menu-backdrop{
+ position:fixed;inset:0;z-index:3000;background:rgba(0,0,0,.34);
+ display:flex;align-items:center;justify-content:center;
+ padding:max(12px,env(safe-area-inset-top,0px)) 14px max(12px,env(safe-area-inset-bottom,0px));
+ backdrop-filter:blur(5px);-webkit-backdrop-filter:blur(5px);
+}
+.ik-message-menu-sheet{
+ width:min(100%,380px);max-height:calc(100dvh - 45px);overflow-y:auto;
+ border:1px solid #e7e7eb;box-shadow:0 24px 80px #0003;
+ background:#f5f5f7;color:#17171b;padding:10px;border-radius:23px;
+ animation:ik-message-sheet-enter .2s cubic-bezier(.2,.7,.2,1) both;
+}
+.ik-message-menu-grip{width:34px;height:4px;background:#d1d1d6;border-radius:999px;margin:1px auto 12px}
+.ik-message-menu-preview{
+ padding:12px 15px;margin-bottom:8px;background:#e8e8ec;border-radius:14px;
+ color:#6a6a73;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+ font-size:12px;line-height:1.4;
+}
+.ik-message-menu-buttons{border-radius:17px;overflow:hidden;background:#fff}
+.ik-message-menu-buttons button{
+ display:block;width:100%;min-height:51px;padding:13px 17px;text-align:left;
+ border:0;border-bottom:1px solid #ededf0;background:#fff;color:#19191d;
+ font-size:14px;font-weight:650;font-family:inherit;
+}
+.ik-message-menu-buttons button:last-child{border-bottom:0}
+.ik-message-menu-buttons button:active{background:#ebebee}
+.ik-message-menu-buttons button.ik-message-menu-danger{color:#b13939}
+.ik-message-menu-cancel{display:block;width:100%;margin-top:8px;min-height:50px;border:0;border-radius:16px;background:#fff;color:#19191d;font-weight:700;font-size:14px}
+@keyframes ik-message-sheet-enter{from{opacity:0;transform:translateY(14px) scale(.98)}to{opacity:1;transform:translateY(0) scale(1)}}
+@media(max-width:800px){
+ .ik-message-menu-backdrop{align-items:flex-end;padding:0 8px max(9px,env(safe-area-inset-bottom,0px));}
+ .ik-message-menu-sheet{width:100%;max-height:calc(100dvh - 70px);border-radius:26px;padding:11px 10px 10px}
+ .messenger.is-authenticated .ik-conversation-more-menu{
+  position:fixed!important;top:max(80px,calc(env(safe-area-inset-top,0px) + 62px))!important;
+  right:12px!important;left:auto!important;width:min(295px,calc(100vw - 24px))!important;
+  max-height:min(70dvh,540px);overflow-y:auto;z-index:500!important;
+ }
+ .messenger.is-authenticated .chat-row-menu .chat-row-actions{
+  position:fixed!important;top:auto!important;bottom:calc(90px + env(safe-area-inset-bottom,0px))!important;
+  left:12px!important;right:12px!important;width:auto!important;max-width:calc(100vw - 24px)!important;
+  max-height:65dvh;overflow:auto;z-index:900!important;box-shadow:0 18px 60px #0002;
+ }
+ .messenger.is-authenticated .ik-message-menu-toggle{min-width:38px;min-height:36px}
+ .messenger.is-authenticated .chat-message-tools>.ik-select-message{display:none!important}
+ .messenger.is-authenticated .ik-blocked-person{flex-wrap:nowrap}
+}
+@media(prefers-reduced-motion:reduce){.ik-message-menu-sheet{animation:none}}
