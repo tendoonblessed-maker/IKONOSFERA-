@@ -245,3 +245,17 @@ test('Chat dates and accessible conversation actions mimic familiar messenger wo
  assert.ok(css.includes('.ik-conversation-more-menu'));
  assert.ok(css.includes('prefers-reduced-motion:reduce'));
 });
+
+
+test('Chat search and multi-select are accessible and do not change backend permissions',()=>{
+ const shell=load('components/AppShell.tsx');
+ const css=load('app/globals.css');
+ assert.ok(shell.includes('searchInConversation'));
+ assert.ok(shell.includes('messageSearch'));
+ assert.ok(shell.includes('Поиск сообщений в текущем чате'));
+ assert.ok(shell.includes('selectedMessages'));
+ assert.ok(shell.includes('navigator.clipboard.writeText'));
+ assert.ok(shell.includes('aria-pressed={selectedMessages.includes(message.id)}'));
+ assert.ok(css.includes('.ik-conversation-search'));
+ assert.ok(css.includes('.ik-selection-toolbar'));
+});
