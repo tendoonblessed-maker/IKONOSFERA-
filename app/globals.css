@@ -1386,58 +1386,137 @@ body{position:relative}
 }
 
 
-/* Chat safety menu and blacklist (iPhone first). */
-.messenger.is-authenticated .ik-blacklist-section{background:#fff;border-radius:22px;margin:12px 0 14px;overflow:visible;box-shadow:0 1px 3px #00000006}
-.messenger.is-authenticated .ik-blacklist-toggle{display:flex;width:100%;align-items:center;gap:13px;background:transparent;border:0;text-align:left;padding:15px 17px;min-height:71px;color:#18181c;cursor:pointer}
-.messenger.is-authenticated .ik-blacklist-icon{display:grid;place-items:center;width:41px;height:41px;flex-shrink:0;color:#fff;background:#33343a;border-radius:14px;font-size:24px}
-.messenger.is-authenticated .ik-blacklist-toggle>span:nth-child(2){display:grid;flex:1;gap:4px;min-width:0}
-.messenger.is-authenticated .ik-blacklist-toggle strong{font-size:15px;font-weight:740;letter-spacing:-.02em}
-.messenger.is-authenticated .ik-blacklist-toggle small{font-size:12px;color:#96969e}
-.messenger.is-authenticated .ik-blacklist-chevron{font-size:25px;color:#9d9da5}
-.messenger.is-authenticated .ik-blacklist-people{padding:0 12px 11px;border-top:1px solid #eaeaed}
-.messenger.is-authenticated .ik-blacklist-people>p{font-size:13px;color:#8b8b91;padding:10px 8px;line-height:1.45}
-.messenger.is-authenticated .ik-blacklist-person{display:flex;gap:10px;align-items:center;min-height:69px;border-bottom:1px solid #f0f0f2;padding:9px 4px}
-.messenger.is-authenticated .ik-blacklist-person:last-child{border-bottom:0}
-.messenger.is-authenticated .ik-blacklist-person .contact-avatar{width:42px;height:42px;flex:0 0 42px;border-radius:50%}
-.messenger.is-authenticated .ik-blacklist-person-name{display:grid;gap:3px;flex:1;min-width:0}
-.messenger.is-authenticated .ik-blacklist-person-name strong{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px}
-.messenger.is-authenticated .ik-blacklist-person-name small{color:#8b8b91;font-size:11px}
-.messenger.is-authenticated .ik-blacklist-person button{border:0;border-radius:999px;background:#ededf0;color:#27272c;padding:10px;font-size:11px;font-weight:720;cursor:pointer;white-space:nowrap}
-.messenger.is-authenticated .ik-blacklist-person button:disabled{opacity:.5}
-.messenger.is-authenticated .ik-blacklist-person button:hover{background:#e1e1e5}
-.messenger.is-authenticated .ik-danger-action{color:#a12f3c!important}
-.messenger.is-authenticated .ik-blocked-notice{display:flex;gap:10px;align-items:center;justify-content:center;flex-wrap:wrap;padding:11px 16px;color:#565660;font-size:12px;background:#f0f0f2;border-top:1px solid #e3e3e6;text-align:center}
-.messenger.is-authenticated .ik-blocked-notice button{background:#262629;color:#fff;border:0;border-radius:999px;padding:7px 13px;cursor:pointer;font-size:12px}
-.messenger.is-authenticated .composer textarea:disabled{color:#85858c;background:#eaeaed}
-.messenger.is-authenticated .message-menu .message-manage-actions{z-index:300;border-radius:16px}
+/* Private contacts and blocklist: monochrome iOS rows, accessible actions. */
+.messenger.is-authenticated .ik-contact-person-row{
+ display:flex;align-items:center;background:#fff;border-bottom:1px solid #efeff1;min-width:0;
+}
+.messenger.is-authenticated .ik-contact-person-row .ik-contact-person{min-width:0;flex:1}
+.messenger.is-authenticated .ik-contact-remove{
+ width:38px;height:38px;flex:0 0 38px;margin-right:10px;border:0;
+ background:#f3f3f5;border-radius:50%;font-size:22px;color:#77777e;
+ display:grid;place-items:center;
+}
+.messenger.is-authenticated .ik-contact-remove:disabled{opacity:.4}
+.messenger.is-authenticated .ik-blocklist-settings{margin:13px 0;border-radius:22px;overflow:hidden;background:#fff;box-shadow:0 1px 3px #00000006}
+.messenger.is-authenticated .ik-blocklist-toggle{
+ display:flex;align-items:center;width:100%;min-height:68px;padding:12px 16px;
+ gap:12px;background:#fff;color:#151519;text-align:left;border:0;
+}
+.messenger.is-authenticated .ik-settings-lock{
+ display:grid;place-items:center;width:36px;height:36px;flex:0 0 36px;
+ border-radius:12px;background:#222226;color:#fff;font-size:25px;
+}
+.messenger.is-authenticated .ik-settings-row-text{display:flex;flex:1;flex-direction:column;gap:4px;min-width:0}
+.messenger.is-authenticated .ik-settings-row-text strong{font-size:15px}
+.messenger.is-authenticated .ik-settings-row-text small{font-size:12px;color:#8d8d95}
+.messenger.is-authenticated .ik-block-count{font-size:12px;font-weight:700;color:#898990}
+.messenger.is-authenticated .ik-block-chevron{font-size:23px;color:#b0b0b5}
+.messenger.is-authenticated .ik-blocklist-content{border-top:1px solid #ededf0;background:#fff;padding:5px 0}
+.messenger.is-authenticated .ik-blocked-person{display:flex;align-items:center;gap:12px;padding:11px 15px;min-width:0;border-bottom:1px solid #f2f2f4}
+.messenger.is-authenticated .ik-blocked-person:last-child{border-bottom:0}
+.messenger.is-authenticated .ik-blocked-person .contact-avatar{width:42px;height:42px;flex:0 0 42px}
+.messenger.is-authenticated .ik-blocked-person-info{display:flex;flex-direction:column;gap:4px;min-width:0;flex:1}
+.messenger.is-authenticated .ik-blocked-person-info strong{font-size:13px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.messenger.is-authenticated .ik-blocked-person-info small{color:#9999a1;font-size:11px}
+.messenger.is-authenticated .ik-blocked-person>button{border:0;border-radius:14px;background:#f2f2f5;font-size:11px;font-weight:700;color:#252529;padding:11px 10px}
+.messenger.is-authenticated .ik-empty-blocklist{margin:0;padding:15px 18px;font-size:13px;color:#888891}
+.messenger.is-authenticated .ik-chat-blocked-banner{display:flex;align-items:center;justify-content:space-between;gap:8px;background:#ededf0;color:#5b5b62;padding:10px 14px;font-size:12px}
+.messenger.is-authenticated .ik-chat-blocked-banner button{border:0;background:#17171a;color:#fff;padding:9px 11px;border-radius:12px;white-space:nowrap;font-weight:700;font-size:11px}
+.messenger.is-authenticated .chat-row-actions .ik-danger-menu-action{color:#9b3434}
+.messenger.is-authenticated .ik-message-menu-toggle{
+ background:transparent;color:#88888d;border:0;min-width:32px;
+ min-height:32px;border-radius:12px;font-size:23px;font-weight:700;
+ display:grid;place-items:center;padding:0 4px;line-height:1;
+}
+.messenger.is-authenticated .ik-message-menu-toggle:active{background:#e8e8eb}
+/* This action sheet lives under the messenger root, outside scrolling bubbles.
+   Fixed positioning prevents clipping when a message is near either screen edge. */
+.ik-message-menu-backdrop{
+ position:fixed;inset:0;z-index:3000;background:rgba(0,0,0,.34);
+ display:flex;align-items:center;justify-content:center;
+ padding:max(12px,env(safe-area-inset-top,0px)) 14px max(12px,env(safe-area-inset-bottom,0px));
+ backdrop-filter:blur(5px);-webkit-backdrop-filter:blur(5px);
+}
+.ik-message-menu-sheet{
+ width:min(100%,380px);max-height:calc(100dvh - 45px);overflow-y:auto;
+ border:1px solid #e7e7eb;box-shadow:0 24px 80px #0003;
+ background:#f5f5f7;color:#17171b;padding:10px;border-radius:23px;
+ animation:ik-message-sheet-enter .2s cubic-bezier(.2,.7,.2,1) both;
+}
+.ik-message-menu-grip{width:34px;height:4px;background:#d1d1d6;border-radius:999px;margin:1px auto 12px}
+.ik-message-menu-preview{
+ padding:12px 15px;margin-bottom:8px;background:#e8e8ec;border-radius:14px;
+ color:#6a6a73;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+ font-size:12px;line-height:1.4;
+}
+.ik-message-menu-buttons{border-radius:17px;overflow:hidden;background:#fff}
+.ik-message-menu-buttons button{
+ display:block;width:100%;min-height:51px;padding:13px 17px;text-align:left;
+ border:0;border-bottom:1px solid #ededf0;background:#fff;color:#19191d;
+ font-size:14px;font-weight:650;font-family:inherit;
+}
+.ik-message-menu-buttons button:last-child{border-bottom:0}
+.ik-message-menu-buttons button:active{background:#ebebee}
+.ik-message-menu-buttons button.ik-message-menu-danger{color:#b13939}
+.ik-message-menu-cancel{display:block;width:100%;margin-top:8px;min-height:50px;border:0;border-radius:16px;background:#fff;color:#19191d;font-weight:700;font-size:14px}
+@keyframes ik-message-sheet-enter{from{opacity:0;transform:translateY(14px) scale(.98)}to{opacity:1;transform:translateY(0) scale(1)}}
 @media(max-width:800px){
- .messenger.is-authenticated .message-menu[open]{z-index:250!important}
- .messenger.is-authenticated .message-menu .message-manage-actions{
-  position:fixed!important;top:0;left:12px;right:auto!important;
-  box-sizing:border-box;max-width:calc(100dvw - 24px);
-  width:min(210px,calc(100dvw - 24px));
-  display:grid;gap:4px;padding:9px;border:1px solid #e8e8eb;
-  border-radius:17px;background:#fff;box-shadow:0 12px 35px #00000022;
- }
- .messenger.is-authenticated .message-menu .message-manage-actions button{display:flex;align-items:center;min-height:41px;text-align:left;font-size:13px!important;line-height:1.2;padding:10px 12px;white-space:normal}
- .messenger.is-authenticated .chat-message-row>.chat-message-tools{overflow:visible;max-width:calc(100vw - 30px)}
- .messenger.is-authenticated .conversation-history{overflow-x:clip}
+ .ik-message-menu-backdrop{align-items:flex-end;padding:0 8px max(9px,env(safe-area-inset-bottom,0px));}
+ .ik-message-menu-sheet{width:100%;max-height:calc(100dvh - 70px);border-radius:26px;padding:11px 10px 10px}
  .messenger.is-authenticated .ik-conversation-more-menu{
-  max-width:calc(100dvw - 24px);min-width:min(230px,calc(100dvw - 24px));
-  right:0;left:auto;box-sizing:border-box;
+  position:fixed!important;top:max(80px,calc(env(safe-area-inset-top,0px) + 62px))!important;
+  right:12px!important;left:auto!important;width:min(295px,calc(100vw - 24px))!important;
+  max-height:min(70dvh,540px);overflow-y:auto;z-index:500!important;
  }
  .messenger.is-authenticated .chat-row-menu .chat-row-actions{
-  right:0;left:auto;width:min(240px,calc(100dvw - 24px));box-sizing:border-box;
+  position:fixed!important;top:auto!important;bottom:calc(90px + env(safe-area-inset-bottom,0px))!important;
+  left:12px!important;right:12px!important;width:auto!important;max-width:calc(100vw - 24px)!important;
+  max-height:65dvh;overflow:auto;z-index:900!important;box-shadow:0 18px 60px #0002;
  }
- .messenger.is-authenticated .ik-blacklist-section{border-radius:22px}
+ .messenger.is-authenticated .ik-message-menu-toggle{min-width:38px;min-height:36px}
+ .messenger.is-authenticated .chat-message-tools>.ik-select-message{display:none!important}
+ .messenger.is-authenticated .ik-blocked-person{flex-wrap:nowrap}
+}
+@media(prefers-reduced-motion:reduce){.ik-message-menu-sheet{animation:none}}
+
+/* Story playback: progress is driven by the shared animation-frame clock,
+   not an independent CSS timer. This makes auto-advance match the visible bar. */
+.story-progress-track{overflow:hidden;isolation:isolate;background:rgba(255,255,255,.34)}
+.story-progress-track>span.playing.story-progress-fill{
+  display:block;width:100%;height:100%;background:#fff;
+  transform:scaleX(0);transform-origin:left center;
+  animation:none!important;transition:none!important;will-change:transform;
+}
+.story-progress-track>span.done{width:100%;transform:none;background:#fff}
+@media(prefers-reduced-motion:reduce){
+ .story-progress-track>span.playing.story-progress-fill{
+   animation:none!important;width:100%!important;
+ }
+}
+/* The small add-story badge in the Chats header uses vector geometry;
+   the font's + baseline cannot shift it outside the center of the circle. */
+.home-story-item .home-story-plus{
+  position:absolute;right:-3px;bottom:-2px;
+  width:23px;height:23px;padding:0;margin:0;
+  border:2px solid #fff;border-radius:50%;box-sizing:border-box;
+  background:#17171a;color:#fff;display:flex;align-items:center;justify-content:center;
+  font-size:0;line-height:0;transform:none;
+}
+.home-story-item .home-story-plus svg{
+  display:block;width:12px;height:12px;flex:none;
+  margin:0;padding:0;transform:none;
 }
 
-/* Exact center for the 'Моя история' add-story cross on iPhone. */
-.messenger.is-authenticated .home-story-plus{
-  display:flex!important;align-items:center!important;justify-content:center!important;
-  position:absolute;bottom:0;right:-2px;width:23px;height:23px;
-  padding:0!important;line-height:0!important;box-sizing:border-box;
-  border:2px solid #fff;border-radius:50%;background:#18181b;color:#fff;
-  transform:none!important;overflow:hidden;
+
+/* iPhone: place the add-story glyph at the exact center of its circular badge. */
+.home-story-item .home-story-plus{display:block!important;position:absolute!important;box-sizing:border-box!important;overflow:hidden!important}
+.home-story-item .home-story-plus svg{
+ position:absolute!important;top:50%!important;left:50%!important;
+ width:12px!important;height:12px!important;margin:0!important;
+ transform:translate(-50%,-50%)!important;display:block!important;
 }
-.messenger.is-authenticated .home-story-plus svg{display:block;width:13px;height:13px;flex:0 0 13px;transform:none;margin:0;}
+
+/* Keep the profile block button usable after reconciling the profile and chat updates. */
+.messenger.is-authenticated .ik-profile-conversation-actions{display:flex;justify-content:center;gap:9px;align-items:center;flex-wrap:wrap}
+.messenger.is-authenticated .ik-profile-block-action{border:1px solid #d8d8dc;background:#f5f5f7;color:#36363b;border-radius:18px;padding:12px 15px;font-size:12px;font-weight:700}
+.messenger.is-authenticated .ik-profile-block-action:active{background:#ececef}
