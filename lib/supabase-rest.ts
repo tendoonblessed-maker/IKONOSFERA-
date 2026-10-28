@@ -7,7 +7,7 @@ export const backendReady = Boolean(apiUrl && anonKey);
 export type Session = { access_token: string; refresh_token: string; expires_at: number };
 export type Profile = { id: string; username: string; display_name: string; avatar_path?: string|null; cover_path?: string|null; bio?: string };
 export type DirectChat = { id: string; user_a: string; user_b: string; created_at: string };
-export type ChatMessage = { id: string; chat_id: string; sender_id: string; body: string; created_at: string; media_path: string|null; media_type: "image"|"video"|null };
+export type ChatMessage = { id: string; chat_id: string; sender_id: string; body: string; created_at: string; media_path: string|null; media_type: "image"|"video"|null; read_at: string|null };
 const STORAGE = 'ikonosfera-session-v1';
 
 function ensureReady() { if (!backendReady) throw Error('Сервер пока не подключён'); }
@@ -102,10 +102,10 @@ export async function listProfiles(token: string, ids: string[]) {
   return http<Profile[]>(`/rest/v1/profiles?select=id,username,display_name,avatar_path,cover_path,bio&id=in.(${ids.map(encodeURIComponent).join(',')})`,{token});
 }
 export async function listMessages(token: string, chatId: string) {
-  return http<ChatMessage[]>(`/rest/v1/messages?select=id,chat_id,sender_id,body,created_at,media_path,media_type&chat_id=eq.${encodeURIComponent(chatId)}&order=created_at.desc&limit=100`,{token});
+  return http<ChatMessage[]>(`/rest/v1/messages?select=id,chat_id,sender_id,body,created_at,media_path,media_type,read_at&chat_id=eq.${encodeURIComponent(chatId)}&order=created_at.desc&limit=100`,{token});
 }
 export async function postMessage(token: string, chatId: string, userId: string, body: string) {
-  const result=await http<ChatMessage[]>('/rest/v1/messages?select=id,chat_id,sender_id,body,created_at,media_path,media_type',{token,method:'POST',body:{chat_id:chatId,sender_id:userId,body},extraHeaders:{Prefer:'return=representation'}});
+  const result=await http<ChatMessage[]>('/rest/v1/messages?select=id,chat_id,sender_id,body,created_at,media_path,media_type,read_at',{token,method:'POST',body:{chat_id:chatId,sender_id:userId,body},extraHeaders:{Prefer:'return=representation'}});
   if (!result[0]) throw Error('Сообщение не сохранено'); return result[0];
 }
 
@@ -124,7 +124,7 @@ export async function uploadDirectMedia(token:string,chatId:string,userId:string
 export async function sendDirectMedia(token:string,chatId:string,userId:string,file:File,caption=""){
  const {path,type}=await uploadDirectMedia(token,chatId,userId,file);
  try{
-  const messages=await http<ChatMessage[]>('/rest/v1/messages?select=id,chat_id,sender_id,body,created_at,media_path,media_type',{
+  const messages=await http<ChatMessage[]>('/rest/v1/messages?select=id,chat_id,sender_id,body,created_at,media_path,media_type,read_at',{
    token,method:"POST",body:{chat_id:chatId,sender_id:userId,body:caption.trim().slice(0,4000),media_path:path,media_type:type},
    extraHeaders:{Prefer:"return=representation"}
   });
@@ -144,4 +144,8 @@ export async function getDirectMediaUrl(token:string,path:string):Promise<string
  if(!res.ok||!value?.signedURL)throw Error("Не удалось открыть вложение");
  const signed=value.signedURL as string;
  return signed.startsWith("http")?signed:apiUrl+"/storage/v1"+(signed.startsWith("/")?signed:"/"+signed);
+}
+
+export async function markChatRead(token:string,chatId:string):Promise<number>{
+ return http<number>('/rest/v1/rpc/mark_chat_messages_read',{token,method:'POST',body:{p_chat_id:chatId}});
 }
