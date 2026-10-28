@@ -1121,3 +1121,12 @@ html,body{min-height:100%;overflow:hidden}
  .messenger.is-authenticated .pane-nav{flex-shrink:0}
  .messenger.is-authenticated .chat-list{overscroll-behavior:contain;-webkit-overflow-scrolling:touch}
 }
+
+/* Profile controls: responsive, Telegram-inspired compact actions */
+.ik-profile-top-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end}
+.ik-profile-top-actions .profile-edit-trigger{white-space:nowrap;border-radius:12px;padding:8px 11px}
+.profile-featured-channel{display:flex;align-items:center;gap:11px;width:100%;text-align:left}
+.profile-featured-icon{display:grid;place-items:center;width:39px;height:39px;min-width:39px;border-radius:50%;background:#e9edf1;color:#202429;font-weight:900;font-size:19px}
+.profile-featured-details{flex:1;min-width:0}
+.profile-featured-details strong,.profile-featured-details small{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+@media(max-width:520px){.ik-profile-top-actions{gap:4px}.ik-profile-top-actions .profile-edit-trigger{font-size:11px;padding:7px 8px}}
