@@ -98,3 +98,16 @@ test('message/chat actions open contextual menus, not a stack of destructive but
  assert.match(ui,/message-menu/);
  assert.match(ui,/settings-edit-button/);
 });
+
+
+test('opening a direct conversation keeps an empty draft visible only to its initiator',()=>{
+ const sql=load('supabase/migrations/20261028_250000_direct_chat_draft_visibility.sql');
+ const shell=load('components/AppShell.tsx');
+ assert.match(sql,/alter table public\.chats add column if not exists draft_for uuid\[\]/);
+ assert.match(sql,/update public\.chats set draft_for=array_append\(draft_for,caller\)/);
+ assert.match(sql,/auth\.uid\(\)=any\(c\.draft_for\)/);
+ assert.match(sql,/exists\(select 1 from public\.messages/);
+ assert.match(sql,/grant execute on function public\.start_direct_chat\(text\) to authenticated/);
+ assert.match(shell,/await startDirectChat\(session\.access_token/);
+ assert.match(shell,/await refresh\(session\.access_token,userId,id\)/);
+});
