@@ -28,6 +28,8 @@ export default function ProfilePanel({token,userId,targetId,onBack,onOwnProfileC
  const [error,setError]=useState("");const [notice,setNotice]=useState("");
  const [viewer,setViewer]=useState<{url:string;caption:string}|null>(null);
  const [storyIndex,setStoryIndex]=useState<number|null>(null);
+ const [pendingImage,setPendingImage]=useState<{file:File;kind:"avatar"|"cover"|"photo"|"story"}|null>(null);
+ const [cropScale,setCropScale]=useState(1);
  const activeStory=storyIndex===null?null:stories[storyIndex]??null;
  const reload=useCallback(async()=>{
   const [p,gallery,active,owned]=await Promise.all([
@@ -48,15 +50,27 @@ export default function ProfilePanel({token,userId,targetId,onBack,onOwnProfileC
  };
  async function chooseImage(file:File|undefined,kind:"avatar"|"cover"|"photo"|"story"){
   if(!file||!mine||!profile)return;
+  setCropScale(1);setPendingImage({file,kind});
+ }
+ async function saveCroppedImage(){
+  if(!pendingImage)return;
+  const {file,kind}=pendingImage;
   await run(async()=>{
-   const path=await uploadPhoto(token,userId,file);
+   const bitmap=await createImageBitmap(file);
+   const canvas=document.createElement("canvas");canvas.width=kind==="cover"?1200:720;canvas.height=kind==="cover"?480:720;
+   const ctx=canvas.getContext("2d");if(!ctx){bitmap.close();throw Error("Не удалось открыть редактор фото.");}
+   const scale=Math.max(canvas.width/bitmap.width,canvas.height/bitmap.height)*cropScale;
+   ctx.drawImage(bitmap,(canvas.width-bitmap.width*scale)/2,(canvas.height-bitmap.height*scale)/2,bitmap.width*scale,bitmap.height*scale);
+   bitmap.close();
+   const blob=await new Promise<Blob>((resolve,reject)=>canvas.toBlob(result=>result?resolve(result):reject(Error("Не удалось обрезать изображение.")),"image/jpeg",.88));
+   const path=await uploadPhoto(token,userId,new File([blob],"photo.jpg",{type:"image/jpeg"}));
    try{
     if(kind==="avatar"||kind==="cover"){
       await updateFullProfile(token,userId,kind==="avatar"?{avatar_path:path}:{cover_path:path});
       onOwnProfileChange();
     }else if(kind==="photo")await addProfilePhoto(token,userId,path,"");
     else await addStory(token,userId,path,"");
-    setNotice(kind==="story"?"История опубликована на 24 часа.":"Изображение сохранено.");
+    setPendingImage(null);setNotice(kind==="story"?"История опубликована на 24 часа.":"Изображение сохранено.");
    }catch(e){await removeUpload(token,path).catch(()=>{});throw e;}
   });
  }
@@ -167,6 +181,7 @@ export default function ProfilePanel({token,userId,targetId,onBack,onOwnProfileC
      {activeStory.caption&&<div className="story-viewer-caption">{activeStory.caption}</div>}
     </div>
    </div>}
+   {pendingImage&&<div className="ik-photo-editor" role="dialog" aria-modal="true" aria-label="Обрезка изображения"><div className="ik-photo-editor-card"><h2>Настроить изображение</h2><p>Измени масштаб перед сохранением.</p><div className={"ik-photo-preview"+(pendingImage.kind==="cover"?" is-cover":"")}><img src={URL.createObjectURL(pendingImage.file)} alt="Предпросмотр обрезки" style={{transform:"scale("+cropScale+")"}}/></div><label>Масштаб <input type="range" min="1" max="3" step=".05" value={cropScale} onChange={e=>setCropScale(Number(e.target.value))}/></label><div className="ik-photo-editor-actions"><button type="button" onClick={()=>setPendingImage(null)} disabled={busy}>Отмена</button><button type="button" disabled={busy} onClick={()=>void saveCroppedImage()}>Обрезать и сохранить</button></div></div></div>}
    {viewer&&<div className="profile-lightbox" role="dialog" aria-modal="true" aria-label="Просмотр фото"><button className="profile-lightbox-close" type="button" onClick={()=>setViewer(null)}>Закрыть ×</button><img src={viewer.url} alt={viewer.caption||"Фото пользователя"}/>{viewer.caption&&<p>{viewer.caption}</p>}</div>}
  </section>;
 }
