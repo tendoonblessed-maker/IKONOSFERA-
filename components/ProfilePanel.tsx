@@ -161,7 +161,7 @@ export default function ProfilePanel({token,userId,targetId,onBack,onOwnProfileC
      <div className="story-progress">{stories.map((st,i)=><span key={st.id} className="story-progress-track"><span className={i<(storyIndex??0)?"done":i===storyIndex?"playing":""}/></span>)}</div>
      <header className="story-viewer-header"><span className="story-viewer-avatar">{avatar?<img src={avatar} alt=""/>:(profile?.display_name||"?").charAt(0)}</span>
       <span className="story-viewer-author"><strong>{profile?.display_name}</strong><small>{new Date(activeStory.created_at).toLocaleString("ru-RU",{hour:"2-digit",minute:"2-digit",day:"numeric",month:"short"})}</small></span>
-      <button type="button" className="story-viewer-close" onClick={()=>setStoryIndex(null)} aria-label="Закрыть историю">×</button>
+      <button type="button" className="story-viewer-close" onClick={()=>setStoryIndex(null)} aria-label="Закрыть историю"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
      </header>
      <img className="story-viewer-image" src={imageUrl(activeStory.image_path)||""} alt={activeStory.caption||"История"}/>
      <button type="button" className="story-viewer-prev" onClick={()=>setStoryIndex(i=>i===null?null:Math.max(0,i-1))} aria-label="Предыдущая история"/>
