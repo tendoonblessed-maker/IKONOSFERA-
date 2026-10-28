@@ -366,3 +366,26 @@ test('deleted chat returns on a new message without exposing deleted history',()
  assert.match(sql,/array_remove\(array_remove\(c\.hidden_for,c\.user_a\),c\.user_b\)/);
  assert.ok(!sql.includes('deleted_for ='));
 });
+
+test('own story add badge uses centered vector icon on iPhone',()=>{
+ const story=load('components/StoriesStrip.tsx'),css=load('app/globals.css');
+ assert.match(story,/className="home-story-plus" aria-hidden="true"/);
+ assert.match(story,/M10 4v12M4 10h12/);
+ assert.match(css,/\.home-story-item \.home-story-plus\{/);
+ assert.match(css,/display:flex;align-items:center;justify-content:center/);
+ assert.match(css,/\.home-story-item \.home-story-plus svg/);
+});
+test('story timeline fills before advancing, both in chat and profile',()=>{
+ const story=load('components/StoriesStrip.tsx'),profile=load('components/ProfilePanel.tsx');
+ const clock=load('lib/use-story-progress.ts'),css=load('app/globals.css');
+ assert.match(story,/useStoryProgress\(activeStoryId/);
+ assert.match(profile,/useStoryProgress\(activeStory\?\.id/);
+ assert.ok(!story.includes('setTimeout(()=>{'));
+ assert.ok(!profile.includes('setTimeout(()=>setStoryIndex('));
+ assert.match(clock,/STORY_DURATION_MS=6000/);
+ assert.match(clock,/requestAnimationFrame\(tick\)/);
+ assert.match(clock,/pausedRef\.current/);
+ assert.match(clock,/callbackRef\.current\(\)/);
+ assert.match(css,/span\.playing\.story-progress-fill/);
+ assert.match(css,/animation:none!important/);
+});
