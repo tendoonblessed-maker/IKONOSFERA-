@@ -347,3 +347,11 @@ test('mobile message actions stay in viewport and read receipts remain',()=>{
  assert.match(shell,/message\.read_at\?"✓✓":"✓"/);
  assert.ok(!shell.includes('ik-select-message'));
 });
+
+test('own story badge has a centered svg plus',()=>{
+ const source=load('components/StoriesStrip.tsx'),css=load('app/globals.css');
+ assert.match(source,/className="home-story-plus" aria-hidden="true"/);
+ assert.match(source,/M12 5v14M5 12h14/);
+ assert.match(css,/home-story-plus svg/);
+ assert.match(css,/align-items:center!important;justify-content:center!important/);
+});
