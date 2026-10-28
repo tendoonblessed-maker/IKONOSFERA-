@@ -7,7 +7,7 @@ export const backendReady = Boolean(apiUrl && anonKey);
 export type Session = { access_token: string; refresh_token: string; expires_at: number };
 export type Profile = { id: string; username: string; display_name: string; avatar_path?: string|null; cover_path?: string|null; bio?: string };
 export type DirectChat = { id: string; user_a: string; user_b: string; created_at: string; hidden_for?:string[]; pinned_for?:string[] };
-export type ChatMessage = { id: string; chat_id: string; sender_id: string; body: string; created_at: string; media_path: string|null; media_type: "image"|"video"|null; read_at: string|null; edited_at?:string|null; deleted_for?:string[]; deleted_for_everyone?:boolean };
+export type ChatMessage = { id: string; chat_id: string; sender_id: string; body: string; created_at: string; media_path: string|null; media_type: "image"|"video"|"audio"|"file"|null; read_at: string|null; edited_at?:string|null; deleted_for?:string[]; deleted_for_everyone?:boolean };
 const STORAGE = 'ikonosfera-session-v1';
 
 function ensureReady() { if (!backendReady) throw Error('Сервер пока не подключён'); }
@@ -109,17 +109,17 @@ export async function postMessage(token: string, chatId: string, userId: string,
   if (!result[0]) throw Error('Сообщение не сохранено'); return result[0];
 }
 
-export async function uploadDirectMedia(token:string,chatId:string,userId:string,file:File):Promise<{path:string;type:"image"|"video"}>{
- const allowed:Record<string,string>={"image/jpeg":"jpg","image/png":"png","image/webp":"webp","video/mp4":"mp4","video/webm":"webm","video/quicktime":"mov"};
+export async function uploadDirectMedia(token:string,chatId:string,userId:string,file:File):Promise<{path:string;type:"image"|"video"|"audio"|"file"}>{
+ const allowed:Record<string,string>={"image/jpeg":"jpg","image/png":"png","image/webp":"webp","video/mp4":"mp4","video/webm":"webm","video/quicktime":"mov","audio/mpeg":"mp3","audio/mp4":"m4a","audio/wav":"wav","audio/ogg":"ogg","application/pdf":"pdf","text/plain":"txt","application/zip":"zip","application/vnd.openxmlformats-officedocument.wordprocessingml.document":"docx","application/msword":"doc","application/vnd.openxmlformats-officedocument.spreadsheetml.sheet":"xlsx","application/vnd.ms-excel":"xls"};
  const ext=allowed[file.type];
- if(!ext)throw Error("Поддерживаются JPG, PNG, WebP, MP4, WebM и MOV.");
+ if(!ext)throw Error("Неподдерживаемый формат. Можно отправлять фото, видео, музыку и документы.");
  if(file.size===0||file.size>25*1024*1024)throw Error("Размер фото или видео должен быть до 25 МБ.");
  const path=chatId+"/"+userId+"/"+crypto.randomUUID()+"."+ext;
  const res=await fetch(apiUrl+"/storage/v1/object/ikonosfera-direct-media/"+path,{
   method:"POST",headers:{apikey:anonKey,Authorization:"Bearer "+token,"Content-Type":file.type,"x-upsert":"false"},body:file
  });
  if(!res.ok){const err=await res.json().catch(()=>null);throw Error(err?.message||err?.error||"Не удалось загрузить файл");}
- return {path,type:file.type.startsWith("image/")?"image":"video"};
+ return {path,type:file.type.startsWith("image/")?"image":file.type.startsWith("video/")?"video":file.type.startsWith("audio/")?"audio":"file"};
 }
 export async function sendDirectMedia(token:string,chatId:string,userId:string,file:File,caption=""){
  const {path,type}=await uploadDirectMedia(token,chatId,userId,file);
