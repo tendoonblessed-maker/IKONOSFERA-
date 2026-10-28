@@ -3,7 +3,7 @@ import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { listProfiles, type Profile } from "@/lib/supabase-rest";
 import {
  addPostComment, deletePost, editChannelPost, manageChannelComment, imageUrl, listChannelPosts, listPostComments, listPostReactions, setPostReaction, REACTION_EMOJIS, publishPost,
- removeComment, removeUpload, uploadPhoto,
+ removeComment, removeUpload, uploadChannelAttachment,
  type Channel, type ChannelPost, type PostComment, type PostReaction, type ReactionEmoji
 } from "@/lib/social";
 
@@ -49,8 +49,9 @@ export default function ChannelsPanel({token,userId,channel,onBack,onShowProfile
   setBusy(true);setError("");setNotice("");
   let path:string|null=null;
   try{
-   if(file)path=await uploadPhoto(token,userId,file);
-   try{await publishPost(token,userId,channel.id,body,path);}
+   const attachment=file?await uploadChannelAttachment(token,userId,file):null;
+   path=attachment?.path??null;
+   try{await publishPost(token,userId,channel.id,body,null,attachment);}
    catch(e){if(path)await removeUpload(token,path).catch(()=>{});throw e;}
    setBody("");setFile(null);await reload();setNotice("Пост опубликован.");
   }catch(e){setError(readable(e));}finally{setBusy(false);}
@@ -80,7 +81,7 @@ export default function ChannelsPanel({token,userId,channel,onBack,onShowProfile
  async function erasePost(p:ChannelPost){
   if(!mine||busy||!window.confirm("Удалить этот пост?"))return;
   setBusy(true);setError("");
-  try{await deletePost(token,p.id);if(p.image_path)await removeUpload(token,p.image_path).catch(()=>{});await reload();setNotice("Пост удалён.");}
+  try{await deletePost(token,p.id);if(p.image_path)await removeUpload(token,p.image_path).catch(()=>{});if(p.attachment_path)await removeUpload(token,p.attachment_path).catch(()=>{});await reload();setNotice("Пост удалён.");}
   catch(e){setError(readable(e));}finally{setBusy(false);}
  }
  async function eraseComment(c:PostComment){
@@ -103,7 +104,7 @@ export default function ChannelsPanel({token,userId,channel,onBack,onShowProfile
    {mine&&<form className="channel-compose" onSubmit={post}>
      <h2>Новая публикация</h2>
      <textarea rows={4} maxLength={4000} value={body} onChange={e=>setBody(e.target.value)} placeholder="Напиши что-нибудь подписчикам…"/>
-     <div className="channel-compose-actions"><label className="profile-action">+ Добавить фото<input aria-label="Фото к посту" type="file" accept="image/png,image/jpeg,image/webp" disabled={busy} onChange={e=>setFile(e.target.files?.[0]||null)}/></label>
+     <div className="channel-compose-actions"><label className="profile-action">+ Прикрепить файл<input aria-label="Вложение к посту" type="file" accept="image/*,video/mp4,video/webm,video/quicktime,audio/mpeg,audio/mp4,audio/wav,audio/ogg,.pdf,.txt,.zip,.doc,.docx,.xls,.xlsx" disabled={busy} onChange={e=>setFile(e.target.files?.[0]||null)}/></label>
       <button type="submit" className="accent-button" disabled={busy||(!body.trim()&&!file)}>Опубликовать</button></div>
      {file&&<p className="channel-file-selected">{file.name} <button type="button" onClick={()=>setFile(null)}>Убрать</button></p>}
    </form>}
@@ -113,6 +114,10 @@ export default function ChannelsPanel({token,userId,channel,onBack,onShowProfile
     <div className="channel-post-meta"><span className="channel-post-icon">#</span><strong>{channel.title}</strong><time dateTime={post.created_at}>{formattedDate(post.created_at)}</time></div>
     {editingPostId===post.id?<form className="channel-inline-editor" onSubmit={e=>{e.preventDefault();void savePostEdit(post.id);}}><textarea value={editingBody} maxLength={4000} onChange={e=>setEditingBody(e.target.value)}/><button type="submit">Сохранить</button><button type="button" onClick={()=>setEditingPostId(null)}>Отмена</button></form>:post.body&&<p className="channel-post-body">{post.body}</p>}
     {imageUrl(post.image_path)&&<img className="channel-post-image" src={imageUrl(post.image_path)||""} alt="Изображение к публикации"/>}
+    {post.attachment_path&&post.attachment_type==="image"&&<img className="channel-post-image" src={imageUrl(post.attachment_path)||""} alt="Фото к посту"/>}
+    {post.attachment_path&&post.attachment_type==="video"&&<video className="channel-post-video" src={imageUrl(post.attachment_path)||""} controls playsInline preload="metadata"/>}
+    {post.attachment_path&&post.attachment_type==="audio"&&<audio className="channel-post-audio" src={imageUrl(post.attachment_path)||""} controls preload="metadata"/>}
+    {post.attachment_path&&post.attachment_type==="file"&&<a className="channel-file-link" href={imageUrl(post.attachment_path)||"#"} target="_blank" rel="noreferrer" download>📎 Скачать вложение</a>}
     <div className="reaction-bar channel-reaction-bar">
      {REACTION_EMOJIS.filter(emoji=>reactions.some(r=>r.post_id===post.id&&r.emoji===emoji)).map(emoji=><button type="button" key={emoji} className={"reaction-pill"+(reactions.some(r=>r.post_id===post.id&&r.user_id===userId&&r.emoji===emoji)?" mine":"")} disabled={busy} onClick={()=>void react(post.id,emoji)}>{emoji} <span>{reactions.filter(r=>r.post_id===post.id&&r.emoji===emoji).length}</span></button>)}
      <button type="button" className="reaction-add" onClick={()=>setReactionPicker(reactionPicker===post.id?null:post.id)} aria-label="Поставить реакцию">☺ +</button>
