@@ -132,7 +132,7 @@ export default function ProfilePanel({token,userId,targetId,onBack,onOwnProfileC
       <div className="profile-section-title"><div><h2>Мой канал</h2><p>Закреплён в профиле</p></div>
        {mine&&!editing&&<button type="button" className="profile-action" onClick={()=>setEditing(true)}>Редактировать профиль</button>}</div>
       {featuredChannel?<button type="button" className="profile-featured-channel" onClick={()=>onOpenChannel(featuredChannel)}>
-        <span className="profile-featured-icon">{featuredChannel.avatar_path?<img src={imageUrl(featuredChannel.avatar_path)} alt="" className="ik-channel-avatar-img"/>:"#"} </span><span className="profile-featured-details"><strong>{featuredChannel.title}</strong><small>@{featuredChannel.slug}</small>
+        <span className="profile-featured-icon">{featuredChannel.avatar_path?<img src={imageUrl(featuredChannel.avatar_path) ?? undefined} alt="" className="ik-channel-avatar-img"/>:"#"} </span><span className="profile-featured-details"><strong>{featuredChannel.title}</strong><small>@{featuredChannel.slug}</small>
         {featuredChannel.description&&<span>{featuredChannel.description}</span>}</span><span className="profile-featured-arrow">›</span>
       </button>:<p className="profile-empty">Здесь можно закрепить свой канал. Открой «Изм.» и выбери канал в настройках профиля.</p>}
     </div>}
