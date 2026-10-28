@@ -943,3 +943,15 @@ html,body{min-height:100%;overflow:hidden}
 .ik-member-empty{padding:24px;text-align:center;font-size:13px;color:#9399a1}
 @media(max-width:800px){.ik-members-backdrop{padding:8px}.ik-members-modal{max-height:87dvh;border-radius:20px}.ik-privacy-settings{padding:15px}.ik-members-header{padding:19px 16px 10px}}
 @media(prefers-reduced-motion:reduce){.ik-members-modal{animation:none}}
+
+
+/* Group conversations share the compact inbox rhythm and unread badges. */
+.messenger.is-authenticated .chat-list .ik-group-inbox{display:flex;align-items:center;gap:12px;background:transparent;padding-right:14px}
+.messenger.is-authenticated .chat-list .ik-group-inbox:hover{background:#f4f5f7}
+.messenger.is-authenticated .chat-list .ik-group-inbox.active{background:#e9edf1}
+.messenger.is-authenticated .chat-list .ik-group-inbox .ik-group-inbox-text{display:flex;flex:1;align-self:center;min-width:0;flex-direction:column;justify-content:center;gap:5px}
+.messenger.is-authenticated .chat-list .ik-group-inbox .ik-group-inbox-text strong{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.messenger.is-authenticated .chat-list .ik-group-inbox .ik-group-inbox-text small{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#858b95}
+.messenger.is-authenticated .chat-list .ik-group-inbox .ik-group-inbox-meta{display:flex;flex:0 0 auto;min-width:30px;align-items:flex-end;flex-direction:column;gap:7px;align-self:center}
+.messenger.is-authenticated .chat-list .ik-group-inbox .ik-group-inbox-meta time{font-size:10px;color:#99a1ab;white-space:nowrap}
+.messenger.is-authenticated .chat-list .ik-group-inbox .ik-unread-count{display:grid;place-items:center;min-width:21px;height:21px;background:#17191c;color:#fff;padding:0 5px;border-radius:11px;font-size:10px;font-weight:800}
