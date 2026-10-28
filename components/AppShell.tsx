@@ -8,7 +8,8 @@ import ChatInboxRow from "@/components/ChatInboxRow";
 import {pingActivity,myActivityVisibility,getUserActivities,activityLabel,type ActivityVisibility,type UserActivity} from '@/lib/activity';
 import StoriesStrip from "@/components/StoriesStrip";
 import GroupPanel from "@/components/GroupPanel";
-import {createGroup,listGroups,type Group} from "@/lib/groups";
+import GroupInboxRow from "@/components/GroupInboxRow";
+import {createGroup,listGroups,listGroupOverviews,type Group,type GroupOverview} from "@/lib/groups";
 import ChannelsPanel from "@/components/ChannelsPanel";
 import { REACTION_EMOJIS, type ReactionEmoji, createChannel, imageUrl, listChannels, listMySubscriptions, subscribeChannel, unsubscribeChannel, getChannelSubscriberCounts, type Channel } from "@/lib/social";
 
@@ -33,6 +34,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
   const [anonymous,setAnonymous]=useState(false);
   const [rows,setRows]=useState<ChatRow[]>([]);
   const [groups,setGroups]=useState<Group[]>([]);
+  const [groupOverviews,setGroupOverviews]=useState<Record<string,GroupOverview>>({});
   const [selectedGroup,setSelectedGroup]=useState<Group|null>(null);
   const [creatingGroup,setCreatingGroup]=useState(false);
   const [groupTitle,setGroupTitle]=useState('');
@@ -88,11 +90,12 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
   },[]);
 
   const refresh=useCallback(async (token:string,id:string,activeChat:string|null)=>{
-    const [chats,previews,allChannels,memberships,groupList]=await Promise.all([listChats(token),listChatPreviews(token).catch(()=>[] as ChatPreview[]),listChannels(token),listMySubscriptions(token,id),listGroups(token)]);
+    const [chats,previews,allChannels,memberships,groupList,groupSummaries]=await Promise.all([listChats(token),listChatPreviews(token).catch(()=>[] as ChatPreview[]),listChannels(token),listMySubscriptions(token,id),listGroups(token),listGroupOverviews(token)]);
     setChannels(allChannels);
     const counts=await getChannelSubscriberCounts(token,allChannels.map(ch=>ch.id)).catch(()=>({} as Record<string,number>));
     setSubscriberCounts(counts);
     setGroups(groupList);
+    setGroupOverviews(Object.fromEntries(groupSummaries.map(summary=>[summary.group_id,summary])));
     setSubscriptions(memberships.map(m=>m.channel_id));
     const others=Array.from(new Set(chats.map(c=>c.user_a===id?c.user_b:c.user_a)));
     const profiles=await listProfiles(token,others);
@@ -341,7 +344,8 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
     return()=>{gone=true;window.clearInterval(timer);};
   },[session,activePartnerId]);
   const filtered=rows.filter(r=>(chatFilter==='all'||Number(r.preview?.unread_count||0)>0) && (!search.trim()||`${r.other?.display_name??''} ${r.other?.username??''} ${r.preview?.last_body??''}`.toLowerCase().includes(search.trim().toLowerCase())));
-  const unreadTotal=rows.reduce((sum,row)=>sum+Number(row.preview?.unread_count||0),0);
+  const unreadTotal=rows.reduce((sum,row)=>sum+Number(row.preview?.unread_count||0),0)+groups.reduce((sum,group)=>sum+Number(groupOverviews[group.id]?.unread_count||0),0);
+  const visibleGroups=groups.filter(g=>(chatFilter==='all'||Number(groupOverviews[g.id]?.unread_count||0)>0)&&(!search.trim()||((g.title+' '+(groupOverviews[g.id]?.last_body||'')).toLowerCase().includes(search.trim().toLowerCase())))).sort((a,b)=>Date.parse(groupOverviews[b.id]?.last_created_at||b.created_at)-Date.parse(groupOverviews[a.id]?.last_created_at||a.created_at));
   const loggedIn=Boolean(session&&userId);
   const detailOpen=Boolean(!loggedIn||selected||profileTarget||selectedChannel||selectedGroup);
   const myChannels=channels.filter(ch=>ch.owner_id===userId||subscriptions.includes(ch.id));
@@ -373,10 +377,10 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
         <button type="button" className={chatFilter==='unread'?'selected':''} aria-pressed={chatFilter==='unread'} onClick={()=>setChatFilter('unread')}>Непрочитанные{unreadTotal>0&&<span className="ik-filter-count">{unreadTotal>99?'99+':unreadTotal}</span>}</button>
       </div>}
       <div className="chat-list">
-      {tab==='chats'&&chatFilter==='all'&&groups.filter(g=>!search.trim()||g.title.toLowerCase().includes(search.trim().toLowerCase())).map(g=><button type="button" key={g.id} className={'chat-item group-chat-row'+(selectedGroup?.id===g.id?' active':'')} onClick={()=>{setSelectedGroup(g);setSelected(null);setSelectedChannel(null);setProfileTarget(null);}}><span className="contact-avatar ik-group-avatar">♧</span><span className="contact-info"><strong>{g.title}</strong><small>Групповой чат</small></span></button>)}
+      {tab==='chats'&&visibleGroups.map(g=><GroupInboxRow key={g.id} group={g} overview={groupOverviews[g.id]} active={selectedGroup?.id===g.id} onOpen={()=>{setSelectedGroup(g);setSelected(null);setSelectedChannel(null);setProfileTarget(null);}}/>)}
       {tab==='chats'&&(loggedIn?filtered.length?filtered.map(row=><ChatInboxRow key={row.chat.id} row={row} currentUserId={userId} active={selected===row.chat.id}
         onOpen={()=>{setSelected(row.chat.id);setSelectedGroup(null);setSelectedChannel(null);setProfileTarget(null);setChatMessages([]);setError('');}}
-        onAction={action=>void chatAction(row.chat.id,action)}/>):groups.length&&chatFilter==='all'?null:<div className="list-empty ik-chat-empty"><div className="empty-icon">✉</div><strong>{chatFilter==='unread'?'Всё прочитано':'Нет переписок'}</strong><p>{chatFilter==='unread'?'Новые сообщения появятся здесь.':'Найди человека по юзернейму или создай группу.'}</p>{chatFilter==='all'&&<button className="secondary-action" onClick={()=>switchTab('contacts')}>Новый чат</button>}</div>:<div className="list-empty"><div className="empty-icon">✉</div><strong>Нет переписок</strong><p>{backendReady?'Войди, чтобы читать сообщения.':'Для переписки осталось подключить сервер.'}</p></div>)}
+        onAction={action=>void chatAction(row.chat.id,action)}/>):visibleGroups.length?null:<div className="list-empty ik-chat-empty"><div className="empty-icon">✉</div><strong>{chatFilter==='unread'?'Всё прочитано':'Нет переписок'}</strong><p>{chatFilter==='unread'?'Новые сообщения появятся здесь.':'Найди человека по юзернейму или создай группу.'}</p>{chatFilter==='all'&&<button className="secondary-action" onClick={()=>switchTab('contacts')}>Новый чат</button>}</div>:<div className="list-empty"><div className="empty-icon">✉</div><strong>Нет переписок</strong><p>{backendReady?'Войди, чтобы читать сообщения.':'Для переписки осталось подключить сервер.'}</p></div>)}
       {tab==='contacts'&&<div className="contact-search-panel"><h2>Поиск пользователя</h2><p>Открой профиль по юзернейму. Диалог создастся только после нажатия «Написать сообщение».</p><form onSubmit={e=>{e.preventDefault();void searchPerson(lookup.trim());}}><label htmlFor="lookup">Юзернейм</label><input id="lookup" placeholder="например, friend_01" value={lookup} onChange={e=>setLookup(e.target.value)} minLength={3} maxLength={25} disabled={!loggedIn}/><button className="accent-button" disabled={!loggedIn||busy||!lookup.trim()}>{busy?'Ищем…':'Найти профиль'}</button></form></div>}
 
       {tab==='channels'&&<div className="channel-browser">
