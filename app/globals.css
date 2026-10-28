@@ -1384,3 +1384,50 @@ body{position:relative}
  .messenger.is-authenticated .profile-featured-section{margin:8px 12px 5px!important;padding:0!important;border-radius:0!important}
  .messenger.is-authenticated .profile-featured-channel{border-radius:22px;padding:12px 15px}
 }
+
+
+/* Chat safety menu and blacklist (iPhone first). */
+.messenger.is-authenticated .ik-blacklist-section{background:#fff;border-radius:22px;margin:12px 0 14px;overflow:visible;box-shadow:0 1px 3px #00000006}
+.messenger.is-authenticated .ik-blacklist-toggle{display:flex;width:100%;align-items:center;gap:13px;background:transparent;border:0;text-align:left;padding:15px 17px;min-height:71px;color:#18181c;cursor:pointer}
+.messenger.is-authenticated .ik-blacklist-icon{display:grid;place-items:center;width:41px;height:41px;flex-shrink:0;color:#fff;background:#33343a;border-radius:14px;font-size:24px}
+.messenger.is-authenticated .ik-blacklist-toggle>span:nth-child(2){display:grid;flex:1;gap:4px;min-width:0}
+.messenger.is-authenticated .ik-blacklist-toggle strong{font-size:15px;font-weight:740;letter-spacing:-.02em}
+.messenger.is-authenticated .ik-blacklist-toggle small{font-size:12px;color:#96969e}
+.messenger.is-authenticated .ik-blacklist-chevron{font-size:25px;color:#9d9da5}
+.messenger.is-authenticated .ik-blacklist-people{padding:0 12px 11px;border-top:1px solid #eaeaed}
+.messenger.is-authenticated .ik-blacklist-people>p{font-size:13px;color:#8b8b91;padding:10px 8px;line-height:1.45}
+.messenger.is-authenticated .ik-blacklist-person{display:flex;gap:10px;align-items:center;min-height:69px;border-bottom:1px solid #f0f0f2;padding:9px 4px}
+.messenger.is-authenticated .ik-blacklist-person:last-child{border-bottom:0}
+.messenger.is-authenticated .ik-blacklist-person .contact-avatar{width:42px;height:42px;flex:0 0 42px;border-radius:50%}
+.messenger.is-authenticated .ik-blacklist-person-name{display:grid;gap:3px;flex:1;min-width:0}
+.messenger.is-authenticated .ik-blacklist-person-name strong{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px}
+.messenger.is-authenticated .ik-blacklist-person-name small{color:#8b8b91;font-size:11px}
+.messenger.is-authenticated .ik-blacklist-person button{border:0;border-radius:999px;background:#ededf0;color:#27272c;padding:10px;font-size:11px;font-weight:720;cursor:pointer;white-space:nowrap}
+.messenger.is-authenticated .ik-blacklist-person button:disabled{opacity:.5}
+.messenger.is-authenticated .ik-blacklist-person button:hover{background:#e1e1e5}
+.messenger.is-authenticated .ik-danger-action{color:#a12f3c!important}
+.messenger.is-authenticated .ik-blocked-notice{display:flex;gap:10px;align-items:center;justify-content:center;flex-wrap:wrap;padding:11px 16px;color:#565660;font-size:12px;background:#f0f0f2;border-top:1px solid #e3e3e6;text-align:center}
+.messenger.is-authenticated .ik-blocked-notice button{background:#262629;color:#fff;border:0;border-radius:999px;padding:7px 13px;cursor:pointer;font-size:12px}
+.messenger.is-authenticated .composer textarea:disabled{color:#85858c;background:#eaeaed}
+.messenger.is-authenticated .message-menu .message-manage-actions{z-index:300;border-radius:16px}
+@media(max-width:800px){
+ .messenger.is-authenticated .message-menu[open]{z-index:250!important}
+ .messenger.is-authenticated .message-menu .message-manage-actions{
+  position:fixed!important;top:0;left:12px;right:auto!important;
+  box-sizing:border-box;max-width:calc(100dvw - 24px);
+  width:min(210px,calc(100dvw - 24px));
+  display:grid;gap:4px;padding:9px;border:1px solid #e8e8eb;
+  border-radius:17px;background:#fff;box-shadow:0 12px 35px #00000022;
+ }
+ .messenger.is-authenticated .message-menu .message-manage-actions button{display:flex;align-items:center;min-height:41px;text-align:left;font-size:13px!important;line-height:1.2;padding:10px 12px;white-space:normal}
+ .messenger.is-authenticated .chat-message-row>.chat-message-tools{overflow:visible;max-width:calc(100vw - 30px)}
+ .messenger.is-authenticated .conversation-history{overflow-x:clip}
+ .messenger.is-authenticated .ik-conversation-more-menu{
+  max-width:calc(100dvw - 24px);min-width:min(230px,calc(100dvw - 24px));
+  right:0;left:auto;box-sizing:border-box;
+ }
+ .messenger.is-authenticated .chat-row-menu .chat-row-actions{
+  right:0;left:auto;width:min(240px,calc(100dvw - 24px));box-sizing:border-box;
+ }
+ .messenger.is-authenticated .ik-blacklist-section{border-radius:22px}
+}
