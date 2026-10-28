@@ -6,8 +6,8 @@ export const backendReady = Boolean(apiUrl && anonKey);
 
 export type Session = { access_token: string; refresh_token: string; expires_at: number };
 export type Profile = { id: string; username: string; display_name: string; avatar_path?: string|null; cover_path?: string|null; bio?: string };
-export type DirectChat = { id: string; user_a: string; user_b: string; created_at: string };
-export type ChatMessage = { id: string; chat_id: string; sender_id: string; body: string; created_at: string; media_path: string|null; media_type: "image"|"video"|null; read_at: string|null };
+export type DirectChat = { id: string; user_a: string; user_b: string; created_at: string; hidden_for?:string[]; pinned_for?:string[] };
+export type ChatMessage = { id: string; chat_id: string; sender_id: string; body: string; created_at: string; media_path: string|null; media_type: "image"|"video"|"audio"|"file"|null; read_at: string|null; edited_at?:string|null; deleted_for?:string[]; deleted_for_everyone?:boolean };
 const STORAGE = 'ikonosfera-session-v1';
 
 function ensureReady() { if (!backendReady) throw Error('Сервер пока не подключён'); }
@@ -95,31 +95,31 @@ export async function startDirectChat(token: string, username: string) {
   return http<string>('/rest/v1/rpc/start_direct_chat',{token,method:'POST',body:{target_username:username}});
 }
 export async function listChats(token: string) {
-  return http<DirectChat[]>('/rest/v1/chats?select=id,user_a,user_b,created_at&order=created_at.desc&limit=100',{token});
+  return http<DirectChat[]>('/rest/v1/chats?select=id,user_a,user_b,created_at,hidden_for,pinned_for&order=created_at.desc&limit=100',{token});
 }
 export async function listProfiles(token: string, ids: string[]) {
   if (!ids.length) return [];
   return http<Profile[]>(`/rest/v1/profiles?select=id,username,display_name,avatar_path,cover_path,bio&id=in.(${ids.map(encodeURIComponent).join(',')})`,{token});
 }
 export async function listMessages(token: string, chatId: string) {
-  return http<ChatMessage[]>(`/rest/v1/messages?select=id,chat_id,sender_id,body,created_at,media_path,media_type,read_at&chat_id=eq.${encodeURIComponent(chatId)}&order=created_at.desc&limit=100`,{token});
+  return http<ChatMessage[]>(`/rest/v1/messages?select=id,chat_id,sender_id,body,created_at,media_path,media_type,read_at,edited_at,deleted_for,deleted_for_everyone&chat_id=eq.${encodeURIComponent(chatId)}&order=created_at.desc&limit=100`,{token});
 }
 export async function postMessage(token: string, chatId: string, userId: string, body: string) {
   const result=await http<ChatMessage[]>('/rest/v1/messages?select=id,chat_id,sender_id,body,created_at,media_path,media_type,read_at',{token,method:'POST',body:{chat_id:chatId,sender_id:userId,body},extraHeaders:{Prefer:'return=representation'}});
   if (!result[0]) throw Error('Сообщение не сохранено'); return result[0];
 }
 
-export async function uploadDirectMedia(token:string,chatId:string,userId:string,file:File):Promise<{path:string;type:"image"|"video"}>{
- const allowed:Record<string,string>={"image/jpeg":"jpg","image/png":"png","image/webp":"webp","video/mp4":"mp4","video/webm":"webm","video/quicktime":"mov"};
+export async function uploadDirectMedia(token:string,chatId:string,userId:string,file:File):Promise<{path:string;type:"image"|"video"|"audio"|"file"}>{
+ const allowed:Record<string,string>={"image/jpeg":"jpg","image/png":"png","image/webp":"webp","video/mp4":"mp4","video/webm":"webm","video/quicktime":"mov","audio/mpeg":"mp3","audio/mp4":"m4a","audio/wav":"wav","audio/ogg":"ogg","application/pdf":"pdf","text/plain":"txt","application/zip":"zip","application/vnd.openxmlformats-officedocument.wordprocessingml.document":"docx","application/msword":"doc","application/vnd.openxmlformats-officedocument.spreadsheetml.sheet":"xlsx","application/vnd.ms-excel":"xls"};
  const ext=allowed[file.type];
- if(!ext)throw Error("Поддерживаются JPG, PNG, WebP, MP4, WebM и MOV.");
+ if(!ext)throw Error("Неподдерживаемый формат. Можно отправлять фото, видео, музыку и документы.");
  if(file.size===0||file.size>25*1024*1024)throw Error("Размер фото или видео должен быть до 25 МБ.");
  const path=chatId+"/"+userId+"/"+crypto.randomUUID()+"."+ext;
  const res=await fetch(apiUrl+"/storage/v1/object/ikonosfera-direct-media/"+path,{
   method:"POST",headers:{apikey:anonKey,Authorization:"Bearer "+token,"Content-Type":file.type,"x-upsert":"false"},body:file
  });
  if(!res.ok){const err=await res.json().catch(()=>null);throw Error(err?.message||err?.error||"Не удалось загрузить файл");}
- return {path,type:file.type.startsWith("image/")?"image":"video"};
+ return {path,type:file.type.startsWith("image/")?"image":file.type.startsWith("video/")?"video":file.type.startsWith("audio/")?"audio":"file"};
 }
 export async function sendDirectMedia(token:string,chatId:string,userId:string,file:File,caption=""){
  const {path,type}=await uploadDirectMedia(token,chatId,userId,file);
@@ -174,4 +174,22 @@ export function explainProfileError(error:unknown):string{
  if(/23514|check constraint|username_check/i.test(text))return 'Недопустимый юзернейм. Используй 3–24 символа: латинские буквы, цифры и _.';
  if(/42501|permission denied|row-level security/i.test(text))return 'Не удалось сохранить профиль: нет доступа. Войди в аккаунт заново.';
  return text;
+}
+
+export async function manageChat(token:string,chatId:string,action:"hide"|"pin"|"unpin"|"delete_everyone"){
+ return http('/rest/v1/rpc/manage_direct_chat',{token,method:'POST',body:{p_chat_id:chatId,p_action:action}});
+}
+export async function manageMessage(token:string,messageId:string,action:"hide"|"delete_everyone"|"edit",body?:string){
+ return http('/rest/v1/rpc/manage_direct_message',{token,method:'POST',body:{p_message_id:messageId,p_action:action,p_body:body??null}});
+}
+
+export async function findProfileByUsername(token:string,username:string):Promise<Profile|null>{
+ const value=username.trim().replace(/^@/,"").toLowerCase();
+ if(!/^[a-z0-9_]{3,24}$/.test(value))throw Error("Введи юзернейм: 3–24 латинских символа, цифры или _.");
+ const rows=await http<Profile[]>('/rest/v1/profiles?select=id,username,display_name,avatar_path,cover_path,bio&username=eq.'+encodeURIComponent(value)+'&limit=1',{token});
+ return rows[0]??null;
+}
+
+export async function reopenChat(token:string,chatId:string){
+ return http('/rest/v1/rpc/reopen_direct_chat',{token,method:'POST',body:{p_chat_id:chatId}});
 }

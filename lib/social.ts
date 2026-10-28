@@ -5,7 +5,7 @@ export type FullProfile = { id:string; username:string; display_name:string; ava
 export type ProfilePhoto = { id:string; user_id:string; image_path:string; caption:string; created_at:string };
 export type Story = { id:string; user_id:string; image_path:string; caption:string; created_at:string; expires_at:string };
 export type Channel = { id:string; owner_id:string; title:string; slug:string; description:string; created_at:string };
-export type ChannelPost = { id:string; channel_id:string; author_id:string; body:string; image_path:string|null; created_at:string };
+export type ChannelPost = { id:string; channel_id:string; author_id:string; body:string; image_path:string|null; attachment_path?:string|null; attachment_type?:"image"|"video"|"audio"|"file"|null; created_at:string };
 export type PostComment = { id:string; post_id:string; author_id:string; body:string; created_at:string };
 
 function requestHeaders(token:string, extras:Record<string,string>={}) {
@@ -78,8 +78,8 @@ export async function createChannel(token:string,owner_id:string,title:string,sl
 export async function listChannelPosts(token:string,channelId:string):Promise<ChannelPost[]>{
   return api<ChannelPost[]>("/rest/v1/channel_posts?select=*&channel_id=eq."+encodeURIComponent(channelId)+"&order=created_at.desc&limit=100",token);
 }
-export async function publishPost(token:string,author_id:string,channel_id:string,body:string,image_path:string|null):Promise<ChannelPost>{
-  const rows=await api<ChannelPost[]>("/rest/v1/channel_posts?select=*",token,"POST",{author_id,channel_id,body:body.trim(),image_path});
+export async function publishPost(token:string,author_id:string,channel_id:string,body:string,image_path:string|null,attachment?:{path:string;type:"image"|"video"|"audio"|"file"}|null):Promise<ChannelPost>{
+  const rows=await api<ChannelPost[]>("/rest/v1/channel_posts?select=*",token,"POST",{author_id,channel_id,body:body.trim(),image_path,attachment_path:attachment?.path??null,attachment_type:attachment?.type??null});
   if(!rows[0])throw Error("Пост не опубликован");return rows[0];
 }
 export async function deletePost(token:string,id:string):Promise<void>{await api("/rest/v1/channel_posts?id=eq."+encodeURIComponent(id),token,"DELETE");}
@@ -118,4 +118,22 @@ export async function listPostReactions(token:string,postIds:string[]):Promise<P
 export async function setPostReaction(token:string,userId:string,postId:string,emoji:ReactionEmoji|null):Promise<void>{
  await api("/rest/v1/channel_post_reactions?post_id=eq."+encodeURIComponent(postId)+"&user_id=eq."+encodeURIComponent(userId),token,"DELETE");
  if(emoji)await api("/rest/v1/channel_post_reactions",token,"POST",{post_id:postId,user_id:userId,emoji});
+}
+
+export async function editChannelPost(token:string,postId:string,body:string):Promise<void>{
+ await api('/rest/v1/rpc/edit_channel_post',token,'POST',{p_post_id:postId,p_body:body});
+}
+export async function manageChannelComment(token:string,commentId:string,action:"edit"|"delete",body?:string):Promise<void>{
+ await api('/rest/v1/rpc/manage_channel_comment',token,'POST',{p_comment_id:commentId,p_action:action,p_body:body??null});
+}
+
+export async function uploadChannelAttachment(token:string,userId:string,file:File):Promise<{path:string;type:"image"|"video"|"audio"|"file"}>{
+ const allowed:Record<string,string>={"image/jpeg":"jpg","image/png":"png","image/webp":"webp","video/mp4":"mp4","video/webm":"webm","video/quicktime":"mov","audio/mpeg":"mp3","audio/mp4":"m4a","audio/wav":"wav","audio/ogg":"ogg","application/pdf":"pdf","text/plain":"txt","application/zip":"zip","application/msword":"doc","application/vnd.openxmlformats-officedocument.wordprocessingml.document":"docx","application/vnd.ms-excel":"xls","application/vnd.openxmlformats-officedocument.spreadsheetml.sheet":"xlsx"};
+ const ext=allowed[file.type];
+ if(!ext)throw Error("Неподдерживаемый формат вложения.");
+ if(file.size===0||file.size>25*1024*1024)throw Error("Максимальный размер вложения — 25 МБ.");
+ const path=userId+"/"+crypto.randomUUID()+"."+ext;
+ const res=await fetch(apiUrl+"/storage/v1/object/ikonosfera-media/"+path,{method:"POST",headers:{apikey:publicKey,Authorization:"Bearer "+token,"Content-Type":file.type,"x-upsert":"false"},body:file});
+ if(!res.ok)throw Error("Не удалось загрузить вложение.");
+ return {path,type:file.type.startsWith("image/")?"image":file.type.startsWith("video/")?"video":file.type.startsWith("audio/")?"audio":"file"};
 }
