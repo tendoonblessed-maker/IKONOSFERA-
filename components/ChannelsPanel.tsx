@@ -156,7 +156,7 @@ export default function ChannelsPanel({token,userId,channel,onBack,onShowProfile
     {([
      ...discussionMessages.map(m=>({...m,kind:"message" as const})),
      ...discussionComments.map(m=>({...m,kind:"comment" as const}))
-    ].sort((a,b)=>a.created_at.localeCompare(b.created_at))).map(item=><div key={item.kind+item.id} style={{padding:12,border:"1px solid #ececec",borderRadius:12,background:"#fff"}}>
+    ].sort((a,b)=>a.created_at.localeCompare(b.created_at))).map(item=><div key={item.kind+item.id} className="channel-discussion-entry">
       <small>{item.author_id===userId?"Вы":"Участник "+item.author_id.slice(0,6)} · {formattedDate(item.created_at)}</small>
       {item.kind==="comment"&&<small style={{display:"block",opacity:.6}}>Ответ на публикацию: {item.channel_posts?.body?.slice(0,100)||"Медиа-публикация"}</small>}
       <p style={{margin:"6px 0"}}>{item.body}</p>
