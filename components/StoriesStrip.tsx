@@ -19,7 +19,7 @@ export default function StoriesStrip({token,userId,contacts,ownProfile}:Props){
   const participants:Person[]=[{id:userId,name:'Моя история',avatar:ownProfile?.avatar_path??null,stories:own}];
   for(const c of contacts){
    const list=stories.filter(s=>s.user_id===c.id).sort((a,b)=>a.created_at.localeCompare(b.created_at));
-   if(list.length&&!participants.some(p=>p.id===c.id))participants.push({id:c.id,name:c.display_name||c.username,avatar:c.avatar_path,stories:list});
+   if(list.length&&!participants.some(p=>p.id===c.id))participants.push({id:c.id,name:c.display_name||c.username,avatar:c.avatar_path??null,stories:list});
   }
   setPeople(participants);
  },[token,userId,contacts,ownProfile]);
