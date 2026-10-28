@@ -23,6 +23,8 @@ export default function ProfilePanel({token,userId,targetId,onBack,onOwnProfileC
  const [chosenChannelId,setChosenChannelId]=useState<string>("");
  const [name,setName]=useState("");const [username,setUsername]=useState("");const [bio,setBio]=useState("");
  const [editing,setEditing]=useState(false);
+ const [pendingImage,setPendingImage]=useState<{file:File;kind:"avatar"|"cover"|"photo"|"story"}|null>(null);
+ const [cropZoom,setCropZoom]=useState(1);
  const [visitorPreview,setVisitorPreview]=useState(false);
  const [usernameTouched,setUsernameTouched]=useState(false);
  const usernameError=usernameTouched?validateUsername(username):null;const [busy,setBusy]=useState(false);
@@ -49,14 +51,31 @@ export default function ProfilePanel({token,userId,targetId,onBack,onOwnProfileC
  };
  async function chooseImage(file:File|undefined,kind:"avatar"|"cover"|"photo"|"story"){
   if(!file||!mine||!profile)return;
+  if(!["image/jpeg","image/png","image/webp"].includes(file.type)){setError("Поддерживаются JPG, PNG и WebP.");return;}
+  if(file.size>8*1024*1024){setError("Максимальный размер фотографии — 8 МБ.");return;}
+  setCropZoom(1);setPendingImage({file,kind});
+ }
+ async function saveCroppedImage(){
+  if(!pendingImage)return;
+  const {file,kind}=pendingImage;
   await run(async()=>{
-   const path=await uploadPhoto(token,userId,file);
+   const bitmap=await createImageBitmap(file);
+   const canvas=document.createElement("canvas");
+   canvas.width=kind==="cover"?1200:720;canvas.height=kind==="cover"?480:720;
+   const ctx=canvas.getContext("2d");
+   if(!ctx){bitmap.close();throw Error("Редактор фото недоступен.");}
+   const scale=Math.max(canvas.width/bitmap.width,canvas.height/bitmap.height)*cropZoom;
+   ctx.drawImage(bitmap,(canvas.width-bitmap.width*scale)/2,(canvas.height-bitmap.height*scale)/2,bitmap.width*scale,bitmap.height*scale);
+   bitmap.close();
+   const blob=await new Promise<Blob>((resolve,reject)=>canvas.toBlob(v=>v?resolve(v):reject(Error("Не удалось обработать фото.")),"image/jpeg",.88));
+   const path=await uploadPhoto(token,userId,new File([blob],"photo.jpg",{type:"image/jpeg"}));
    try{
     if(kind==="avatar"||kind==="cover"){
       await updateFullProfile(token,userId,kind==="avatar"?{avatar_path:path}:{cover_path:path});
       onOwnProfileChange();
     }else if(kind==="photo")await addProfilePhoto(token,userId,path,"");
     else await addStory(token,userId,path,"");
+    setPendingImage(null);
     setNotice(kind==="story"?"История опубликована на 24 часа.":"Изображение сохранено.");
    }catch(e){await removeUpload(token,path).catch(()=>{});throw e;}
   });
@@ -169,6 +188,7 @@ export default function ProfilePanel({token,userId,targetId,onBack,onOwnProfileC
      {activeStory.caption&&<div className="story-viewer-caption">{activeStory.caption}</div>}
     </div>
    </div>}
+   {pendingImage&&<div className="ik-photo-editor" role="dialog" aria-modal="true" aria-label="Обрезка изображения"><div className="ik-photo-editor-card"><h2>Настроить изображение</h2><p>Выбери масштаб и проверь кадр перед сохранением.</p><div className={"ik-photo-preview"+(pendingImage.kind==="cover"?" is-cover":"")}><img src={URL.createObjectURL(pendingImage.file)} alt="Предпросмотр кадра" style={{transform:"scale("+cropZoom+")"}}/></div><label>Масштаб<input type="range" min="1" max="3" step=".05" value={cropZoom} onChange={e=>setCropZoom(Number(e.target.value))}/></label><div className="ik-photo-editor-actions"><button type="button" onClick={()=>setPendingImage(null)} disabled={busy}>Отмена</button><button type="button" disabled={busy} onClick={()=>void saveCroppedImage()}>{busy?"Сохраняем…":"Обрезать и сохранить"}</button></div></div></div>}
    {viewer&&<div className="profile-lightbox" role="dialog" aria-modal="true" aria-label="Просмотр фото"><button className="profile-lightbox-close" type="button" onClick={()=>setViewer(null)}>Закрыть ×</button><img src={viewer.url} alt={viewer.caption||"Фото пользователя"}/>{viewer.caption&&<p>{viewer.caption}</p>}</div>}
  </section>;
 }
