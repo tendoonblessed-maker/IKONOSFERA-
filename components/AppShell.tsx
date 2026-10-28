@@ -631,14 +631,34 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
     </main>
     {menuMessage&&<div className="ik-message-menu-backdrop" onClick={()=>setMessageMenuId(null)}>
       <div className="ik-message-menu-sheet" role="dialog" aria-modal="true" aria-label="Действия с сообщением" onClick={e=>e.stopPropagation()}>
-        <div className="ik-message-menu-grip" aria-hidden="true"/>
-        <div className="ik-message-menu-preview">{menuMessage.body?menuMessage.body.slice(0,120):'Медиафайл'}</div>
+        <div className="ik-message-menu-preview">
+          <span className="ik-message-menu-preview-name">{menuMessage.sender_id===userId?'Вы':active?.other?.display_name||'Собеседник'}</span>
+          <span className="ik-message-menu-preview-text">{menuMessage.body?.slice(0,180)||'Вложение'}</span>
+          <span className="ik-message-menu-preview-time">{new Date(menuMessage.created_at).toLocaleTimeString('ru-RU',{hour:'2-digit',minute:'2-digit'})}</span>
+        </div>
+        <div className="ik-message-menu-reactions" role="group" aria-label="Быстрая реакция">
+          {REACTION_EMOJIS.slice(0,6).map(emoji=><button type="button" key={emoji} aria-label={'Реакция '+emoji} disabled={sending} onClick={()=>{const id=menuMessage.id;setMessageMenuId(null);void reactToMessage(id,emoji);}}>{emoji}</button>)}
+        </div>
         <div className="ik-message-menu-buttons">
-          <button type="button" onClick={()=>{const text=menuMessage.body;setMessageMenuId(null);void navigator.clipboard.writeText(text).then(()=>setNotice('Сообщение скопировано.')).catch(()=>setError('Не удалось скопировать сообщение.'));}}>Копировать</button>
-          <button type="button" onClick={()=>{setSelectedMessages(previous=>previous.includes(menuMessage.id)?previous.filter(id=>id!==menuMessage.id):[...previous,menuMessage.id]);setMessageMenuId(null);}}>{selectedMessages.includes(menuMessage.id)?'Снять выбор':'Выбрать сообщение'}</button>
-          {menuMessage.sender_id===userId&&!menuMessage.deleted_for_everyone&&<button type="button" onClick={()=>{setEditingMessageId(menuMessage.id);setEditingMessageBody(menuMessage.body);setMessageMenuId(null);}}>Изменить</button>}
-          <button type="button" className="ik-message-menu-danger" onClick={()=>{const id=menuMessage.id;setMessageMenuId(null);void messageAction(id,'hide');}}>Удалить у себя</button>
-          {menuMessage.sender_id===userId&&<button type="button" className="ik-message-menu-danger" onClick={()=>{const id=menuMessage.id;setMessageMenuId(null);void messageAction(id,'delete_everyone');}}>Удалить у обоих</button>}
+          <button type="button" onClick={()=>{const quote=(menuMessage.body||'Вложение').replace(/\s+/g,' ').trim().slice(0,160);setDraft(previous=>'↪ '+quote+'\n'+previous);setMessageMenuId(null);window.requestAnimationFrame(()=>composerRef.current?.focus());}}>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M10 9 5 14l5 5"/><path d="M5 14h9a5 5 0 0 0 5-5V5"/></svg><span>Ответить</span>
+          </button>
+          {Boolean(menuMessage.body)&&<button type="button" onClick={()=>{const text=menuMessage.body;setMessageMenuId(null);void navigator.clipboard.writeText(text).then(()=>setNotice('Сообщение скопировано.')).catch(()=>setError('Не удалось скопировать сообщение.'));}}>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/></svg><span>Копировать</span>
+          </button>}
+          {menuMessage.sender_id===userId&&!menuMessage.deleted_for_everyone&&!menuMessage.media_path&&<button type="button" onClick={()=>{setEditingMessageId(menuMessage.id);setEditingMessageBody(menuMessage.body);setMessageMenuId(null);}}>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M4 20h16"/><path d="m7 16 9-9 3 3-9 9-4 1 1-4Z"/><path d="m15 8 2-2a2 2 0 0 1 3 3l-2 2"/></svg><span>Изменить</span>
+          </button>}
+          <button type="button" onClick={()=>{setSelectedMessages(previous=>previous.includes(menuMessage.id)?previous.filter(id=>id!==menuMessage.id):[...previous,menuMessage.id]);setMessageMenuId(null);}}>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="m8 12 3 3 5-6"/></svg><span>{selectedMessages.includes(menuMessage.id)?'Снять выделение':'Выбрать'}</span>
+          </button>
+          <div className="ik-message-menu-divider" role="separator"/>
+          <button type="button" className="ik-message-menu-danger" onClick={()=>{const id=menuMessage.id;setMessageMenuId(null);void messageAction(id,'hide');}}>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M4 7h16M10 7V4h4v3M6 7l1 13h10l1-13M10 11v5M14 11v5"/></svg><span>Удалить у себя</span>
+          </button>
+          {menuMessage.sender_id===userId&&<button type="button" className="ik-message-menu-danger" onClick={()=>{const id=menuMessage.id;setMessageMenuId(null);void messageAction(id,'delete_everyone');}}>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M4 7h16M10 7V4h4v3M6 7l1 13h10l1-13M10 11v5M14 11v5"/></svg><span>Удалить для всех</span>
+          </button>}
         </div>
         <button type="button" className="ik-message-menu-cancel" onClick={()=>setMessageMenuId(null)}>Отмена</button>
       </div>
