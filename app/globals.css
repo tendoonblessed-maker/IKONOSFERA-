@@ -672,3 +672,5 @@ html,body{min-height:100%;overflow:hidden}
 @media(prefers-reduced-motion:reduce){.story-viewer-telegram,.story-viewer-telegram .story-viewer-stage{animation:none}}
 
 .channel-delete-danger{color:#b42318!important}
+
+.channel-discussion-entry{padding:12px;border:1px solid #ececec;border-radius:12px;background:#fff}
