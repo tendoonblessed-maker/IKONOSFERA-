@@ -259,7 +259,7 @@ test('Chat search and multi-select are accessible and do not change backend perm
  assert.ok(shell.includes('selectedMessages'));
  assert.ok(shell.includes('navigator.clipboard.writeText'));
  assert.ok(shell.includes('setMessageMenuId(message.id)'));
- assert.ok(shell.includes('Выбрать сообщение'));
+ assert.ok(shell.includes("'Выбрать'") && shell.includes('Снять выделение'));
  assert.ok(!shell.includes('aria-pressed={selectedMessages.includes(message.id)}'));
  assert.ok(css.includes('.ik-conversation-search'));
  assert.ok(css.includes('.ik-selection-toolbar'));
