@@ -231,7 +231,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
   const active=rows.find(r=>r.chat.id===selected);
   const filtered=rows.filter(r=>!search.trim()||`${r.other?.display_name??''} ${r.other?.username??''}`.toLowerCase().includes(search.trim().toLowerCase()));
   const loggedIn=Boolean(session&&userId);
-  const mustSetup=loggedIn&&!onboardingDone&&(!profile||/^profile[0-9]+$/i.test(profile.username)||/^profile[0-9]+$/i.test(profile.display_name)||!profile.display_name?.trim());
+  const mustSetup=loggedIn&&!onboardingDone&&(!profile||!profile.onboarding_completed);
   const detailOpen=Boolean(!loggedIn||mustSetup||selected||profileTarget||selectedChannel);
   const myChannels=channels.filter(ch=>ch.owner_id===userId||subscriptions.includes(ch.id));
   const recommendedChannels=channels.filter(ch=>ch.owner_id!==userId&&!subscriptions.includes(ch.id));
