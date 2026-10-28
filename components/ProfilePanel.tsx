@@ -5,7 +5,7 @@ import { changeProfile, explainProfileError, validateUsername } from "@/lib/supa
 import {getUserActivities,activityLabel,type UserActivity} from "@/lib/activity";
 import {
  addProfilePhoto, addStory, deleteProfilePhoto, deleteStory, getFullProfile, getProfilePhotos,
- getStories, imageUrl, listOwnedChannels, listChannels, removeUpload, updateFullProfile, uploadPhoto,
+ getStories, imageUrl, listOwnedChannels, getChannelById, removeUpload, updateFullProfile, uploadPhoto,
  type Channel, type FullProfile, type ProfilePhoto, type Story
 } from "@/lib/social";
 
@@ -21,6 +21,7 @@ export default function ProfilePanel({token,userId,targetId,onBack,onOwnProfileC
  const [ownedChannels,setOwnedChannels]=useState<Channel[]>([]);
  const [featuredChannel,setFeaturedChannel]=useState<Channel|null>(null);
  const [chosenChannelId,setChosenChannelId]=useState<string>("");
+ const [pinningChannel,setPinningChannel]=useState(false);
  const [name,setName]=useState("");const [username,setUsername]=useState("");const [bio,setBio]=useState("");
  const [editing,setEditing]=useState(false);
  const [visitorPreview,setVisitorPreview]=useState(false);
@@ -32,10 +33,13 @@ export default function ProfilePanel({token,userId,targetId,onBack,onOwnProfileC
  const activeStory=storyIndex===null?null:stories[storyIndex]??null;
  const reload=useCallback(async()=>{
   const [p,gallery,active,owned]=await Promise.all([
-   getFullProfile(token,targetId),getProfilePhotos(token,targetId),getStories(token,targetId),mine?listOwnedChannels(token,targetId):listChannels(token)
+   getFullProfile(token,targetId),getProfilePhotos(token,targetId),getStories(token,targetId),mine?listOwnedChannels(token,targetId):Promise.resolve([] as Channel[])
   ]);
+  const pinned=p?.featured_channel_id
+    ? owned.find(ch=>ch.id===p.featured_channel_id)??await getChannelById(token,p.featured_channel_id).catch(()=>null)
+    : null;
   setProfile(p);setPhotos(gallery);setStories(active);setOwnedChannels(owned);
-  setFeaturedChannel(owned.find(ch=>ch.id===p?.featured_channel_id)??null);
+  setFeaturedChannel(pinned);
   setChosenChannelId(p?.featured_channel_id??"");
   setName(p?.display_name||"");setUsername(p?.username||"");setBio(p?.bio||"");
  },[token,targetId]);
@@ -70,8 +74,19 @@ export default function ProfilePanel({token,userId,targetId,onBack,onOwnProfileC
   await run(async()=>{
    try{await changeProfile(token,userId,username.trim().toLowerCase().replace(/^@/,""),name.trim());}
    catch(e){throw Error(explainProfileError(e));}
-   await updateFullProfile(token,userId,{bio:bio.trim(),featured_channel_id:chosenChannelId||null});
+   await updateFullProfile(token,userId,{bio:bio.trim()});
    onOwnProfileChange();setEditing(false);setNotice("Профиль обновлён.");
+  });
+ }
+ async function pinChannel(){
+  if(!profile||!mine||busy)return;
+  const next=chosenChannelId||null;
+  if(next&&!ownedChannels.some(channel=>channel.id===next)){setError("Выбери свой канал из списка.");return;}
+  await run(async()=>{
+   const updated=await updateFullProfile(token,userId,{featured_channel_id:next});
+   if(updated.featured_channel_id!==next)throw Error("Канал не сохранился. Попробуй ещё раз.");
+   setPinningChannel(false);
+   setNotice(next?"Канал теперь отображается в профиле.":"Канал откреплён.");
   });
  }
  async function clearImage(kind:"avatar"|"cover"){
@@ -118,23 +133,28 @@ export default function ProfilePanel({token,userId,targetId,onBack,onOwnProfileC
      <label>Имя<input value={name} onChange={e=>setName(e.target.value)} maxLength={60} required/></label>
      <label>Юзернейм<input value={username} onChange={e=>{setUsername(e.target.value);setUsernameTouched(true);}} onBlur={()=>setUsernameTouched(true)} maxLength={48} aria-invalid={Boolean(usernameError)} aria-describedby="username-feedback" required/><small id="username-feedback" className={usernameError?"profile-field-error":"profile-field-hint"}>{usernameError||"От 3 до 24 символов: латинские буквы, цифры и _. Например, tendo888."}</small></label>
      <label>О себе<textarea value={bio} onChange={e=>setBio(e.target.value)} maxLength={160} rows={3} placeholder="Расскажи немного о себе"/></label>
-     <label>Канал в профиле
-       <select value={chosenChannelId} onChange={e=>setChosenChannelId(e.target.value)}>
-         <option value="">Не показывать канал</option>
-         {ownedChannels.map(ch=><option key={ch.id} value={ch.id}>{ch.title} (@{ch.slug})</option>)}
-       </select>
-       <small>Можно закрепить один из каналов, которые ты создал. Его увидят посетители профиля.</small>
-     </label>
+
      <button className="accent-button" disabled={busy} type="submit">{busy?"Сохраняем…":"Сохранить изменения"}</button>
      <div className="profile-delete-actions">{profile?.avatar_path&&<button type="button" onClick={()=>void clearImage("avatar")} disabled={busy}>Удалить аватар</button>}{profile?.cover_path&&<button type="button" onClick={()=>void clearImage("cover")} disabled={busy}>Удалить обложку</button>}</div>
     </form>}
-    {(featuredChannel||mine)&&<div className="profile-content-section profile-featured-section">
-      <div className="profile-section-title"><div><h2>Мой канал</h2><p>Закреплён в профиле</p></div>
-       {mine&&!editing&&<button type="button" className="profile-action" onClick={()=>setEditing(true)}>Редактировать профиль</button>}</div>
-      {featuredChannel?<button type="button" className="profile-featured-channel" onClick={()=>onOpenChannel(featuredChannel)}>
-        <span className="profile-featured-icon">{featuredChannel.avatar_path?<img src={imageUrl(featuredChannel.avatar_path) ?? undefined} alt="" className="ik-channel-avatar-img"/>:"#"} </span><span className="profile-featured-details"><strong>{featuredChannel.title}</strong><small>@{featuredChannel.slug}</small>
-        {featuredChannel.description&&<span>{featuredChannel.description}</span>}</span><span className="profile-featured-arrow">›</span>
-      </button>:<p className="profile-empty">Здесь можно закрепить свой канал. Открой «Изм.» и выбери канал в настройках профиля.</p>}
+    {(featuredChannel||(mine&&!visitorPreview))&&<div className="profile-content-section profile-featured-section">
+      {featuredChannel&&<button type="button" className="profile-featured-channel" onClick={()=>onOpenChannel(featuredChannel)} aria-label={'Открыть канал '+featuredChannel.title}>
+        <span className="profile-featured-icon">{featuredChannel.avatar_path?<img src={imageUrl(featuredChannel.avatar_path)??undefined} alt="" className="ik-channel-avatar-img"/>:"#"} </span>
+        <span className="profile-featured-details"><strong>{featuredChannel.title}</strong><small>@{featuredChannel.slug}</small></span>
+        <span className="profile-featured-arrow" aria-hidden="true">›</span>
+      </button>}
+      {mine&&!visitorPreview&&<div className="ik-profile-pin-area">
+        <button type="button" className="ik-profile-pin-toggle" onClick={()=>{setChosenChannelId(profile?.featured_channel_id??"");setPinningChannel(v=>!v);}} aria-expanded={pinningChannel}>{pinningChannel?"Отмена":featuredChannel?"Изменить закреплённый канал":"+ Прикрепить канал"}</button>
+        {pinningChannel&&<div className="ik-profile-pin-picker">
+          {ownedChannels.length?<><label htmlFor="ik-profile-channel-choice">Канал в профиле</label>
+            <select id="ik-profile-channel-choice" value={chosenChannelId} onChange={e=>setChosenChannelId(e.target.value)}>
+              <option value="">Не показывать канал</option>
+              {ownedChannels.map(ch=><option key={ch.id} value={ch.id}>{ch.title} (@{ch.slug})</option>)}
+            </select>
+            <button type="button" className="ik-profile-pin-save" disabled={busy||chosenChannelId===(profile?.featured_channel_id??"")} onClick={()=>void pinChannel()}>{busy?"Сохраняем…":"Сохранить канал"}</button>
+          </>:<p>Сначала создай собственный канал в разделе «Каналы».</p>}
+        </div>}
+      </div>}
     </div>}
     <div className="profile-content-section">
      <div className="profile-section-title"><div><h2>Истории</h2><p>Доступны 24 часа</p></div>
