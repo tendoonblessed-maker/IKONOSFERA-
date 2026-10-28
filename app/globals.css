@@ -1603,3 +1603,55 @@ body{position:relative}
 .ik-chat-entry-loading{height:100%;display:flex;flex-direction:column;background:#f1f1f3;min-height:0}
 .ik-chat-entry-loading>.conversation-header{flex:0 0 auto;background:#f7f7f9}
 .ik-chat-entry-loading>.ik-chat-loading{flex:1;justify-content:center}
+
+
+/* iPhone Safari fix: composer must always stay within the *visible* viewport.
+   100dvh can remain taller than the visible area when the on-screen keyboard
+   appears, and inputs under 16px trigger unwanted Safari auto-zoom. */
+@media(max-width:800px){
+  html,body{width:100%;height:100%;overflow:hidden;overscroll-behavior:none}
+  .messenger,
+  .messenger.is-authenticated{
+    height:var(--ik-visible-viewport-height,100dvh)!important;
+    max-height:var(--ik-visible-viewport-height,100dvh)!important;
+    min-height:0;overflow:hidden;
+  }
+  .messenger.is-authenticated .conversation-pane,
+  .messenger.is-authenticated .conversation-pane.open{
+    height:100%!important;max-height:100%!important;min-height:0;
+    min-width:0;overflow:hidden;
+    display:flex;flex-direction:column;
+  }
+  .messenger.is-authenticated .conversation-header,
+  .messenger.is-authenticated .ik-chat-blocked-banner,
+  .messenger.is-authenticated .ik-conversation-search,
+  .messenger.is-authenticated .ik-selection-toolbar{
+    flex-shrink:0;
+  }
+  .messenger.is-authenticated .conversation-history{
+    flex:1 1 0%;min-height:0;max-height:none;
+    overflow-x:hidden;overflow-y:auto;overscroll-behavior-y:contain;
+    -webkit-overflow-scrolling:touch;
+  }
+  .messenger.is-authenticated .composer{
+    position:relative;inset:auto;
+    display:flex;align-items:center;
+    flex:0 0 auto;min-height:62px;min-width:0;max-width:100%;width:100%;
+    padding:8px 10px max(10px,env(safe-area-inset-bottom,0px));
+    background:#fff;z-index:2;
+  }
+  .messenger.is-authenticated .composer textarea,
+  .messenger.is-authenticated .composer input{
+    flex:1 1 0%;width:100%;min-width:0;max-height:136px;
+    font-size:16px!important;line-height:1.4;
+  }
+  /* Keep all editable iOS fields at >=16px so focusing never zooms the page. */
+  .messenger input:not([type="file"]),
+  .messenger textarea,
+  .messenger select{
+    font-size:16px!important;
+  }
+}
+@media(prefers-reduced-motion:reduce){
+  .messenger.is-authenticated .conversation-history{scroll-behavior:auto}
+}
