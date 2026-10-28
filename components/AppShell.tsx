@@ -302,7 +302,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
     setMessageSearch("");setSearchInConversation(false);setSelectedMessages([]);setCreateMenuOpen(false);setTab(next);setSelected(null);setSelectedChannel(null);setProfileTarget(next==="profile"&&userId?userId:null);setShowRecommendations(false);setError("");
   }
   async function sendMessage(e:React.FormEvent){
-    e.preventDefault();if(!session||!selected||!userId||sending)return;
+    e.preventDefault();if(!session||!selected||!userId||sending||activePartnerBlocked)return;
     const chatId=selected,body=draft.trim();
     if(!body||body.length>4000)return;
     setSending(true);setError('');
@@ -316,6 +316,31 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
       }
     }catch(e){setError(userFacingError(e));}
     finally{setSending(false);}
+  }
+  async function toggleSavedContact(person:Profile){
+    if(!session||!userId||busy)return;
+    setBusy(true);setError('');
+    const already=savedContacts.some(item=>item.id===person.id);
+    try{
+      if(already)await removeSavedContact(session.access_token,userId,person.id);
+      else await addSavedContact(session.access_token,userId,person.id);
+      setSavedContacts(previous=>already?previous.filter(item=>item.id!==person.id):[...previous,person]);
+      setNotice(already?'Контакт удалён из списка.':'Пользователь добавлен в контакты.');
+    }catch(e){setError(userFacingError(e));}
+    finally{setBusy(false);}
+  }
+  async function toggleBlockedUser(person:Profile){
+    if(!session||!userId||busy)return;
+    const already=blockedUsers.some(item=>item.id===person.id);
+    if(!already&&!window.confirm('Заблокировать '+(person.display_name||person.username)+'? Вы не сможете отправлять друг другу личные сообщения, пока блокировка активна.'))return;
+    setBusy(true);setError('');
+    try{
+      if(already)await removeBlockedUser(session.access_token,userId,person.id);
+      else await addBlockedUser(session.access_token,userId,person.id);
+      setBlockedUsers(previous=>already?previous.filter(item=>item.id!==person.id):[...previous,person]);
+      setNotice(already?'Пользователь разблокирован.':'Пользователь добавлен в чёрный список.');
+    }catch(e){setError(userFacingError(e));}
+    finally{setBusy(false);}
   }
   function toggleChatSelection(chatId:string){
     setSelectedChatIds(previous=>previous.includes(chatId)?previous.filter(id=>id!==chatId):[...previous,chatId]);
@@ -334,19 +359,26 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
     }catch(e){setError(userFacingError(e));}
     finally{setBusy(false);}
   }
-  async function chatAction(chatId:string,action:"hide"|"pin"|"unpin"|"delete_everyone"){
-    if(!session||!userId)return;
-    if(action==="delete_everyone"&&!window.confirm("Удалить диалог и все сообщения у обоих участников?"))return;
+  async function chatAction(chatId:string,action:"hide"|"pin"|"unpin"|"delete_for_me"|"delete_everyone"){
+    if(!session||!userId||busy)return;
+    if(action==="delete_everyone"&&!window.confirm("Удалить диалог и всю историю у вас обоих? Это действие необратимо."))return;
+    if(action==="delete_for_me"&&!window.confirm("Удалить этот чат и его историю только у себя? У собеседника история останется."))return;
     if(action==="hide"&&!window.confirm("Скрыть диалог только у себя?"))return;
-    try{await manageChat(session.access_token,chatId,action);if(selected===chatId&&(action==="hide"||action==="delete_everyone"))setSelected(null);
-      await refresh(session.access_token,userId,action==="hide"||action==="delete_everyone"?null:selected);
+    setBusy(true);setError("");
+    try{
+      await manageChat(session.access_token,chatId,action);
+      const deleted=action==="hide"||action==="delete_for_me"||action==="delete_everyone";
+      if(deleted&&selected===chatId){setSelected(null);setMessageMenuId(null);setChatMessages([]);}
+      await refresh(session.access_token,userId,deleted?null:selected);
+      setNotice(deleted?(action==="delete_everyone"?"Чат удалён для обоих.":action==="delete_for_me"?"Чат и его история удалены у тебя.":"Чат скрыт."):(action==="pin"?"Чат закреплён.":"Чат откреплён."));
     }catch(e){setError(userFacingError(e));}
+    finally{setBusy(false);}
   }
   async function messageAction(messageId:string,action:"hide"|"delete_everyone"|"edit",body?:string){
     if(!session||!selected||!userId)return;
     if(action==="delete_everyone"&&!window.confirm("Удалить сообщение для обоих?"))return;
     try{await manageMessage(session.access_token,messageId,action,body);
-      setEditingMessageId(null);setChatMessages((await listMessages(session.access_token,selected)).reverse());
+      setMessageMenuId(null);setEditingMessageId(null);setChatMessages((await listMessages(session.access_token,selected)).reverse());
     }catch(e){setError(userFacingError(e));}
   }
   async function reactToMessage(messageId:string,emoji:ReactionEmoji){
@@ -359,7 +391,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
     }catch(e){setError(userFacingError(e));}finally{setSending(false);}
   }
   async function sendAttachment(file:File|undefined){
-    if(!file||!session||!selected||!userId||sending)return;
+    if(!file||!session||!selected||!userId||sending||activePartnerBlocked)return;
     setSending(true);setError("");
     try{
       await sendDirectMedia(session.access_token,selected,userId,file);
