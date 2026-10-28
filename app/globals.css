@@ -400,3 +400,23 @@ textarea:focus-visible{outline:2px solid #111;outline-offset:2px}
 .profile-editor-intro{font-size:12px;color:#888;line-height:1.5;margin:0 0 15px}
 .profile-view{font-family:Inter,Arial,Helvetica,sans-serif;font-optical-sizing:auto}
 @media(prefers-reduced-motion:reduce){.story-viewer{animation:none}.story-progress-track>span.playing{animation:none;width:100%}.profile-edit-trigger{transition:none}}
+
+/* Unified tactile emoji reactions in messages and channels */
+.reaction-bar{display:flex;align-items:center;flex-wrap:wrap;gap:5px;position:relative;margin-top:8px}
+.reaction-pill,.reaction-add{display:inline-flex;align-items:center;justify-content:center;gap:5px;border:1px solid #e8e8e8;border-radius:20px;padding:5px 9px;background:#f8f8f8;color:#333;font:inherit;font-size:13px;line-height:1.2;cursor:pointer;transition:transform .18s cubic-bezier(.2,.8,.2,1),background .2s ease,border-color .2s ease}
+.reaction-pill span{font-size:11px;font-weight:750;color:#777}
+.reaction-pill.mine{background:#e7f1ff;border-color:#a9d0ff}
+.reaction-pill:hover,.reaction-add:hover{background:#eee;transform:translateY(-2px)}
+.reaction-pill:active,.reaction-add:active{transform:scale(.88)}
+.reaction-add{font-size:12px;opacity:.72}
+.reaction-picker{display:flex;flex-wrap:wrap;gap:3px;padding:7px;background:#fff;border:1px solid #ededed;border-radius:15px;box-shadow:0 10px 30px #00000018;animation:reaction-pop .18s cubic-bezier(.2,.8,.2,1) both;z-index:6}
+.reaction-picker button{width:36px;height:36px;border:0;border-radius:10px;background:transparent;font-size:21px;cursor:pointer;transition:transform .15s ease,background .15s ease}
+.reaction-picker button:hover{background:#f3f3f3;transform:scale(1.15)}
+.reaction-picker button:active{transform:scale(.86)}
+.message-reaction-bar{max-width:100%}
+.bubble:has(.message-reaction-bar){min-width:120px}
+.profile-field-error{color:#cf253d!important;font-weight:700;font-size:12px;line-height:1.45}
+.profile-field-hint{color:#777;font-size:11px;line-height:1.45}
+.profile-editor input[aria-invalid="true"]{border-color:#e85067;box-shadow:0 0 0 3px #e8506715}
+@keyframes reaction-pop{from{opacity:0;transform:translateY(5px) scale(.95)}to{opacity:1;transform:translateY(0) scale(1)}}
+@media(prefers-reduced-motion:reduce){.reaction-picker{animation:none}.reaction-pill,.reaction-add,.reaction-picker button{transition:none}}
