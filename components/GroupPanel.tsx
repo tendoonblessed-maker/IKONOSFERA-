@@ -17,28 +17,35 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile}:Pro
  const [initialLoading,setInitialLoading]=useState(true);
  const historyRef=useRef<HTMLDivElement|null>(null);
  const lastReadRef=useRef<string|null>(null);
+ const requestSequenceRef=useRef(0);
  const refresh=useCallback(async()=>{
+  const requestId=++requestSequenceRef.current;
   const msgs=await groupMessages(token,group.id);
+  // When a slower poll finishes after a newer one, do not replace the newer
+  // messages. The same guard applies after a quick group-switch/unmount.
+  if(requestId!==requestSequenceRef.current)return;
   setMessages(msgs);
   setInitialLoading(false);
   const last=msgs.length?msgs[msgs.length-1].id:null;
   if(document.visibilityState==='visible'&&last!==lastReadRef.current){
     lastReadRef.current=last;
-    void markGroupRead(token,group.id).catch(()=>{lastReadRef.current=null;});
+    void markGroupRead(token,group.id).catch(()=>{if(lastReadRef.current===last)lastReadRef.current=null;});
   }
  },[token,group.id]);
  useEffect(()=>{
   let cancelled=false;
+  let inFlight=false;
   setInitialLoading(true);
-  const sync=()=>{if(document.visibilityState==='hidden')return;
+  const sync=()=>{if(cancelled||inFlight||document.visibilityState==='hidden')return;
+    inFlight=true;
     void refresh().then(()=>{if(!cancelled)setError('');}).catch(e=>{
       if(!cancelled){setInitialLoading(false);setError(e instanceof Error?e.message:'Не удалось загрузить сообщения группы');}
-    });
+    }).finally(()=>{inFlight=false;});
   };
   sync();
   const timer=window.setInterval(sync,6000);
   document.addEventListener('visibilitychange',sync);
-  return()=>{cancelled=true;window.clearInterval(timer);document.removeEventListener('visibilitychange',sync);};
+  return()=>{cancelled=true;requestSequenceRef.current++;window.clearInterval(timer);document.removeEventListener('visibilitychange',sync);};
  },[refresh]);
  // Group membership and profiles change much less often than chat messages.
  useEffect(()=>{
