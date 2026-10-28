@@ -745,3 +745,12 @@ html,body{min-height:100%;overflow:hidden}
 @media(prefers-reduced-motion:reduce){
  .messenger.is-guest .guest-brand,.messenger.is-guest .conversation-placeholder h2,.messenger.is-guest .conversation-placeholder>p,.messenger.is-guest .auth-panel{animation:none}
 }
+
+/* Brand lockup fix: keep copyright credit clear of the oversized mark on laptops. */
+.messenger.is-guest .guest-brand{gap:clamp(8px,1.45vh,15px);align-items:center}
+.messenger.is-guest .guest-brand img{display:block;flex:none;object-position:center}
+.messenger.is-guest .guest-brand span{display:block;position:relative;z-index:1;margin-top:0;line-height:1.45;white-space:nowrap;letter-spacing:.23em}
+@media(max-height:760px){
+ .messenger.is-guest .guest-brand{gap:8px}
+ .messenger.is-guest .guest-brand span{font-size:9px}
+}
