@@ -242,7 +242,7 @@ test('Chat dates and accessible conversation actions mimic familiar messenger wo
  assert.ok(shell.includes('dayLabel(message.created_at)'));
  assert.ok(shell.includes('ik-chat-day-separator'));
  assert.ok(shell.includes('ik-conversation-more'));
- assert.ok(shell.includes('aria-label="Действия с чатом"'));
+ assert.ok(shell.includes('label="Действия с чатом"'));
  assert.ok(shell.includes('chatAction(active.chat.id'));
  assert.ok(css.includes('.ik-chat-day-separator'));
  assert.ok(css.includes('.ik-conversation-more-menu'));
