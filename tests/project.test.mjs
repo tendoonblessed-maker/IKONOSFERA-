@@ -543,3 +543,22 @@ test('failed private media can retry a fresh signed link instead of remaining br
  assert.match(api,/signedMediaCache\.delete\(token\+':\'\+path\)/);
  assert.match(css,/\.chat-media-retry/);
 });
+
+
+test('opening and polling group chats avoids overlapping requests and stale responses',()=>{
+ const group=load('components/GroupPanel.tsx');
+ assert.match(group,/requestSequenceRef=useRef\(0\)/);
+ assert.match(group,/requestId!==requestSequenceRef\.current/);
+ assert.match(group,/if\(cancelled\|\|inFlight\|\|document\.visibilityState==='hidden'\)return/);
+ assert.match(group,/requestSequenceRef\.current\+\+;window\.clearInterval\(timer\)/);
+ assert.match(group,/lastReadRef\.current===last/);
+});
+test('new incoming messages never force scrolling when reading chat history',()=>{
+ const personal=load('components/AppShell.tsx');
+ const group=load('components/GroupPanel.tsx');
+ assert.match(personal,/chatAutoScrollRef=useRef\(true\)/);
+ assert.match(personal,/if\(!history\|\|!chatAutoScrollRef\.current\)return/);
+ assert.match(personal,/chatAutoScrollRef\.current=area\.scrollHeight-area\.scrollTop-area\.clientHeight<120/);
+ assert.match(group,/followNewestRef=useRef\(true\)/);
+ assert.match(group,/followNewestRef\.current=area\.scrollHeight-area\.scrollTop-area\.clientHeight<120/);
+});
