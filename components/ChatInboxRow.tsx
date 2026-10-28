@@ -1,6 +1,7 @@
 'use client';
 
 import {imageUrl} from '@/lib/social';
+import FloatingActionMenu from '@/components/FloatingActionMenu';
 import type {ChatPreview,DirectChat,Profile} from '@/lib/supabase-rest';
 
 type Row={chat:DirectChat;other:Profile|null;preview:ChatPreview|null};
@@ -52,15 +53,17 @@ export default function ChatInboxRow({row,currentUserId,active,selectionMode=fal
        {unread>0&&<span className="ik-unread-count" aria-label={'Непрочитанных: '+unread}>{unread>99?'99+':unread}</span>}
      </span>
    </button>
-   {!selectionMode&&<details className="chat-row-menu ik-chat-row-menu">
-     <summary aria-label={'Действия с чатом '+name} title="Управление чатом">···</summary>
-     <div className="chat-row-actions">
-       {other&&<button type="button" onClick={e=>{e.currentTarget.closest('details')?.removeAttribute('open');onContactAction();}}>{isSavedContact?'Удалить из контактов':'＋ Добавить в контакты'}</button>}
-       <button type="button" onClick={e=>{e.currentTarget.closest('details')?.removeAttribute('open');onAction(pinned?'unpin':'pin');}}>{pinned?'Открепить чат':'Закрепить чат'}</button>
-       {other&&<button type="button" onClick={e=>{e.currentTarget.closest('details')?.removeAttribute('open');onBlockAction();}}>{isBlocked?'Разблокировать':'Заблокировать пользователя'}</button>}
-       <button type="button" onClick={e=>{e.currentTarget.closest('details')?.removeAttribute('open');onAction('delete_self');}}>Удалить только у себя</button>
-       <button type="button" className="ik-danger-menu-action" onClick={e=>{e.currentTarget.closest('details')?.removeAttribute('open');onAction('delete_everyone');}}>Удалить у обоих</button>
-     </div>
-   </details>}
+   {!selectionMode&&<FloatingActionMenu
+     label={'Действия с чатом '+name}
+     wrapperClassName="chat-row-menu ik-chat-row-menu"
+     triggerClassName="ik-chat-row-trigger"
+     popupClassName="chat-row-actions ik-floating-chat-actions"
+     trigger={<svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="12" cy="5" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="12" cy="19" r="1.7"/></svg>}>
+       {other&&<button type="button" onClick={onContactAction}>{isSavedContact?'Удалить из контактов':'Добавить в контакты'}</button>}
+       <button type="button" onClick={()=>onAction(pinned?'unpin':'pin')}>{pinned?'Открепить чат':'Закрепить чат'}</button>
+       {other&&<button type="button" onClick={onBlockAction}>{isBlocked?'Разблокировать':'Заблокировать пользователя'}</button>}
+       <button type="button" onClick={()=>onAction('delete_self')}>Удалить только у себя</button>
+       <button type="button" className="ik-danger-menu-action" onClick={()=>onAction('delete_everyone')}>Удалить у обоих</button>
+   </FloatingActionMenu>}
  </div>;
 }
