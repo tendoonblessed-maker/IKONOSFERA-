@@ -355,3 +355,33 @@ test('own story badge has a centered svg plus',()=>{
  assert.match(css,/home-story-plus svg/);
  assert.match(css,/align-items:center!important;justify-content:center!important/);
 });
+
+
+test('saved contacts are durable and independent of chat visibility',()=>{
+ const sql=load('supabase/migrations/20261029_040000_saved_contacts.sql');
+ const api=load('lib/supabase-rest.ts');
+ const shell=load('components/AppShell.tsx');
+ const row=load('components/ChatInboxRow.tsx');
+ assert.match(sql,/create table if not exists public\.user_contacts/);
+ assert.match(sql,/create policy user_contacts_select_self/);
+ assert.match(sql,/owner_id=\(select auth\.uid\(\)\)/);
+ assert.match(sql,/user_contacts_pair_pk primary key/);
+ for(const key of ['listSavedContactIds','saveContact','deleteContact'])
+   assert.ok(api.includes('function '+key+'('));
+ assert.match(shell,/setSavedContacts\(contactIds\.map/);
+ assert.match(shell,/const contactPeople=useMemo\(\(\)=>\[\.\.\.savedContacts\]/);
+ assert.match(shell,/savedContact=\{Boolean\(/);
+ assert.match(shell,/onToggleContact=\{/);
+ assert.match(shell,/toggleSavedContact\(active\.other!\)/);
+ assert.match(row,/Добавить в контакты/);
+ assert.match(row,/Удалить из контактов/);
+ assert.match(shell,/className="ik-contact-remove"/);
+});
+test('small circle for My Story centers vector cross even on iPhone',()=>{
+ const css=load('app/globals.css');
+ const stories=load('components/StoriesStrip.tsx');
+ assert.match(stories,/className="home-story-plus" aria-hidden="true"/);
+ assert.match(css,/Pixel-accurate center of the add-story cross/);
+ assert.match(css,/position:absolute!important;top:50%!important;left:50%!important/);
+ assert.match(css,/transform:translate\(-50%,-50%\)!important/);
+});
