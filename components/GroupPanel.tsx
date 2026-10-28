@@ -43,10 +43,15 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile}:Pro
  // Group membership and profiles change much less often than chat messages.
  useEffect(()=>{
   let cancelled=false;
-  void groupMembers(token,group.id).then(memberships=>
-    listProfiles(token,memberships.map(member=>member.user_id))
-  ).then(profiles=>{if(!cancelled)setMembers(profiles);}).catch(()=>{});
-  return()=>{cancelled=true;};
+  const updateMembers=()=>{
+    if(document.visibilityState==='hidden')return;
+    void groupMembers(token,group.id).then(memberships=>
+      listProfiles(token,memberships.map(member=>member.user_id))
+    ).then(profiles=>{if(!cancelled)setMembers(profiles);}).catch(()=>{});
+  };
+  updateMembers();
+  const timer=window.setInterval(updateMembers,120000);
+  return()=>{cancelled=true;window.clearInterval(timer);};
  },[token,group.id]);
  useEffect(()=>{const history=historyRef.current;if(history)history.scrollTop=history.scrollHeight;},[messages.length,initialLoading]);
  useEffect(()=>{if(!membersOpen)return;const onKey=(event:KeyboardEvent)=>{if(event.key==='Escape')setMembersOpen(false);};window.addEventListener('keydown',onKey);return()=>window.removeEventListener('keydown',onKey);},[membersOpen]);
@@ -69,7 +74,7 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile}:Pro
  </header>
  <div className="conversation-history" ref={historyRef} aria-busy={initialLoading}>
  {initialLoading&&<div className="ik-chat-loading" role="status" aria-label="Загружаем сообщения группы"><div className="ik-chat-loading-bubble incoming"/><div className="ik-chat-loading-bubble incoming short"/><div className="ik-chat-loading-bubble outgoing"/><span className="ik-chat-loading-label">Загружаем сообщения…</span></div>}
- {!initialLoading&&messages.length===0&&<p className="group-empty">Группа создана. Напиши первое сообщение!</p>}
+ {!initialLoading&&!error&&messages.length===0&&<p className="group-empty">Группа создана. Напиши первое сообщение!</p>}
  {messages.map(m=><article key={m.id} className={'bubble '+(m.sender_id===userId?'mine':'theirs')}><strong className="group-author">{m.sender_id===userId?'Вы':names[m.sender_id]||'Участник'}</strong><div>{m.body}</div><time>{new Date(m.created_at).toLocaleTimeString('ru-RU',{hour:'2-digit',minute:'2-digit'})}</time></article>)}</div>
  <form className="composer" onSubmit={send}><input aria-label="Сообщение группе" placeholder="Сообщение группе…" maxLength={4000} value={draft} onChange={e=>setDraft(e.target.value)}/><button type="submit" className="send-button" disabled={busy||!draft.trim()}>➤</button></form>
  {error&&<p className="profile-error" role="alert">{error}</p>}
