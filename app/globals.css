@@ -1121,3 +1121,16 @@ html,body{min-height:100%;overflow:hidden}
  .messenger.is-authenticated .pane-nav{flex-shrink:0}
  .messenger.is-authenticated .chat-list{overscroll-behavior:contain;-webkit-overflow-scrolling:touch}
 }
+
+
+/* Search inside a conversation and bulk-select messages */
+.messenger.is-authenticated .ik-conversation-search,.messenger.is-authenticated .ik-selection-toolbar{display:flex;align-items:center;gap:9px;padding:9px 14px;background:#fff;border-bottom:1px solid #e8ebef;flex:0 0 auto}
+.messenger.is-authenticated .ik-conversation-search input{flex:1;min-width:0;background:#f2f4f6;border:1px solid #e3e7eb;border-radius:13px;min-height:39px;padding:9px 12px;font:inherit;font-size:13px}
+.messenger.is-authenticated .ik-conversation-search span{white-space:nowrap;font-size:11px;color:#8b949d}
+.messenger.is-authenticated .ik-conversation-search button,.messenger.is-authenticated .ik-selection-toolbar button{border:0;border-radius:10px;padding:9px 12px;background:#f1f3f5;font:inherit;font-size:12px;font-weight:750}
+.messenger.is-authenticated .ik-selection-toolbar{justify-content:flex-end}
+.messenger.is-authenticated .ik-selection-toolbar span{margin-right:auto;font-size:13px;font-weight:750}
+.messenger.is-authenticated .ik-select-message{border:1px solid #d5dbe0;background:#fff;color:#aeb5bc;border-radius:50%;width:23px;height:23px;font-size:12px;opacity:.3;transition:opacity .16s ease,background .16s ease}
+.messenger.is-authenticated .chat-message-row:hover .ik-select-message,.messenger.is-authenticated .ik-select-message:focus-visible,.messenger.is-authenticated .ik-select-message.selected{opacity:1}
+.messenger.is-authenticated .ik-select-message.selected{background:#21262b;border-color:#21262b;color:white}
+@media(max-width:800px){.messenger.is-authenticated .ik-select-message{opacity:.7}.messenger.is-authenticated .ik-conversation-search{padding:7px 10px}}
