@@ -754,3 +754,64 @@ html,body{min-height:100%;overflow:hidden}
  .messenger.is-guest .guest-brand{gap:8px}
  .messenger.is-guest .guest-brand span{font-size:9px}
 }
+
+
+/* Compact message conversations and correctly aligned chat previews.
+   Keep sizing scoped to the messenger, without disturbing profile/contacts. */
+.chat-list .chat-row-wrap{align-items:flex-start;min-height:0}
+.chat-list .chat-row-wrap>.chat-item,
+.chat-list .group-chat-row{
+ display:flex;
+ flex-direction:row;
+ align-items:flex-start;
+ justify-content:flex-start;
+ width:auto;
+ min-width:0;
+ height:auto;
+ min-height:66px;
+ padding:12px 11px;
+ gap:12px;
+ text-align:left;
+}
+.chat-list .chat-row-wrap>.chat-item{flex:1 1 0}
+.chat-list .group-chat-row{width:calc(100% - 16px)}
+.chat-list .chat-item>.contact-avatar{align-self:flex-start;width:48px;height:48px;flex:0 0 48px;margin:0;overflow:hidden}
+.chat-list .chat-item>.contact-info{align-self:flex-start;align-content:start;justify-items:start;flex:1;display:grid;gap:4px;min-width:0;padding-top:3px;text-align:left}
+.chat-list .chat-item>.contact-info strong,
+.chat-list .chat-item>.contact-info small{display:block;width:100%;max-width:100%;line-height:1.25;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;text-align:left;margin:0}
+.chat-list .chat-item>.chat-item-dot{flex:0 0 6px;margin-top:10px}
+.chat-list .chat-row-menu{align-self:flex-start;margin-top:8px}
+
+/* Only message text + timestamp are inside the message bubble.
+   Reactions / actions live in a separate tool strip below it. */
+.conversation-history>.chat-message-row{display:flex;flex-direction:column;align-items:flex-start;align-self:flex-start;gap:3px;width:fit-content;max-width:100%;min-width:0;flex:0 0 auto}
+.conversation-history>.chat-message-row.mine{align-items:flex-end;align-self:flex-end}
+.conversation-history>.chat-message-row>.bubble{
+ display:flex;flex-direction:column;align-items:flex-start;
+ flex:0 1 auto;width:fit-content;min-width:0;max-width:min(76vw,520px);min-height:0;
+ padding:9px 12px;gap:3px;line-height:1.35;
+ overflow-wrap:anywhere;word-break:normal;white-space:pre-wrap;
+}
+.conversation-history>.chat-message-row>.bubble>span{display:block;max-width:100%;min-width:0;width:auto;overflow-wrap:anywhere}
+.conversation-history>.chat-message-row>.bubble time{
+ display:block;align-self:flex-end;justify-self:auto;
+ width:auto;margin:1px 0 0;font-size:10px;line-height:1.15;
+ white-space:nowrap;
+}
+.conversation-history>.chat-message-row>.chat-message-tools{
+ display:flex;align-items:center;flex-wrap:wrap;gap:5px;
+ max-width:100%;min-height:0;padding:0 1px;
+}
+.conversation-history>.chat-message-row>.chat-message-tools .message-menu{align-self:center}
+.conversation-history>.chat-message-row>.chat-message-tools .message-menu>summary{min-height:24px}
+.conversation-history>.chat-message-row>.chat-message-tools .reaction-bar{display:flex;align-items:center;gap:4px;flex-wrap:wrap;margin:0}
+.conversation-history>.chat-message-row>.chat-message-tools .reaction-add{padding:3px 7px;font-size:11px}
+.conversation-history>.chat-message-row>.chat-message-tools .reaction-picker{max-width:min(320px,80vw)}
+.group-view .conversation-history>.bubble{display:flex;flex-direction:column;align-items:flex-start;align-self:flex-start;width:fit-content;min-width:0;min-height:0;max-width:min(80%,580px);padding:9px 12px}
+.group-view .conversation-history>.bubble.mine{align-self:flex-end}
+.group-view .conversation-history>.bubble time{align-self:flex-end}
+@media(max-width:800px){
+ .chat-list .chat-row-wrap>.chat-item,.chat-list .group-chat-row{min-height:60px;padding:10px 9px;gap:10px}
+ .chat-list .chat-item>.contact-avatar{width:44px;height:44px;flex-basis:44px}
+ .conversation-history>.chat-message-row>.bubble{max-width:calc(100vw - 60px);padding:8px 11px}
+}
