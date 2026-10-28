@@ -187,3 +187,18 @@ test('Sharing the messenger copies a clean URL without tracking markers',()=>{
  assert.ok(shell.includes("window.location.origin+'/'"));
  assert.match(shell,/copyCleanLink/);
 });
+
+
+test('Group inbox previews and unread counts remain scoped to group members',()=>{
+ const sql=load('supabase/migrations/20261028_280000_group_inbox.sql');
+ const shell=load('components/AppShell.tsx');
+ const group=load('components/GroupPanel.tsx');
+ const row=load('components/GroupInboxRow.tsx');
+ assert.match(sql,/security invoker/);
+ assert.match(sql,/where msg.group_id=g.id and msg.sender_id/);
+ assert.match(sql,/me.user_id=\(select auth.uid\(\)\)/);
+ assert.match(sql,/group_member_update_own_read_cursor/);
+ assert.match(shell,/listGroupOverviews/);
+ assert.match(row,/ik-unread-count/);
+ assert.match(group,/markGroupRead/);
+});
