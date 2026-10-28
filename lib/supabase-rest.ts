@@ -110,6 +110,21 @@ export async function listChatPreviews(token:string):Promise<ChatPreview[]>{
  return http<ChatPreview[]>('/rest/v1/rpc/list_chat_previews',{token});
 }
 
+/** One-way saved contacts. Entries survive removing or hiding a chat. */
+export type SavedContactRow = {contact_id:string};
+export async function listSavedContactIds(token:string,ownerId:string):Promise<string[]>{
+ const entries=await http<SavedContactRow[]>('/rest/v1/user_contacts?select=contact_id&owner_id=eq.'+encodeURIComponent(ownerId)+'&order=created_at.desc&limit=500',{token});
+ return entries.map(entry=>entry.contact_id);
+}
+export async function saveContact(token:string,ownerId:string,contactId:string):Promise<void>{
+ if(!contactId||ownerId===contactId)throw Error('Нельзя добавить себя в контакты.');
+ await http('/rest/v1/user_contacts?on_conflict=owner_id,contact_id',{token,method:'POST',
+  body:{owner_id:ownerId,contact_id:contactId},extraHeaders:{Prefer:'resolution=ignore-duplicates,return=minimal'}});
+}
+export async function deleteContact(token:string,ownerId:string,contactId:string):Promise<void>{
+ await http('/rest/v1/user_contacts?owner_id=eq.'+encodeURIComponent(ownerId)+'&contact_id=eq.'+encodeURIComponent(contactId),{token,method:'DELETE'});
+}
+
 export async function listProfiles(token: string, ids: string[]) {
   if (!ids.length) return [];
   return http<Profile[]>(`/rest/v1/profiles?select=id,username,display_name,avatar_path,cover_path,bio&id=in.(${ids.map(encodeURIComponent).join(',')})`,{token});
