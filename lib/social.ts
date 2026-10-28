@@ -4,7 +4,7 @@ const publicKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "";
 export type FullProfile = { id:string; username:string; display_name:string; avatar_path:string|null; cover_path:string|null; bio:string; featured_channel_id:string|null };
 export type ProfilePhoto = { id:string; user_id:string; image_path:string; caption:string; created_at:string };
 export type Story = { id:string; user_id:string; image_path:string; caption:string; created_at:string; expires_at:string };
-export type Channel = { id:string; owner_id:string; title:string; slug:string; description:string; created_at:string };
+export type Channel = { id:string; owner_id:string; title:string; slug:string; description:string; discussion_enabled:boolean; created_at:string };
 export type ChannelPost = { id:string; channel_id:string; author_id:string; body:string; image_path:string|null; attachment_path?:string|null; attachment_type?:"image"|"video"|"audio"|"file"|null; created_at:string };
 export type PostComment = { id:string; post_id:string; author_id:string; body:string; created_at:string };
 
@@ -75,16 +75,31 @@ export async function createChannel(token:string,owner_id:string,title:string,sl
   const rows=await api<Channel[]>("/rest/v1/channels?select=*",token,"POST",{owner_id,title:title.trim(),slug:slug.trim().toLowerCase(),description:description.trim()});
   if(!rows[0])throw Error("Канал не создан");return rows[0];
 }
-export async function updateChannel(token:string,channelId:string,ownerId:string,title:string,slug:string,description:string):Promise<Channel>{
+export async function updateChannel(token:string,channelId:string,ownerId:string,title:string,slug:string,description:string,discussionEnabled:boolean):Promise<Channel>{
  const safeSlug=slug.trim().toLowerCase();
  if(!title.trim()||title.trim().length>80||!/^[a-z0-9_]{3,32}$/.test(safeSlug)||description.length>500)throw Error("Проверь название, адрес и описание канала.");
- const rows=await api<Channel[]>("/rest/v1/channels?id=eq."+encodeURIComponent(channelId)+"&owner_id=eq."+encodeURIComponent(ownerId)+"&select=*",token,"PATCH",{title:title.trim(),slug:safeSlug,description:description.trim()});
+ const rows=await api<Channel[]>("/rest/v1/channels?id=eq."+encodeURIComponent(channelId)+"&owner_id=eq."+encodeURIComponent(ownerId)+"&select=*",token,"PATCH",{title:title.trim(),slug:safeSlug,description:description.trim(),discussion_enabled:discussionEnabled});
  if(!rows[0])throw Error("Не удалось изменить канал. Проверь права владельца.");
  return rows[0];
 }
 export async function deleteChannel(token:string,channelId:string,ownerId:string):Promise<void>{
  const rows=await api<Channel[]>("/rest/v1/channels?id=eq."+encodeURIComponent(channelId)+"&owner_id=eq."+encodeURIComponent(ownerId)+"&select=id",token,"DELETE");
  if(!rows.length)throw Error("Не удалось удалить канал. Проверь права владельца.");
+}
+export type DiscussionMessage={id:string;channel_id:string;author_id:string;body:string;created_at:string};
+export async function listDiscussionMessages(token:string,channelId:string):Promise<DiscussionMessage[]>{
+ return api<DiscussionMessage[]>("/rest/v1/channel_discussion_messages?select=*&channel_id=eq."+encodeURIComponent(channelId)+"&order=created_at.asc&limit=300",token);
+}
+export async function sendDiscussionMessage(token:string,channelId:string,userId:string,body:string):Promise<void>{
+ if(!body.trim()||body.length>1500)throw Error("Сообщение должно быть до 1500 символов.");
+ await api("/rest/v1/channel_discussion_messages",token,"POST",{channel_id:channelId,author_id:userId,body:body.trim()});
+}
+export async function deleteDiscussionMessage(token:string,id:string):Promise<void>{
+ const rows=await api<DiscussionMessage[]>("/rest/v1/channel_discussion_messages?id=eq."+encodeURIComponent(id)+"&select=*",token,"DELETE");
+ if(!rows.length)throw Error("Сообщение не удалено.");
+}
+export async function listDiscussionComments(token:string,channelId:string):Promise<(PostComment & {channel_posts:{body:string;channel_id:string}|null})[]>{
+ return api<(PostComment & {channel_posts:{body:string;channel_id:string}|null})[]>("/rest/v1/channel_comments?select=id,post_id,author_id,body,created_at,channel_posts!inner(body,channel_id)&channel_posts.channel_id=eq."+encodeURIComponent(channelId)+"&order=created_at.asc&limit=300",token);
 }
 export async function listChannelPosts(token:string,channelId:string):Promise<ChannelPost[]>{
   return api<ChannelPost[]>("/rest/v1/channel_posts?select=*&channel_id=eq."+encodeURIComponent(channelId)+"&order=created_at.desc&limit=100",token);
