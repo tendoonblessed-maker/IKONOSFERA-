@@ -48,8 +48,16 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
   const [installPrompt,setInstallPrompt]=useState<(Event & {prompt:()=>Promise<void>;userChoice:Promise<{outcome:string}>})|null>(null);
   const messageEnd=useRef<HTMLDivElement|null>(null);
   const selectedRef=useRef<string|null>(null);
+  const seenMessageId=useRef<string|null>(null);
+  const [notificationsEnabled,setNotificationsEnabled]=useState(false);
 
-  useEffect(()=>{selectedRef.current=selected;},[selected]);
+  useEffect(()=>{selectedRef.current=selected;seenMessageId.current=null;},[selected]);
+  useEffect(()=>{setNotificationsEnabled(typeof Notification!=='undefined'&&Notification.permission==='granted');},[]);
+  async function enableNotifications(){
+    if(typeof Notification==='undefined'){setError('Уведомления не поддерживаются этим браузером.');return;}
+    try{const permission=await Notification.requestPermission();setNotificationsEnabled(permission==='granted');setNotice(permission==='granted'?'Уведомления включены для открытого приложения.':'Разрешение на уведомления не получено.');}
+    catch(e){setError(userFacingError(e));}
+  }
   useEffect(()=>{
     const ios=/iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.platform==='MacIntel' && navigator.maxTouchPoints>1);
     const standalone=window.matchMedia('(display-mode: standalone)').matches || Boolean((navigator as Navigator & {standalone?:boolean}).standalone);
@@ -70,7 +78,13 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
     setRows(chats.map(chat=>({chat,other:byId.get(chat.user_a===id?chat.user_b:chat.user_a)??null})));
     if(activeChat && chats.some(chat=>chat.id===activeChat)) {
       const messages=await listMessages(token,activeChat);
-      setChatMessages(messages.reverse());
+      const ordered=messages.reverse();
+      const newest=ordered[ordered.length-1];
+      if(newest&&seenMessageId.current&&newest.id!==seenMessageId.current&&newest.sender_id!==id&&document.visibilityState==='hidden'&&typeof Notification!=='undefined'&&Notification.permission==='granted'){
+        try{new Notification('Новое сообщение в IKONOSFERA',{body:'У тебя новое сообщение',icon:'/icon-192.png',tag:'chat-'+activeChat});}catch{/* browser may restrict notifications */}
+      }
+      seenMessageId.current=newest?.id??null;
+      setChatMessages(ordered);
     } else if(activeChat) {setSelected(null);setChatMessages([]);}
   },[]);
 
@@ -201,7 +215,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
           {ch.owner_id===userId?<span className="channel-owner-badge">Мой</span>:<button type="button" disabled={busy} className="channel-subscribe-button" onClick={()=>void toggleSubscription(ch.id)}>{subscriptions.includes(ch.id)?"Отписаться":"Подписаться"}</button>}
         </div>):<p className="channel-empty-list">{!loggedIn?"Войди, чтобы увидеть каналы.":showRecommendations?"Новых рекомендаций пока нет.":"Ты ещё не подписан на каналы. Загляни в рекомендации."}</p>}</div>
       </div>}
-      {tab==='settings'&&<div className="settings-panel"><h2>Мой профиль</h2>{loggedIn?<><button type="button" className="open-own-profile" onClick={()=>goToProfile(userId)}><span className="contact-avatar">{imageUrl(profile?.avatar_path)?<img className="avatar-image" src={imageUrl(profile?.avatar_path)||""} alt=""/>:(profile?.display_name||'?').charAt(0).toUpperCase()}</span><span><strong>{profile?.display_name||"Мой профиль"}</strong><small>Оформление · фото · истории</small></span><span>›</span></button><p>Люди могут найти тебя по уникальному имени.</p>{anonymous&&<p className="test-account-warning">Тестовый аккаунт без почты: доступ хранится только на этом устройстве. После удаления приложения, очистки данных или выхода восстановить его нельзя.</p>}<form onSubmit={saveProfile}><label htmlFor="username">Юзернейм</label><input id="username" value={editUsername} onChange={e=>setEditUsername(e.target.value)} minLength={3} maxLength={24} pattern="[a-z0-9_]{3,24}" required/><label htmlFor="displayName">Отображаемое имя</label><input id="displayName" value={editName} onChange={e=>setEditName(e.target.value)} maxLength={60} required/><button className="accent-button" disabled={busy}>Сохранить профиль</button></form><button className="secondary-action" onClick={logout} disabled={busy}>Выйти из аккаунта</button></>:<p>Войди, чтобы настроить профиль.</p>}<div className="settings-meta"><span>Платформа</span><strong>{platform.ios?'iPhone / iPad':'Android / Desktop'}</strong><span>Запуск</span><strong>{platform.standalone?'Установленное приложение':'Браузер'}</strong><span>Сервер</span><strong>{backendReady?'Настроен':'Не подключён'}</strong></div>{!platform.standalone&&<button className="secondary-action" onClick={()=>void install()}>Установить приложение</button>}</div>}
+      {tab==='settings'&&<div className="settings-panel"><h2>Мой профиль</h2>{loggedIn?<><button type="button" className="open-own-profile" onClick={()=>goToProfile(userId)}><span className="contact-avatar">{imageUrl(profile?.avatar_path)?<img className="avatar-image" src={imageUrl(profile?.avatar_path)||""} alt=""/>:(profile?.display_name||'?').charAt(0).toUpperCase()}</span><span><strong>{profile?.display_name||"Мой профиль"}</strong><small>Оформление · фото · истории</small></span><span>›</span></button><p>Люди могут найти тебя по уникальному имени.</p>{anonymous&&<p className="test-account-warning">Тестовый аккаунт без почты: доступ хранится только на этом устройстве. После удаления приложения, очистки данных или выхода восстановить его нельзя.</p>}<form onSubmit={saveProfile}><label htmlFor="username">Юзернейм</label><input id="username" value={editUsername} onChange={e=>setEditUsername(e.target.value)} minLength={3} maxLength={24} pattern="[a-z0-9_]{3,24}" required/><label htmlFor="displayName">Отображаемое имя</label><input id="displayName" value={editName} onChange={e=>setEditName(e.target.value)} maxLength={60} required/><button className="accent-button" disabled={busy}>Сохранить профиль</button></form><button className="secondary-action" onClick={logout} disabled={busy}>Выйти из аккаунта</button></>:<p>Войди, чтобы настроить профиль.</p>}<div className="notification-settings"><h3>Уведомления</h3><p>Показывать уведомления о новых сообщениях, когда IKONOSFERA открыта в фоне. Полные push-уведомления при закрытом приложении появятся позднее.</p><button type="button" className="secondary-action" onClick={()=>void enableNotifications()} disabled={notificationsEnabled}>{notificationsEnabled?'Уведомления разрешены':'Разрешить уведомления'}</button></div><div className="settings-meta"><span>Платформа</span><strong>{platform.ios?'iPhone / iPad':'Android / Desktop'}</strong><span>Запуск</span><strong>{platform.standalone?'Установленное приложение':'Браузер'}</strong><span>Сервер</span><strong>{backendReady?'Настроен':'Не подключён'}</strong></div>{!platform.standalone&&<button className="secondary-action" onClick={()=>void install()}>Установить приложение</button>}</div>}
       </div>
       <nav className="pane-nav" aria-label="Основные разделы">
   <button type="button" aria-label="Чаты" aria-current={tab==='chats'?'page':undefined} className={tab==='chats'?'current':''} onClick={()=>switchTab('chats')}><span className="nav-art"><img src="/nav-chats.webp" alt="" width="64" height="64"/></span><span className="nav-label">Чаты</span></button>
