@@ -670,3 +670,5 @@ html,body{min-height:100%;overflow:hidden}
 @media(max-width:380px){.pane-nav .nav-art{width:45px;height:45px}.pane-nav button{min-height:73px}.pane-nav .nav-label{font-size:9px!important}}
 @media(max-height:610px) and (min-width:801px){.pane-nav{gap:0;padding-top:15px}.pane-nav button{min-height:68px}.pane-nav .nav-art{width:37px;height:37px}}
 @media(prefers-reduced-motion:reduce){.story-viewer-telegram,.story-viewer-telegram .story-viewer-stage{animation:none}}
+
+.channel-delete-danger{color:#b42318!important}
