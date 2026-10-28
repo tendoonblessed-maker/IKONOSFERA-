@@ -11,7 +11,7 @@ type Props={
  selectionMode?:boolean;
  selectedForBulk?:boolean;
  onOpen:()=>void;
- onAction:(action:'hide'|'pin'|'unpin'|'delete_everyone')=>void;
+ onAction:(action:'hide'|'delete_self'|'pin'|'unpin'|'delete_everyone'|'block')=>void;
 };
 
 function timeLabel(input:string|null){
@@ -52,8 +52,9 @@ export default function ChatInboxRow({row,currentUserId,active,selectionMode=fal
      <summary aria-label={'Действия с чатом '+name} title="Управление чатом">···</summary>
      <div className="chat-row-actions">
        <button type="button" onClick={()=>onAction(pinned?'unpin':'pin')}>{pinned?'Открепить':'Закрепить'}</button>
-       <button type="button" onClick={()=>onAction('hide')}>Скрыть у себя</button>
-       <button type="button" onClick={()=>onAction('delete_everyone')}>Удалить у всех</button>
+       <button type="button" onClick={()=>onAction('delete_self')}>Удалить у себя</button>
+       <button type="button" className="ik-danger-action" onClick={()=>onAction('delete_everyone')}>Удалить для обоих</button>
+       {other&&<button type="button" onClick={()=>onAction('block')}>Заблокировать пользователя</button>}
      </div>
    </details>}
  </div>;
