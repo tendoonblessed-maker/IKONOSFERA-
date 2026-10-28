@@ -7,7 +7,7 @@ export const backendReady = Boolean(apiUrl && anonKey);
 export type Session = { access_token: string; refresh_token: string; expires_at: number };
 export type Profile = { id: string; username: string; display_name: string; avatar_path?: string|null; cover_path?: string|null; bio?: string };
 export type DirectChat = { id: string; user_a: string; user_b: string; created_at: string };
-export type ChatMessage = { id: string; chat_id: string; sender_id: string; body: string; created_at: string };
+export type ChatMessage = { id: string; chat_id: string; sender_id: string; body: string; created_at: string; media_path: string|null; media_type: "image"|"video"|null };
 const STORAGE = 'ikonosfera-session-v1';
 
 function ensureReady() { if (!backendReady) throw Error('Сервер пока не подключён'); }
@@ -102,9 +102,46 @@ export async function listProfiles(token: string, ids: string[]) {
   return http<Profile[]>(`/rest/v1/profiles?select=id,username,display_name,avatar_path,cover_path,bio&id=in.(${ids.map(encodeURIComponent).join(',')})`,{token});
 }
 export async function listMessages(token: string, chatId: string) {
-  return http<ChatMessage[]>(`/rest/v1/messages?select=id,chat_id,sender_id,body,created_at&chat_id=eq.${encodeURIComponent(chatId)}&order=created_at.desc&limit=100`,{token});
+  return http<ChatMessage[]>(`/rest/v1/messages?select=id,chat_id,sender_id,body,created_at,media_path,media_type&chat_id=eq.${encodeURIComponent(chatId)}&order=created_at.desc&limit=100`,{token});
 }
 export async function postMessage(token: string, chatId: string, userId: string, body: string) {
-  const result=await http<ChatMessage[]>('/rest/v1/messages?select=id,chat_id,sender_id,body,created_at',{token,method:'POST',body:{chat_id:chatId,sender_id:userId,body},extraHeaders:{Prefer:'return=representation'}});
+  const result=await http<ChatMessage[]>('/rest/v1/messages?select=id,chat_id,sender_id,body,created_at,media_path,media_type',{token,method:'POST',body:{chat_id:chatId,sender_id:userId,body},extraHeaders:{Prefer:'return=representation'}});
   if (!result[0]) throw Error('Сообщение не сохранено'); return result[0];
+}
+
+export async function uploadDirectMedia(token:string,chatId:string,userId:string,file:File):Promise<{path:string;type:"image"|"video"}>{
+ const allowed:Record<string,string>={"image/jpeg":"jpg","image/png":"png","image/webp":"webp","video/mp4":"mp4","video/webm":"webm","video/quicktime":"mov"};
+ const ext=allowed[file.type];
+ if(!ext)throw Error("Поддерживаются JPG, PNG, WebP, MP4, WebM и MOV.");
+ if(file.size===0||file.size>25*1024*1024)throw Error("Размер фото или видео должен быть до 25 МБ.");
+ const path=chatId+"/"+userId+"/"+crypto.randomUUID()+"."+ext;
+ const res=await fetch(apiUrl+"/storage/v1/object/ikonosfera-direct-media/"+path,{
+  method:"POST",headers:{apikey:anonKey,Authorization:"Bearer "+token,"Content-Type":file.type,"x-upsert":"false"},body:file
+ });
+ if(!res.ok){const err=await res.json().catch(()=>null);throw Error(err?.message||err?.error||"Не удалось загрузить файл");}
+ return {path,type:file.type.startsWith("image/")?"image":"video"};
+}
+export async function sendDirectMedia(token:string,chatId:string,userId:string,file:File,caption=""){
+ const {path,type}=await uploadDirectMedia(token,chatId,userId,file);
+ try{
+  const messages=await http<ChatMessage[]>('/rest/v1/messages?select=id,chat_id,sender_id,body,created_at,media_path,media_type',{
+   token,method:"POST",body:{chat_id:chatId,sender_id:userId,body:caption.trim().slice(0,4000),media_path:path,media_type:type},
+   extraHeaders:{Prefer:"return=representation"}
+  });
+  if(!messages[0])throw Error("Медиа не отправлено");
+  return messages[0];
+ }catch(e){
+  await fetch(apiUrl+"/storage/v1/object/ikonosfera-direct-media/"+path,{method:"DELETE",headers:{apikey:anonKey,Authorization:"Bearer "+token}}).catch(()=>{});
+  throw e;
+ }
+}
+export async function getDirectMediaUrl(token:string,path:string):Promise<string>{
+ const res=await fetch(apiUrl+"/storage/v1/object/sign/ikonosfera-direct-media/"+path,{
+  method:"POST",headers:{apikey:anonKey,Authorization:"Bearer "+token,"Content-Type":"application/json"},
+  body:JSON.stringify({expiresIn:3600})
+ });
+ const value=await res.json().catch(()=>null);
+ if(!res.ok||!value?.signedURL)throw Error("Не удалось открыть вложение");
+ const signed=value.signedURL as string;
+ return signed.startsWith("http")?signed:apiUrl+"/storage/v1"+(signed.startsWith("/")?signed:"/"+signed);
 }
