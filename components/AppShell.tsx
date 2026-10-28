@@ -430,9 +430,11 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
         delete draftsRef.current[chatId];
         if(selectedRef.current===chatId)setDraft(current=>current.trim()===body?'':current);
       }
-      const updated=(await listMessages(token,chatId)).reverse();
-      // The user may have switched conversations while we awaited Supabase.
-      if(selectedRef.current===chatId)setChatMessages(updated);
+      // A sent message is not a failed send just because its refresh failed.
+      try{
+        const updated=(await listMessages(token,chatId)).reverse();
+        if(selectedRef.current===chatId)setChatMessages(updated);
+      }catch{/* The next inbox sync will show the successfully sent message. */}
     }catch(e){setError(userFacingError(e));}
     finally{setSending(false);}
   }
@@ -507,10 +509,11 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
     const chatId=selected,token=session.access_token;
     try{
       await manageMessage(token,messageId,action,body);
-      const updated=(await listMessages(token,chatId)).reverse();
-      if(selectedRef.current===chatId){
-        setMessageMenuId(null);setEditingMessageId(null);setChatMessages(updated);
-      }
+      if(selectedRef.current===chatId){setMessageMenuId(null);setEditingMessageId(null);}
+      try{
+        const updated=(await listMessages(token,chatId)).reverse();
+        if(selectedRef.current===chatId)setChatMessages(updated);
+      }catch{/* Keep the confirmed action; retry updating the history on polling. */}
     }catch(e){setError(userFacingError(e));}
   }
   async function reactToMessage(messageId:string,emoji:ReactionEmoji){
@@ -520,11 +523,11 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
     setSending(true);setError("");
     try{
       await setMessageReaction(token,userId,messageId,previous?.emoji===emoji?null:emoji);
-      const updated=await listMessageReactions(token,ids);
-      if(selectedRef.current===chatId){
-        setMessageReactions(updated);
-        setMessageReactionPicker(null);
-      }
+      if(selectedRef.current===chatId)setMessageReactionPicker(null);
+      try{
+        const updated=await listMessageReactions(token,ids);
+        if(selectedRef.current===chatId)setMessageReactions(updated);
+      }catch{/* Reaction was saved; the chat poll will reload its state. */}
     }catch(e){setError(userFacingError(e));}finally{setSending(false);}
   }
   async function sendAttachment(file:File|undefined){
@@ -533,9 +536,11 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
     setSending(true);setError("");
     try{
       await sendDirectMedia(token,chatId,userId,file);
-      const updated=(await listMessages(token,chatId)).reverse();
-      if(selectedRef.current===chatId)setChatMessages(updated);
       setNotice("Вложение отправлено.");
+      try{
+        const updated=(await listMessages(token,chatId)).reverse();
+        if(selectedRef.current===chatId)setChatMessages(updated);
+      }catch{/* Do not report a sent attachment as failed during refresh. */}
     }catch(e){setError(userFacingError(e));}
     finally{setSending(false);}
   }
