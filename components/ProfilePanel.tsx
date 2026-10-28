@@ -10,9 +10,9 @@ import {
 } from "@/lib/social";
 
 const readableError=(e:unknown)=>e instanceof Error?e.message:"Что-то пошло не так";
-type Props={token:string;userId:string;targetId:string;onBack:()=>void;onOwnProfileChange:()=>void;onMessage:(username:string)=>void;onOpenChannel:(channel:Channel)=>void};
+type Props={token:string;userId:string;targetId:string;onBack:()=>void;onOwnProfileChange:()=>void;onMessage:(username:string)=>void;onOpenChannel:(channel:Channel)=>void;isBlocked?:boolean;onBlockUser?:(targetId:string)=>void};
 
-export default function ProfilePanel({token,userId,targetId,onBack,onOwnProfileChange,onMessage,onOpenChannel}:Props){
+export default function ProfilePanel({token,userId,targetId,onBack,onOwnProfileChange,onMessage,onOpenChannel,isBlocked=false,onBlockUser}:Props){
  const mine=targetId===userId;
  const [profile,setProfile]=useState<FullProfile|null>(null);
  const [userActivity,setUserActivity]=useState<UserActivity|null>(null);
@@ -126,7 +126,10 @@ export default function ProfilePanel({token,userId,targetId,onBack,onOwnProfileC
      </div>
      {profile?<div className="profile-identity"><h1>{profile.display_name}</h1><p>@{profile.username}</p><p className={userActivity?.status==="в сети"?"ik-profile-activity ik-online-label":"ik-profile-activity"}>{activityLabel(userActivity)}</p>
         {profile.bio&&<div className="profile-bio">{profile.bio}</div>}
-        {!mine&&<button type="button" className="accent-button profile-message-button" onClick={()=>onMessage(profile.username)}>Написать сообщение</button>}</div>:<p>Загрузка профиля…</p>}
+        {!mine&&<div className="ik-profile-conversation-actions">
+          <button type="button" className="accent-button profile-message-button" disabled={isBlocked} onClick={()=>onMessage(profile.username)}>{isBlocked?"Заблокирован":"Написать сообщение"}</button>
+          {!isBlocked&&onBlockUser&&<button type="button" className="ik-profile-block-action" onClick={()=>onBlockUser(targetId)}>Заблокировать</button>}
+        </div>}</div>:<p>Загрузка профиля…</p>}
     </div>
     {mine&&!visitorPreview&&editing&&<form className="profile-editor" onSubmit={save}>
      <h2>Редактирование профиля</h2><p className="profile-editor-intro">Измени информацию о себе и нажми «Сохранить изменения».</p>

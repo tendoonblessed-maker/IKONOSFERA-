@@ -10,8 +10,9 @@ type Props={
  active:boolean;
  selectionMode?:boolean;
  selectedForBulk?:boolean;
+ blocked?:boolean;
  onOpen:()=>void;
- onAction:(action:'hide'|'pin'|'unpin'|'delete_everyone')=>void;
+ onAction:(action:'hide'|'delete_self'|'pin'|'unpin'|'delete_everyone'|'block')=>void;
 };
 
 function timeLabel(input:string|null){
@@ -26,7 +27,7 @@ function timeLabel(input:string|null){
  return date.toLocaleDateString('ru-RU',{day:'2-digit',month:'2-digit'});
 }
 
-export default function ChatInboxRow({row,currentUserId,active,selectionMode=false,selectedForBulk=false,onOpen,onAction}:Props){
+export default function ChatInboxRow({row,currentUserId,active,selectionMode=false,selectedForBulk=false,blocked=false,onOpen,onAction}:Props){
  const {chat,other,preview}=row;
  const pinned=Boolean(chat.pinned_for?.includes(currentUserId));
  const unread=Math.max(0,Number(preview?.unread_count||0));
@@ -41,7 +42,7 @@ export default function ChatInboxRow({row,currentUserId,active,selectionMode=fal
      <span className="contact-avatar">{imageUrl(other?.avatar_path)?<img className="avatar-image" src={imageUrl(other?.avatar_path)||''} alt=""/>:name.slice(0,1).toUpperCase()}</span>
      <span className="contact-info">
        <span className="ik-chat-title"><strong>{name}</strong>{pinned&&<span className="ik-pin-mark" title="Закреплён">◆</span>}</span>
-       <span className="ik-chat-preview">{lastText}</span>
+       <span className="ik-chat-preview">{blocked?'В чёрном списке':lastText}</span>
      </span>
      <span className="ik-chat-meta">
        {stamp&&<time dateTime={preview?.last_created_at||undefined}>{stamp}</time>}
@@ -52,8 +53,9 @@ export default function ChatInboxRow({row,currentUserId,active,selectionMode=fal
      <summary aria-label={'Действия с чатом '+name} title="Управление чатом">···</summary>
      <div className="chat-row-actions">
        <button type="button" onClick={()=>onAction(pinned?'unpin':'pin')}>{pinned?'Открепить':'Закрепить'}</button>
-       <button type="button" onClick={()=>onAction('hide')}>Скрыть у себя</button>
-       <button type="button" onClick={()=>onAction('delete_everyone')}>Удалить у всех</button>
+       <button type="button" onClick={()=>onAction('delete_self')}>Удалить у себя</button>
+       <button type="button" className="ik-danger-action" onClick={()=>onAction('delete_everyone')}>Удалить для обоих</button>
+       {other&&!blocked&&<button type="button" onClick={()=>onAction('block')}>Заблокировать пользователя</button>}
      </div>
    </details>}
  </div>;

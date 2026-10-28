@@ -191,8 +191,22 @@ export function explainProfileError(error:unknown):string{
  return text;
 }
 
-export async function manageChat(token:string,chatId:string,action:"hide"|"pin"|"unpin"|"delete_everyone"){
+export async function manageChat(token:string,chatId:string,action:"hide"|"delete_self"|"pin"|"unpin"|"delete_everyone"){
  return http('/rest/v1/rpc/manage_direct_chat',{token,method:'POST',body:{p_chat_id:chatId,p_action:action}});
+}
+
+export type UserBlock={owner_id:string;blocked_id:string;created_at:string};
+/** RLS limits this list to the signed-in user's own blacklist. */
+export async function listBlockedUsers(token:string,userId:string):Promise<UserBlock[]>{
+ return http<UserBlock[]>('/rest/v1/user_blocks?select=owner_id,blocked_id,created_at&owner_id=eq.'+encodeURIComponent(userId)+'&order=created_at.desc',{token});
+}
+export async function blockUser(token:string,userId:string,targetId:string):Promise<void>{
+ if(!targetId||userId===targetId)throw Error('Нельзя заблокировать самого себя.');
+ await http('/rest/v1/user_blocks?on_conflict=owner_id,blocked_id',{token,method:'POST',
+  body:{owner_id:userId,blocked_id:targetId},extraHeaders:{Prefer:'resolution=ignore-duplicates,return=minimal'}});
+}
+export async function unblockUser(token:string,userId:string,targetId:string):Promise<void>{
+ await http('/rest/v1/user_blocks?owner_id=eq.'+encodeURIComponent(userId)+'&blocked_id=eq.'+encodeURIComponent(targetId),{token,method:'DELETE'});
 }
 export async function manageMessage(token:string,messageId:string,action:"hide"|"delete_everyone"|"edit",body?:string){
  return http('/rest/v1/rpc/manage_direct_message',{token,method:'POST',body:{p_message_id:messageId,p_action:action,p_body:body??null}});

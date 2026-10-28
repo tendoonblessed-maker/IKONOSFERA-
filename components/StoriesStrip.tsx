@@ -41,7 +41,7 @@ export default function StoriesStrip({token,userId,contacts,ownProfile}:Props){
   <div className="home-stories-header"><strong>Истории</strong><span>Доступны 24 часа</span></div>
   <div className="home-stories-track">
    {people.map((p,i)=><button type="button" key={p.id} className={'home-story-item'+(p.stories.length?' has-stories':'')} onClick={()=>p.stories.length?setActive({person:i,story:0}):inputRef.current?.click()}>
-    <span className="home-story-ring"><span className="home-story-avatar">{imageUrl(p.avatar)?<img src={imageUrl(p.avatar)||''} alt=""/>:<span>{p.name.slice(0,1).toUpperCase()}</span>}</span>{p.id===userId&&<i className="home-story-plus">+</i>}</span>
+    <span className="home-story-ring"><span className="home-story-avatar">{imageUrl(p.avatar)?<img src={imageUrl(p.avatar)||''} alt=""/>:<span>{p.name.slice(0,1).toUpperCase()}</span>}</span>{p.id===userId&&<span className="home-story-plus" aria-hidden="true"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2.8" strokeLinecap="round"><path d="M12 5v14M5 12h14"/></svg></span>}</span>
     <small>{p.name}</small>
    </button>)}
    {!people.slice(1).length&&<p className="home-stories-empty">Истории людей, с которыми ты переписываешься, появятся здесь.</p>}
