@@ -111,3 +111,15 @@ test('opening a direct conversation keeps an empty draft visible only to its ini
  assert.match(shell,/await startDirectChat\(session\.access_token/);
  assert.match(shell,/await refresh\(session\.access_token,userId,id\)/);
 });
+
+
+test('Direct messages have a content-sized bubble and separate reaction controls',()=>{
+ const shell=load('components/AppShell.tsx');
+ const css=load('app/globals.css');
+ assert.match(shell,/className={`chat-message-row/);
+ assert.match(shell,/className="chat-message-tools"/);
+ assert.match(css,/\.conversation-history>\.chat-message-row>\.bubble\{/);
+ assert.match(css,/width:fit-content;min-width:0/);
+ assert.match(css,/\.chat-list \.chat-item>\.contact-info/);
+ assert.match(css,/\.chat-list \.chat-row-wrap>\.chat-item/);
+});
