@@ -5,7 +5,7 @@ import { changeProfile, explainProfileError, validateUsername } from "@/lib/supa
 import {getUserActivities,activityLabel,type UserActivity} from "@/lib/activity";
 import {
  addProfilePhoto, addStory, deleteProfilePhoto, deleteStory, getFullProfile, getProfilePhotos,
- getStories, imageUrl, listOwnedChannels, removeUpload, updateFullProfile, uploadPhoto,
+ getStories, imageUrl, listOwnedChannels, listChannels, removeUpload, updateFullProfile, uploadPhoto,
  type Channel, type FullProfile, type ProfilePhoto, type Story
 } from "@/lib/social";
 
@@ -23,6 +23,7 @@ export default function ProfilePanel({token,userId,targetId,onBack,onOwnProfileC
  const [chosenChannelId,setChosenChannelId]=useState<string>("");
  const [name,setName]=useState("");const [username,setUsername]=useState("");const [bio,setBio]=useState("");
  const [editing,setEditing]=useState(false);
+ const [visitorPreview,setVisitorPreview]=useState(false);
  const [usernameTouched,setUsernameTouched]=useState(false);
  const usernameError=usernameTouched?validateUsername(username):null;const [busy,setBusy]=useState(false);
  const [error,setError]=useState("");const [notice,setNotice]=useState("");
@@ -31,9 +32,9 @@ export default function ProfilePanel({token,userId,targetId,onBack,onOwnProfileC
  const activeStory=storyIndex===null?null:stories[storyIndex]??null;
  const reload=useCallback(async()=>{
   const [p,gallery,active,owned]=await Promise.all([
-   getFullProfile(token,targetId),getProfilePhotos(token,targetId),getStories(token,targetId),listOwnedChannels(token,targetId)
+   getFullProfile(token,targetId),getProfilePhotos(token,targetId),getStories(token,targetId),mine?listOwnedChannels(token,targetId):listChannels(token)
   ]);
-  setProfile(p);setPhotos(gallery);setStories(active);setOwnedChannels(owned);
+  setProfile(p);setPhotos(gallery);setStories(active);setOwnedChannels(mine?owned:[]);
   setFeaturedChannel(owned.find(ch=>ch.id===p?.featured_channel_id)??null);
   setChosenChannelId(p?.featured_channel_id??"");
   setName(p?.display_name||"");setUsername(p?.username||"");setBio(p?.bio||"");
@@ -95,23 +96,24 @@ export default function ProfilePanel({token,userId,targetId,onBack,onOwnProfileC
   window.addEventListener('keydown',onKey);return()=>window.removeEventListener('keydown',onKey);
  },[storyIndex,stories.length]);
  const avatar=profile?imageUrl(profile.avatar_path):null;
+ const viewingAsVisitor=!mine||visitorPreview;
  const cover=profile?imageUrl(profile.cover_path):null;
  return <section className="profile-view" aria-label="Профиль пользователя">
    <header className="profile-topbar"><button type="button" className="profile-back" onClick={onBack} aria-label="Назад">‹ <span>Назад</span></button>
-     <strong>Профиль</strong>{mine?<button type="button" className="profile-edit-trigger" onClick={()=>setEditing(v=>!v)} aria-expanded={editing}>{editing?"Закрыть":"✎ Редактировать"}</button>:<span/>}</header>
+     <strong>{visitorPreview?"Профиль глазами других":"Профиль"}</strong>{mine?<div className="ik-profile-top-actions"><button type="button" className="profile-edit-trigger" onClick={()=>{setVisitorPreview(v=>!v);setEditing(false);}} aria-pressed={visitorPreview}>{visitorPreview?"Вернуться":"Как видят другие"}</button>{!visitorPreview&&<button type="button" className="profile-edit-trigger" onClick={()=>setEditing(v=>!v)} aria-expanded={editing}>{editing?"Закрыть":"✎ Редактировать"}</button>}</div>:<span/>}</header>
    <div className="profile-scroll">
     <div className="profile-hero">
      <div className="profile-cover" style={cover?{backgroundImage:"url("+cover+")"}:undefined}>
-       {mine&&<label className="profile-cover-action">Изменить обложку<input aria-label="Выбрать обложку" type="file" accept="image/png,image/jpeg,image/webp" disabled={busy} onChange={e=>{void chooseImage(e.target.files?.[0],"cover");e.target.value="";}}/></label>}
+       {!viewingAsVisitor&&<label className="profile-cover-action">Изменить обложку<input aria-label="Выбрать обложку" type="file" accept="image/png,image/jpeg,image/webp" disabled={busy} onChange={e=>{void chooseImage(e.target.files?.[0],"cover");e.target.value="";}}/></label>}
      </div>
      <div className={"profile-avatar-large"+(stories.length?" profile-avatar-has-story":"")} onClick={()=>{if(stories.length)setStoryIndex(0);}} role={stories.length?"button":undefined} tabIndex={stories.length?0:undefined} onKeyDown={e=>{if(stories.length&&(e.key==="Enter"||e.key===" ")){e.preventDefault();setStoryIndex(0);}}} aria-label={stories.length?"Посмотреть истории":undefined}>{avatar?<img src={avatar} alt="Аватар пользователя"/>:<span>{(profile?.display_name||"?").charAt(0).toUpperCase()}</span>}
-      {mine&&<label className="profile-avatar-camera" title="Изменить фото"><span aria-hidden="true">▣</span><input aria-label="Загрузить фото профиля" type="file" accept="image/png,image/jpeg,image/webp" disabled={busy} onChange={e=>{void chooseImage(e.target.files?.[0],"avatar");e.target.value="";}}/></label>}
+      {!viewingAsVisitor&&<label className="profile-avatar-camera" title="Изменить фото"><span aria-hidden="true">▣</span><input aria-label="Загрузить фото профиля" type="file" accept="image/png,image/jpeg,image/webp" disabled={busy} onChange={e=>{void chooseImage(e.target.files?.[0],"avatar");e.target.value="";}}/></label>}
      </div>
      {profile?<div className="profile-identity"><h1>{profile.display_name}</h1><p>@{profile.username}</p><p className={userActivity?.status==="в сети"?"ik-profile-activity ik-online-label":"ik-profile-activity"}>{activityLabel(userActivity)}</p>
         {profile.bio&&<div className="profile-bio">{profile.bio}</div>}
         {!mine&&<button type="button" className="accent-button profile-message-button" onClick={()=>onMessage(profile.username)}>Написать сообщение</button>}</div>:<p>Загрузка профиля…</p>}
     </div>
-    {mine&&editing&&<form className="profile-editor" onSubmit={save}>
+    {mine&&!visitorPreview&&editing&&<form className="profile-editor" onSubmit={save}>
      <h2>Редактирование профиля</h2><p className="profile-editor-intro">Измени информацию о себе и нажми «Сохранить изменения».</p>
      <label>Имя<input value={name} onChange={e=>setName(e.target.value)} maxLength={60} required/></label>
      <label>Юзернейм<input value={username} onChange={e=>{setUsername(e.target.value);setUsernameTouched(true);}} onBlur={()=>setUsernameTouched(true)} maxLength={48} aria-invalid={Boolean(usernameError)} aria-describedby="username-feedback" required/><small id="username-feedback" className={usernameError?"profile-field-error":"profile-field-hint"}>{usernameError||"От 3 до 24 символов: латинские буквы, цифры и _. Например, tendo888."}</small></label>
@@ -128,27 +130,27 @@ export default function ProfilePanel({token,userId,targetId,onBack,onOwnProfileC
     </form>}
     {(featuredChannel||mine)&&<div className="profile-content-section profile-featured-section">
       <div className="profile-section-title"><div><h2>Мой канал</h2><p>Закреплён в профиле</p></div>
-       {mine&&!editing&&<button type="button" className="profile-action" onClick={()=>setEditing(true)}>Редактировать профиль</button>}</div>
+       {mine&&!visitorPreview&&!editing&&<button type="button" className="profile-action" onClick={()=>setEditing(true)}>Редактировать профиль</button>}</div>
       {featuredChannel?<button type="button" className="profile-featured-channel" onClick={()=>onOpenChannel(featuredChannel)}>
-        <span className="profile-featured-icon">#</span><span className="profile-featured-details"><strong>{featuredChannel.title}</strong><small>@{featuredChannel.slug}</small>
+        <span className="profile-featured-icon" aria-hidden="true">#</span><span className="profile-featured-details"><strong>{featuredChannel.title}</strong><small>@{featuredChannel.slug}</small>
         {featuredChannel.description&&<span>{featuredChannel.description}</span>}</span><span className="profile-featured-arrow">›</span>
       </button>:<p className="profile-empty">Здесь можно закрепить свой канал. Открой «Изм.» и выбери канал в настройках профиля.</p>}
     </div>}
     <div className="profile-content-section">
      <div className="profile-section-title"><div><h2>Истории</h2><p>Доступны 24 часа</p></div>
-       {mine&&<label className="profile-action">+ История<input type="file" aria-label="Добавить историю" accept="image/png,image/jpeg,image/webp" disabled={busy} onChange={e=>{void chooseImage(e.target.files?.[0],"story");e.target.value="";}}/></label>}</div>
+       {!viewingAsVisitor&&<label className="profile-action">+ История<input type="file" aria-label="Добавить историю" accept="image/png,image/jpeg,image/webp" disabled={busy} onChange={e=>{void chooseImage(e.target.files?.[0],"story");e.target.value="";}}/></label>}</div>
      {stories.length?<div className="profile-stories">{stories.map(st=><div className="profile-story" key={st.id}>
       <button type="button" className="profile-story-thumb" onClick={()=>setStoryIndex(stories.findIndex(item=>item.id===st.id))}><img src={imageUrl(st.image_path)||""} alt="История пользователя"/></button>
       <small>{new Date(st.expires_at).toLocaleTimeString("ru-RU",{hour:"2-digit",minute:"2-digit"})}</small>
-      {mine&&<button disabled={busy} className="profile-small-delete" type="button" onClick={()=>void run(async()=>{await deleteStory(token,st.id);await removeUpload(token,st.image_path).catch(()=>{});})}>Удалить</button>}
+      {!viewingAsVisitor&&<button disabled={busy} className="profile-small-delete" type="button" onClick={()=>void run(async()=>{await deleteStory(token,st.id);await removeUpload(token,st.image_path).catch(()=>{});})}>Удалить</button>}
      </div>)}</div>:<p className="profile-empty">Пока нет активных историй.</p>}
     </div>
     <div className="profile-content-section">
      <div className="profile-section-title"><div><h2>Фото профиля</h2><p>Твоя галерея</p></div>
-       {mine&&<label className="profile-action">+ Фото<input aria-label="Выложить фото в профиль" type="file" accept="image/png,image/jpeg,image/webp" disabled={busy} onChange={e=>{void chooseImage(e.target.files?.[0],"photo");e.target.value="";}}/></label>}</div>
+       {!viewingAsVisitor&&<label className="profile-action">+ Фото<input aria-label="Выложить фото в профиль" type="file" accept="image/png,image/jpeg,image/webp" disabled={busy} onChange={e=>{void chooseImage(e.target.files?.[0],"photo");e.target.value="";}}/></label>}</div>
      {photos.length?<div className="profile-photo-grid">{photos.map(photo=><div className="profile-grid-cell" key={photo.id}>
       <button type="button" onClick={()=>{const url=imageUrl(photo.image_path);if(url)setViewer({url,caption:photo.caption});}}><img src={imageUrl(photo.image_path)||""} alt="Фото в профиле"/></button>
-      {mine&&<button type="button" className="profile-grid-delete" disabled={busy} title="Удалить фото" onClick={()=>void run(async()=>{await deleteProfilePhoto(token,photo.id);await removeUpload(token,photo.image_path).catch(()=>{});})}>×</button>}
+      {!viewingAsVisitor&&<button type="button" className="profile-grid-delete" disabled={busy} title="Удалить фото" onClick={()=>void run(async()=>{await deleteProfilePhoto(token,photo.id);await removeUpload(token,photo.image_path).catch(()=>{});})}>×</button>}
      </div>)}</div>:<p className="profile-empty">В галерее пока нет фотографий.</p>}
     </div>
     <p className="profile-privacy">Фото и истории доступны другим зарегистрированным пользователям. Не публикуй личные документы.</p>
