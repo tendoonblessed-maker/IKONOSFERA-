@@ -3,7 +3,7 @@ import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { listProfiles, type Profile } from "@/lib/supabase-rest";
 import {
  addPostComment, deletePost, editChannelPost, manageChannelComment, imageUrl, listChannelPosts, listPostComments, listPostReactions, setPostReaction, REACTION_EMOJIS, publishPost,
- removeUpload, uploadChannelAttachment, updateChannel, deleteChannel, getChannelSubscriberCounts, listDiscussionMessages, sendDiscussionMessage, deleteDiscussionMessage, listDiscussionComments,
+ removeUpload, uploadChannelAttachment, updateChannel, updateChannelAvatar, deleteChannel, getChannelSubscriberCounts, listDiscussionMessages, sendDiscussionMessage, deleteDiscussionMessage, listDiscussionComments,
  type Channel, type ChannelPost, type PostComment, type PostReaction, type ReactionEmoji, type DiscussionMessage
 } from "@/lib/social";
 
@@ -17,6 +17,7 @@ export default function ChannelsPanel({token,userId,channel,onBack,onShowProfile
  const [subscriberCount,setSubscriberCount]=useState<number|null>(null);
  useEffect(()=>{let cancelled=false;void getChannelSubscriberCounts(token,[channel.id]).then(counts=>{if(!cancelled)setSubscriberCount(counts[channel.id]??0);}).catch(()=>{if(!cancelled)setSubscriberCount(null);});return()=>{cancelled=true;};},[token,channel.id,subscribed]);
  const [settingsOpen,setSettingsOpen]=useState(false);
+ const [avatarBusy,setAvatarBusy]=useState(false);
  const [settingsTitle,setSettingsTitle]=useState(channel.title);
  const [settingsSlug,setSettingsSlug]=useState(channel.slug);
  const [settingsDescription,setSettingsDescription]=useState(channel.description);
@@ -42,6 +43,25 @@ export default function ChannelsPanel({token,userId,channel,onBack,onShowProfile
   const [messages,replies]=await Promise.all([listDiscussionMessages(token,channel.id),listDiscussionComments(token,channel.id)]);
   setDiscussionMessages(messages);setDiscussionComments(replies);
  },[token,channel.id]);
+ async function changeChannelAvatar(file:File|undefined){
+  if(!mine||!file||avatarBusy)return;
+  if(!["image/jpeg","image/png","image/webp"].includes(file.type)){setError("Выбери JPG, PNG или WebP.");return;}
+  if(file.size>3*1024*1024){setError("Аватарка должна быть меньше 3 МБ.");return;}
+  setAvatarBusy(true);setError("");
+  try{
+   const bitmap=await createImageBitmap(file);
+   const canvas=document.createElement("canvas");canvas.width=512;canvas.height=512;
+   const context=canvas.getContext("2d");
+   if(!context){bitmap.close();throw Error("Редактор изображений недоступен.");}
+   const scale=Math.max(512/bitmap.width,512/bitmap.height);
+   context.drawImage(bitmap,(512-bitmap.width*scale)/2,(512-bitmap.height*scale)/2,bitmap.width*scale,bitmap.height*scale);
+   bitmap.close();
+   const blob=await new Promise<Blob>((resolve,reject)=>canvas.toBlob(v=>v?resolve(v):reject(Error("Не удалось обработать фото.")),"image/jpeg",.9));
+   const uploaded=await uploadChannelAttachment(token,userId,new File([blob],"channel-avatar.jpg",{type:"image/jpeg"}));
+   try{const updated=await updateChannelAvatar(token,currentChannel.id,userId,uploaded.path);setCurrentChannel(updated);onChannelUpdated?.(updated);setNotice("Аватарка канала обновлена.");}
+   catch(e){await removeUpload(token,uploaded.path).catch(()=>{});throw e;}
+  }catch(e){setError(readable(e));}finally{setAvatarBusy(false);}
+ }
  async function saveSettings(e:FormEvent){
   e.preventDefault();if(!mine||busy)return;setBusy(true);setError("");
   try{const updated=await updateChannel(token,channel.id,userId,settingsTitle,settingsSlug,settingsDescription,settingsDiscussion);
@@ -168,7 +188,7 @@ export default function ChannelsPanel({token,userId,channel,onBack,onShowProfile
     <form onSubmit={sendDiscussion} style={{display:"flex",gap:8}}><input aria-label="Сообщение в обсуждении" placeholder="Сообщение участникам…" value={discussionDraft} maxLength={1500} onChange={e=>setDiscussionDraft(e.target.value)} style={{flex:1,minWidth:0}}/><button className="accent-button" type="submit" disabled={busy||!discussionDraft.trim()}>Отправить</button></form>
    </section>}
 
-   <div className="channel-cover-card"><div className="channel-emblem">#</div><h1>{currentChannel.title}</h1><p>@{currentChannel.slug}</p>{subscriberCount!==null&&<p className="channel-subscribers">{subscriberCount.toLocaleString("ru-RU")} подписчиков</p>}
+   <div className="channel-cover-card"><div className="channel-emblem">{currentChannel.avatar_path?<img src={imageUrl(currentChannel.avatar_path) ?? undefined} alt="" className="ik-channel-avatar-img"/>:"#"}{mine&&<label className="ik-channel-avatar-edit" title="Изменить аватарку канала"><input type="file" accept="image/jpeg,image/png,image/webp" disabled={avatarBusy} onChange={e=>{void changeChannelAvatar(e.target.files?.[0]);e.target.value="";}}/><span>{avatarBusy?"…":"✎"}</span></label>}</div><h1>{currentChannel.title}</h1><p>@{currentChannel.slug}</p>{subscriberCount!==null&&<p className="channel-subscribers">{subscriberCount.toLocaleString("ru-RU")} подписчиков</p>}
     {channel.description&&<p className="channel-description">{currentChannel.description}</p>}
     <span>Канал IKONOSFERA</span><div className="channel-cover-actions">
     {!mine&&<button type="button" className="accent-button" onClick={onToggleSubscribe}>{subscribed?"Отписаться":"Подписаться"}</button>}
@@ -184,7 +204,7 @@ export default function ChannelsPanel({token,userId,channel,onBack,onShowProfile
    <div className="channel-section-heading">Публикации</div>
    {posts.length===0&&<div className="channel-empty">Публикаций пока нет.</div>}
    {posts.map(post=><article className="channel-post" key={post.id}>
-    <div className="channel-post-meta"><span className="channel-post-icon">#</span><strong>{currentChannel.title}</strong><time dateTime={post.created_at}>{formattedDate(post.created_at)}</time></div>
+    <div className="channel-post-meta"><span className="channel-post-icon">{currentChannel.avatar_path?<img src={imageUrl(currentChannel.avatar_path) ?? undefined} alt="" className="ik-channel-avatar-img"/>:"#"} </span><strong>{currentChannel.title}</strong><time dateTime={post.created_at}>{formattedDate(post.created_at)}</time></div>
     {editingPostId===post.id?<form className="channel-inline-editor" onSubmit={e=>{e.preventDefault();void savePostEdit(post.id);}}><textarea value={editingBody} maxLength={4000} onChange={e=>setEditingBody(e.target.value)}/><button type="submit">Сохранить</button><button type="button" onClick={()=>setEditingPostId(null)}>Отмена</button></form>:post.body&&<p className="channel-post-body">{post.body}</p>}
     {imageUrl(post.image_path)&&<img className="channel-post-image" src={imageUrl(post.image_path)||""} alt="Изображение к публикации"/>}
     {post.attachment_path&&post.attachment_type==="image"&&<img className="channel-post-image" src={imageUrl(post.attachment_path)||""} alt="Фото к посту"/>}
