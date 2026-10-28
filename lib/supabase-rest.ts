@@ -182,3 +182,10 @@ export async function manageChat(token:string,chatId:string,action:"hide"|"pin"|
 export async function manageMessage(token:string,messageId:string,action:"hide"|"delete_everyone"|"edit",body?:string){
  return http('/rest/v1/rpc/manage_direct_message',{token,method:'POST',body:{p_message_id:messageId,p_action:action,p_body:body??null}});
 }
+
+export async function findProfileByUsername(token:string,username:string):Promise<Profile|null>{
+ const value=username.trim().replace(/^@/,"").toLowerCase();
+ if(!/^[a-z0-9_]{3,24}$/.test(value))throw Error("Введи юзернейм: 3–24 латинских символа, цифры или _.");
+ const rows=await http<Profile[]>('/rest/v1/profiles?select=id,username,display_name,avatar_path,cover_path,bio&username=eq.'+encodeURIComponent(value)+'&limit=1',{token});
+ return rows[0]??null;
+}
