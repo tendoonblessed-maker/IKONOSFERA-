@@ -151,7 +151,7 @@ export default function ProfilePanel({token,userId,targetId,onBack,onOwnProfileC
     <p className="profile-privacy">Фото и истории доступны другим зарегистрированным пользователям. Не публикуй личные документы.</p>
     {(error||notice)&&<p role="status" className={error?"profile-error":"profile-success"}>{error||notice}</p>}
    </div>
-   {activeStory&&<div className="story-viewer" role="dialog" aria-modal="true" aria-label="Просмотр историй">
+   {activeStory&&<div className="story-viewer story-viewer-telegram" role="dialog" aria-modal="true" aria-label="Просмотр историй">
     <div className="story-viewer-stage" key={activeStory.id}>
      <div className="story-progress">{stories.map((st,i)=><span key={st.id} className="story-progress-track"><span className={i<(storyIndex??0)?"done":i===storyIndex?"playing":""}/></span>)}</div>
      <header className="story-viewer-header"><span className="story-viewer-avatar">{avatar?<img src={avatar} alt=""/>:(profile?.display_name||"?").charAt(0)}</span>
