@@ -1,6 +1,6 @@
 'use client';
 import {useCallback,useEffect,useState,type FormEvent} from 'react';
-import {groupMessages,sendGroupMessage,groupMembers,type Group,type GroupMessage} from '@/lib/groups';
+import {groupMessages,sendGroupMessage,groupMembers,markGroupRead,type Group,type GroupMessage} from '@/lib/groups';
 import {listProfiles,type Profile} from '@/lib/supabase-rest';
 import {getUserActivities,activityLabel,type UserActivity} from '@/lib/activity';
 import {imageUrl} from '@/lib/social';
@@ -17,12 +17,14 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile}:Pro
  const refresh=useCallback(async()=>{
   const [msgs,membership]=await Promise.all([groupMessages(token,group.id),groupMembers(token,group.id)]);
   setMessages(msgs);
+  if(document.visibilityState==='visible')await markGroupRead(token,group.id).catch(()=>{});
   const ids=membership.map(m=>m.user_id);
   const profiles=await listProfiles(token,ids);
   setMembers(profiles);
  },[token,group.id]);
  useEffect(()=>{void refresh().catch(e=>setError(String(e)));const timer=setInterval(()=>{if(document.visibilityState==='visible')void refresh().catch(()=>{});},4500);return()=>clearInterval(timer);},[refresh]);
- useEffect(()=>{if(!membersOpen||!members.length)return;let gone=false;const load=()=>{if(document.visibilityState==='visible')void getUserActivities(token,members.map(m=>m.id)).then(value=>{if(!gone)setPresence(value);}).catch(()=>{});};load();const t=setInterval(load,40000);return()=>{gone=true;clearInterval(t);};},[token,membersOpen,members]);
+ useEffect(()=>{if(!membersOpen)return;const onKey=(event:KeyboardEvent)=>{if(event.key==='Escape')setMembersOpen(false);};window.addEventListener('keydown',onKey);return()=>window.removeEventListener('keydown',onKey);},[membersOpen]);
+  useEffect(()=>{if(!membersOpen||!members.length)return;let gone=false;const load=()=>{if(document.visibilityState==='visible')void getUserActivities(token,members.map(m=>m.id)).then(value=>{if(!gone)setPresence(value);}).catch(()=>{});};load();const t=setInterval(load,40000);return()=>{gone=true;clearInterval(t);};},[token,membersOpen,members]);
  async function send(e:FormEvent){e.preventDefault();if(busy||!draft.trim())return;setBusy(true);setError('');
  try{await sendGroupMessage(token,group.id,userId,draft);setDraft('');await refresh();}
  catch(e){setError(e instanceof Error?e.message:'Ошибка отправки');}finally{setBusy(false);}}
