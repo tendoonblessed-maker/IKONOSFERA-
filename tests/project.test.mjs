@@ -69,3 +69,5 @@ test('email authentication accepts magic link or one-time code',()=>{
  assert.match(api,/verifyEmailCode/);
  assert.match(ui,/Sign in/);
 });
+
+test('Windows guest screen hides pre-login messenger sidebar',()=>{const css=load('app/globals.css');const ui=load('components/AppShell.tsx');assert.match(ui,/is-guest/);assert.match(css,/\.messenger\.is-guest \.chats-pane\{display:none!important\}/);assert.match(css,/\.messenger\.is-guest \.conversation-pane/);assert.match(ui,/Your sign-in link/);assert.match(ui,/Sign in/);});
