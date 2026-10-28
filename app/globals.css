@@ -1431,3 +1431,13 @@ body{position:relative}
  }
  .messenger.is-authenticated .ik-blacklist-section{border-radius:22px}
 }
+
+/* Exact center for the 'Моя история' add-story cross on iPhone. */
+.messenger.is-authenticated .home-story-plus{
+  display:flex!important;align-items:center!important;justify-content:center!important;
+  position:absolute;bottom:0;right:-2px;width:23px;height:23px;
+  padding:0!important;line-height:0!important;box-sizing:border-box;
+  border:2px solid #fff;border-radius:50%;background:#18181b;color:#fff;
+  transform:none!important;overflow:hidden;
+}
+.messenger.is-authenticated .home-story-plus svg{display:block;width:13px;height:13px;flex:0 0 13px;transform:none;margin:0;}
