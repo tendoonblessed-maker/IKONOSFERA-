@@ -49,6 +49,14 @@ export async function validSession(): Promise<Session | null> {
     return saveSession(next);
   } catch { clearSession(); return null; }
 }
+/** Development-only anonymous account. No email and no recovery after local data is lost.
+ * Requires Anonymous Sign-Ins enabled in Supabase Authentication settings.
+ */
+export async function createTemporaryAccount() {
+  const response = await http<{access_token:string;refresh_token:string;expires_in:number}>('/auth/v1/signup', { method:'POST', body: {data:{}} });
+  if (!response.access_token || !response.refresh_token) throw Error('Не удалось создать тестовый аккаунт. Проверь разрешение анонимных входов в Supabase.');
+  return saveSession(response);
+}
 export async function sendEmailCode(email: string) {
   await http('/auth/v1/otp', {method:'POST',body:{email,create_user:true}});
 }
@@ -56,7 +64,7 @@ export async function verifyEmailCode(email: string, token: string) {
   const response = await http<{access_token:string;refresh_token:string;expires_in:number}>(`/auth/v1/verify`,{method:'POST',body:{email,token,type:'email'}});
   return saveSession(response);
 }
-export async function currentUser(token: string) { return http<{id:string;email?:string}>('/auth/v1/user',{token}); }
+export async function currentUser(token: string) { return http<{id:string;email?:string;is_anonymous?:boolean}>('/auth/v1/user',{token}); }
 export async function signOut(token: string) { try { await http('/auth/v1/logout',{token,method:'POST'}); } finally { clearSession(); } }
 export async function myProfile(token: string, id: string) {
   const profiles=await http<Profile[]>(`/rest/v1/profiles?select=id,username,display_name&id=eq.${encodeURIComponent(id)}&limit=1`,{token});
