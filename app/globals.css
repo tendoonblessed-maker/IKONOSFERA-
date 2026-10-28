@@ -52,3 +52,176 @@ input:focus { border-color:#1b1b1b; }
  .conversation-placeholder { justify-content:flex-start; padding-top:34px; }
  .auth-panel { margin-top:14px; padding:20px; }
 }
+
+
+/* IKONOSFERA SOCIAL / editorial white UI */
+textarea{font:inherit;resize:vertical;color:#111;background:#f7f7f7;border:1px solid #e8e8e8;border-radius:13px;padding:12px;min-width:0;width:100%}
+textarea:focus-visible{outline:2px solid #111;outline-offset:2px}
+.avatar-image{width:100%;height:100%;object-fit:cover;display:block;border-radius:inherit}
+.contact-avatar-button{border:0;padding:0;cursor:pointer}
+.conversation-heading-link{border:0;background:none;text-align:left;cursor:pointer;padding:0;color:inherit}
+.release-pill{cursor:pointer;font-family:inherit}
+.open-own-profile{width:100%;display:flex;align-items:center;gap:12px;text-align:left;background:#fafafa;border:1px solid #e7e7e7;border-radius:16px;padding:12px;margin:0 0 20px;color:#111}
+.open-own-profile>span:nth-child(2){display:flex;flex:1;flex-direction:column;gap:4px;min-width:0}
+.open-own-profile strong{font-size:15px;overflow:hidden;text-overflow:ellipsis}
+.open-own-profile small{font-size:12px;color:#777}
+.open-own-profile>span:last-child{font-size:25px;color:#888}
+.pane-nav{justify-content:space-between}
+.pane-nav button{min-width:64px;flex:1;font-size:11px}
+
+/* Profile: cover, photo, bio, 24-hour stories, public gallery */
+.profile-view,.channel-view{display:flex;flex-direction:column;min-height:0;height:100%;width:100%;background:#fff}
+.profile-topbar,.channel-topbar{height:65px;min-height:65px;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:0 24px;border-bottom:1px solid #ebebeb;background:#fff}
+.profile-topbar>strong{font-size:16px;letter-spacing:-.02em}
+.profile-back,.profile-link,.channel-owner-link{border:none;background:transparent;color:#121212;min-height:42px;padding:4px 2px;font-weight:600;cursor:pointer}
+.profile-back{display:flex;align-items:center;gap:7px;font-size:28px;line-height:1}
+.profile-back span{font-size:13px;line-height:1}
+.profile-scroll,.channel-feed{flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain;padding-bottom:max(36px,env(safe-area-inset-bottom,0px))}
+.profile-hero{position:relative;text-align:center;padding-bottom:21px;border-bottom:1px solid #ededed}
+.profile-cover{height:190px;background:linear-gradient(125deg,#eaeaea 3%,#f7f7f7 20%,#d3d3d3 35%,#fff 55%,#d7d7d7 78%,#f8f8f8 96%);background-size:cover;background-position:center;position:relative}
+.profile-cover-action{position:absolute;right:16px;bottom:12px;background:rgba(255,255,255,.9);border:1px solid #eee;border-radius:12px;color:#111;font-size:12px;font-weight:600;padding:9px 12px;cursor:pointer}
+.profile-cover-action input,.profile-avatar-camera input,.profile-action input{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}
+.profile-avatar-large{width:124px;height:124px;position:relative;margin:-67px auto 0;border-radius:50%;background:#111;color:#fff;border:5px solid #fff;display:flex;align-items:center;justify-content:center;font-size:48px;font-weight:750;overflow:visible;box-shadow:0 4px 18px #0001}
+.profile-avatar-large>img{width:100%;height:100%;border-radius:50%;object-fit:cover}
+.profile-avatar-camera{position:absolute;bottom:2px;right:-8px;width:37px;height:37px;display:grid;place-items:center;background:#fff;border:1px solid #e5e5e5;border-radius:50%;color:#111;cursor:pointer;box-shadow:0 2px 12px #0002;font-size:24px}
+.profile-identity h1{font-size:29px;letter-spacing:-.04em;margin:12px 0 2px}
+.profile-identity>p{color:#777;font-size:14px;margin:0}
+.profile-bio{font-size:14px;line-height:1.5;max-width:490px;margin:15px auto 0;white-space:pre-wrap;overflow-wrap:anywhere;padding:0 18px}
+.profile-editor{display:grid;gap:14px;margin:24px 24px 0;padding:22px;background:#fafafa;border:1px solid #e7e7e7;border-radius:17px}
+.profile-editor h2{font-size:18px;margin:0}
+.profile-editor>label{display:grid;gap:7px;color:#555;font-size:13px}
+.profile-editor input{background:#fff}
+.profile-editor textarea{background:#fff}
+.profile-delete-actions{display:flex;flex-wrap:wrap;gap:12px}
+.profile-delete-actions button,.profile-small-delete{border:0;background:none;color:#666;font-size:12px;padding:4px 0;cursor:pointer}
+.profile-content-section{padding:25px 24px 29px;border-bottom:1px solid #ededed}
+.profile-section-title{display:flex;align-items:center;justify-content:space-between;gap:15px;margin-bottom:17px}
+.profile-section-title h2{font-size:19px;letter-spacing:-.025em;margin:0}
+.profile-section-title p{font-size:12px;color:#838383;margin:4px 0 0}
+.profile-action{position:relative;font-size:12px;line-height:1.2;white-space:nowrap;font-weight:650;cursor:pointer;border:1px solid #d9d9d9;border-radius:12px;background:#fff;padding:10px 13px;color:#111}
+.profile-action:hover{background:#f4f4f4}
+.profile-stories{display:flex;gap:18px;overflow-x:auto;padding:5px 0 7px}
+.profile-story{display:flex;flex-direction:column;align-items:center;gap:5px;min-width:91px}
+.profile-story-thumb{border:2px solid #222;background:#f5f5f5;border-radius:50%;width:89px;height:89px;padding:4px;overflow:hidden;cursor:pointer}
+.profile-story-thumb img{width:100%;height:100%;border-radius:50%;object-fit:cover}
+.profile-story small{font-size:11px;color:#777}
+.profile-photo-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.profile-grid-cell{position:relative;aspect-ratio:1;background:#f0f0f0;border-radius:9px;overflow:hidden}
+.profile-grid-cell>button:first-child{width:100%;height:100%;border:0;padding:0;background:none;cursor:pointer}
+.profile-grid-cell img{width:100%;height:100%;object-fit:cover;display:block}
+.profile-grid-delete{position:absolute;top:7px;right:7px;display:grid;place-items:center;width:28px;height:28px;background:#fff;border-radius:50%;border:1px solid #ddd;cursor:pointer;font-size:21px}
+.profile-empty{font-size:13px;color:#8c8c8c;margin:0}
+.profile-privacy{font-size:12px;color:#989898;line-height:1.5;padding:17px 24px;text-align:center}
+.profile-error,.profile-success{font-size:13px;line-height:1.5;padding:14px 18px;border:1px solid #ddd;border-radius:12px;margin:12px 24px;background:#f9f9f9;color:#222}
+.profile-error{border-color:#a9a9a9;background:#f3f3f3}
+.profile-lightbox{position:fixed;z-index:120;inset:0;background:rgba(0,0,0,.93);color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;padding:65px 18px 25px}
+.profile-lightbox img{display:block;max-width:min(96vw,900px);max-height:78dvh;object-fit:contain}
+.profile-lightbox-close{position:absolute;top:max(18px,env(safe-area-inset-top,0px));right:20px;border:1px solid #aaa;background:#222;color:#fff;border-radius:11px;min-height:40px;padding:8px 14px}
+.profile-lightbox p{font-size:13px;text-align:center;max-width:680px}
+
+/* Channels with ownership-protected posts and reply threads */
+.channel-browser{padding:10px 16px 24px}
+.channel-tools{display:grid;gap:8px}
+.channel-tools input{width:100%}
+.channel-tools .secondary-action{margin:0}
+.channel-create-form{display:grid;gap:12px;border:1px solid #e7e7e7;padding:16px;margin-top:12px;border-radius:14px;background:#fcfcfc}
+.channel-create-form label{display:grid;gap:6px;font-size:12px;color:#686868}
+.channel-list{margin-top:18px}
+.channel-list-row{display:flex;gap:12px;align-items:center;text-align:left;width:100%;background:#fff;color:#111;border:0;border-bottom:1px solid #eee;padding:14px 6px;cursor:pointer}
+.channel-list-row:hover,.channel-list-row.active{background:#f6f6f6}
+.channel-list-row>span:nth-child(2){display:grid;gap:5px;min-width:0}
+.channel-list-row strong{font-size:14px;white-space:nowrap;text-overflow:ellipsis;overflow:hidden}
+.channel-list-row small{font-size:12px;color:#8b8b8b}
+.channel-list-icon,.channel-post-icon,.channel-emblem{background:#111;color:#fff;display:grid;place-items:center;font-weight:700}
+.channel-list-icon{width:44px;height:44px;border-radius:50%;font-size:25px;flex-shrink:0}
+.channel-empty-list{padding:20px 12px;font-size:13px;color:#888}
+.channel-top-title{display:grid;gap:3px;flex:1;min-width:0;text-align:center}
+.channel-top-title strong,.channel-top-title small{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.channel-top-title small{font-size:11px;color:#888}
+.channel-owner-link{font-size:12px}
+.channel-feed{background:#fff;padding:0 22px max(35px,env(safe-area-inset-bottom,0px))}
+.channel-cover-card{text-align:center;border-bottom:1px solid #e9e9e9;padding:30px 10px 24px}
+.channel-emblem{width:84px;height:84px;border-radius:25px;margin:0 auto 14px;font-size:45px}
+.channel-cover-card h1{font-size:26px;letter-spacing:-.035em;margin:0 0 3px}
+.channel-cover-card p{margin:0;color:#777;font-size:13px}
+.channel-cover-card .channel-description{margin:14px auto 0;max-width:600px;line-height:1.5;color:#363636}
+.channel-cover-card>span{display:inline-block;font-size:11px;color:#999;margin-top:14px;text-transform:uppercase;letter-spacing:.1em}
+.channel-compose{display:grid;gap:13px;border:1px solid #e8e8e8;border-radius:18px;padding:18px;margin:20px auto;max-width:680px}
+.channel-compose h2{font-size:17px;margin:0}
+.channel-compose-actions{display:flex;justify-content:space-between;align-items:center;gap:12px}
+.channel-compose-actions .accent-button{min-width:115px}
+.channel-file-selected{font-size:12px;color:#777;margin:0}
+.channel-file-selected button{margin-left:12px;background:none;border:0;text-decoration:underline;color:#333}
+.channel-section-heading{text-align:left;font-size:13px;text-transform:uppercase;letter-spacing:.11em;color:#888;padding:21px 0 10px}
+.channel-post{border:1px solid #e8e8e8;border-radius:18px;padding:18px;margin:0 auto 15px;max-width:680px;background:#fff}
+.channel-post-meta{display:flex;align-items:center;gap:9px}
+.channel-post-meta strong{font-size:14px;flex:1}
+.channel-post-meta time{font-size:11px;color:#999}
+.channel-post-icon{width:34px;height:34px;border-radius:50%;font-size:19px}
+.channel-post-body{font-size:15px;line-height:1.6;white-space:pre-wrap;overflow-wrap:anywhere;margin:15px 0}
+.channel-post-image{display:block;width:100%;max-height:470px;object-fit:contain;border-radius:12px;background:#f5f5f5;margin:12px 0}
+.channel-post-actions{display:flex;gap:20px;border-top:1px solid #eee;padding-top:12px;margin-top:13px}
+.channel-post-actions button,.channel-delete-comment{border:0;background:none;color:#555;padding:2px 0;font-size:12px;cursor:pointer}
+.channel-comments{border-top:1px solid #efefef;margin-top:14px;padding-top:13px}
+.channel-no-comments{font-size:12px;color:#888}
+.channel-comment{border-bottom:1px solid #efefef;padding:12px 1px}
+.channel-comment-head{display:flex;gap:9px;align-items:center}
+.channel-comment-head button{border:0;background:none;color:#111;font-size:13px;font-weight:700;padding:0;cursor:pointer}
+.channel-comment-head time{margin-left:auto;font-size:11px;color:#999}
+.channel-comment p{font-size:13px;margin:7px 0;white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.5}
+.channel-comment-form{display:flex;gap:8px;margin-top:14px}
+.channel-comment-form input{flex:1;min-width:0}
+.channel-comment-form button{min-width:48px;min-height:45px}
+.channel-empty{font-size:13px;color:#999;padding:18px}
+
+/* Pixel cat. Entire 8.2s performance is one uninterruptible animation. */
+.conversation-placeholder{position:relative}
+.cat-habitat{margin-top:auto;flex:0 0 auto;display:flex;align-items:center;flex-direction:column;justify-content:flex-end;padding-top:22px;padding-bottom:10px;user-select:none}
+.pixel-cat-button{background:transparent;border:0;padding:0;display:block;width:148px;height:106px;outline-offset:5px;touch-action:manipulation;cursor:pointer}
+.pixel-cat-button:disabled{opacity:1;cursor:default}
+.pixel-cat{display:block;overflow:visible;image-rendering:pixelated}
+.cat-body{transform-origin:72px 77px;animation:ik-cat-breathe 4.4s ease-in-out infinite}
+.cat-sleep-z{animation:ik-cat-z 3.6s ease-in-out infinite}
+.cat-awake-eyes{opacity:0}
+.cat-hint{font-size:10px;color:#a4a4a4;margin-top:0;letter-spacing:.06em}
+.pixel-cat-button.is-awake .cat-body{animation:none}
+.pixel-cat-button.is-awake .cat-head{transform-origin:60px 74px;animation:ik-cat-awaken 8.2s linear both}
+.pixel-cat-button.is-awake .cat-awake-eyes{animation:ik-cat-open-eyes 8.2s steps(1,end) both}
+.pixel-cat-button.is-awake .cat-sleeping-eyes{animation:ik-cat-hide-sleep-eyes 8.2s steps(1,end) both}
+.pixel-cat-button.is-awake .cat-pupils{animation:ik-cat-eye-scan 8.2s steps(1,end) both}
+.pixel-cat-button.is-awake .cat-sleep-z{animation:ik-cat-hide-z 8.2s steps(1,end) both}
+@keyframes ik-cat-breathe{0%,100%{transform:scaleY(1)}50%{transform:scaleY(.975)}}
+@keyframes ik-cat-z{0%,100%{opacity:.25;transform:translateY(3px)}50%{opacity:.75;transform:translateY(-2px)}}
+@keyframes ik-cat-awaken{
+0%,10%{transform:translate(0,0) rotate(0)}
+22%,30%{transform:translate(2px,-11px) rotate(-3deg)}
+40%,51%{transform:translate(-2px,-13px) rotate(-8deg)}
+62%,72%{transform:translate(4px,-12px) rotate(8deg)}
+79%{transform:translate(2px,-9px) rotate(2deg)}
+90%,100%{transform:translate(0,0) rotate(0)}
+}
+@keyframes ik-cat-open-eyes{0%,19%{opacity:0}20%,79%{opacity:1}80%,100%{opacity:0}}
+@keyframes ik-cat-hide-sleep-eyes{0%,19%{opacity:1}20%,79%{opacity:0}80%,100%{opacity:1}}
+@keyframes ik-cat-eye-scan{0%,30%{transform:translateX(0)}31%,50%{transform:translateX(-3px)}51%,71%{transform:translateX(4px)}72%,100%{transform:translateX(0)}}
+@keyframes ik-cat-hide-z{0%,13%{opacity:1}14%,90%{opacity:0}91%,100%{opacity:1}}
+@media(max-width:800px){
+ .profile-topbar,.channel-topbar{padding:0 16px;height:56px;min-height:56px}
+ .profile-cover{height:165px}
+ .profile-content-section{padding:21px 17px 26px}
+ .profile-editor{margin:16px 14px;padding:16px}
+ .channel-feed{padding:0 12px max(27px,env(safe-area-inset-bottom,0px))}
+ .channel-post{padding:14px}
+ .channel-compose{padding:13px}
+ .pane-nav button{min-width:60px}
+ .cat-habitat{padding-top:16px}
+ .pixel-cat-button{transform:scale(.87);transform-origin:bottom center;height:92px}
+}
+@media(prefers-reduced-motion:reduce){
+ .pixel-cat-button:not(.is-awake) .cat-body,
+ .pixel-cat-button:not(.is-awake) .cat-sleep-z{animation:none}
+ .pixel-cat-button.is-awake .cat-head,
+ .pixel-cat-button.is-awake .cat-awake-eyes,
+ .pixel-cat-button.is-awake .cat-sleeping-eyes,
+ .pixel-cat-button.is-awake .cat-pupils,
+ .pixel-cat-button.is-awake .cat-sleep-z{animation-duration:1ms!important}
+}
