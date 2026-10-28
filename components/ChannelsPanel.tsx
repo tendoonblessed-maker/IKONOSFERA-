@@ -3,7 +3,7 @@ import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { listProfiles, type Profile } from "@/lib/supabase-rest";
 import {
  addPostComment, deletePost, editChannelPost, manageChannelComment, imageUrl, listChannelPosts, listPostComments, listPostReactions, setPostReaction, REACTION_EMOJIS, publishPost,
- removeComment, removeUpload, uploadChannelAttachment,
+ removeUpload, uploadChannelAttachment,
  type Channel, type ChannelPost, type PostComment, type PostReaction, type ReactionEmoji
 } from "@/lib/social";
 
