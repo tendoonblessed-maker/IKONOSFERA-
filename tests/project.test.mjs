@@ -258,7 +258,9 @@ test('Chat search and multi-select are accessible and do not change backend perm
  assert.ok(shell.includes('Поиск сообщений в текущем чате'));
  assert.ok(shell.includes('selectedMessages'));
  assert.ok(shell.includes('navigator.clipboard.writeText'));
- assert.ok(shell.includes('aria-pressed={selectedMessages.includes(message.id)}'));
+ assert.ok(shell.includes('setMessageMenuId(message.id)'));
+ assert.ok(shell.includes('Выбрать сообщение'));
+ assert.ok(!shell.includes('aria-pressed={selectedMessages.includes(message.id)}'));
  assert.ok(css.includes('.ik-conversation-search'));
  assert.ok(css.includes('.ik-selection-toolbar'));
 });
@@ -304,4 +306,55 @@ test('featured channel can be pinned independently and visitors see only the cha
  assert.ok(!ui.includes('<p>Закреплён в профиле</p>'));
  assert.match(api,/export async function getChannelById/);
  assert.match(api,/avatar_path/);
+});
+
+
+test('contacts are persisted per user and can be managed from chat or contacts',()=>{
+ const shell=load('components/AppShell.tsx');
+ const inbox=load('components/ChatInboxRow.tsx');
+ const api=load('lib/contacts.ts');
+ const sql=load('supabase/migrations/20261029_020000_persistent_contacts_blocklist_chat_cleanup.sql');
+ for(const action of ['listSavedContacts','addSavedContact','removeSavedContact','listBlockedUsers','addBlockedUser','removeBlockedUser'])
+   assert.ok(api.includes('function '+action+'('));
+ assert.match(shell,/toggleSavedContact\(person:Profile\)/);
+ assert.match(shell,/listSavedContacts\(token,id\)/);
+ assert.match(shell,/const contactPeople=useMemo\(\(\)=>\[\.\.\.savedContacts\]/);
+ assert.match(inbox,/Добавить в контакты/);
+ assert.match(inbox,/Удалить из контактов/);
+ assert.match(sql,/create table if not exists public\.user_contacts/);
+ assert.match(sql,/owner_id = \(select auth\.uid\(\)\)/);
+ assert.match(sql,/user_contacts_pair_pk primary key/);
+});
+test('blocklist is private and blocks delivery server-side for text and files',()=>{
+ const shell=load('components/AppShell.tsx'),sql=load('supabase/migrations/20261029_020000_persistent_contacts_blocklist_chat_cleanup.sql');
+ assert.match(sql,/create table if not exists public\.user_blocks/);
+ assert.match(sql,/create trigger enforce_direct_message_blocks before insert on public\.messages/);
+ assert.match(sql,/b\.owner_id = recipient and b\.blocked_id = new\.sender_id/);
+ assert.match(sql,/revoke all on function public\.enforce_direct_message_blocks\(\) from public, anon, authenticated/);
+ assert.match(shell,/className="ik-blocklist-settings"/);
+ assert.match(shell,/Разблокировать/);
+ assert.match(shell,/disabled=\{sending\|\|activePartnerBlocked\}/);
+});
+test('chat removal for me erases own history without deleting recipient data',()=>{
+ const sql=load('supabase/migrations/20261029_020000_persistent_contacts_blocklist_chat_cleanup.sql');
+ const shell=load('components/AppShell.tsx');
+ const api=load('lib/supabase-rest.ts');
+ assert.match(sql,/p_action = 'delete_for_me'/);
+ assert.match(sql,/update public\.messages set deleted_for = array_append/);
+ assert.match(sql,/update public\.chats/);
+ assert.match(sql,/p_action = 'delete_everyone'/);
+ assert.match(shell,/Удалить только у себя/);
+ assert.match(shell,/Удалить у обоих/);
+ assert.match(api,/"delete_for_me"/);
+});
+test('mobile message actions open a viewport-bound action sheet with no extra tick icon',()=>{
+ const shell=load('components/AppShell.tsx'),css=load('app/globals.css');
+ assert.match(shell,/className="ik-message-menu-backdrop"/);
+ assert.match(shell,/className="ik-message-menu-sheet"/);
+ assert.match(shell,/className="ik-message-menu-toggle"/);
+ assert.ok(!shell.includes('className={"ik-select-message"'));
+ assert.match(css,/\.ik-message-menu-backdrop\{/);
+ assert.match(css,/position:fixed;inset:0;z-index:3000/);
+ assert.match(css,/\.ik-message-menu-sheet\{/);
+ assert.match(css,/align-items:flex-end/);
 });
