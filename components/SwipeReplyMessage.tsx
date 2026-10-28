@@ -28,7 +28,7 @@ export default function SwipeReplyMessage({children,className,disabled=false,onR
       setMovement(0);
       if(!disabled&&(dir==='Right'||dir==='Left')&&absX>=54)onReply();
     },
-    onTouchEndOrOnSwiped:()=>setMovement(0)
+    onTouchEndOrOnMouseUp:()=>setMovement(0)
   });
 
   return <div {...handlers} className={className+' ik-swipe-message'}
