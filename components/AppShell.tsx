@@ -135,14 +135,26 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
   useEffect(()=>{
     if(!session||!userId)return;
     let cancelled=false;
+    let inFlight=false;
     const run=async()=>{
-      const valid=await validSession();
-      if(!valid||cancelled){if(!cancelled){setSession(null);setUserId('');setSelected(null);}return;}
-      if(valid.access_token!==session.access_token)setSession(valid);
-      try{await refresh(valid.access_token,userId,selectedRef.current);}catch{ /* retry on next poll */ }
+      if(cancelled||inFlight||document.visibilityState==='hidden')return;
+      inFlight=true;
+      try{
+        const valid=await validSession();
+        if(cancelled)return;
+        if(!valid){
+          setSession(null);setUserId('');setSelected(null);setRows([]);
+          return;
+        }
+        if(valid.access_token!==session.access_token)setSession(valid);
+        await refresh(valid.access_token,userId,selectedRef.current);
+      }catch{ /* transient network failure; retry next tick */ }
+      finally{inFlight=false;}
     };
+    const onVisible=()=>{if(document.visibilityState==='visible')void run();};
     const timer=window.setInterval(()=>void run(),3000);
-    return()=>{cancelled=true;window.clearInterval(timer);};
+    document.addEventListener('visibilitychange',onVisible);
+    return()=>{cancelled=true;window.clearInterval(timer);document.removeEventListener('visibilitychange',onVisible);};
   },[session,userId,refresh]);
 
   useEffect(()=>{messageEnd.current?.scrollIntoView({behavior:'auto'});},[chatMessages.length,selected]);
