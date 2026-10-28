@@ -16,4 +16,33 @@ test('temporary test account uses authenticated Supabase session, not mock messa
 
 test('white edition has monochrome UI, original wordmark and light PWA chrome',()=>{const css=load('app/globals.css');const shell=load('components/AppShell.tsx');const layout=load('app/layout.tsx');const manifest=JSON.parse(load('public/manifest.webmanifest'));assert.match(css,/color-scheme: light/);assert.match(css,/--bg:#ffffff/);assert.match(shell,/branding\/ikonosfera.svg/);assert.match(shell,/branding\/ikonosfera-wordmark.svg/);assert.match(layout,/statusBarStyle: "default"/);assert.equal(manifest.theme_color,'#ffffff');for(const img of ['ikonosfera.svg','ikonosfera-wordmark.svg'])assert.ok(existsSync(new URL('../public/branding/'+img,import.meta.url)));});
 
-test('white offline fallback and refreshed service worker cache',()=>{const offline=load('public/offline.html');const sw=load('public/sw.js');assert.ok(offline.includes('background:#fff;color:#111111'));assert.ok(offline.includes('/branding/ikonosfera.svg'));assert.ok(sw.includes('ikonosfera-shell-v2'));});
+test('white offline fallback and refreshed service worker cache',()=>{const offline=load('public/offline.html');const sw=load('public/sw.js');assert.ok(offline.includes('background:#fff;color:#111111'));assert.ok(offline.includes('/branding/ikonosfera.svg'));assert.ok(sw.includes('ikonosfera-shell-v3'));});
+
+test('social schema protects photo uploads, stories, channels, posts and comments',()=>{
+ const sql=load('supabase/migrations/20261028_130000_social_profiles_channels.sql');
+ for(const table of ['profile_photos','stories','channels','channel_posts','channel_comments'])
+   assert.ok(sql.includes('alter table public.'+table+' enable row level security;'));
+ assert.match(sql,/stories_read_active_or_own/);
+ assert.match(sql,/channel_posts_create_owner/);
+ assert.match(sql,/channel_comments_create_own/);
+ assert.match(sql,/storage.foldername\(name\)/);
+ assert.match(sql,/3145728/);
+});
+test('profile editor uses real signed-in upload API',()=>{
+ const ui=load('components/ProfilePanel.tsx'),backend=load('lib/social.ts');
+ for(const word of ['avatar','cover','story','photo'])assert.ok(ui.includes(word));
+ assert.match(backend,/\/storage\/v1\/object\/ikonosfera-media\//);
+ assert.match(backend,/Bearer/);
+ assert.match(ui,/uploadPhoto\(/);
+});
+test('channel posts and comments persist through Supabase',()=>{
+ const ui=load('components/ChannelsPanel.tsx'),backend=load('lib/social.ts');
+ for(const word of ['publishPost','addPostComment','listPostComments'])assert.ok(ui.includes(word)&&backend.includes(word));
+});
+test('pixel mascot finishes atomic animation and ignores repeat taps',()=>{
+ const cat=load('components/SleepyPixelCat.tsx'),css=load('app/globals.css');
+ assert.match(cat,/if\(locked.current\)return/);
+ assert.match(cat,/disabled=\{awake\}/);
+ assert.match(cat,/ik-cat-awaken/);
+ assert.match(css,/animation:ik-cat-awaken 8\.2s/);
+});
