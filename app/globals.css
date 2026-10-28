@@ -613,3 +613,24 @@ h1,h2,h3,strong{font-synthesis:none}
  .chat-row-wrap{margin:2px 5px}
 }
 @media(prefers-reduced-motion:reduce){.chat-item,.send-button,.settings-edit-button{transition:none}}
+
+
+/* Windows fit and guest-first layout hotfix: 2026-10-28 */
+html,body{min-height:100%;overflow:hidden}
+.messenger.is-authenticated{height:100dvh;max-height:100dvh;overflow:hidden}
+.messenger.is-authenticated .chats-pane,
+.messenger.is-authenticated .conversation-pane{min-height:0;max-height:100dvh;overflow:hidden}
+.messenger.is-authenticated .chat-list,
+.messenger.is-authenticated .conversation-history{min-height:0;overflow-y:auto}
+.messenger.is-guest .conversation-placeholder{overflow-y:auto!important;max-height:100dvh}
+@media(max-height:660px){
+ .messenger.is-guest .conversation-placeholder{justify-content:flex-start;padding-top:18px;padding-bottom:22px}
+ .messenger.is-guest .guest-brand{margin-bottom:9px}
+ .messenger.is-guest .guest-brand img{max-height:52px}
+ .messenger.is-guest .auth-panel{margin-top:12px;padding:13px 18px}
+ .messenger.is-guest .conversation-placeholder h2{font-size:clamp(23px,2.5vw,30px);margin-bottom:6px}
+}
+@media(max-width:800px){
+ html,body{overflow:hidden}
+ .messenger.is-guest .conversation-placeholder{overflow-y:auto!important}
+}
