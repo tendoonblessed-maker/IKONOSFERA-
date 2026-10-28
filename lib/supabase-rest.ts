@@ -58,7 +58,8 @@ export async function createTemporaryAccount() {
   return saveSession(response);
 }
 export async function sendEmailCode(email: string) {
-  await http('/auth/v1/otp', {method:'POST',body:{email,create_user:true,gotrue:true,...(typeof window!=='undefined'?{options:{email_redirect_to:window.location.origin+'/'} }:{})}});
+  const redirect=typeof window!=='undefined'?`?redirect_to=${encodeURIComponent(window.location.origin+'/')}`:'';
+  await http(`/auth/v1/otp${redirect}`, {method:'POST',body:{email,create_user:true}});
 }
 /** Supabase default email templates often send a magic link, not a 6-digit OTP.
  * The implicit link redirects back with a session in the URL hash.
