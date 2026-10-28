@@ -1076,3 +1076,20 @@ html,body{min-height:100%;overflow:hidden}
 @media(prefers-reduced-motion:reduce){
  .messenger.is-authenticated .pane-nav,.messenger.is-authenticated .ik-inbox-filters button{transition:none!important}
 }
+
+
+/* Messenger-specific chat action menu and centered date labels. */
+.messenger.is-authenticated .ik-conversation-more{position:relative;flex:0 0 auto;margin-left:auto;z-index:10}
+.messenger.is-authenticated .ik-conversation-more>summary{list-style:none;display:grid;place-items:center;width:40px;height:40px;min-width:40px;border-radius:50%;font-size:23px;font-weight:800;color:#89919b;cursor:pointer;-webkit-tap-highlight-color:transparent}
+.messenger.is-authenticated .ik-conversation-more>summary::-webkit-details-marker{display:none}
+.messenger.is-authenticated .ik-conversation-more>summary:hover,.messenger.is-authenticated .ik-conversation-more[open]>summary{background:#f0f2f4;color:#292c32}
+.messenger.is-authenticated .ik-conversation-more-menu{position:absolute;top:41px;right:0;display:grid;gap:2px;min-width:194px;padding:8px;background:#fff;border:1px solid #e3e6ea;border-radius:14px;box-shadow:0 14px 38px #0b18202b}
+.messenger.is-authenticated .ik-conversation-more-menu button{text-align:left;background:transparent;border:0;border-radius:8px;padding:11px 12px;white-space:nowrap;color:#242830;font-size:13px;font-weight:650}
+.messenger.is-authenticated .ik-conversation-more-menu button:hover{background:#f1f3f6}
+.messenger.is-authenticated .conversation-history>.ik-chat-day-separator{display:flex;align-items:center;justify-content:center;width:100%;align-self:stretch;flex:0 0 auto;padding:8px 0 5px;pointer-events:none}
+.messenger.is-authenticated .ik-chat-day-separator span{display:inline-flex;align-items:center;padding:5px 12px;border-radius:999px;background:#dce3e9cc;color:#727b85;font-size:11px;line-height:1.1;font-weight:750;letter-spacing:.005em}
+@media(max-width:800px){
+ .messenger.is-authenticated .ik-conversation-more{margin-left:2px}
+ .messenger.is-authenticated .ik-conversation-more>summary{width:33px;min-width:33px;height:35px;font-size:21px}
+ .messenger.is-authenticated .ik-conversation-more-menu{right:0;min-width:183px}
+}
