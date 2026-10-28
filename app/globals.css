@@ -225,3 +225,124 @@ textarea:focus-visible{outline:2px solid #111;outline-offset:2px}
  .pixel-cat-button.is-awake .cat-pupils,
  .pixel-cat-button.is-awake .cat-sleep-z{animation-duration:1ms!important}
 }
+
+
+/* 3D glass-plastic navigation, original glossy icon artwork */
+.pane-nav{
+  position:relative;isolation:isolate;display:flex;align-items:stretch;justify-content:space-between;
+  gap:2px;padding:8px 7px max(12px,env(safe-area-inset-bottom,0px));
+  border-top:1px solid #eaeaea;background:rgba(255,255,255,.96);
+  box-shadow:0 -6px 25px rgba(0,0,0,.018);
+}
+.pane-nav button{
+  appearance:none;position:relative;display:flex;flex:1 1 0;min-width:0;
+  flex-direction:column;align-items:center;justify-content:center;gap:1px;
+  border:0;border-radius:16px;background:transparent;color:#777;
+  min-height:82px;padding:3px 0 6px;cursor:pointer;
+  -webkit-tap-highlight-color:transparent;touch-action:manipulation;
+  transition:background .35s ease,color .3s ease,transform .3s cubic-bezier(.2,.85,.2,1);
+}
+.pane-nav button::before{
+  content:"";position:absolute;inset:7px 3px 3px;border-radius:15px;
+  background:linear-gradient(165deg,rgba(255,255,255,.98),rgba(239,239,239,.8));
+  border:1px solid #ececec;box-shadow:0 3px 11px #00000007;
+  opacity:0;transform:scale(.84);
+  transition:opacity .3s ease,transform .45s cubic-bezier(.2,.9,.2,1);
+}
+.pane-nav button.current{color:#111}
+.pane-nav button.current::before{opacity:1;transform:scale(1)}
+.pane-nav button:hover:not(.current){background:#fafafa;color:#333}
+.pane-nav button:active{transform:scale(.93)}
+.pane-nav .nav-art{
+  display:grid;place-items:center;position:relative;z-index:1;
+  width:57px;height:57px;max-width:100%;
+  transition:transform .48s cubic-bezier(.16,1.2,.32,1),filter .45s ease;
+  filter:drop-shadow(0 2px 1px #00000005);
+}
+.pane-nav .nav-art img{width:100%;height:100%;object-fit:contain;display:block;mix-blend-mode:multiply}
+.pane-nav button.current .nav-art{transform:translateY(-3px) scale(1.09);filter:drop-shadow(0 5px 6px #00000017)}
+.pane-nav button:hover .nav-art{transform:translateY(-3px) scale(1.08)}
+.pane-nav button.current:hover .nav-art{transform:translateY(-4px) scale(1.1)}
+.pane-nav button:active .nav-art{transform:translateY(2px) scale(.88);filter:drop-shadow(0 1px 1px #00000006)}
+.pane-nav .nav-label{
+  position:relative;z-index:1;font-size:10.5px;font-weight:550;line-height:1.2;
+  letter-spacing:-.01em;white-space:nowrap;
+  transition:color .3s ease,transform .3s ease;
+}
+.pane-nav button.current .nav-label{font-weight:720}
+.pane-nav .nav-art-channel{width:49px;height:49px;margin:4px 0;
+  background:linear-gradient(145deg,#fff 5%,#f3f3f3 50%,#ddd 100%);
+  border:2px solid #e8e8e8;border-radius:15px;
+  box-shadow:inset 2px 2px 3px #ffffff,inset -3px -3px 5px #bcbcbc66,0 3px 6px #00000013;
+}
+.pane-nav .channel-nav-symbol{
+  width:32px;height:32px;display:grid;place-items:center;border-radius:10px;
+  background:linear-gradient(140deg,#4b4b4b,#161616 75%);
+  color:#fff;font-size:24px;font-weight:800;
+  box-shadow:inset 1px 1px 2px #ffffff77,inset -2px -2px 3px #0008,0 1px 3px #0004;
+}
+.pane-nav button:focus-visible{outline:2px solid #151515;outline-offset:-3px}
+
+/* Smooth entry/exit of each functional pane without intercepting taps */
+.chats-pane .chats-list,
+.chats-pane .contacts-panel,
+.chats-pane .settings-panel,
+.chats-pane .channel-browser,
+.conversation-pane .conversation-placeholder,
+.conversation-pane .conversation-messages,
+.conversation-pane .profile-view,
+.conversation-pane .channel-view{
+  animation:ik-panel-enter .42s cubic-bezier(.18,.84,.28,1) both;
+}
+@keyframes ik-panel-enter{
+  from{opacity:.45;transform:translateY(10px)}
+  to{opacity:1;transform:translateY(0)}
+}
+.contact-row,.channel-list-row,.chat-row,.open-own-profile,.profile-action,.accent-button,.secondary-action{
+  transition:transform .25s cubic-bezier(.2,.8,.2,1),box-shadow .3s ease,
+    background-color .25s ease,border-color .25s ease,opacity .25s ease;
+  -webkit-tap-highlight-color:transparent;
+}
+.contact-row:active,.channel-list-row:active,.chat-row:active,
+.open-own-profile:active,.profile-action:active,.accent-button:active,.secondary-action:active{
+  transform:scale(.975)
+}
+.profile-action:hover,.open-own-profile:hover,.secondary-action:hover{
+  box-shadow:0 5px 16px #0000000a;
+}
+.channel-post,.profile-grid-cell,.profile-story-thumb{
+  animation:ik-card-enter .5s cubic-bezier(.2,.8,.2,1) both;
+}
+@keyframes ik-card-enter{
+  from{opacity:0;transform:translateY(8px) scale(.985)}
+  to{opacity:1;transform:translateY(0) scale(1)}
+}
+.profile-grid-cell img,.profile-story-thumb img,.channel-post-image{
+  transition:transform .6s cubic-bezier(.2,.85,.2,1),filter .4s ease;
+}
+.profile-grid-cell:hover img,.profile-story-thumb:hover img{transform:scale(1.055)}
+.channel-post-image:hover{filter:contrast(1.025)}
+.profile-lightbox{animation:ik-overlay-fade .24s ease-out both}
+.profile-lightbox img{animation:ik-lightbox-zoom .35s cubic-bezier(.2,.8,.2,1) both}
+@keyframes ik-overlay-fade{from{opacity:0}to{opacity:1}}
+@keyframes ik-lightbox-zoom{from{opacity:.3;transform:scale(.965)}to{opacity:1;transform:scale(1)}}
+@media(max-width:440px){
+ .pane-nav{gap:0;padding-left:2px;padding-right:2px}
+ .pane-nav button{min-height:74px}
+ .pane-nav .nav-art{width:48px;height:48px}
+ .pane-nav .nav-art-channel{width:42px;height:42px;margin:3px 0}
+ .pane-nav .channel-nav-symbol{width:28px;height:28px;font-size:21px}
+ .pane-nav .nav-label{font-size:9.5px}
+}
+@media(prefers-reduced-motion:reduce){
+ .pane-nav button,.pane-nav button::before,.pane-nav .nav-art,.pane-nav .nav-label,
+ .contact-row,.channel-list-row,.chat-row,.open-own-profile,.profile-action,
+ .accent-button,.secondary-action,.profile-grid-cell img,.profile-story-thumb img,.channel-post-image{
+  transition:none!important;
+ }
+ .chats-pane .chats-list,.chats-pane .contacts-panel,.chats-pane .settings-panel,
+ .chats-pane .channel-browser,.conversation-pane .conversation-placeholder,
+ .conversation-pane .conversation-messages,.conversation-pane .profile-view,
+ .conversation-pane .channel-view,.channel-post,.profile-grid-cell,.profile-story-thumb,
+ .profile-lightbox,.profile-lightbox img{animation:none!important}
+}
