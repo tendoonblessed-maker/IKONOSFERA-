@@ -1093,3 +1093,31 @@ html,body{min-height:100%;overflow:hidden}
  .messenger.is-authenticated .ik-conversation-more>summary{width:33px;min-width:33px;height:35px;font-size:21px}
  .messenger.is-authenticated .ik-conversation-more-menu{right:0;min-width:183px}
 }
+
+
+/* Telegram-inspired second refinement: comfortable inbox and predictable desktop layout */
+.messenger.is-authenticated{max-width:none;--tg-muted:#7f8b96}
+.messenger.is-authenticated .chats-pane{border-right:1px solid #e4e8ed}
+.messenger.is-authenticated .pane-toolbar .icon-button{background:transparent;border:0;box-shadow:none;color:#23272b}
+.messenger.is-authenticated .pane-toolbar .icon-button:hover{background:#f1f3f5}
+.messenger.is-authenticated .chat-list .telegram-chat-row:focus-visible,
+.messenger.is-authenticated .chat-list .ik-group-inbox:focus-visible{outline:2px solid #a7b5c3;outline-offset:-3px}
+.messenger.is-authenticated .chat-list .ik-chat-title{min-width:0}
+.messenger.is-authenticated .chat-list .ik-chat-preview{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.messenger.is-authenticated .chat-list .telegram-chat-row>.contact-info{min-width:0}
+.messenger.is-authenticated .chat-list .chat-row-wrap:active,.messenger.is-authenticated .chat-list .ik-group-inbox:active{background:#e9edf1!important}
+.messenger.is-authenticated .conversation-history{background-color:#e8edf1;background-image:radial-gradient(circle at 16% 15%,#fff6 0,transparent 27%),radial-gradient(circle at 80% 72%,#fff4 0,transparent 35%)}
+.messenger.is-authenticated .conversation-history>.chat-message-row>.bubble{width:max-content;max-width:min(76%,580px);align-self:flex-start}
+.messenger.is-authenticated .conversation-history>.chat-message-row.mine>.bubble{align-self:flex-end}
+.messenger.is-authenticated .conversation-history>.chat-message-row{width:100%}
+.messenger.is-authenticated .composer textarea{resize:none;line-height:1.35}
+.messenger.is-authenticated .pane-nav .nav-art img{object-fit:contain}
+@media(min-width:801px){.messenger.is-authenticated .pane-heading .brand-mini{width:160px;height:57px;max-height:57px;object-fit:contain;object-position:left center}}
+@media(max-width:800px){
+ .messenger.is-authenticated .chats-pane{border-right:0}
+ .messenger.is-authenticated .pane-heading{padding-top:env(safe-area-inset-top,0px)}
+ .messenger.is-authenticated .pane-toolbar h1{font-weight:800}
+ .messenger.is-authenticated .conversation-history>.chat-message-row>.bubble{max-width:86%}
+ .messenger.is-authenticated .pane-nav{flex-shrink:0}
+ .messenger.is-authenticated .chat-list{overscroll-behavior:contain;-webkit-overflow-scrolling:touch}
+}
