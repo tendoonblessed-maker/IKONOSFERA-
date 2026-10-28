@@ -103,7 +103,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
 
   return <div className="messenger" data-version="classic-mvp-1">
     <aside className={`chats-pane ${(!loggedIn || selected)?'has-conversation':''}`}>
-      <div className="pane-heading"><span className="brand-emblem">◉</span><div className="brand-label"><strong>IKONOSFERA</strong><small>MESSENGER</small></div><span className="release-pill">ALPHA</span></div>
+      <div className="pane-heading"><span className="brand-emblem">◉</span><div className="brand-label"><strong>IKONOSFERA</strong><small>MESSENGER</small></div><span className="release-pill">{profile ? `@${profile.username}` : "ALPHA"}</span></div>
       <div className="pane-toolbar"><h1>{tab==='chats'?'Чаты':tab==='contacts'?'Контакты':'Настройки'}</h1><button type="button" className="icon-button" title="Создать чат" aria-label="Новый чат" onClick={()=>{setTab('contacts');setSelected(null);}} disabled={!loggedIn}>＋</button></div>
       {tab==='chats'&&<div className="pane-search"><span aria-hidden="true">⌕</span><input aria-label="Поиск по чатам" placeholder="Поиск" value={search} onChange={e=>setSearch(e.target.value)} disabled={!loggedIn}/></div>}
       <div className="chat-list">
