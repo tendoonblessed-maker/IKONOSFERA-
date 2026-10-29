@@ -5,7 +5,7 @@
  */
 export type ChatTextPart={text:string;href?:string};
 const LINK_CANDIDATE=/(?:https?:\/\/|www\.)[^\s<>"'\u0060]+/gi;
-const TRAILING_PUNCTUATION=/[.,!?;:…。，！？；：]$/u;
+const TRAILING_PUNCTUATION=/[.,!?;:…。，！？；：»”’›]$/u;
 const MAX_URL_LENGTH=2048;
 const MAX_LINKS=40;
 
