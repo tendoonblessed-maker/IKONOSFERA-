@@ -27,7 +27,7 @@ export default function ProfilePanel({token,userId,targetId,onBack,onOwnProfileC
  const [pinningChannel,setPinningChannel]=useState(false);
  const [statusPickerOpen,setStatusPickerOpen]=useState(false);
  const [profileContentTab,setProfileContentTab]=useState<'stories'|'photos'>('stories');
- const [name,setName]=useState("");const [username,setUsername]=useState("");const [bio,setBio]=useState("");
+ const [name,setName]=useState("");const [username,setUsername]=useState("");const [bio,setBio]=useState("");const [age,setAge]=useState("");
  const [editing,setEditing]=useState(false);
  const [visitorPreview,setVisitorPreview]=useState(false);
  const [usernameTouched,setUsernameTouched]=useState(false);
@@ -44,6 +44,7 @@ export default function ProfilePanel({token,userId,targetId,onBack,onOwnProfileC
   const p=await getFullProfile(token,targetId);
   setProfile(p);
   setName(p?.display_name||"");setUsername(p?.username||"");setBio(p?.bio||"");
+  setAge(p?.age_years==null?"":String(p.age_years));
   const [gallery,active,ownedResult]=await Promise.allSettled([
     getProfilePhotos(token,targetId),getStories(token,targetId),
     mine?listOwnedChannels(token,targetId):Promise.resolve([] as Channel[])
@@ -90,10 +91,14 @@ export default function ProfilePanel({token,userId,targetId,onBack,onOwnProfileC
   const validation=validateUsername(username);
   if(validation){setError(validation);return;}
   if(!name.trim()){setError("Имя не может быть пустым.");return;}
+  const parsedAge=age===""?null:Number(age);
+  if(parsedAge!==null&&(!Number.isInteger(parsedAge)||parsedAge<13||parsedAge>120)){
+    setError("Укажи возраст от 13 до 120 лет или оставь поле пустым.");return;
+  }
   await run(async()=>{
    try{await changeProfile(token,userId,username.trim().toLowerCase().replace(/^@/,""),name.trim());}
    catch(e){throw Error(explainProfileError(e));}
-   await updateFullProfile(token,userId,{bio:bio.trim()});
+   await updateFullProfile(token,userId,{bio:bio.trim(),age_years:parsedAge});
    onOwnProfileChange();setEditing(false);setNotice("Профиль обновлён.");
   });
  }
@@ -163,7 +168,9 @@ export default function ProfilePanel({token,userId,targetId,onBack,onOwnProfileC
           </button>
           :<StatusEmoji index={profile.status_emoji}/>}
        </div>
-       <p>@{profile.username}</p><p className={userActivity?.status==="в сети"?"ik-profile-activity ik-online-label":"ik-profile-activity"}>{activityLabel(userActivity)}</p>
+       <p>@{profile.username}</p>
+       {profile.age_years!==null&&profile.age_years!==undefined&&<p className="ik-profile-age">Возраст: {profile.age_years}</p>}
+       <p className={userActivity?.status==="в сети"?"ik-profile-activity ik-online-label":"ik-profile-activity"}>{activityLabel(userActivity)}</p>
         {profile.bio&&<div className="profile-bio">{profile.bio}</div>}
         {!mine&&<div className="ik-profile-conversation-actions">
           <button type="button" className="accent-button profile-message-button" disabled={isBlocked} onClick={()=>onMessage(profile.username)}>{isBlocked?"Заблокирован":"Написать сообщение"}</button>
@@ -190,6 +197,11 @@ export default function ProfilePanel({token,userId,targetId,onBack,onOwnProfileC
      <label>Имя<input value={name} onChange={e=>setName(e.target.value)} maxLength={60} required/></label>
      <label>Юзернейм<input value={username} onChange={e=>{setUsername(e.target.value);setUsernameTouched(true);}} onBlur={()=>setUsernameTouched(true)} maxLength={48} aria-invalid={Boolean(usernameError)} aria-describedby="username-feedback" required/><small id="username-feedback" className={usernameError?"profile-field-error":"profile-field-hint"}>{usernameError||"От 3 до 24 символов: латинские буквы, цифры и _. Например, tendo888."}</small></label>
      <label>О себе<textarea value={bio} onChange={e=>setBio(e.target.value)} maxLength={160} rows={3} placeholder="Расскажи немного о себе"/></label>
+     <label>Возраст (необязательно)<input type="text" inputMode="numeric" autoComplete="off"
+       placeholder="Например, 18" maxLength={3} value={age}
+       onChange={e=>setAge(e.target.value.replace(/\D/g,'').replace(/^0+/,'').slice(0,3))}
+       aria-describedby="ik-profile-age-note"/></label>
+     <small id="ik-profile-age-note" className="profile-field-hint">Возраст увидят другие пользователи. Можно удалить или изменить в любой момент.</small>
 
      <button className="accent-button" disabled={busy} type="submit">{busy?"Сохраняем…":"Сохранить изменения"}</button>
      <div className="profile-delete-actions">{profile?.avatar_path&&<button type="button" onClick={()=>void clearImage("avatar")} disabled={busy}>Удалить аватар</button>}{profile?.cover_path&&<button type="button" onClick={()=>void clearImage("cover")} disabled={busy}>Удалить обложку</button>}</div>
