@@ -3640,3 +3640,23 @@ body{position:relative}
  .ik-group-older-control{padding-top:10px}
  .ik-group-older-control button{min-height:44px}
 }
+
+/* Direct message sends: an inline retry is explicit, never automatic. */
+.messenger.is-authenticated .ik-direct-send-alert{
+  display:flex;align-items:center;justify-content:space-between;gap:10px;
+  padding:9px 16px;background:#fff7f4;border-top:1px solid #f0e0da;
+  color:#783e32;font-size:12px;line-height:1.4;
+}
+.messenger.is-authenticated .ik-direct-send-alert span{min-width:0;flex:1}
+.messenger.is-authenticated .ik-direct-send-alert button{
+  border:1px solid #d7aca0;border-radius:999px;background:#fff;
+  color:#783e32;font:inherit;font-weight:750;cursor:pointer;
+  min-height:36px;padding:8px 13px;flex-shrink:0;
+}
+.messenger.is-authenticated .ik-direct-send-alert button:focus-visible{
+  outline:2px solid currentColor;outline-offset:2px;
+}
+.messenger.is-authenticated .ik-direct-send-alert button:disabled{opacity:.5;cursor:default}
+@media(max-width:480px){
+  .messenger.is-authenticated .ik-direct-send-alert{align-items:flex-start;flex-direction:column}
+}
