@@ -22,7 +22,7 @@ self.addEventListener("fetch", (event) => {
   if (request.method !== "GET") return;
   const url = new URL(request.url);
   if (url.origin !== self.location.origin) return;
-  if (url.pathname === "/status-emojis.webp?v=2") {
+  if (url.pathname === "/status-emojis.webp") {
     // The single 144KB corrected atlas loads from the local cache after installation.
     // This cache contains only public artwork, never user/profile/chat data.
     event.respondWith(caches.match(request).then(cached =>
