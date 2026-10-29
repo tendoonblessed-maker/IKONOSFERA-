@@ -28,6 +28,8 @@ export default function ChannelsPanel({token,userId,channel,onBack,onShowProfile
  const [discussionComments,setDiscussionComments]=useState<(PostComment & {channel_posts:{body:string;channel_id:string}|null})[]>([]);
  const [discussionDraft,setDiscussionDraft]=useState("");
   const [posts,setPosts]=useState<ChannelPost[]>([]);
+ const [postsLoaded,setPostsLoaded]=useState(false);
+ const [postsLoadError,setPostsLoadError]=useState(false);
  const [reactions,setReactions]=useState<PostReaction[]>([]);
  const [reactionPicker,setReactionPicker]=useState<string|null>(null);
  const [body,setBody]=useState("");const [file,setFile]=useState<File|null>(null);
@@ -39,7 +41,11 @@ export default function ChannelsPanel({token,userId,channel,onBack,onShowProfile
  const [editingCommentId,setEditingCommentId]=useState<string|null>(null);
  const [editingBody,setEditingBody]=useState("");
  const [busy,setBusy]=useState(false);const [error,setError]=useState("");const [notice,setNotice]=useState("");
- const reload=useCallback(async()=>{const list=await listChannelPosts(token,channel.id);setPosts(list);setReactions(await listPostReactions(token,list.map(p=>p.id)));},[token,channel.id]);
+ const reload=useCallback(async()=>{
+  const list=await listChannelPosts(token,channel.id);
+  setPosts(list);setPostsLoaded(true);setPostsLoadError(false);
+  void listPostReactions(token,list.map(p=>p.id)).then(setReactions).catch(()=>{});
+ },[token,channel.id]);
  const loadDiscussion=useCallback(async()=>{
   const [messages,replies]=await Promise.all([listDiscussionMessages(token,channel.id),listDiscussionComments(token,channel.id)]);
   setDiscussionMessages(messages);setDiscussionComments(replies);
@@ -79,7 +85,11 @@ export default function ChannelsPanel({token,userId,channel,onBack,onShowProfile
  async function sendDiscussion(e:FormEvent){
   e.preventDefault();if(!currentChannel.discussion_enabled||busy||!discussionDraft.trim())return;
   setBusy(true);setError("");
-  try{await sendDiscussionMessage(token,channel.id,userId,discussionDraft);setDiscussionDraft("");await loadDiscussion();}
+  try{
+    await sendDiscussionMessage(token,channel.id,userId,discussionDraft);
+    setDiscussionDraft("");
+    await loadDiscussion().catch(()=>{});
+  }
   catch(e){setError(readable(e));}finally{setBusy(false);}
  }
  async function eraseDiscussion(id:string){
@@ -94,7 +104,12 @@ export default function ChannelsPanel({token,userId,channel,onBack,onShowProfile
    setReactions(await listPostReactions(token,posts.map(p=>p.id)));setReactionPicker(null);
   }catch(e){setError(readable(e));}finally{setBusy(false);}
  }
- useEffect(()=>{void reload().catch(e=>setError(readable(e)));setOpenComments(null);setComments([]);setBody("");setFile(null);},[reload]);
+ useEffect(()=>{
+  let cancelled=false;setPostsLoaded(false);setPostsLoadError(false);
+  void reload().catch(()=>{if(!cancelled){setPostsLoaded(true);setPostsLoadError(true);}});
+  setOpenComments(null);setComments([]);setBody("");setFile(null);
+  return()=>{cancelled=true;};
+ },[reload]);
  async function showComments(postId:string){
   if(openComments===postId){setOpenComments(null);return;}
   setError("");
@@ -114,7 +129,8 @@ export default function ChannelsPanel({token,userId,channel,onBack,onShowProfile
    path=attachment?.path??null;
    try{await publishPost(token,userId,channel.id,body,null,attachment);}
    catch(e){if(path)await removeUpload(token,path).catch(()=>{});throw e;}
-   setBody("");setFile(null);await reload();setNotice("Пост опубликован.");
+   setBody("");setFile(null);setNotice("Пост опубликован.");
+   await reload().catch(()=>{setPostsLoadError(true);});
   }catch(e){setError(readable(e));}finally{setBusy(false);}
  }
  async function writeComment(e:FormEvent){
@@ -131,7 +147,11 @@ export default function ChannelsPanel({token,userId,channel,onBack,onShowProfile
  }
  async function savePostEdit(id:string){
   if(!mine||busy)return;setBusy(true);setError("");
-  try{await editChannelPost(token,id,editingBody);setEditingPostId(null);await reload();}
+  try{
+    await editChannelPost(token,id,editingBody);setEditingPostId(null);
+    setPosts(current=>current.map(post=>post.id===id?{...post,body:editingBody}:post));
+    await reload().catch(()=>{setPostsLoadError(true);});
+   }
   catch(e){setError(readable(e));}finally{setBusy(false);}
  }
  async function saveCommentEdit(id:string){
@@ -143,7 +163,14 @@ export default function ChannelsPanel({token,userId,channel,onBack,onShowProfile
  async function erasePost(p:ChannelPost){
   if(!mine||busy||!window.confirm("Удалить этот пост?"))return;
   setBusy(true);setError("");
-  try{await deletePost(token,p.id);if(p.image_path)await removeUpload(token,p.image_path).catch(()=>{});if(p.attachment_path)await removeUpload(token,p.attachment_path).catch(()=>{});await reload();setNotice("Пост удалён.");}
+  try{
+   await deletePost(token,p.id);
+   setPosts(current=>current.filter(post=>post.id!==p.id));
+   setNotice("Пост удалён.");
+   if(p.image_path)await removeUpload(token,p.image_path).catch(()=>{});
+   if(p.attachment_path)await removeUpload(token,p.attachment_path).catch(()=>{});
+   await reload().catch(()=>{setPostsLoadError(true);});
+  }
   catch(e){setError(readable(e));}finally{setBusy(false);}
  }
  async function eraseComment(c:PostComment){
@@ -190,7 +217,7 @@ export default function ChannelsPanel({token,userId,channel,onBack,onShowProfile
    </section>}
 
    <div className="channel-cover-card"><div className="channel-emblem">{currentChannel.avatar_path?<img src={imageUrl(currentChannel.avatar_path) ?? undefined} alt="" className="ik-channel-avatar-img"/>:"#"}{mine&&<label className="ik-channel-avatar-edit" title="Изменить аватарку канала"><input type="file" accept="image/jpeg,image/png,image/webp" disabled={avatarBusy} onChange={e=>{void changeChannelAvatar(e.target.files?.[0]);e.target.value="";}}/><span>{avatarBusy?"…":"✎"}</span></label>}</div><h1>{currentChannel.title}</h1><p>@{currentChannel.slug}</p>{subscriberCount!==null&&<p className="channel-subscribers">{subscriberCount.toLocaleString("ru-RU")} подписчиков</p>}
-    {channel.description&&<p className="channel-description">{currentChannel.description}</p>}
+    {Boolean(currentChannel.description)&&<p className="channel-description">{currentChannel.description}</p>}
     <span>Канал IKONOSFERA</span><div className="channel-cover-actions">
     {!mine&&<button type="button" className="accent-button" onClick={onToggleSubscribe}>{subscribed?"Отписаться":"Подписаться"}</button>}
     {!mine&&<button type="button" className="secondary-action" onClick={onMessageAuthor}>Написать автору</button>}
@@ -203,7 +230,9 @@ export default function ChannelsPanel({token,userId,channel,onBack,onShowProfile
      {file&&<p className="channel-file-selected">{file.name} <button type="button" onClick={()=>setFile(null)}>Убрать</button></p>}
    </form>}
    <div className="channel-section-heading">Публикации</div>
-   {posts.length===0&&<div className="channel-empty">Публикаций пока нет.</div>}
+   {!postsLoaded&&<div className="channel-empty" role="status">Загружаем публикации…</div>}
+   {postsLoaded&&postsLoadError&&posts.length===0&&<div className="channel-empty" role="alert">Не удалось загрузить публикации. <button type="button" onClick={()=>{setPostsLoadError(false);setPostsLoaded(false);void reload().catch(()=>{setPostsLoaded(true);setPostsLoadError(true);});}}>Повторить</button></div>}
+   {postsLoaded&&!postsLoadError&&posts.length===0&&<div className="channel-empty">Публикаций пока нет.</div>}
    {posts.map(post=><article className="channel-post" key={post.id}>
     <div className="channel-post-meta"><span className="channel-post-icon">{currentChannel.avatar_path?<img src={imageUrl(currentChannel.avatar_path) ?? undefined} alt="" className="ik-channel-avatar-img"/>:"#"} </span><strong>{currentChannel.title}</strong><time dateTime={post.created_at}>{formattedDate(post.created_at)}</time></div>
     {editingPostId===post.id?<form className="channel-inline-editor" onSubmit={e=>{e.preventDefault();void savePostEdit(post.id);}}><textarea value={editingBody} maxLength={4000} onChange={e=>setEditingBody(e.target.value)}/><button type="submit">Сохранить</button><button type="button" onClick={()=>setEditingPostId(null)}>Отмена</button></form>:post.body&&<p className="channel-post-body">{post.body}</p>}
