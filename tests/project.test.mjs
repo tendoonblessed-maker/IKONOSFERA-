@@ -987,3 +987,21 @@ test('search results are render-gated to the exact user, chat and query before e
  assert.match(shell,/setMessageSearchOwner\(null\)/);
  assert.match(shell,/messageSearchOwner\?\.chatId===selected&&messageSearchOwner\.userId===userId&&messageSearchOwner\.query===messageSearch\.trim\(\)\?messageSearchResults:\[\]/);
 });
+
+
+test('long press uses capture listeners without replacing react-swipeable touch handling',()=>{
+ const swipe=load('components/SwipeReplyMessage.tsx');
+ const wrapper=swipe.slice(swipe.indexOf('  return <div {...handlers}'));
+ assert.match(wrapper,/return <div \{\.\.\.handlers\} className=/);
+ assert.match(wrapper,/onTouchStartCapture=\{onTouchStart\}/);
+ assert.match(wrapper,/onTouchMoveCapture=\{onTouchMove\}/);
+ assert.match(wrapper,/onTouchEndCapture=\{cancelHold\}/);
+ assert.match(wrapper,/onTouchCancelCapture=\{cancelHold\}/);
+ assert.doesNotMatch(wrapper,/\sonTouchStart=/);
+ assert.doesNotMatch(wrapper,/\sonTouchMove=/);
+ assert.doesNotMatch(wrapper,/\sonTouchEnd=/);
+ assert.match(swipe,/onSwiped:\(\{dir,absX\}\)=>\{/);
+ assert.match(swipe,/\(dir==='Right'\|\|dir==='Left'\)&&absX>=54/);
+ assert.match(swipe,/onTouchEndOrOnMouseUp:\(\)=>\{/);
+ assert.match(swipe,/event\.target instanceof Element&&event\.target\.closest/);
+});

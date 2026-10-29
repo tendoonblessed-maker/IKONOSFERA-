@@ -76,11 +76,14 @@ export default function SwipeReplyMessage({children,className,disabled=false,onR
     }
   });
 
+  // Keep react-swipeable's own onTouchStart/onTouchMove/onTouchEnd and ref.
+  // Capture-phase callbacks observe the same fingers for long-press actions
+  // without overwriting the library's bubble-phase gesture listeners.
   return <div {...handlers} className={className+' ik-swipe-message'}
-    onTouchStart={onTouchStart}
-    onTouchMove={onTouchMove}
-    onTouchEnd={cancelHold}
-    onTouchCancel={cancelHold}
+    onTouchStartCapture={onTouchStart}
+    onTouchMoveCapture={onTouchMove}
+    onTouchEndCapture={cancelHold}
+    onTouchCancelCapture={cancelHold}
     onContextMenu={event=>{
       if(disabled||!onOpenMenu)return;
       const target=event.target;
