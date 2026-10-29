@@ -888,3 +888,43 @@ test('reply jump scrolls only the messages viewport and never the iPhone page',(
  assert.match(shell,/prefers-reduced-motion: reduce/);
  assert.doesNotMatch(shell,/original\.scrollIntoView/);
 });
+
+
+test('tapping old quoted messages loads bounded history and scrolls only the chat viewport',()=>{
+ const shell=load('components/AppShell.tsx');
+ const quote=load('components/ReplyQuote.tsx');
+ const css=load('app/globals.css');
+ assert.match(shell,/async function jumpToOriginalMessage\(id:string\)/);
+ assert.match(shell,/for\(let page=0;page<5&&more;page\+\+\)/);
+ assert.match(shell,/await listOlderMessages\(token,chatId,cursor\)/);
+ assert.match(shell,/setChatMessages\(current=>prependEarlierPage\(current,loaded\)\)/);
+ assert.match(shell,/setPendingReplyJump\(\{chatId,id\}\)/);
+ assert.match(shell,/useLayoutEffect\(\(\)=>\{\s*if\(!pendingReplyJump/);
+ assert.match(shell,/scrollToHistoryMessage\(pendingReplyJump\.id\)/);
+ assert.match(shell,/setSearchInConversation\(false\);setMessageSearch\(''\)/);
+ assert.match(shell,/const centeredTop=history\.scrollTop/);
+ assert.doesNotMatch(shell,/original\.scrollIntoView/);
+ assert.match(shell,/setNotice\(more\s*\?'Загружены ранние сообщения/);
+ assert.match(quote,/disabled=\{loading\}/);
+ assert.match(quote,/aria-busy=\{loading\}/);
+ assert.match(quote,/Ищем сообщение в истории/);
+ assert.match(css,/\.ik-message-reply-reference\[aria-busy="true"\]/);
+});
+test('reply fetching never leaks old-account previews or unbounded PostgREST ID lists',()=>{
+ const shell=load('components/AppShell.tsx');
+ const api=load('lib/supabase-rest.ts');
+ assert.match(shell,/chatContextGenerationRef=useRef\(0\)/);
+ assert.match(shell,/chatContextGenerationRef\.current\+=1/);
+ assert.match(shell,/replyJumpRequestRef\.current\+=1/);
+ assert.match(shell,/const generation=chatContextGenerationRef\.current/);
+ assert.match(shell,/selectedRef\.current===chatId&&chatContextGenerationRef\.current===generation/);
+ assert.match(shell,/const requestId=\+\+replyJumpRequestRef\.current/);
+ assert.match(shell,/replyJumpRequestRef\.current===requestId/);
+ assert.match(shell,/const source=replyTargets\[id\]\?\?\(await listReplyTargets\(token,chatId,\[id\]\)\)\[0\]/);
+ assert.match(shell,/if\(!source\)\{/);
+ assert.match(shell,/for\(let start=0;start<missing\.length;start\+=100\)/);
+ assert.match(shell,/Promise\.all\(batches\.map\(ids=>listReplyTargets/);
+ assert.match(shell,/for\(let offset=0;offset<loaded\.length;offset\+=CHAT_MESSAGE_PAGE_SIZE\)/);
+ assert.match(api,/const unique=\[\.\.\.new Set\(ids\)\]/);
+ assert.match(shell,/if\(stillInChat\(\)\)/);
+});
