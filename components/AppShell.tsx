@@ -3,7 +3,7 @@ import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, use
 import { backendReady, createTemporaryAccount, consumeEmailLinkSession, clearSession, currentUser, findProfileByUsername, listChats, listChatPreviews, listMessages, listOlderMessages, listReplyTargets, searchDirectMessages, type DirectMessageSearchResult, DIRECT_MESSAGE_SEARCH_PAGE_SIZE, type ReplyTarget, CHAT_MESSAGE_PAGE_SIZE, manageChat, manageMessage, listMessageReactions, setMessageReaction, markChatRead, listProfiles, myProfile, postMessage, reopenChat, sendDirectMedia, validateDirectMediaFile, sendEmailCode, signOut, startDirectChat, validSession, type ChatMessage, type MessageReaction, type DirectChat, type Profile, type Session, type ChatPreview } from '@/lib/supabase-rest';
 
 import ProfilePanel from "@/components/ProfilePanel";
-import {mergeRecentPage,prependEarlierPage} from "@/lib/chat-history";
+import {mergeRecentPage,mergeConfirmedRecentPage,prependEarlierPage,CONFIRMED_MESSAGE_GRACE_MS,type ConfirmedMessage} from "@/lib/chat-history";
 import {readChatDrafts,writeChatDrafts,clearChatDrafts,type ChatDrafts} from "@/lib/chat-drafts";
 import ChatMedia from "@/components/ChatMedia";
 import {reconcileRecentChannelUpdates,CHANNEL_UPDATE_GRACE_MS,type RecentChannelUpdate} from "@/lib/channel-sync";
@@ -140,6 +140,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
   const chatContextGenerationRef=useRef(0);
   const messageSearchRequestRef=useRef(0);
   const composerRef=useRef<HTMLTextAreaElement|null>(null);
+  const confirmedMessagesRef=useRef<Map<string,ConfirmedMessage>>(new Map());
   const attachmentDragDepthRef=useRef(0);
 
   // In-memory edits belong to one signed-in user; never reuse across accounts.
@@ -163,6 +164,8 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
       window.removeEventListener('pageshow',update);
     };
   },[]);
+
+  useEffect(()=>{confirmedMessagesRef.current.clear();},[userId]);
 
   useEffect(()=>{
     // Restore only the signed-in person's drafts; anonymous account drafts
@@ -439,7 +442,9 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
       try{
         const messages=(await listMessages(token,chatId)).reverse();
         if(cancelled)return;
-        setChatMessages(current=>mergeRecentPage(current,messages,CHAT_MESSAGE_PAGE_SIZE));
+        setChatMessages(current=>mergeConfirmedRecentPage(
+          current,messages,CHAT_MESSAGE_PAGE_SIZE,confirmedMessagesRef.current,chatId,userId
+        ));
         if(first)setHasOlderMessages(messages.length===CHAT_MESSAGE_PAGE_SIZE);
         setChatLoad({id:chatId,status:'ready'});
         // Reactions must not block displaying text and attachments.
@@ -857,7 +862,15 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
     if(!plainText||plainText.length>4000)return;
     setSending(true);setError('');
     try{
-      await postMessage(token,chatId,userId,plainText,crypto.randomUUID(),reply?.id??null);
+      const sent=await postMessage(token,chatId,userId,plainText,crypto.randomUUID(),reply?.id??null);
+      // Display the DB-confirmed row immediately. Do not manufacture a pending
+      // bubble, and never write into a different chat or signed-in account.
+      if(selectedRef.current===chatId&&draftsOwnerRef.current===userId){
+        confirmedMessagesRef.current.set(sent.id,{
+          message:sent,expiresAt:Date.now()+CONFIRMED_MESSAGE_GRACE_MS
+        });
+        setChatMessages(current=>prependEarlierPage(current,[sent]));
+      }
       // Users may type their next message while the previous send is in flight.
       // Only clear the exact draft that was submitted, not their new text.
       if((draftsRef.current[chatId]||'').trim()===plainText){
@@ -865,11 +878,8 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
         if(selectedRef.current===chatId)setDraft(current=>current.trim()===plainText?'':current);
       }
       if(reply)setReplyingTo(current=>current?.id===reply.id&&current.chatId===chatId?null:current);
-      // A sent message is not a failed send just because its refresh failed.
-      try{
-        const updated=(await listMessages(token,chatId)).reverse();
-        if(selectedRef.current===chatId)setChatMessages(current=>mergeRecentPage(current,updated,CHAT_MESSAGE_PAGE_SIZE));
-      }catch{/* The next inbox sync will show the successfully sent message. */}
+      // Polling will reconcile read receipts and any concurrent edits; the
+      // send is already visible and never waits for a second network request.
     }catch(e){setError(userFacingError(e));}
     finally{setSending(false);}
   }
@@ -944,6 +954,8 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
     const chatId=selected,token=session.access_token;
     try{
       await manageMessage(token,messageId,action,body);
+      // An edit/delete must not be reverted by a still-pending send overlay.
+      confirmedMessagesRef.current.delete(messageId);
       if(selectedRef.current===chatId){
         setMessageMenuId(null);setEditingMessageId(null);
         // Actions on pages older than 100 messages must update locally too.
@@ -995,16 +1007,18 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
     if(problem){setError(problem);return;}
     setSending(true);setError("");
     try{
-      await sendDirectMedia(token,chatId,userId,file,caption);
+      const sent=await sendDirectMedia(token,chatId,userId,file,caption);
       if(selectedRef.current===chatId&&draftsOwnerRef.current===userId){
+        confirmedMessagesRef.current.set(sent.id,{
+          message:sent,expiresAt:Date.now()+CONFIRMED_MESSAGE_GRACE_MS
+        });
+        setChatMessages(current=>prependEarlierPage(current,[sent]));
         setPendingAttachment(current=>current?.chatId===chatId&&current.ownerId===userId&&current.file===file?null:current);
         setAttachmentCaption('');
       }
       setNotice("Вложение отправлено.");
-      try{
-        const updated=(await listMessages(token,chatId)).reverse();
-        if(selectedRef.current===chatId)setChatMessages(current=>mergeRecentPage(current,updated,CHAT_MESSAGE_PAGE_SIZE));
-      }catch{/* Do not report a sent attachment as failed during refresh. */}
+      // The server confirmed the attachment; polling updates its metadata
+      // without delaying the new message bubble or reporting a false failure.
     }catch(e){setError(userFacingError(e));}
     finally{setSending(false);}
   }
