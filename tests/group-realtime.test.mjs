@@ -89,7 +89,7 @@ test('group realtime never renders WebSocket payload or stores another user sess
 });
 
 test('migration only adds group messages to existing publication, retaining member RLS',()=>{
- const sql=readFileSync(new URL('../supabase/migrations/20261029071000_enable_group_message_realtime.sql',import.meta.url),'utf8');
+ const sql=readFileSync(new URL('../supabase/migrations/20261029071053_enable_group_message_realtime.sql',import.meta.url),'utf8');
  assert.match(sql,/ALTER PUBLICATION supabase_realtime ADD TABLE public\.group_messages/);
  assert.match(sql,/pg_publication_tables/);
  assert.doesNotMatch(sql,/drop publication|replica identity full|disable row level security|grant all/i);
