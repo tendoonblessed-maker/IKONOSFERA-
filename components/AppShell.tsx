@@ -696,8 +696,8 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
           {tab==='chats'?<svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 5H5a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-7"/><path d="m13 11 7.5-7.5a2.1 2.1 0 0 1 3 3L16 14l-4 1 1-4Z"/></svg>:<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>}
         </button>
       </div>
-      {tab==='chats'&&loggedIn&&session&&<StoriesStrip token={session.access_token} userId={userId} contacts={storyContacts} ownProfile={profile}/>}
       {tab==='chats'&&<div className="pane-search"><span aria-hidden="true" className="ik-search-glyph"><svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="10.7" cy="10.7" r="6.4"/><path d="m15.5 15.5 5 5"/></svg></span><input ref={searchInputRef} aria-label="Поиск по чатам" placeholder="Поиск по чатам и сообщениям" value={search} onChange={e=>setSearch(e.target.value)} disabled={!loggedIn}/></div>}
+      {tab==='chats'&&loggedIn&&session&&<StoriesStrip token={session.access_token} userId={userId} contacts={storyContacts} ownProfile={profile}/>}
       {tab==='chats'&&loggedIn&&<div className="ik-chat-actions">
         {createMenuOpen&&<div className="ik-create-menu" role="group" aria-label="Новая беседа">
           <button type="button" onClick={()=>{setCreateMenuOpen(false);switchTab('contacts');}}>✉ <span>Личное сообщение</span></button>
@@ -763,6 +763,13 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
           <button type="submit" className="accent-button" disabled={busy||!loggedIn}>{busy?"Создаём…":"Создать"}</button>
         </form>}
         <div className="channel-browser-tabs"><button type="button" className={!showRecommendations?"selected":""} onClick={()=>setShowRecommendations(false)}>Мои каналы</button><button type="button" className={showRecommendations?"selected":""} onClick={()=>setShowRecommendations(true)}>Рекомендации</button></div>
+        {!channelCreating&&loggedIn&&<button type="button" className="ik-channel-create-promo" onClick={()=>setChannelCreating(true)}>
+          <span className="ik-channel-create-promo-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round"><path d="M4 11v-2a3 3 0 0 1 3-3h6l7-3v18l-7-3H7a3 3 0 0 1-3-3v-4Z"/><path d="m8 18 2 4h4l-3-4"/></svg>
+          </span>
+          <span><strong>Создать канал</strong><small>Делись идеями, новостями и общайся с подписчиками</small></span>
+          <span className="ik-channel-create-promo-arrow" aria-hidden="true">›</span>
+        </button>}
         <div className="channel-list">{filteredChannels.length?filteredChannels.map(ch=><div key={ch.id} className={"channel-list-row"+(ch.id===selectedChannel?.id?" active":"")}>
           <button type="button" className="channel-row-open" onClick={()=>{setSelectedChannel(ch);setSelected(null);setProfileTarget(null);setError("");}}><span className="channel-list-icon">{ch.avatar_path&&imageUrl(ch.avatar_path)?<img className="ik-channel-list-avatar" src={imageUrl(ch.avatar_path)||""} alt="" loading="lazy" decoding="async"/>:"#"} </span><span><strong>{ch.title}</strong><small>@{ch.slug} · {(subscriberCounts[ch.id]??0).toLocaleString('ru-RU')} подписчиков</small></span></button>
           {ch.owner_id===userId?<span className="channel-owner-badge">Мой</span>:<button type="button" disabled={busy} className="channel-subscribe-button" onClick={()=>void toggleSubscription(ch.id)}>{subscriptions.includes(ch.id)?"Отписаться":"Подписаться"}</button>}
@@ -779,8 +786,26 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
               <span className="ik-settings-hero-avatar">{imageUrl(profile?.avatar_path)
                 ?<img src={imageUrl(profile?.avatar_path)||""} alt="" decoding="async"/>
                 :(profile?.display_name||'?').charAt(0).toUpperCase()}</span>
-              <span className="ik-settings-hero-name ik-name-with-status"><strong>{profile?.display_name||"Мой профиль"}</strong><StatusEmoji index={profile?.status_emoji} decorative/></span>
-              <span className="ik-settings-hero-username">@{profile?.username||'профиль'}</span>
+              <span className="ik-settings-hero-details">
+                <span className="ik-settings-hero-name ik-name-with-status"><strong>{profile?.display_name||"Мой профиль"}</strong><StatusEmoji index={profile?.status_emoji} decorative/></span>
+                <span className="ik-settings-hero-username">@{profile?.username||'профиль'}</span>
+                <span className={"ik-settings-hero-presence"+(userActivities[userId]?.status==='в сети'?" is-online":"")}><span aria-hidden="true"/>{userActivities[userId]?.status==='в сети'?"В сети":"Мой аккаунт"}</span>
+              </span>
+              <span className="ik-settings-chevron" aria-hidden="true">›</span>
+            </button>
+            <button type="button" className="ik-settings-edit-profile" onClick={()=>goToProfile(userId)}>
+              <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M4 20h16m-14-5L16.8 4.2a2.2 2.2 0 0 1 3.1 3.1L9.1 18.1l-4 .9.9-4Z"/></svg>
+              Редактировать профиль
+            </button>
+          </div>
+          <div className="ik-settings-shortcuts">
+            <button type="button" onClick={()=>goToProfile(userId)}>
+              <span className="ik-settings-shortcut-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="23" height="23" fill="none" stroke="currentColor" strokeWidth="1.8"><rect x="3" y="4" width="18" height="16" rx="3"/><circle cx="9" cy="10" r="2"/><path d="m5 18 6-6 4 4 3-3 3 3"/></svg></span>
+              <span><strong>Фото и истории</strong><small>Управление</small></span><span aria-hidden="true">›</span>
+            </button>
+            <button type="button" onClick={()=>switchTab('channels')}>
+              <span className="ik-settings-shortcut-icon ik-settings-shortcut-channel" aria-hidden="true"><svg viewBox="0 0 24 24" width="23" height="23" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M4 11v-2c0-1.7 1.3-3 3-3h6l7-3v18l-7-3H7c-1.7 0-3-1.3-3-3v-4Z"/><path d="m8 18 2 4h4l-3-4"/></svg></span>
+              <span><strong>Мои каналы</strong><small>Публикации</small></span><span aria-hidden="true">›</span>
             </button>
           </div>
           {anonymous&&<p className="test-account-warning">Тестовый аккаунт без почты: доступ сохраняется только на этом устройстве. После выхода или очистки данных восстановить его нельзя.</p>}
