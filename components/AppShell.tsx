@@ -6,6 +6,7 @@ import ProfilePanel from "@/components/ProfilePanel";
 import {mergeRecentPage,prependEarlierPage} from "@/lib/chat-history";
 import {readChatDrafts,writeChatDrafts,clearChatDrafts,type ChatDrafts} from "@/lib/chat-drafts";
 import ChatMedia from "@/components/ChatMedia";
+import {reconcileRecentChannelUpdates,CHANNEL_UPDATE_GRACE_MS,type RecentChannelUpdate} from "@/lib/channel-sync";
 import ChatAttachmentPreview from "@/components/ChatAttachmentPreview";
 import ChatInboxRow from "@/components/ChatInboxRow";
 import StatusEmoji from "@/components/StatusEmoji";
@@ -64,6 +65,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
   const [profileTarget,setProfileTarget]=useState<string|null>(null);
   const [selectedChannel,setSelectedChannel]=useState<Channel|null>(null);
   const [channels,setChannels]=useState<Channel[]>([]);
+  const recentChannelUpdatesRef=useRef<Map<string,RecentChannelUpdate>>(new Map());
   const [subscriptions,setSubscriptions]=useState<string[]>([]);
   const [subscriberCounts,setSubscriberCounts]=useState<Record<string,number>>({});
   const [activityVisibility,setActivityVisibility]=useState<ActivityVisibility>('approximate');
@@ -139,6 +141,9 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
   const messageSearchRequestRef=useRef(0);
   const composerRef=useRef<HTMLTextAreaElement|null>(null);
   const attachmentDragDepthRef=useRef(0);
+
+  // In-memory edits belong to one signed-in user; never reuse across accounts.
+  useEffect(()=>{recentChannelUpdatesRef.current.clear();},[userId]);
 
   useEffect(()=>{
     // Browser online/offline is only a connectivity hint, not a guarantee
@@ -371,7 +376,10 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
     const extras=await extrasPromise;
     if(!extras)return; // Preserve last good channels/groups on an unrelated API error.
     const [allChannels,memberships,groupList,groupSummaries,contactIds,blockedIds]=extras;
-    setChannels(allChannels);
+    // A list request launched before a successful avatar/settings PATCH may
+    // finish later and return an older snapshot. Preserve the confirmed edit
+    // until the server itself returns matching values on the next refresh.
+    setChannels(reconcileRecentChannelUpdates(allChannels,recentChannelUpdatesRef.current));
     setGroups(groupList);
     setGroupOverviews(Object.fromEntries(groupSummaries.map(summary=>[summary.group_id,summary])));
     setSubscriptions(memberships.map(m=>m.channel_id));
@@ -1292,7 +1300,10 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
       {selectedBot&&loggedIn?<BotsPanel userId={userId} bot={selectedBot} onBack={()=>setSelectedBot(null)}/>:
       selectedGroup&&session&&loggedIn?<GroupPanel key={selectedGroup.id} token={session.access_token} userId={userId} group={selectedGroup} onBack={()=>setSelectedGroup(null)} onShowProfile={id=>{setSelectedGroup(null);goToProfile(id);}}/>:
       profileTarget&&session&&loggedIn?<ProfilePanel key={profileTarget} token={session.access_token} userId={userId} targetId={profileTarget} onBack={()=>{setProfileTarget(null);if(tab==='profile')setTab('chats');}} onOwnProfileChange={()=>{void myProfile(session.access_token,userId).then(setProfile).catch(()=>{});}} onMessage={openDirectFromProfile} isBlocked={blockedUserIds.has(profileTarget)} onBlockUser={id=>void toggleProfileBlock(id)} onOpenChannel={channel=>{setProfileTarget(null);setSelected(null);setSelectedChannel(channel);setTab("channels");}}/>:
-      selectedChannel&&session&&loggedIn?<ChannelsPanel key={selectedChannel.id} token={session.access_token} userId={userId} channel={selectedChannel} onBack={()=>setSelectedChannel(null)} onShowProfile={goToProfile} subscribed={subscriptions.includes(selectedChannel.id)||selectedChannel.owner_id===userId} onToggleSubscribe={()=>void toggleSubscription(selectedChannel.id)} onMessageAuthor={()=>void getChannelOwnerAndChat(selectedChannel.owner_id)} onChannelUpdated={updated=>{setSelectedChannel(updated);setChannels(old=>old.map(ch=>ch.id===updated.id?updated:ch));}} onChannelDeleted={()=>{setSelectedChannel(null);setChannels(old=>old.filter(ch=>ch.id!==selectedChannel.id));setTab("channels");}}/>:
+      selectedChannel&&session&&loggedIn?<ChannelsPanel key={selectedChannel.id} token={session.access_token} userId={userId} channel={selectedChannel} onBack={()=>setSelectedChannel(null)} onShowProfile={goToProfile} subscribed={subscriptions.includes(selectedChannel.id)||selectedChannel.owner_id===userId} onToggleSubscribe={()=>void toggleSubscription(selectedChannel.id)} onMessageAuthor={()=>void getChannelOwnerAndChat(selectedChannel.owner_id)} onChannelUpdated={updated=>{
+    recentChannelUpdatesRef.current.set(updated.id,{channel:updated,expiresAt:Date.now()+CHANNEL_UPDATE_GRACE_MS});
+    setSelectedChannel(updated);setChannels(old=>old.map(ch=>ch.id===updated.id?updated:ch));
+  }} onChannelDeleted={()=>{setSelectedChannel(null);setChannels(old=>old.filter(ch=>ch.id!==selectedChannel.id));setTab("channels");}}/>:
       
       active&&loggedIn?<><header className="conversation-header"><button type="button" className="back-button" onClick={()=>setSelected(null)} aria-label="Назад к чатам"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m14 5-7 7 7 7"/><path d="M7 12h14"/></svg></button><button type="button" className="contact-avatar small contact-avatar-button" onClick={()=>active.other&&goToProfile(active.other.id)} title="Открыть профиль">{imageUrl(active.other?.avatar_path)?<img className="avatar-image" src={imageUrl(active.other?.avatar_path)||""} alt=""/>:(active.other?.display_name||'?').slice(0,1).toUpperCase()}</button><button type="button" className="conversation-heading conversation-heading-link" onClick={()=>active.other&&goToProfile(active.other.id)}><strong className="ik-name-with-status"><span>{active.other?.display_name??'Собеседник'}</span><StatusEmoji index={active.other?.status_emoji} decorative/></strong><small className={userActivities[activePartnerId||'']?.status==='в сети'?'ik-online-label':undefined}>{activityLabel(userActivities[activePartnerId||''])}</small></button><FloatingActionMenu label="Действия с чатом"
   wrapperClassName="ik-conversation-more"
