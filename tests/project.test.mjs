@@ -978,3 +978,12 @@ test('direct-chat search debounces and never renders old account results',()=>{
  assert.match(css,/\.ik-direct-search-results/);
  assert.match(css,/max-height:min\(39dvh,290px\)/);
 });
+
+
+test('search results are render-gated to the exact user, chat and query before effects run',()=>{
+ const shell=load('components/AppShell.tsx');
+ assert.match(shell,/messageSearchOwner,setMessageSearchOwner/);
+ assert.match(shell,/setMessageSearchOwner\(\{chatId,userId,query:term\}\)/);
+ assert.match(shell,/setMessageSearchOwner\(null\)/);
+ assert.match(shell,/messageSearchOwner\?\.chatId===selected&&messageSearchOwner\.userId===userId&&messageSearchOwner\.query===messageSearch\.trim\(\)\?messageSearchResults:\[\]/);
+});
