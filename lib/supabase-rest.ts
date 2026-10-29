@@ -201,11 +201,28 @@ export async function postMessage(token: string, chatId: string, userId: string,
   return message;
 }
 
+export const DIRECT_MEDIA_FORMATS:Record<string,string>={
+ "image/jpeg":"jpg","image/png":"png","image/webp":"webp",
+ "video/mp4":"mp4","video/webm":"webm","video/quicktime":"mov",
+ "audio/mpeg":"mp3","audio/mp4":"m4a","audio/wav":"wav","audio/ogg":"ogg",
+ "application/pdf":"pdf","text/plain":"txt","application/zip":"zip",
+ "application/vnd.openxmlformats-officedocument.wordprocessingml.document":"docx",
+ "application/msword":"doc","application/vnd.openxmlformats-officedocument.spreadsheetml.sheet":"xlsx",
+ "application/vnd.ms-excel":"xls"
+};
+export const DIRECT_MEDIA_MAX_BYTES=25*1024*1024;
+export function validateDirectMediaFile(file:Pick<File,'type'|'size'>):string|null{
+ if(!Object.prototype.hasOwnProperty.call(DIRECT_MEDIA_FORMATS,file.type))
+  return "Неподдерживаемый формат. Можно отправлять фото, видео, музыку и документы.";
+ if(file.size===0||file.size>DIRECT_MEDIA_MAX_BYTES)
+  return "Размер вложения должен быть от 1 байта до 25 МБ.";
+ return null;
+}
+
 export async function uploadDirectMedia(token:string,chatId:string,userId:string,file:File):Promise<{path:string;type:"image"|"video"|"audio"|"file"}>{
- const allowed:Record<string,string>={"image/jpeg":"jpg","image/png":"png","image/webp":"webp","video/mp4":"mp4","video/webm":"webm","video/quicktime":"mov","audio/mpeg":"mp3","audio/mp4":"m4a","audio/wav":"wav","audio/ogg":"ogg","application/pdf":"pdf","text/plain":"txt","application/zip":"zip","application/vnd.openxmlformats-officedocument.wordprocessingml.document":"docx","application/msword":"doc","application/vnd.openxmlformats-officedocument.spreadsheetml.sheet":"xlsx","application/vnd.ms-excel":"xls"};
- const ext=allowed[file.type];
- if(!ext)throw Error("Неподдерживаемый формат. Можно отправлять фото, видео, музыку и документы.");
- if(file.size===0||file.size>25*1024*1024)throw Error("Размер фото или видео должен быть до 25 МБ.");
+ const problem=validateDirectMediaFile(file);
+ if(problem)throw Error(problem);
+ const ext=DIRECT_MEDIA_FORMATS[file.type];
  const path=chatId+"/"+userId+"/"+crypto.randomUUID()+"."+ext;
  const res=await fetch(apiUrl+"/storage/v1/object/ikonosfera-direct-media/"+path,{
   method:"POST",headers:{apikey:anonKey,Authorization:"Bearer "+token,"Content-Type":file.type,"x-upsert":"false"},body:file

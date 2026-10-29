@@ -1090,7 +1090,7 @@ test('offline direct chats preserve drafts and resume polling immediately on rec
  assert.match(shell,/\[refresh,bootstrapRetryNonce\]/);
  assert.match(shell,/e\.preventDefault\(\);if\(!session\|\|!selected\|\|!userId\|\|sending\|\|activePartnerBlocked\)return;\s*if\(!networkOnline\|\|!navigator\.onLine\)/);
  assert.match(shell,/Сообщение осталось в черновике/);
- assert.match(shell,/Выбери вложение повторно после подключения/);
+ assert.match(shell,/Вложение осталось в предпросмотре/);
  assert.match(shell,/disabled=\{sending\|\|activePartnerBlocked\|\|!networkOnline\}/);
  assert.match(shell,/disabled=\{!draft\.trim\(\)\|\|sending\|\|activePartnerBlocked\|\|!networkOnline\}/);
  assert.match(shell,/aria-label="Написать сообщение" enterKeyHint="enter"/);
@@ -1100,4 +1100,69 @@ test('offline direct chats preserve drafts and resume polling immediately on rec
  assert.match(css,/\.ik-network-offline\{/);
  assert.match(css,/pointer-events:none/);
  assert.match(css,/max-width:calc\(100vw - 24px\)/);
+});
+
+
+test('attachments are reviewed with captions instead of being sent from the file input',()=>{
+ const shell=load('components/AppShell.tsx');
+ const uploader=load('lib/supabase-rest.ts');
+ const view=load('components/ChatAttachmentPreview.tsx');
+ const css=load('app/globals.css');
+ assert.match(shell,/import ChatAttachmentPreview from/);
+ assert.match(shell,/pendingAttachment,setPendingAttachment/);
+ assert.match(shell,/attachmentCaption,setAttachmentCaption/);
+ assert.match(shell,/function queueAttachment\(file:File\|undefined\)/);
+ assert.match(shell,/const problem=validateDirectMediaFile\(file\)/);
+ assert.match(shell,/setPendingAttachment\(\{chatId:selected,ownerId:userId,file\}\)/);
+ assert.match(shell,/setPendingAttachment\(null\);setAttachmentCaption\(''\)/);
+ assert.match(shell,/async function sendAttachment\(file:File\|undefined,caption=''\)/);
+ assert.match(shell,/sendDirectMedia\(token,chatId,userId,file,caption\)/);
+ assert.match(shell,/setPendingAttachment\(current=>current\?\.chatId===chatId&&current\.ownerId===userId&&current\.file===file\?null:current\)/);
+ assert.match(shell,/Do not report a sent attachment as failed during refresh/);
+ assert.match(shell,/queueAttachment\(e\.target\.files\?\.\[0\]\);e\.target\.value=""/);
+ assert.doesNotMatch(shell,/void sendAttachment\(e\.target\.files\?\.\[0\]\)/);
+ assert.match(shell,/pendingAttachment\?\.chatId===selected&&pendingAttachment\.ownerId===userId/);
+ assert.match(shell,/file=\{pendingAttachment\.file\} caption=\{attachmentCaption\}/);
+ assert.match(shell,/sending=\{sending\} online=\{networkOnline\}/);
+ assert.match(shell,/onSend=\{\(\)=>\{void sendAttachment\(pendingAttachment\.file,attachmentCaption\);\}\}/);
+ assert.match(uploader,/export function validateDirectMediaFile/);
+ assert.match(uploader,/DIRECT_MEDIA_MAX_BYTES=25\*1024\*1024/);
+ assert.match(uploader,/if\(problem\)throw Error\(problem\)/);
+ assert.match(uploader,/body:caption\.trim\(\)\.slice\(0,4000\)/);
+ assert.match(view,/createPortal\(/);
+ assert.match(view,/role="dialog"/);
+ assert.match(view,/aria-modal="true"/);
+ assert.match(view,/URL\.createObjectURL\(file\)/);
+ assert.match(view,/URL\.revokeObjectURL\(url\)/);
+ assert.match(view,/preview\?\.file===file\?preview\.url:null/);
+ assert.match(view,/maxLength=\{4000\}/);
+ assert.match(view,/event\.ctrlKey\|\|event\.metaKey/);
+ assert.match(view,/disabled=\{sending\|\|!online\}/);
+ assert.match(view,/disabled=\{sending\} onClick=\{onCancel\}/);
+ assert.match(view,/if\(event\.key==='Escape'&&!busyRef\.current\)/);
+ assert.match(css,/\.ik-attachment-preview-dialog/);
+ assert.match(css,/\.ik-attachment-preview-caption textarea/);
+ assert.match(css,/font-family:inherit;font-size:16px;line-height:1\.45/);
+});
+
+test('desktop file dropping and clipboard screenshots never auto-send private files',()=>{
+ const shell=load('components/AppShell.tsx');
+ const css=load('app/globals.css');
+ assert.match(shell,/onPaste=\{event=>\{/);
+ assert.match(shell,/event\.clipboardData\.items/);
+ assert.match(shell,/item\.kind==='file'&&item\.type\.startsWith\('image\/'\)/);
+ assert.match(shell,/target!==composerRef\.current\)return/);
+ assert.match(shell,/event\.preventDefault\(\);\s*queueAttachment\(pasted\)/);
+ assert.match(shell,/onDragEnter=\{event=>\{/);
+ assert.match(shell,/attachmentDragDepthRef\.current\+=1/);
+ assert.match(shell,/onDragOver=\{event=>\{/);
+ assert.match(shell,/event\.dataTransfer\.dropEffect='copy'/);
+ assert.match(shell,/onDragLeave=\{event=>\{/);
+ assert.match(shell,/attachmentDragDepthRef\.current=Math\.max\(0,attachmentDragDepthRef\.current-1\)/);
+ assert.match(shell,/onDrop=\{event=>\{/);
+ assert.match(shell,/const files=Array\.from\(event\.dataTransfer\.files\)/);
+ assert.match(shell,/queueAttachment\(files\[0\]\)/);
+ assert.match(shell,/attachmentDragActive&&canPrepareAttachment&&<div className="ik-attachment-drop-overlay"/);
+ assert.match(css,/\.ik-attachment-drop-overlay/);
+ assert.match(css,/pointer-events:none/);
 });
