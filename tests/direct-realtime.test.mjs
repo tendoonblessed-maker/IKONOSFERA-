@@ -46,7 +46,7 @@ test('Realtime wakes server-authoritative read, preserves offline fallback and c
 test('Realtime is a deliberately narrow private messages rollout',()=>{
  const helper=load('lib/direct-realtime.ts');
  const pkg=JSON.parse(load('package.json'));
- const migration=load('supabase/migrations/20261029_090000_enable_direct_message_realtime.sql');
+ const migration=load('supabase/migrations/20261029065959_enable_direct_message_realtime.sql');
  assert.equal(pkg.dependencies['@supabase/supabase-js'],'2.118.0');
  assert.match(helper,/return\(\)=>\{\};/);
  assert.match(helper,/const UUID=/);
