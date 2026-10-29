@@ -255,7 +255,7 @@ test('Chat search and multi-select are accessible and do not change backend perm
  const css=load('app/globals.css');
  assert.ok(shell.includes('searchInConversation'));
  assert.ok(shell.includes('messageSearch'));
- assert.ok(shell.includes('Поиск сообщений в текущем чате'));
+ assert.ok(load('components/DirectMessageSearchPanel.tsx').includes('Поиск сообщений в текущем чате'));
  assert.ok(shell.includes('selectedMessages'));
  assert.ok(shell.includes('navigator.clipboard.writeText'));
  assert.ok(shell.includes('setMessageMenuId(message.id)'));
@@ -895,7 +895,7 @@ test('tapping old quoted messages loads bounded history and scrolls only the cha
  const shell=load('components/AppShell.tsx');
  const quote=load('components/ReplyQuote.tsx');
  const css=load('app/globals.css');
- assert.match(shell,/async function jumpToOriginalMessage\(id:string\)/);
+ assert.match(shell,/async function jumpToOriginalMessage\(id:string,fromSearch=false\)/);
  assert.match(shell,/for\(let page=0;page<5&&more;page\+\+\)/);
  assert.match(shell,/await listOlderMessages\(token,chatId,cursor\)/);
  assert.match(shell,/setChatMessages\(current=>prependEarlierPage\(current,loaded\)\)/);
