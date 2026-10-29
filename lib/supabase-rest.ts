@@ -204,7 +204,7 @@ export async function postMessage(token: string, chatId: string, userId: string,
 export const DIRECT_MEDIA_FORMATS:Record<string,string>={
  "image/jpeg":"jpg","image/png":"png","image/webp":"webp",
  "video/mp4":"mp4","video/webm":"webm","video/quicktime":"mov",
- "audio/mpeg":"mp3","audio/mp4":"m4a","audio/wav":"wav","audio/ogg":"ogg",
+ "audio/mpeg":"mp3","audio/mp4":"m4a","audio/wav":"wav","audio/ogg":"ogg","audio/webm":"webm",
  "application/pdf":"pdf","text/plain":"txt","application/zip":"zip",
  "application/vnd.openxmlformats-officedocument.wordprocessingml.document":"docx",
  "application/msword":"doc","application/vnd.openxmlformats-officedocument.spreadsheetml.sheet":"xlsx",
