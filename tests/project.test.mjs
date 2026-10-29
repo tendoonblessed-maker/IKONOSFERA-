@@ -537,7 +537,8 @@ test('failed private media can retry a fresh signed link instead of remaining br
  const api=load('lib/supabase-rest.ts');
  const css=load('app/globals.css');
  assert.match(view,/setRetry\(value=>value\+1\)/);
- assert.match(view,/onError=\{\(\)=>setError\(true\)\}/);
+ assert.match(view,/onError=\{handleMediaError\}/);
+ assert.match(view,/invalidateDirectMediaUrl\(token,path\)/);
  assert.match(view,/invalidateDirectMediaUrl\(token,path\)/);
  assert.match(api,/export function invalidateDirectMediaUrl/);
  assert.match(api,/signedMediaCache\.delete\(token\+':\'\+path\)/);
@@ -1028,4 +1029,40 @@ test('editing a direct message supports multiline text with safe iPhone actions'
  assert.match(css,/font-family:inherit;font-size:16px;line-height:1\.45/);
  assert.match(css,/\.ik-message-edit-actions button/);
  assert.match(css,/width:min\(70vw,365px\)/);
+});
+
+
+test('private photo attachments open a modal inside the chat without leaking previous session images',()=>{
+ const media=load('components/ChatMedia.tsx');
+ const viewer=load('components/ChatPhotoViewer.tsx');
+ const css=load('app/globals.css');
+ assert.match(media,/import ChatPhotoViewer from/);
+ assert.match(media,/const scope=token\+':'\+path/);
+ assert.match(media,/signed\?\.scope===scope\?signed\.url:null/);
+ assert.match(media,/const error=errorScope===scope/);
+ assert.match(media,/if\(active\)setSigned\(\{scope,url:value\}\)/);
+ assert.match(media,/return\(\)=>\{active=false;\}/);
+ assert.match(media,/setPreviewOpen\(false\)/);
+ assert.match(media,/className="chat-media-open"/);
+ assert.match(media,/onClick=\{\(\)=>setPreviewOpen\(true\)\}/);
+ assert.match(media,/previewOpen&&<ChatPhotoViewer src=\{url\}/);
+ assert.match(media,/onError=\{handleMediaError\}/);
+ assert.doesNotMatch(media,/type==="image"\?<a href=\{url\}/);
+ assert.match(viewer,/createPortal\(/);
+ assert.match(viewer,/document\.body/);
+ assert.match(viewer,/className="ik-chat-photo-backdrop"/);
+ assert.match(viewer,/role="dialog"/);
+ assert.match(viewer,/aria-modal="true"/);
+ assert.match(viewer,/if\(event\.key==='Escape'\)/);
+ assert.match(viewer,/if\(event\.key!=='Tab'\)return/);
+ assert.match(viewer,/document\.body\.style\.overflow='hidden'/);
+ assert.match(viewer,/document\.body\.style\.overflow=previousOverflow/);
+ assert.match(viewer,/previousFocus\?\.isConnected/);
+ assert.match(viewer,/if\(event\.target===event\.currentTarget\)onClose\(\)/);
+ assert.match(viewer,/onError=\{onImageError\}/);
+ assert.match(css,/\.ik-chat-photo-backdrop/);
+ assert.match(css,/\.ik-chat-photo-stage img\{/);
+ assert.match(css,/object-fit:contain/);
+ assert.match(css,/safe-area-inset-top/);
+ assert.match(css,/@media\(prefers-reduced-motion:reduce\)/);
 });
