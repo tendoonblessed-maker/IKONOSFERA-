@@ -152,19 +152,26 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
   useEffect(()=>{
     const chatId=selected;
     if(!session||!chatId||chatLoad?.id!==chatId||chatLoad.status!=='ready')return;
+    const generation=replyJumpRequestRef.current;
     const inChat=chatMessages.filter(message=>message.chat_id===chatId);
     const loaded=new Set(inChat.map(message=>message.id));
     const missing=[...new Set(inChat.map(message=>message.reply_to_message_id).filter((id):id is string=>Boolean(id)))].filter(id=>!loaded.has(id)&&!replyTargetsQueriedRef.current.has(id));
     if(!missing.length)return;
     for(const id of missing)replyTargetsQueriedRef.current.add(id);
-    void listReplyTargets(session.access_token,chatId,missing)
-      .then(targets=>{
-        if(selectedRef.current!==chatId)return;
+    // Every request has a bounded PostgREST URL; quote previews from earlier
+    // pages are not silently discarded after the first 100 IDs.
+    const batches:Array<string[]>=[];
+    for(let start=0;start<missing.length;start+=100)batches.push(missing.slice(start,start+100));
+    const stillInChat=()=>selectedRef.current===chatId&&replyJumpRequestRef.current===generation;
+    void Promise.all(batches.map(ids=>listReplyTargets(session.access_token,chatId,ids)))
+      .then(results=>{
+        if(!stillInChat())return;
+        const targets=results.flat();
         setReplyTargets(current=>({...current,...Object.fromEntries(targets.map(target=>[target.id,target]))}));
       })
       .catch(()=>{
         // Permit a later chat refresh to retry a transient network failure.
-        if(selectedRef.current===chatId)for(const id of missing)replyTargetsQueriedRef.current.delete(id);
+        if(stillInChat())for(const id of missing)replyTargetsQueriedRef.current.delete(id);
       });
   },[chatMessages,chatLoad?.id,chatLoad?.status,selected,session?.access_token]);
   // iOS Safari's visual viewport shrinks when the keyboard appears.
@@ -543,6 +550,8 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
   async function loadOlderChatMessages(){
     if(!session||!selected||loadingOlderRef.current||!hasOlderMessages||!chatMessages.length)return;
     const chatId=selected,token=session.access_token,oldest=chatMessages[0];
+    const generation=replyJumpRequestRef.current;
+    const stillInChat=()=>selectedRef.current===chatId&&replyJumpRequestRef.current===generation;
     const history=conversationHistoryRef.current;
     loadingOlderRef.current=true;
     chatAutoScrollRef.current=false;
@@ -550,27 +559,27 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
     setLoadingOlderMessages(true);setOlderMessagesError(false);
     try{
       const older=(await listOlderMessages(token,chatId,oldest)).reverse();
-      if(selectedRef.current!==chatId)return;
+      if(!stillInChat())return;
       setHasOlderMessages(older.length===CHAT_MESSAGE_PAGE_SIZE);
       if(older.length){
         setChatMessages(current=>prependEarlierPage(current,older));
         // Older reactions load on demand rather than during every 6s poll.
         void listMessageReactions(token,older.map(message=>message.id))
           .then(reactions=>{
-            if(selectedRef.current===chatId)setMessageReactions(current=>{
+            if(stillInChat())setMessageReactions(current=>{
               const ids=new Set(older.map(message=>message.id));
               return [...current.filter(reaction=>!ids.has(reaction.message_id)),...reactions];
             });
           }).catch(()=>{});
       }else prependScrollRef.current=null;
     }catch(error){
-      if(selectedRef.current===chatId){
+      if(stillInChat()){
         prependScrollRef.current=null;
         setOlderMessagesError(true);
       }
     }finally{
       // An old chat request must not unlock a newly opened chat's pagination.
-      if(selectedRef.current===chatId){
+      if(stillInChat()){
         loadingOlderRef.current=false;
         setLoadingOlderMessages(false);
       }
