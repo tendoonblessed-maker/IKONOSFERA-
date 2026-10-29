@@ -94,6 +94,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
   const [messageSearchError,setMessageSearchError]=useState(false);
   const [messageSearchHasMore,setMessageSearchHasMore]=useState(false);
   const [messageSearchPage,setMessageSearchPage]=useState(0);
+  const [messageSearchRetry,setMessageSearchRetry]=useState(0);
   const [selectedMessages,setSelectedMessages]=useState<string[]>([]);
   const [messageMenuId,setMessageMenuId]=useState<string|null>(null);
   const [createMenuOpen,setCreateMenuOpen]=useState(false);
@@ -154,6 +155,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
     replyJumpRequestRef.current+=1;
     setLocatingReply(null);setPendingReplyJump(null);
     setReplyingTo(null);setShowJumpToLatest(false);
+    resetMessageSearch();
   },[selected,userId]);
   useEffect(()=>{replyTargetsQueriedRef.current.clear();setReplyTargets({});},[selected,userId]);
   // Quotations may refer to messages outside the newest page. Fetch only those
@@ -219,13 +221,14 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
       });
     },messageSearchPage===0?320:0);
     return()=>window.clearTimeout(timer);
-  },[searchInConversation,messageSearch,messageSearchPage,selected,session?.access_token,userId]);
+  },[searchInConversation,messageSearch,messageSearchPage,messageSearchRetry,selected,session?.access_token,userId]);
 
   function resetMessageSearch(){
     messageSearchRequestRef.current+=1;
     setMessageSearch('');
     setSearchInConversation(false);
     setMessageSearchPage(0);
+    setMessageSearchRetry(0);
     setMessageSearchResults([]);
     setMessageSearchError(false);
     setMessageSearchHasMore(false);
@@ -234,6 +237,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
   function updateMessageSearch(value:string){
     setMessageSearch(value);
     setMessageSearchPage(0);
+    setMessageSearchRetry(0);
     setMessageSearchResults([]);
     setMessageSearchHasMore(false);
   }
@@ -1178,7 +1182,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
         query={messageSearch} onQueryChange={updateMessageSearch} onClose={resetMessageSearch}
         results={messageSearchResults} loading={messageSearchLoading} failed={messageSearchError}
         hasMore={messageSearchHasMore} onMore={()=>{
-          if(messageSearchError){setMessageSearchError(false);setMessageSearchPage(page=>page);}
+          if(messageSearchError){setMessageSearchError(false);setMessageSearchRetry(retry=>retry+1);}
           else if(!messageSearchLoading)setMessageSearchPage(page=>page+1);
         }}
         onOpen={id=>{void jumpToOriginalMessage(id,true);}}
