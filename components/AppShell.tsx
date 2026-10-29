@@ -1,6 +1,6 @@
 'use client';
 import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { backendReady, createTemporaryAccount, consumeEmailLinkSession, clearSession, currentUser, findProfileByUsername, listChats, listChatPreviews, listMessages, listOlderMessages, listReplyTargets, searchDirectMessages, type DirectMessageSearchResult, DIRECT_MESSAGE_SEARCH_PAGE_SIZE, type ReplyTarget, CHAT_MESSAGE_PAGE_SIZE, manageChat, manageMessage, listMessageReactions, setMessageReaction, markChatRead, listProfiles, myProfile, postMessage, reopenChat, sendDirectMedia, validateDirectMediaFile, sendEmailCode, signOut, startDirectChat, validSession, type ChatMessage, type MessageReaction, type DirectChat, type Profile, type Session, type ChatPreview } from '@/lib/supabase-rest';
+import { backendReady, createTemporaryAccount, consumeEmailLinkSession, currentUser, findProfileByUsername, listChats, listChatPreviews, listMessages, listOlderMessages, listReplyTargets, searchDirectMessages, type DirectMessageSearchResult, DIRECT_MESSAGE_SEARCH_PAGE_SIZE, type ReplyTarget, CHAT_MESSAGE_PAGE_SIZE, manageChat, manageMessage, listMessageReactions, setMessageReaction, markChatRead, listProfiles, myProfile, postMessage, reopenChat, sendDirectMedia, validateDirectMediaFile, sendEmailCode, signOut, startDirectChat, validSession, type ChatMessage, type MessageReaction, type DirectChat, type Profile, type Session, type ChatPreview } from '@/lib/supabase-rest';
 
 import ProfilePanel from "@/components/ProfilePanel";
 import {mergeConfirmedRecentPage,prependEarlierPage,CONFIRMED_MESSAGE_GRACE_MS,type ConfirmedMessage} from "@/lib/chat-history";
@@ -1139,7 +1139,28 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
     }catch(e){setError(userFacingError(e));}
     finally{setSending(false);}
   }
-  async function logout(){if(!session)return;if(anonymous&&!window.confirm('Это временный аккаунт. После выхода восстановить его нельзя. Выйти?'))return;setBusy(true);try{await signOut(session.access_token);}catch(e){setError(userFacingError(e));}finally{inboxOwnerRef.current='';inboxRequestRef.current++;previewRequestRef.current++;groupOverviewRequestRef.current++;clearChatDrafts(userId);clearGroupDrafts(userId);clearAllGroupSendAttempts(userId);groupDraftsOwnerRef.current='';setGroupDraftPreviews({});draftsOwnerRef.current='';draftsRef.current={};setDraftPreviews({});setDraft('');previewCacheRef.current={ownerId:'',previews:new Map()};clearSession();setSession(null);setUserId('');setProfile(null);setAnonymous(false);setRows([]);setSavedContacts([]);setBlockedUsers([]);setSelected(null);setProfileTarget(null);setSelectedChannel(null);setChannels([]);setChatMessages([]);setBusy(false);}}
+  async function logout(){
+    if(!session)return;
+    if(anonymous&&!window.confirm('Это временный аккаунт. После выхода восстановить его нельзя. Выйти?'))return;
+    // signOut clears this session synchronously before its network request.
+    // Never keep the old account visible while waiting for a slow/offline POST.
+    const revokeOnServer=signOut(session.access_token);
+    inboxOwnerRef.current='';inboxRequestRef.current++;
+    previewRequestRef.current++;groupOverviewRequestRef.current++;
+    clearChatDrafts(userId);clearGroupDrafts(userId);clearAllGroupSendAttempts(userId);
+    groupDraftsOwnerRef.current='';setGroupDraftPreviews({});
+    draftsOwnerRef.current='';draftsRef.current={};setDraftPreviews({});setDraft('');
+    previewCacheRef.current={ownerId:'',previews:new Map()};
+    setSession(null);setUserId('');setProfile(null);setAnonymous(false);
+    setRows([]);setSavedContacts([]);setBlockedUsers([]);setSelected(null);
+    setProfileTarget(null);setSelectedChannel(null);setChannels([]);
+    setChatMessages([]);setBusy(false);
+    // Remote revocation is best-effort; a late response must never log out
+    // a different user who entered the app while this request was in flight.
+    try{await revokeOnServer;}catch{
+      // Local sign-out already completed even when the network is unavailable.
+    }
+  }
   async function install(){if(installPrompt){await installPrompt.prompt();await installPrompt.userChoice;setInstallPrompt(null);}else setInstallHelp(true);}
   const storyContacts=useMemo(()=>{
     const byId=new Map<string,Profile>();
