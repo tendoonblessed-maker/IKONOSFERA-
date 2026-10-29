@@ -7,12 +7,13 @@ type Props={
  file:File;
  caption:string;
  sending:boolean;
+ online:boolean;
  onCaptionChange:(value:string)=>void;
  onCancel:()=>void;
  onSend:()=>void;
 };
 
-export default function ChatAttachmentPreview({file,caption,sending,onCaptionChange,onCancel,onSend}:Props){
+export default function ChatAttachmentPreview({file,caption,sending,online,onCaptionChange,onCancel,onSend}:Props){
  const [preview,setPreview]=useState<{file:File;url:string}|null>(null);
  const dialogRef=useRef<HTMLElement|null>(null);
  const captionRef=useRef<HTMLTextAreaElement|null>(null);
@@ -99,9 +100,9 @@ export default function ChatAttachmentPreview({file,caption,sending,onCaptionCha
     </label>
     <footer className="ik-attachment-preview-actions">
      <button type="button" disabled={sending} onClick={onCancel}>Отмена</button>
-     <button ref={sendRef} type="button" disabled={sending} onClick={onSend}
+     <button ref={sendRef} type="button" disabled={sending||!online} onClick={onSend}
        className="ik-attachment-preview-submit">
-       {sending?'Отправляем…':'Отправить'}
+       {sending?'Отправляем…':online?'Отправить':'Нет соединения'}
      </button>
     </footer>
    </section>
