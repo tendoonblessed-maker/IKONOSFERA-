@@ -5,6 +5,8 @@ import {listProfiles,type Profile} from '@/lib/supabase-rest';
 import StatusEmoji from '@/components/StatusEmoji';
 import {getUserActivities,activityLabel,type UserActivity} from '@/lib/activity';
 import {imageUrl} from '@/lib/social';
+import {subscribeGroupChanges} from '@/lib/group-realtime';
+import {mergeConfirmedGroupMessages,CONFIRMED_GROUP_MESSAGE_GRACE_MS,type ConfirmedGroupMessage} from '@/lib/group-history';
 type Props={token:string;userId:string;group:Group;onBack:()=>void;onShowProfile:(id:string)=>void};
 export default function GroupPanel({token,userId,group,onBack,onShowProfile}:Props){
  const [messages,setMessages]=useState<GroupMessage[]>([]);
@@ -20,35 +22,72 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile}:Pro
  const followNewestRef=useRef(true);
  const lastReadRef=useRef<string|null>(null);
  const requestSequenceRef=useRef(0);
+ const confirmedGroupMessagesRef=useRef<Map<string,ConfirmedGroupMessage>>(new Map());
+ const contextRef=useRef({groupId:group.id,userId,token});
+ contextRef.current={groupId:group.id,userId,token};
+ useEffect(()=>{confirmedGroupMessagesRef.current.clear();},[group.id,userId]);
  const refresh=useCallback(async()=>{
   const requestId=++requestSequenceRef.current;
   const msgs=await groupMessages(token,group.id);
   // When a slower poll finishes after a newer one, do not replace the newer
   // messages. The same guard applies after a quick group-switch/unmount.
-  if(requestId!==requestSequenceRef.current)return;
-  setMessages(msgs);
+  if(requestId!==requestSequenceRef.current
+   ||contextRef.current.groupId!==group.id
+   ||contextRef.current.userId!==userId
+   ||contextRef.current.token!==token)return;
+  setMessages(mergeConfirmedGroupMessages(
+   msgs,confirmedGroupMessagesRef.current,group.id,userId
+  ));
   setInitialLoading(false);
   const last=msgs.length?msgs[msgs.length-1].id:null;
   if(document.visibilityState==='visible'&&last!==lastReadRef.current){
     lastReadRef.current=last;
     void markGroupRead(token,group.id).catch(()=>{if(lastReadRef.current===last)lastReadRef.current=null;});
   }
- },[token,group.id]);
+ },[token,group.id,userId]);
  useEffect(()=>{
   let cancelled=false;
   let inFlight=false;
+  let queuedSync=false;
+  let realtimeTimer:number|null=null;
   setInitialLoading(true);
-  const sync=()=>{if(cancelled||inFlight||document.visibilityState==='hidden')return;
+  const sync=()=>{
+    if(cancelled||document.visibilityState==='hidden'||!navigator.onLine)return;
+    if(inFlight){queuedSync=true;return;}
     inFlight=true;
     void refresh().then(()=>{if(!cancelled)setError('');}).catch(e=>{
       if(!cancelled){setInitialLoading(false);setError(e instanceof Error?e.message:'Не удалось загрузить сообщения группы');}
-    }).finally(()=>{inFlight=false;});
+    }).finally(()=>{
+      inFlight=false;
+      // A Realtime event arriving during an older GET must not be discarded.
+      if(queuedSync&&!cancelled){queuedSync=false;sync();}
+    });
   };
   sync();
+  const onRealtimeChanged=()=>{
+    if(cancelled||document.visibilityState==='hidden'||!navigator.onLine)return;
+    if(realtimeTimer!==null)window.clearTimeout(realtimeTimer);
+    realtimeTimer=window.setTimeout(()=>{
+      realtimeTimer=null;
+      sync();
+    },150);
+  };
+  const unsubscribeRealtime=subscribeGroupChanges(token,group.id,onRealtimeChanged);
+  // Polling is a fallback and heals any missed WebSocket notifications.
   const timer=window.setInterval(sync,6000);
+  const onOnline=()=>sync();
   document.addEventListener('visibilitychange',sync);
-  return()=>{cancelled=true;requestSequenceRef.current++;window.clearInterval(timer);document.removeEventListener('visibilitychange',sync);};
- },[refresh]);
+  window.addEventListener('online',onOnline);
+  return()=>{
+    cancelled=true;
+    requestSequenceRef.current++;
+    window.clearInterval(timer);
+    if(realtimeTimer!==null)window.clearTimeout(realtimeTimer);
+    unsubscribeRealtime();
+    document.removeEventListener('visibilitychange',sync);
+    window.removeEventListener('online',onOnline);
+  };
+ },[refresh,token,group.id]);
  // Group membership and profiles change much less often than chat messages.
  useEffect(()=>{
   let cancelled=false;
@@ -66,12 +105,21 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile}:Pro
  useEffect(()=>{if(!membersOpen)return;const onKey=(event:KeyboardEvent)=>{if(event.key==='Escape')setMembersOpen(false);};window.addEventListener('keydown',onKey);return()=>window.removeEventListener('keydown',onKey);},[membersOpen]);
   useEffect(()=>{if(!membersOpen||!members.length)return;let gone=false;const load=()=>{if(document.visibilityState==='visible')void getUserActivities(token,members.map(m=>m.id)).then(value=>{if(!gone)setPresence(value);}).catch(()=>{});};load();const t=setInterval(load,40000);return()=>{gone=true;clearInterval(t);};},[token,membersOpen,members]);
  async function send(e:FormEvent){e.preventDefault();if(busy||!draft.trim())return;
- const body=draft.trim();setBusy(true);setError('');
+ const body=draft.trim(),groupId=group.id,accountId=userId,requestToken=token;
+ setBusy(true);setError('');
  try{
-   await sendGroupMessage(token,group.id,userId,body);
+   const sent=await sendGroupMessage(requestToken,groupId,accountId,body);
+   // Use the actual server-returned message instead of waiting for another
+   // network request. Ignore results after account/group navigation.
+   if(contextRef.current.groupId!==groupId||contextRef.current.userId!==accountId
+      ||contextRef.current.token!==requestToken)return;
+   confirmedGroupMessagesRef.current.set(sent.id,{
+     message:sent,expiresAt:Date.now()+CONFIRMED_GROUP_MESSAGE_GRACE_MS
+   });
+   setMessages(current=>mergeConfirmedGroupMessages(
+     current,confirmedGroupMessagesRef.current,groupId,accountId
+   ));
    setDraft(current=>current.trim()===body?'':current);
-   // Successful message send must not be reported as failed if refresh times out.
-   await refresh().catch(()=>{});
  }catch(e){setError(e instanceof Error?e.message:'Ошибка отправки');}
  finally{setBusy(false);}
  }
