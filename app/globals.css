@@ -2862,3 +2862,20 @@ body{position:relative}
    -webkit-touch-callout:none;
  }
 }
+
+
+/* A quoted message remains tappable, but repeated navigation requests are
+   disabled while older history pages are being fetched under chat RLS. */
+.chat-message-row .bubble .ik-message-reply-reference[aria-busy="true"]{
+  cursor:progress;
+  opacity:.84;
+}
+.chat-message-row .bubble .ik-message-reply-reference[aria-busy="true"] .ik-message-reply-line{
+  animation:ik-reply-search-pulse .95s ease-in-out infinite alternate;
+}
+@keyframes ik-reply-search-pulse{from{opacity:.4}to{opacity:1}}
+@media(prefers-reduced-motion:reduce){
+  .chat-message-row .bubble .ik-message-reply-reference[aria-busy="true"] .ik-message-reply-line{
+    animation:none;
+  }
+}
