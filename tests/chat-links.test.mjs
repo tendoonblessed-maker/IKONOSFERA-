@@ -45,8 +45,8 @@ test('trailing punctuation, Russian quotes and balanced parentheses do not corru
  ]);
  assert.equal(reconstructed(input),input);
  assert.deepEqual(links('«https://example.com/test»'),[
-  {text:'https://example.com/test»',href:'https://example.com/test%C2%BB'}
- ],'quote inside URL should be handled as harmless encoded value, never markup');
+  {text:'https://example.com/test',href:'https://example.com/test'}
+ ],'closing quotation marks should never become part of the link');
 });
 
 test('embedded domain fragments, email addresses, credentials and malformed URLs remain plain',()=>{
