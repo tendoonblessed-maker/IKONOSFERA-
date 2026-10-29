@@ -4,6 +4,7 @@ import { backendReady, createTemporaryAccount, consumeEmailLinkSession, loadSess
 
 import ProfilePanel from "@/components/ProfilePanel";
 import {mergeConfirmedRecentPage,prependEarlierPage,CONFIRMED_MESSAGE_GRACE_MS,type ConfirmedMessage} from "@/lib/chat-history";
+import {shouldAcknowledgeDirectRead,countNewDirectMessagesBelow} from "@/lib/direct-read-position";
 import {readChatDrafts,writeChatDrafts,clearChatDrafts,type ChatDrafts} from "@/lib/chat-drafts";
 import {readGroupDrafts,writeGroupDraft,clearGroupDrafts,type GroupDrafts} from "@/lib/group-drafts";
 import {clearAllGroupSendAttempts} from "@/lib/group-send-attempts";
@@ -118,6 +119,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
   const [draftPreviews,setDraftPreviews]=useState<ChatDrafts>({});
   const [groupDraftPreviews,setGroupDraftPreviews]=useState<GroupDrafts>({});
   const [showJumpToLatest,setShowJumpToLatest]=useState(false);
+  const [newDirectMessagesBelow,setNewDirectMessagesBelow]=useState(0);
   const [replyingTo,setReplyingTo]=useState<{chatId:string;id:string;text:string;name:string}|null>(null);
   const [replyTargets,setReplyTargets]=useState<Record<string,ReplyTarget>>({});
   const [locatingReply,setLocatingReply]=useState<string|null>(null);
@@ -136,6 +138,8 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
   const messageEnd=useRef<HTMLDivElement|null>(null);
   const conversationHistoryRef=useRef<HTMLDivElement|null>(null);
   const chatAutoScrollRef=useRef(true);
+  const recentDirectWindowRef=useRef<{key:string;ids:Set<string>}>({key:'',ids:new Set()});
+  const directReadRef=useRef<{key:string;lastId:string|null;pendingId:string|null}>({key:'',lastId:null,pendingId:null});
   const loadingOlderRef=useRef(false);
   const prependScrollRef=useRef<{chatId:string;height:number;top:number}|null>(null);
   const selectedRef=useRef<string|null>(null);
@@ -221,7 +225,9 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
     chatContextGenerationRef.current+=1;
     replyJumpRequestRef.current+=1;
     setLocatingReply(null);setPendingReplyJump(null);
-    setReplyingTo(null);setShowJumpToLatest(false);
+    setReplyingTo(null);setShowJumpToLatest(false);setNewDirectMessagesBelow(0);
+    recentDirectWindowRef.current={key:'',ids:new Set()};
+    directReadRef.current={key:'',lastId:null,pendingId:null};
     setEditingMessageId(null);setEditingMessageBody('');
     setPendingAttachment(null);setAttachmentCaption('');
     attachmentDragDepthRef.current=0;setAttachmentDragActive(false);
@@ -537,6 +543,12 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
       try{
         const messages=(await listMessages(token,chatId)).reverse();
         if(cancelled)return;
+        const recentKey=userId+':'+chatId;
+        const previous=recentDirectWindowRef.current;
+        const newBelow=previous.key===recentKey
+          ?countNewDirectMessagesBelow(messages,previous.ids,userId,chatId,chatAutoScrollRef.current):0;
+        recentDirectWindowRef.current={key:recentKey,ids:new Set(messages.map(message=>message.id))};
+        if(newBelow>0)setNewDirectMessagesBelow(count=>Math.min(100,count+newBelow));
         setChatMessages(current=>mergeConfirmedRecentPage(
           current,messages,CHAT_MESSAGE_PAGE_SIZE,confirmedMessagesRef.current,chatId,userId
         ));
@@ -549,9 +561,6 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
             return [...current.filter(reaction=>!recentIds.has(reaction.message_id)),...reactions];
           });})
           .catch(()=>{});
-        if(messages.some(message=>message.sender_id!==userId&&!message.read_at)){
-          void markChatRead(token,chatId).catch(()=>{});
-        }
       }catch(e){
         if(!cancelled&&first){
           setChatLoad({id:chatId,status:'error'});
@@ -719,6 +728,30 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
     },2800);
     return()=>window.clearTimeout(timer);
   },[notice]);
+  // A server poll is not evidence of reading. Only mark a committed newest
+  // page as read once it is actually visible at the bottom of the viewport.
+  const acknowledgeDirectIfVisible=useCallback(()=>{
+    const chatId=selected,token=session?.access_token;
+    const history=conversationHistoryRef.current;
+    if(!chatId||!token||!userId||chatLoad?.id!==chatId||chatLoad.status!=='ready'
+       ||!history||!navigator.onLine)return;
+    const atBottom=history.scrollHeight-history.scrollTop-history.clientHeight<120;
+    if(!shouldAcknowledgeDirectRead(chatMessages,chatId,userId,
+      chatAutoScrollRef.current,atBottom,document.visibilityState==='visible'))return;
+    const last=chatMessages[chatMessages.length-1];
+    const key=userId+':'+chatId+':'+token;
+    if(directReadRef.current.key!==key)
+      directReadRef.current={key,lastId:null,pendingId:null};
+    const state=directReadRef.current;
+    if(state.lastId===last.id||state.pendingId)return;
+    state.pendingId=last.id;
+    void markChatRead(token,chatId).then(()=>{
+      if(directReadRef.current===state)state.lastId=last.id;
+    }).catch(()=>{/* A future visible poll or scroll can retry safely. */}).finally(()=>{
+      if(directReadRef.current===state)state.pendingId=null;
+    });
+  },[chatMessages,chatLoad?.id,chatLoad?.status,selected,session?.access_token,userId]);
+
   // Scroll only the message history. scrollIntoView() was scrolling the page
   // itself on iPhone Safari and pushing the composer below the viewport.
   useEffect(()=>{chatAutoScrollRef.current=true;},[selected]);
@@ -741,6 +774,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
     // Never pull the reader away from older messages during incoming polls.
     history.scrollTop=history.scrollHeight;
   },[chatMessages.length,selected]);
+  useEffect(()=>{acknowledgeDirectIfVisible();},[acknowledgeDirectIfVisible]);
   useEffect(()=>{if(selected)setDraft(draftsRef.current[selected]||'');},[selected,userId]);
   useEffect(()=>{const field=composerRef.current;if(!field)return;field.style.height='auto';field.style.height=Math.min(field.scrollHeight,136)+'px';},[draft,selected]);
   useEffect(()=>{
@@ -1511,6 +1545,10 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
         const area=event.currentTarget;
         const distance=area.scrollHeight-area.scrollTop-area.clientHeight;
         chatAutoScrollRef.current=distance<120;
+        if(chatAutoScrollRef.current){
+          setNewDirectMessagesBelow(0);
+          acknowledgeDirectIfVisible();
+        }
         setShowJumpToLatest(distance>220&&!activeChatLoading);
       }}>
       {!activeChatLoading&&!activeChatLoadError&&hasOlderMessages&&<div className="ik-chat-older-controls">
@@ -1543,9 +1581,10 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
  <button type="button" className="reaction-add" aria-label="Добавить реакцию" onClick={()=>setMessageReactionPicker(messageReactionPicker===message.id?null:message.id)}>☺ +</button>
  {messageReactionPicker===message.id&&<div className="reaction-picker">{REACTION_EMOJIS.map(emoji=><button type="button" key={emoji} disabled={sending} onClick={()=>void reactToMessage(message.id,emoji)} aria-label={"Реакция "+emoji}>{emoji}</button>)}</div>}
  </div></div></SwipeReplyMessage></Fragment>)}<div ref={messageEnd}/></div>
-      {showJumpToLatest&&!activeChatLoading&&<button type="button" className={"ik-jump-to-latest"+(replyingTo?.chatId===selected?" with-reply":"")} aria-label="Перейти к последним сообщениям" title="К последним сообщениям"
-        onClick={()=>{const history=conversationHistoryRef.current;if(history){chatAutoScrollRef.current=true;history.scrollTop=history.scrollHeight;}setShowJumpToLatest(false);}}>
+      {showJumpToLatest&&!activeChatLoading&&<button type="button" className={"ik-jump-to-latest"+(replyingTo?.chatId===selected?" with-reply":"")} aria-label="Перейти к последним сообщениям" aria-describedby={newDirectMessagesBelow>0?'ik-direct-unseen-count':undefined} title="К последним сообщениям"
+        onClick={()=>{const history=conversationHistoryRef.current;if(history){chatAutoScrollRef.current=true;history.scrollTop=history.scrollHeight;acknowledgeDirectIfVisible();}setNewDirectMessagesBelow(0);setShowJumpToLatest(false);}}>
         <svg viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m5 9 7 7 7-7"/></svg>
+        {newDirectMessagesBelow>0&&<span id="ik-direct-unseen-count" className="ik-direct-unseen-badge" aria-label={'Новых сообщений: '+(newDirectMessagesBelow>99?'99+':newDirectMessagesBelow)}>{newDirectMessagesBelow>99?'99+':newDirectMessagesBelow}</span>}
       </button>}
       {replyingTo?.chatId===selected&&<div className="ik-inline-reply" role="status">
         <div className="ik-inline-reply-mark" aria-hidden="true"/>
