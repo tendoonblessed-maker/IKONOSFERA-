@@ -2162,180 +2162,149 @@ body{position:relative}
 }
 
 
-/* Telegram-inspired dark profile and Settings, without copying Telegram assets.
-   Scoped so chats, composer and authentication keep their existing styling. */
+
+/* PRE-RELEASE: original LIGHT IKONOSFERA styling, Telegram-inspired STRUCTURE only.
+   The references are about hierarchy, not a dark theme. Do not overwrite user fonts. */
 .messenger.is-authenticated .settings-panel.ik-settings-redesign{
-  display:block;min-height:100%;background:#050505!important;
-  color:#f8f8fa!important;padding:0 15px 30px!important;
-  --ik-setting-surface:#1b1b1e;
+  display:block;min-height:100%;background:#f5f5f7!important;color:#202026!important;
+  padding:0 15px 30px!important;
 }
 .messenger.is-authenticated .ik-settings-page-header{
-  display:flex;align-items:center;justify-content:space-between;
-  min-height:64px;padding:9px 4px 5px;
+  display:flex;align-items:center;justify-content:space-between;min-height:63px;padding:9px 4px 5px;
 }
 .messenger.is-authenticated .ik-settings-page-header h2{
-  font-size:26px!important;font-weight:780!important;letter-spacing:-.045em!important;
-  text-transform:none!important;color:#fff!important;margin:0!important;
+  color:#202025!important;font-size:25px!important;font-weight:780!important;
+  text-transform:none!important;letter-spacing:-.045em!important;margin:0!important;
 }
 .messenger.is-authenticated .ik-settings-header-edit{
-  border:0;background:#222226;color:#f6f6f8;font-size:14px;
-  min-height:36px;padding:8px 14px;border-radius:999px;font-weight:650;
+  border:0;background:#e9e9ed;color:#24242a;font-size:14px;min-height:37px;
+  padding:8px 14px;border-radius:999px;font-weight:650;
 }
-.messenger.is-authenticated .ik-settings-hero{display:flex;justify-content:center;padding:14px 0 24px}
+.messenger.is-authenticated .ik-settings-hero{display:flex;justify-content:center;padding:15px 0 25px}
 .messenger.is-authenticated .ik-settings-profile-link{
   display:flex;flex-direction:column;align-items:center;gap:8px;
-  background:transparent!important;border:0;color:#fff;min-width:0;
-  width:100%;padding:0;text-align:center;
+  background:transparent!important;border:0;color:#202024;min-width:0;width:100%;padding:0;text-align:center;
 }
 .messenger.is-authenticated .ik-settings-hero-avatar{
-  display:grid;place-items:center;width:128px;height:128px;
-  border-radius:50%;overflow:hidden;flex-shrink:0;
-  background:#36363b;color:#fff;font-size:47px;font-weight:750;
+  display:grid;place-items:center;width:128px;height:128px;border-radius:50%;
+  overflow:hidden;flex-shrink:0;background:#e3e3e8;color:#55555d;font-size:46px;font-weight:750;
 }
 .messenger.is-authenticated .ik-settings-hero-avatar img{
   width:100%;height:100%;display:block;object-fit:cover;object-position:center;filter:none!important;
 }
 .messenger.is-authenticated .ik-settings-hero-name{
   display:flex;align-items:center;justify-content:center;gap:7px;max-width:100%;
-  font-size:25px;line-height:1.18;letter-spacing:-.045em;font-weight:800;
+  color:#202025;font-size:25px;line-height:1.2;letter-spacing:-.04em;font-weight:800;
 }
-.messenger.is-authenticated .ik-settings-hero-name strong{
-  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;
-}
+.messenger.is-authenticated .ik-settings-hero-name strong{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
 .messenger.is-authenticated .ik-settings-hero-username{
-  max-width:100%;overflow:hidden;text-overflow:ellipsis;
-  font-size:14px;color:#99999f;font-weight:520;
+  max-width:100%;overflow:hidden;text-overflow:ellipsis;font-size:14px;color:#87878f;
 }
 .messenger.is-authenticated .ik-settings-section{margin:0 0 24px}
 .messenger.is-authenticated .ik-settings-section h3{
-  margin:0 0 9px;padding-left:13px;color:#8e8e96;
-  font-size:11px;font-weight:750;letter-spacing:.065em;
+  margin:0 0 9px;padding-left:13px;color:#93939d;
+  font-size:11px;font-weight:750;letter-spacing:.055em;
 }
 .messenger.is-authenticated .ik-settings-group{
-  width:100%;overflow:hidden;background:#1b1b1e;
-  border:1px solid #28282b;border-radius:21px;
+  width:100%;overflow:hidden;background:#fff;border:1px solid #ededf0;
+  border-radius:19px;box-shadow:0 2px 10px #00000006;
 }
 .messenger.is-authenticated .ik-settings-row{
-  display:flex!important;align-items:center;gap:13px;width:100%;
-  min-width:0;min-height:64px;padding:11px 15px!important;margin:0!important;
-  background:#1b1b1e!important;border:0!important;
-  border-bottom:1px solid #303034!important;border-radius:0!important;
-  box-shadow:none!important;color:#f7f7f8!important;text-align:left;
-  font-size:15px;font-weight:550;cursor:pointer;
+  display:flex!important;align-items:center;gap:13px;width:100%;min-width:0;
+  min-height:61px;padding:10px 15px!important;margin:0!important;
+  background:#fff!important;border:0!important;border-bottom:1px solid #efeff2!important;
+  border-radius:0!important;box-shadow:none!important;color:#252529!important;
+  text-align:left;font-size:15px;font-weight:560;cursor:pointer;
 }
-.messenger.is-authenticated .ik-settings-group>.ik-settings-row:last-child,
-.messenger.is-authenticated .ik-settings-group>.ik-blocklist-settings:last-child>.ik-settings-row{
-  border-bottom:0!important;
-}
-.messenger.is-authenticated .ik-settings-row:active{background:#2b2b30!important}
-.messenger.is-authenticated .ik-settings-row-label{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis}
+.messenger.is-authenticated .ik-settings-group>.ik-settings-row:last-child{border-bottom:0!important}
+.messenger.is-authenticated .ik-settings-row:active{background:#f3f3f6!important}
 .messenger.is-authenticated .ik-settings-icon{
-  display:grid;place-items:center;width:36px;height:36px;flex:0 0 36px;
-  border-radius:11px;background:#414148;color:#f7f7f9;
-  font-size:21px;font-weight:670;line-height:1;
+  display:grid;place-items:center;flex:0 0 36px;width:36px;height:36px;
+  border-radius:11px;background:#ebebef;color:#51515a;font-size:21px;line-height:1;
 }
-.messenger.is-authenticated .ik-settings-chevron{
-  color:#73737b;font-size:25px;font-weight:350;line-height:1;flex:0 0 auto;
-}
-.messenger.is-authenticated .ik-settings-row-value{font-size:12px;color:#929299;flex-shrink:0}
+.messenger.is-authenticated .ik-settings-row-label{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis}
+.messenger.is-authenticated .ik-settings-chevron{flex:0 0 auto;color:#a6a6ae;font-size:24px;line-height:1}
+.messenger.is-authenticated .ik-settings-row-value{font-size:12px;color:#83838e;flex-shrink:0}
 .messenger.is-authenticated .ik-settings-privacy-group .ik-blocklist-settings{
-  overflow:visible;margin:0!important;border:0!important;
-  border-radius:0!important;box-shadow:none!important;background:#1b1b1e!important;
+  margin:0!important;border:0!important;border-radius:0!important;
+  background:#fff!important;box-shadow:none!important;
 }
 .messenger.is-authenticated .ik-settings-privacy-group .ik-blocklist-toggle{
-  min-height:64px;padding:11px 15px!important;gap:13px;background:#1b1b1e!important;
+  min-height:61px;gap:13px;padding:10px 15px!important;background:#fff!important;
 }
 .messenger.is-authenticated .ik-settings-privacy-group .ik-block-count{
   min-width:22px;padding:3px 6px;border-radius:99px;
-  font-size:11px;font-weight:650;color:#99999f;background:#303036;
+  font-size:11px;color:#888891;background:#f0f0f3;
 }
-.messenger.is-authenticated .ik-settings-privacy-group .ik-blocklist-content{
-  background:#232327;border-top:0;padding:4px 10px 9px;
-}
-.messenger.is-authenticated .ik-settings-privacy-group .ik-blocked-person{
-  color:#fff;border-bottom:1px solid #37373d!important;
-}
-.messenger.is-authenticated .ik-settings-privacy-group .ik-blocked-person-info strong{color:#fff}
-.messenger.is-authenticated .ik-settings-privacy-group .ik-blocked-person-info small{color:#aaaab2}
-.messenger.is-authenticated .ik-settings-privacy-group .ik-empty-blocklist{color:#b0b0b5}
+.messenger.is-authenticated .ik-settings-privacy-group .ik-blocklist-content{background:#f9f9fb;padding:7px 11px}
+.messenger.is-authenticated .ik-settings-privacy-group .ik-blocked-person{color:#252529;border-bottom:1px solid #e5e5ea!important}
+.messenger.is-authenticated .ik-settings-privacy-group .ik-blocked-person-info strong{color:#252529}
+.messenger.is-authenticated .ik-settings-privacy-group .ik-blocked-person-info small,
+.messenger.is-authenticated .ik-settings-privacy-group .ik-empty-blocklist{color:#8c8c94}
 .messenger.is-authenticated .ik-settings-privacy-group .ik-blocked-person>button{
-  border:0;background:#393940;color:#fff;padding:9px 11px;border-radius:12px;
-  font-size:12px;flex-shrink:0;
+  background:#e9e9ed;color:#252529;border:0;border-radius:10px;padding:8px 10px;font-size:12px;
 }
 .messenger.is-authenticated .ik-settings-privacy-group .ik-privacy-settings{
   display:grid;gap:9px;margin:0!important;padding:13px 15px 15px!important;
-  border:0!important;border-radius:0!important;background:#1b1b1e!important;
+  border:0!important;border-radius:0!important;background:#fff!important;
 }
 .messenger.is-authenticated .ik-settings-privacy-heading{
-  display:flex;align-items:center;gap:13px;color:#f2f2f5!important;
-  font-size:15px!important;font-weight:550;
+  display:flex;align-items:center;gap:13px;font-size:15px;color:#26262b!important;font-weight:550;
 }
 .messenger.is-authenticated .ik-settings-privacy-group select{
-  display:block;width:100%;min-width:0;
-  min-height:43px;margin:2px 0 0;border:1px solid #44444c;
-  border-radius:12px;background:#303035!important;color:#f7f7fa!important;
-  padding:10px 13px;font-size:14px;
+  display:block;min-width:0;width:100%;min-height:43px;margin:2px 0 0;
+  border:1px solid #e5e5e9;border-radius:12px;background:#f5f5f7!important;
+  color:#29292e!important;padding:10px 13px;font-size:16px;
 }
 .messenger.is-authenticated .ik-settings-privacy-group .ik-privacy-note{
-  color:#9999a2!important;font-size:11px;line-height:1.5;
-  margin:0!important;
+  color:#96969e!important;font-size:11px;line-height:1.5;margin:0!important;
 }
 .messenger.is-authenticated .ik-settings-logout{
   display:block;width:100%;min-height:51px;margin:3px 0 30px;
-  background:#201c1e;border:1px solid #312729;border-radius:17px;
-  color:#f07882;font-size:14px;font-weight:680;
+  background:#fff;border:1px solid #ededf0;border-radius:17px;
+  color:#ca4754;font-size:14px;font-weight:680;
 }
-.messenger.is-authenticated .ik-settings-login-hint{color:#aaaab1;margin:18px 5px}
-.messenger.is-authenticated .settings-panel.ik-settings-redesign .test-account-warning{
-  color:#ececf0;background:#29252b;border-color:#443a46;
-  border-radius:14px;padding:12px;font-size:12px;margin-bottom:18px;
-}
+.messenger.is-authenticated .ik-settings-login-hint{color:#888891;margin:18px 5px}
 
-/* Entire profile screen follows a black-canvas, large-avatar layout. */
+/* Profile layout follows the supplied Telegram reference but retains white/light colors. */
 .messenger.is-authenticated .profile-view.ik-profile-redesign,
 .messenger.is-authenticated .ik-profile-redesign .profile-scroll{
-  background:#050505!important;color:#f7f7f9!important;
+  background:#f5f5f7!important;color:#252529!important;
 }
 .messenger.is-authenticated .ik-profile-redesign .profile-topbar{
   position:relative;z-index:5;display:flex;align-items:center;justify-content:space-between;
-  background:#050505!important;border:0!important;color:#fff;
+  background:#f5f5f7!important;border:0!important;color:#242428;
   padding:7px 12px!important;min-height:60px;height:auto;
 }
 .messenger.is-authenticated .ik-profile-redesign .profile-topbar>strong{
-  color:#fff;font-size:16px;font-weight:760;
-  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  font-size:15px;color:#252529;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
 }
 .messenger.is-authenticated .ik-profile-redesign .profile-back{
-  display:inline-flex;align-items:center;gap:3px;color:#f5f5f7;
-  min-height:41px;flex-shrink:0;border-radius:22px;
-  background:#1e1e21;padding:9px 12px;border:1px solid #333339;
+  display:inline-flex;align-items:center;gap:3px;min-height:41px;flex-shrink:0;
+  border-radius:22px;background:#fff;border:1px solid #e7e7eb;
+  padding:9px 12px;color:#26262a;
 }
 .messenger.is-authenticated .ik-profile-redesign .profile-back svg{display:block;width:20px;height:20px}
 .messenger.is-authenticated .ik-profile-redesign .profile-back span{font-size:12px;font-weight:650}
 .messenger.is-authenticated .ik-profile-redesign .ik-profile-top-actions{display:flex;align-items:center;gap:5px}
 .messenger.is-authenticated .ik-profile-redesign .profile-edit-trigger{
-  background:#222225!important;color:#fff!important;border:1px solid #333338!important;
+  background:#fff!important;border:1px solid #e6e6eb!important;color:#26262a!important;
   min-height:40px;border-radius:22px!important;padding:9px 12px!important;
   font-size:12px!important;white-space:nowrap;
 }
 .messenger.is-authenticated .ik-profile-redesign .profile-hero{
-  padding-bottom:22px;border:0!important;text-align:center;background:#050505!important;
+  padding-bottom:22px;border:0!important;text-align:center;
+  background:#f5f5f7!important;
 }
 .messenger.is-authenticated .ik-profile-redesign .profile-cover:not([style]){
-  height:35px;background:#050505!important;
+  height:35px;background:#f5f5f7!important;
 }
 .messenger.is-authenticated .ik-profile-redesign .profile-cover[style]{
-  height:145px;background-color:#29292c!important;
-}
-.messenger.is-authenticated .ik-profile-redesign .profile-cover-action{
-  border-radius:999px;background:rgba(20,20,22,.85);
-  border:1px solid #55555e;color:#fff;font-size:11px;
-  bottom:11px;right:12px;backdrop-filter:blur(9px);
+  height:145px;background-color:#ededf1!important;
 }
 .messenger.is-authenticated .ik-profile-redesign .profile-avatar-large{
-  width:134px;height:134px;margin:-7px auto 0;
-  border:3px solid #050505;border-radius:50%;
-  background:#333338;box-shadow:none;color:#fff;
+  width:134px;height:134px;margin:-7px auto 0;border:3px solid #f5f5f7;
+  border-radius:50%;background:#e6e6eb;box-shadow:none;color:#252529;
 }
 .messenger.is-authenticated .ik-profile-redesign .profile-hero:has(.profile-cover[style]) .profile-avatar-large{
   margin:-62px auto 0;
@@ -2344,164 +2313,109 @@ body{position:relative}
   width:100%;height:100%;border-radius:50%;object-fit:cover;filter:none!important;
 }
 .messenger.is-authenticated .ik-profile-redesign .profile-avatar-has-story{
-  box-shadow:0 0 0 2px #86868d!important;border:3px solid #050505;
+  box-shadow:0 0 0 2px #74747c!important;border:3px solid #f5f5f7;
 }
 .messenger.is-authenticated .ik-profile-redesign .profile-avatar-camera{
-  display:grid;place-items:center;background:#29292c;color:#fff;
-  border:2px solid #050505;border-radius:50%;width:35px;height:35px;
+  background:#e6e6ec;border:2px solid #f5f5f7;color:#303036;
+  width:35px;height:35px;border-radius:50%;
 }
-.messenger.is-authenticated .ik-profile-redesign .profile-identity{
-  padding:0 12px;color:#f6f6f9;
-}
+.messenger.is-authenticated .ik-profile-redesign .profile-identity{padding:0 12px;color:#25252a}
 .messenger.is-authenticated .ik-profile-redesign .ik-profile-name-row{
   display:flex;align-items:center;justify-content:center;gap:8px;
   min-width:0;max-width:100%;margin:13px auto 5px;
 }
 .messenger.is-authenticated .ik-profile-redesign .profile-identity h1{
-  color:#fff!important;font-size:27px!important;font-weight:820;letter-spacing:-.045em;
-  line-height:1.15;margin:0;overflow-wrap:anywhere;
+  color:#19191e!important;font-size:27px!important;font-weight:820;
+  letter-spacing:-.045em;line-height:1.15;margin:0;overflow-wrap:anywhere;
 }
-.messenger.is-authenticated .ik-profile-redesign .profile-identity>p{
-  color:#a1a1a8!important;font-size:13px;margin:5px auto;
-}
+.messenger.is-authenticated .ik-profile-redesign .profile-identity>p,
 .messenger.is-authenticated .ik-profile-redesign .profile-identity .ik-profile-activity{
-  color:#a1a1a8!important;font-size:13px;
-}
-.messenger.is-authenticated .ik-profile-redesign .profile-identity .ik-profile-activity.ik-online-label{
-  color:#c0c0c8!important;
+  color:#8c8c96!important;font-size:13px;margin:5px auto;
 }
 .messenger.is-authenticated .ik-profile-redesign .profile-bio{
-  color:#e5e5e9!important;font-size:13px;line-height:1.5;
-  padding:8px 16px;margin-top:9px;
+  color:#4d4d56!important;font-size:13px;line-height:1.5;padding:8px 16px;margin-top:9px;
 }
 .messenger.is-authenticated .ik-profile-redesign .ik-profile-conversation-actions{
   margin:14px auto 0;display:flex;justify-content:center;gap:9px;
 }
 .messenger.is-authenticated .ik-profile-redesign .profile-message-button{
-  background:#efeff1!important;color:#18181b!important;border-radius:15px;
+  background:#222226!important;color:#fff!important;border-radius:15px;
 }
 .messenger.is-authenticated .ik-profile-redesign .ik-profile-block-action{
-  background:#29292e!important;border:1px solid #35353c!important;
-  color:#f0f0f3!important;
+  background:#fff!important;border:1px solid #dedee3!important;color:#323238!important;
 }
 .messenger.is-authenticated .ik-profile-redesign .profile-content-section,
 .messenger.is-authenticated .ik-profile-redesign .profile-editor{
-  background:#1b1b1e!important;color:#f6f6f8!important;
-  border:1px solid #242428!important;border-radius:21px!important;
-  box-shadow:none!important;margin:12px 14px!important;padding:15px!important;
+  background:#fff!important;color:#27272c!important;border:1px solid #ededf0!important;
+  border-radius:20px!important;box-shadow:none!important;margin:12px 14px!important;padding:15px!important;
 }
 .messenger.is-authenticated .ik-profile-redesign .profile-featured-section{
-  background:transparent!important;border:0!important;
-  padding:0!important;margin:11px 14px 6px!important;
+  background:transparent!important;border:0!important;padding:0!important;margin:11px 14px 6px!important;
 }
 .messenger.is-authenticated .ik-profile-redesign .profile-featured-channel{
-  display:flex;gap:12px;align-items:center;width:100%;
-  color:#fff!important;background:#1b1b1e!important;
-  border:1px solid #28282d!important;border-radius:20px!important;
-  padding:12px!important;min-height:76px;
+  color:#222226!important;background:#fff!important;border:1px solid #ececef!important;
+  border-radius:19px!important;padding:12px!important;min-height:76px;
 }
-.messenger.is-authenticated .ik-profile-redesign .profile-featured-icon{
-  width:51px;height:51px;flex-basis:51px;overflow:hidden;border-radius:50%;
-  background:#3e3e44;color:#fff;
-}
-.messenger.is-authenticated .ik-profile-redesign .profile-featured-details strong{color:#fff}
-.messenger.is-authenticated .ik-profile-redesign .profile-featured-details small{color:#9a9aa1}
-.messenger.is-authenticated .ik-profile-redesign .profile-featured-arrow{color:#888892}
-.messenger.is-authenticated .ik-profile-redesign .ik-profile-pin-toggle{
-  color:#a9a9b0;background:transparent;border:0;font-size:12px;padding:11px 10px;
-}
+.messenger.is-authenticated .ik-profile-redesign .profile-featured-details strong{color:#252529}
+.messenger.is-authenticated .ik-profile-redesign .profile-featured-details small{color:#8d8d96}
 .messenger.is-authenticated .ik-profile-redesign .ik-profile-pin-picker{
-  display:grid;gap:12px;background:#26262b!important;border-radius:16px;
-  padding:15px;color:#f7f7f9;
+  background:#fff!important;border:1px solid #ededf0;border-radius:16px;
+  padding:15px;color:#252529;
 }
-.messenger.is-authenticated .ik-profile-redesign .ik-profile-pin-picker label{color:#dadade}
 .messenger.is-authenticated .ik-profile-redesign .ik-profile-pin-picker select{
-  background:#35353a;color:#fff;border:1px solid #48484f;
+  background:#f5f5f7;color:#252529;border:1px solid #e5e5ea;
 }
 .messenger.is-authenticated .ik-profile-redesign .ik-profile-pin-save{
-  background:#e9e9ec;color:#111;border:0;
+  background:#26262b;color:#fff;border:0;
 }
-.messenger.is-authenticated .ik-profile-redesign .ik-status-setting{
-  background:transparent!important;color:#f6f6f8!important;
-  border:0!important;border-radius:12px;
-}
-.messenger.is-authenticated .ik-profile-redesign .ik-status-setting strong{color:#fff}
-.messenger.is-authenticated .ik-profile-redesign .ik-status-setting small,
-.messenger.is-authenticated .ik-profile-redesign .ik-status-setting-chevron{color:#a7a7af!important}
-.messenger.is-authenticated .ik-profile-redesign .ik-status-setting-image{background:#3b3b42;color:#fff}
 .messenger.is-authenticated .ik-profile-redesign .ik-profile-content-tabs{
   display:grid;grid-template-columns:1fr 1fr;gap:4px;
-  padding:4px;margin:13px 14px 0;background:#1b1b1e;
-  border-radius:16px;border:1px solid #303034;
+  padding:4px;margin:13px 14px 0;background:#e9e9ed;
+  border-radius:16px;border:1px solid #e4e4e9;
 }
 .messenger.is-authenticated .ik-profile-redesign .ik-profile-content-tabs button{
   display:inline-flex;justify-content:center;align-items:center;gap:5px;
   min-width:0;min-height:43px;padding:8px 7px;
-  border:0;border-radius:12px;background:transparent;color:#a9a9af;
+  border:0;border-radius:12px;background:transparent;color:#777781;
   font-size:13px;font-weight:730;
 }
 .messenger.is-authenticated .ik-profile-redesign .ik-profile-content-tabs button.selected{
-  color:#fff;background:#3b3b3f;
+  color:#232328;background:#fff;box-shadow:0 1px 3px #0000000e;
 }
 .messenger.is-authenticated .ik-profile-redesign .ik-profile-content-tabs button span{
   font-size:10px;font-weight:750;color:inherit;opacity:.75;
 }
-.messenger.is-authenticated .ik-profile-redesign .profile-section-title h2{
-  color:#fff!important;font-size:15px!important;font-weight:750;
-}
-.messenger.is-authenticated .ik-profile-redesign .profile-section-title p{color:#9d9da5}
-.messenger.is-authenticated .ik-profile-redesign .profile-action{
-  border:0;background:#34343a;color:#f3f3f5;border-radius:99px;
-  padding:10px 13px;font-size:11px;
-}
-.messenger.is-authenticated .ik-profile-redesign .profile-story{
-  min-width:110px;max-width:145px;gap:7px;color:#ddd;
-}
+.messenger.is-authenticated .ik-profile-redesign .profile-section-title h2{color:#28282d!important;font-size:15px!important}
 .messenger.is-authenticated .ik-profile-redesign .profile-story-thumb{
   width:112px;height:150px;border:0;padding:0;border-radius:13px;
-  background:#33343a;overflow:hidden;
+  background:#ececf0;overflow:hidden;
 }
 .messenger.is-authenticated .ik-profile-redesign .profile-story-thumb img{
   border-radius:13px;object-fit:cover;display:block;width:100%;height:100%;
 }
-.messenger.is-authenticated .ik-profile-redesign .profile-story small{color:#aaaab1}
-.messenger.is-authenticated .ik-profile-redesign .profile-grid-cell{background:#333338;border-radius:12px}
-.messenger.is-authenticated .ik-profile-redesign .profile-editor label{color:#dddde2}
 .messenger.is-authenticated .ik-profile-redesign .profile-editor input,
 .messenger.is-authenticated .ik-profile-redesign .profile-editor textarea{
-  background:#303036!important;border:1px solid #424248!important;
-  border-radius:12px;color:#fff!important;font-size:16px;
+  background:#f6f6f8!important;border:1px solid #e6e6eb!important;
+  border-radius:12px;color:#252529!important;font-size:16px;
 }
-.messenger.is-authenticated .ik-profile-redesign .profile-editor h2,
-.messenger.is-authenticated .ik-profile-redesign .profile-editor-intro{color:#fff}
+.messenger.is-authenticated .ik-profile-redesign .profile-editor h2{color:#252529}
 .messenger.is-authenticated .ik-profile-redesign .profile-field-hint,
 .messenger.is-authenticated .ik-profile-redesign .profile-empty,
-.messenger.is-authenticated .ik-profile-redesign .profile-privacy{color:#a0a0a8!important}
-.messenger.is-authenticated .ik-profile-redesign .profile-delete-actions button{color:#ddd}
-.messenger.is-authenticated .ik-profile-redesign .profile-error,
-.messenger.is-authenticated .ik-profile-redesign .profile-success{
-  border:1px solid #3a3a43;background:#27272d;color:#f3f3f7;
+.messenger.is-authenticated .ik-profile-redesign .profile-privacy{
+  color:#8c8c96!important;
 }
 @media(max-width:800px){
   .messenger.is-authenticated[data-current-tab="settings"] .chats-pane,
   .messenger.is-authenticated[data-current-tab="settings"] .pane-heading,
   .messenger.is-authenticated[data-current-tab="settings"] .pane-toolbar{
-    background:#050505!important;color:#fff!important;border-color:#050505!important;
+    background:#f5f5f7!important;color:#252529!important;border-color:#f5f5f7!important;
   }
   .messenger.is-authenticated[data-current-tab="settings"] .pane-toolbar{
-    min-height:0!important;height:0!important;padding:0!important;
-    border:0!important;overflow:hidden;
+    min-height:0!important;height:0!important;padding:0!important;overflow:hidden;
   }
   .messenger.is-authenticated[data-current-tab="settings"] .pane-nav{
-    background:rgba(20,20,22,.96)!important;
-    border-top:1px solid #38383c!important;
+    background:rgba(250,250,252,.96)!important;border-top:1px solid #e8e8eb!important;
     -webkit-backdrop-filter:blur(22px);backdrop-filter:blur(22px);
-  }
-  .messenger.is-authenticated[data-current-tab="settings"] .pane-nav button{
-    color:#b3b3bb!important;
-  }
-  .messenger.is-authenticated[data-current-tab="settings"] .pane-nav button.current{
-    color:#fff!important;background:#333338!important;
   }
   .messenger.is-authenticated .settings-panel.ik-settings-redesign{
     padding:0 13px max(20px,env(safe-area-inset-bottom,0px))!important;
@@ -2511,29 +2425,20 @@ body{position:relative}
   .messenger.is-authenticated .ik-settings-hero{padding:12px 0 22px}
   .messenger.is-authenticated .ik-settings-hero-avatar{width:116px;height:116px}
   .messenger.is-authenticated .ik-settings-hero-name{font-size:24px}
-  .messenger.is-authenticated .ik-profile-redesign .profile-topbar>strong{
-    font-size:13px;max-width:118px;
-  }
+  .messenger.is-authenticated .ik-profile-redesign .profile-topbar>strong{font-size:13px;max-width:118px}
   .messenger.is-authenticated .ik-profile-redesign .profile-back span{display:none}
   .messenger.is-authenticated .ik-profile-redesign .profile-back{
     width:42px;height:42px;padding:0;justify-content:center;
   }
-  .messenger.is-authenticated .ik-profile-redesign .profile-edit-trigger{
-    padding:8px 10px!important;font-size:11px!important;
-  }
-  .messenger.is-authenticated .ik-profile-redesign .profile-avatar-large{
-    width:126px;height:126px;
-  }
+  .messenger.is-authenticated .ik-profile-redesign .profile-avatar-large{width:126px;height:126px}
   .messenger.is-authenticated .ik-profile-redesign .profile-content-section{
     padding:14px!important;margin:10px 12px!important;
   }
-  .messenger.is-authenticated .ik-profile-redesign .ik-profile-content-tabs{
-    margin:12px 12px 0;
-  }
+  .messenger.is-authenticated .ik-profile-redesign .ik-profile-content-tabs{margin:12px 12px 0}
 }
 @media(max-width:365px){
- .messenger.is-authenticated .ik-settings-row{gap:9px;padding:10px 12px!important}
- .messenger.is-authenticated .ik-settings-icon{width:32px;height:32px;flex-basis:32px}
- .messenger.is-authenticated .ik-settings-hero-avatar{width:106px;height:106px}
- .messenger.is-authenticated .ik-profile-redesign .profile-topbar>strong{display:none}
+  .messenger.is-authenticated .ik-settings-row{gap:9px;padding:10px 12px!important}
+  .messenger.is-authenticated .ik-settings-icon{width:32px;height:32px;flex-basis:32px}
+  .messenger.is-authenticated .ik-settings-hero-avatar{width:106px;height:106px}
+  .messenger.is-authenticated .ik-profile-redesign .profile-topbar>strong{display:none}
 }
