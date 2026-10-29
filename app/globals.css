@@ -2853,3 +2853,12 @@ body{position:relative}
 @media(prefers-reduced-motion:reduce){
   .chat-message-row .bubble.ik-reply-target-flash{animation:none;outline:2px solid #737ab5;outline-offset:2px}
 }
+
+
+/* Native-feeling message gestures on iOS and Android: the whole bubble
+   supports a long press while the dedicated action button remains accessible. */
+@media(hover:none) and (pointer:coarse){
+ .messenger.is-authenticated .ik-swipe-message[data-long-press-menu="true"] .bubble{
+   -webkit-touch-callout:none;
+ }
+}
