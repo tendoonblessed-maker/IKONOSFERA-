@@ -24,6 +24,7 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
  const [retryAvailable,setRetryAvailable]=useState(false);
  const [initialLoading,setInitialLoading]=useState(true);
  const historyRef=useRef<HTMLDivElement|null>(null);
+ const composerFormRef=useRef<HTMLFormElement|null>(null);
  const followNewestRef=useRef(true);
  const lastReadRef=useRef<string|null>(null);
  const requestSequenceRef=useRef(0);
@@ -186,7 +187,7 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
   <button type="button" onClick={()=>{setError('');setInitialLoading(true);void refresh().catch(e=>{setInitialLoading(false);setError(e instanceof Error?e.message:'Ошибка загрузки');});}}>Попробовать снова</button>
  </div>}
  {messages.map(m=><article key={m.id} className={'bubble '+(m.sender_id===userId?'mine':'theirs')}><strong className="group-author ik-name-with-status"><span>{m.sender_id===userId?'Вы':names[m.sender_id]||'Участник'}</span><StatusEmoji index={memberById.get(m.sender_id)?.status_emoji} decorative/></strong><div>{m.body}</div><time>{new Date(m.created_at).toLocaleTimeString('ru-RU',{hour:'2-digit',minute:'2-digit'})}</time></article>)}</div>
- <form className="composer ik-group-composer" onSubmit={send}>
+ <form ref={composerFormRef} className="composer ik-group-composer" onSubmit={send}>
  <textarea aria-label="Сообщение группе" placeholder={online?"Сообщение группе…":"Нет сети · черновик сохранён"} rows={1} enterKeyHint="enter" maxLength={4000} value={draft}
  onChange={e=>{changeDraft(e.target.value);if(error)setError('');}}
  onKeyDown={e=>{
@@ -202,7 +203,7 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
  {!online&&<p className="ik-group-offline" role="status">Нет соединения. Текст останется в черновике, отправь его после подключения.</p>}
  {error&&<div className="ik-group-send-alert" role="alert">
  <span>{error}</span>
- {retryAvailable&&online&&draft.trim()&&<button type="button" onClick={()=>{const form=document.querySelector('.group-view .ik-group-composer') as HTMLFormElement|null;form?.requestSubmit();}} disabled={busy}>Повторить отправку</button>}
+ {retryAvailable&&online&&draft.trim()&&<button type="button" onClick={()=>composerFormRef.current?.requestSubmit()} disabled={busy}>Повторить отправку</button>}
  </div>}
  {membersOpen&&<div className="ik-members-backdrop" role="dialog" aria-modal="true" aria-label="Участники группы">
  <div className="ik-members-modal"><div className="ik-members-header"><div><strong>{group.title}</strong><small>{members.length} участников</small></div><button type="button" onClick={()=>setMembersOpen(false)} aria-label="Закрыть список участников">✕</button></div>
