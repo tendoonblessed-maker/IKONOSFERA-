@@ -6,6 +6,7 @@ import ProfilePanel from "@/components/ProfilePanel";
 import {mergeConfirmedRecentPage,prependEarlierPage,CONFIRMED_MESSAGE_GRACE_MS,type ConfirmedMessage} from "@/lib/chat-history";
 import {readChatDrafts,writeChatDrafts,clearChatDrafts,type ChatDrafts} from "@/lib/chat-drafts";
 import ChatMedia from "@/components/ChatMedia";
+import {subscribeDirectChatChanges} from "@/lib/direct-realtime";
 import {reconcileRecentChannelUpdates,CHANNEL_UPDATE_GRACE_MS,type RecentChannelUpdate} from "@/lib/channel-sync";
 import ChatAttachmentPreview from "@/components/ChatAttachmentPreview";
 import ChatInboxRow from "@/components/ChatInboxRow";
@@ -421,6 +422,8 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
     if(!selected||!session?.access_token||!userId)return;
     let cancelled=false;
     let inFlight=false;
+    let queuedSync=false;
+    let realtimeTimer:number|null=null;
     const chatId=selected;
     const token=session.access_token;
     setChatLoad({id:chatId,status:'loading'});
@@ -434,7 +437,8 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
     setSelectedMessages([]);
     setMessageMenuId(null);
     const sync=async(first=false)=>{
-      if(cancelled||inFlight||document.visibilityState==='hidden')return;
+      if(cancelled||document.visibilityState==='hidden')return;
+      if(inFlight){queuedSync=true;return;}
       // Offline detection avoids pointless 18-second fetch timeouts.
       // The 'online' listener below triggers an immediate retry.
       if(!navigator.onLine)return;
@@ -462,9 +466,27 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
           setChatLoad({id:chatId,status:'error'});
           setError(userFacingError(e));
         }
-      }finally{inFlight=false;}
+      }finally{
+        inFlight=false;
+        // Never drop a Realtime hint just because an earlier GET is still
+        // in flight. One extra request is enough for any number of hints.
+        if(queuedSync&&!cancelled){queuedSync=false;void sync();}
+      }
     };
     void sync(true);
+    // Debounce bursts of read receipts and inserts. The returned rows always
+    // pass ordinary RLS and message filtering, even on a Realtime signal.
+    const onRealtimeChange=()=>{
+      if(cancelled||document.visibilityState==='hidden'||!navigator.onLine)return;
+      if(realtimeTimer!==null)window.clearTimeout(realtimeTimer);
+      realtimeTimer=window.setTimeout(()=>{
+        realtimeTimer=null;
+        void sync();
+      },150);
+    };
+    const unsubscribeRealtime=subscribeDirectChatChanges(token,chatId,onRealtimeChange);
+    // HTTP polling remains a fallback when WebSocket is blocked, offline,
+    // rate-limited or disconnected (and it repairs missed Realtime events).
     const timer=window.setInterval(()=>void sync(),6000);
     const onVisible=()=>{if(document.visibilityState==='visible')void sync();};
     const onConnected=()=>{if(document.visibilityState==='visible')void sync(true);};
@@ -472,6 +494,8 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
     window.addEventListener('online',onConnected);
     return()=>{
       cancelled=true;window.clearInterval(timer);
+      if(realtimeTimer!==null)window.clearTimeout(realtimeTimer);
+      unsubscribeRealtime();
       document.removeEventListener('visibilitychange',onVisible);
       window.removeEventListener('online',onConnected);
     };
