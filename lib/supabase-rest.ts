@@ -174,6 +174,24 @@ export async function listReplyTargets(token:string,chatId:string,ids:string[]):
   return http<ReplyTarget[]>('/rest/v1/messages?select=id,sender_id,body,deleted_for_everyone,media_type&chat_id=eq.'+encodeURIComponent(chatId)+'&id=in.('+unique.map(encodeURIComponent).join(',')+')',{token});
 }
 
+/** Text-only matches from the entire RLS-visible chat history, newest first.
+ * A 31st match signals that the current 30-result page has more results. */
+export type DirectMessageSearchResult=Pick<ChatMessage,'id'|'sender_id'|'body'|'created_at'>;
+export const DIRECT_MESSAGE_SEARCH_PAGE_SIZE=30;
+export async function searchDirectMessages(
+ token:string,chatId:string,query:string,offset=0
+):Promise<DirectMessageSearchResult[]>{
+ const term=query.trim();
+ if(term.length<2||term.length>120)return [];
+ return http<DirectMessageSearchResult[]>('/rest/v1/rpc/search_direct_messages',{
+  token,method:'POST',body:{
+   p_chat_id:chatId,p_query:term,
+   p_limit:DIRECT_MESSAGE_SEARCH_PAGE_SIZE+1,
+   p_offset:Math.max(0,Math.min(600,Math.floor(offset)))
+  }
+ });
+}
+
 export async function postMessage(token: string, chatId: string, userId: string, body: string, clientMessageId: string = crypto.randomUUID(), replyToMessageId:string|null=null) {
   void userId;
   const endpoint=replyToMessageId?'/rest/v1/rpc/send_direct_reply':'/rest/v1/rpc/send_direct_message';

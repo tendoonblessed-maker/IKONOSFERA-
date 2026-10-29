@@ -1,6 +1,6 @@
 'use client';
 import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { backendReady, createTemporaryAccount, consumeEmailLinkSession, clearSession, currentUser, findProfileByUsername, listChats, listChatPreviews, listMessages, listOlderMessages, listReplyTargets, type ReplyTarget, CHAT_MESSAGE_PAGE_SIZE, manageChat, manageMessage, listMessageReactions, setMessageReaction, markChatRead, listProfiles, myProfile, postMessage, reopenChat, sendDirectMedia, sendEmailCode, signOut, startDirectChat, validSession, type ChatMessage, type MessageReaction, type DirectChat, type Profile, type Session, type ChatPreview } from '@/lib/supabase-rest';
+import { backendReady, createTemporaryAccount, consumeEmailLinkSession, clearSession, currentUser, findProfileByUsername, listChats, listChatPreviews, listMessages, listOlderMessages, listReplyTargets, searchDirectMessages, type DirectMessageSearchResult, DIRECT_MESSAGE_SEARCH_PAGE_SIZE, type ReplyTarget, CHAT_MESSAGE_PAGE_SIZE, manageChat, manageMessage, listMessageReactions, setMessageReaction, markChatRead, listProfiles, myProfile, postMessage, reopenChat, sendDirectMedia, sendEmailCode, signOut, startDirectChat, validSession, type ChatMessage, type MessageReaction, type DirectChat, type Profile, type Session, type ChatPreview } from '@/lib/supabase-rest';
 
 import ProfilePanel from "@/components/ProfilePanel";
 import {mergeRecentPage,prependEarlierPage} from "@/lib/chat-history";
@@ -10,6 +10,7 @@ import ChatInboxRow from "@/components/ChatInboxRow";
 import StatusEmoji from "@/components/StatusEmoji";
 import SwipeReplyMessage from "@/components/SwipeReplyMessage";
 import ReplyQuote from "@/components/ReplyQuote";
+import DirectMessageSearchPanel from "@/components/DirectMessageSearchPanel";
 import FloatingActionMenu from "@/components/FloatingActionMenu";
 import {listSavedContacts,addSavedContact,removeSavedContact,listBlockedUsers,addBlockedUser,removeBlockedUser} from "@/lib/contacts";
 import {pingActivity,myActivityVisibility,getUserActivities,activityLabel,type ActivityVisibility,type UserActivity} from '@/lib/activity';
@@ -88,6 +89,12 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
   const [selectedBot,setSelectedBot]=useState<'days'|'mood'|null>(null);
   const [messageSearch,setMessageSearch]=useState('');
   const [searchInConversation,setSearchInConversation]=useState(false);
+  const [messageSearchResults,setMessageSearchResults]=useState<DirectMessageSearchResult[]>([]);
+  const [messageSearchLoading,setMessageSearchLoading]=useState(false);
+  const [messageSearchError,setMessageSearchError]=useState(false);
+  const [messageSearchHasMore,setMessageSearchHasMore]=useState(false);
+  const [messageSearchPage,setMessageSearchPage]=useState(0);
+  const [messageSearchRetry,setMessageSearchRetry]=useState(0);
   const [selectedMessages,setSelectedMessages]=useState<string[]>([]);
   const [messageMenuId,setMessageMenuId]=useState<string|null>(null);
   const [createMenuOpen,setCreateMenuOpen]=useState(false);
@@ -121,6 +128,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
   const replyTargetsQueriedRef=useRef<Set<string>>(new Set());
   const replyJumpRequestRef=useRef(0);
   const chatContextGenerationRef=useRef(0);
+  const messageSearchRequestRef=useRef(0);
   const composerRef=useRef<HTMLTextAreaElement|null>(null);
 
   useEffect(()=>{
@@ -147,6 +155,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
     replyJumpRequestRef.current+=1;
     setLocatingReply(null);setPendingReplyJump(null);
     setReplyingTo(null);setShowJumpToLatest(false);
+    resetMessageSearch();
   },[selected,userId]);
   useEffect(()=>{replyTargetsQueriedRef.current.clear();setReplyTargets({});},[selected,userId]);
   // Quotations may refer to messages outside the newest page. Fetch only those
@@ -176,6 +185,63 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
         if(stillInChat())for(const id of missing)replyTargetsQueriedRef.current.delete(id);
       });
   },[chatMessages,chatLoad?.id,chatLoad?.status,selected,session?.access_token]);
+  // Full-history search uses a scoped, security-invoker database RPC.
+  // Debounce typing and ignore every stale response when the query, chat,
+  // account, or tab changes. Never cache search results across accounts.
+  useEffect(()=>{
+    const requestId=++messageSearchRequestRef.current;
+    const chatId=selected;
+    const term=messageSearch.trim();
+    const offset=messageSearchPage*DIRECT_MESSAGE_SEARCH_PAGE_SIZE;
+    if(!searchInConversation||!session||!chatId||term.length<2||term.length>120){
+      setMessageSearchResults([]);
+      setMessageSearchLoading(false);
+      setMessageSearchError(false);
+      setMessageSearchHasMore(false);
+      return;
+    }
+    const token=session.access_token;
+    const generation=chatContextGenerationRef.current;
+    const belongs=()=>messageSearchRequestRef.current===requestId
+      &&chatContextGenerationRef.current===generation&&selectedRef.current===chatId;
+    setMessageSearchLoading(true);setMessageSearchError(false);
+    const timer=window.setTimeout(()=>{
+      void searchDirectMessages(token,chatId,term,offset).then(matches=>{
+        if(!belongs())return;
+        const page=matches.slice(0,DIRECT_MESSAGE_SEARCH_PAGE_SIZE);
+        setMessageSearchResults(previous=>offset===0?page:[
+          ...previous,...page.filter(item=>!previous.some(old=>old.id===item.id))
+        ]);
+        setMessageSearchHasMore(matches.length>DIRECT_MESSAGE_SEARCH_PAGE_SIZE
+          &&offset+DIRECT_MESSAGE_SEARCH_PAGE_SIZE<=600);
+      }).catch(()=>{
+        if(belongs())setMessageSearchError(true);
+      }).finally(()=>{
+        if(belongs())setMessageSearchLoading(false);
+      });
+    },messageSearchPage===0?320:0);
+    return()=>window.clearTimeout(timer);
+  },[searchInConversation,messageSearch,messageSearchPage,messageSearchRetry,selected,session?.access_token,userId]);
+
+  function resetMessageSearch(){
+    messageSearchRequestRef.current+=1;
+    setMessageSearch('');
+    setSearchInConversation(false);
+    setMessageSearchPage(0);
+    setMessageSearchRetry(0);
+    setMessageSearchResults([]);
+    setMessageSearchError(false);
+    setMessageSearchHasMore(false);
+    setMessageSearchLoading(false);
+  }
+  function updateMessageSearch(value:string){
+    setMessageSearch(value);
+    setMessageSearchPage(0);
+    setMessageSearchRetry(0);
+    setMessageSearchResults([]);
+    setMessageSearchHasMore(false);
+  }
+
   // iOS Safari's visual viewport shrinks when the keyboard appears.
   // Follow that visible area rather than a stale 100dvh layout height,
   // without disabling the user's ability to pinch-zoom for accessibility.
@@ -547,7 +613,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
   function switchTab(next:Tab){
     setEditingChats(false);setSelectedChatIds([]);setMessageMenuId(null);
     setSelectedGroup(null);setSelectedBot(null);setCreatingGroup(false);
-    setMessageSearch("");setSearchInConversation(false);setSelectedMessages([]);setCreateMenuOpen(false);setTab(next);setSelected(null);setSelectedChannel(null);setProfileTarget(next==="profile"&&userId?userId:null);setShowRecommendations(false);setError("");
+    resetMessageSearch();setSelectedMessages([]);setCreateMenuOpen(false);setTab(next);setSelected(null);setSelectedChannel(null);setProfileTarget(next==="profile"&&userId?userId:null);setShowRecommendations(false);setError("");
   }
   async function loadOlderChatMessages(){
     if(!session||!selected||loadingOlderRef.current||!hasOlderMessages||!chatMessages.length)return;
@@ -606,14 +672,16 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
     return true;
   }
 
-  async function jumpToOriginalMessage(id:string){
+  async function jumpToOriginalMessage(id:string,fromSearch=false){
     if(!session||!selected||!userId||locatingReply)return;
     const chatId=selected,token=session.access_token;
-    // Search must not hide the referenced message after it is loaded.
-    setSearchInConversation(false);setMessageSearch('');
+    // Search results remain available when a distant match requires another
+    // bounded page fetch. Close the panel only once the source is found.
+    if(!fromSearch)resetMessageSearch();
     if(chatMessages.some(message=>message.id===id)){
       const hidden=chatMessages.some(message=>message.id===id&&message.deleted_for?.includes(userId));
       if(hidden){setNotice('Исходное сообщение скрыто в твоей истории.');return;}
+      if(fromSearch)resetMessageSearch();
       setPendingReplyJump({chatId,id});
       return;
     }
@@ -671,6 +739,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
       }else prependScrollRef.current=null;
       if(found){
         prependScrollRef.current=null;
+        if(fromSearch)resetMessageSearch();
         setPendingReplyJump({chatId,id});
       }else{
         setNotice(more
@@ -893,7 +962,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
   const activeChatLoading=Boolean(selected&&(chatLoad?.id!==selected||chatLoad.status==='loading'));
   const activeChatLoadError=Boolean(selected&&chatLoad?.id===selected&&chatLoad.status==='error');
   const messageById=new Map(chatMessages.map(message=>[message.id,message]));
-  const visibleMessages=chatMessages.filter(message=>!message.deleted_for?.includes(userId)&&(!searchInConversation||!messageSearch.trim()||message.body.toLocaleLowerCase('ru').includes(messageSearch.trim().toLocaleLowerCase('ru'))));
+  const visibleMessages=chatMessages.filter(message=>!message.deleted_for?.includes(userId));
   const loggedIn=Boolean(session&&userId);
   const detailOpen=Boolean(!loggedIn||selected||profileTarget||selectedChannel||selectedGroup||selectedBot);
   const myChannels=channels.filter(ch=>ch.owner_id===userId||subscriptions.includes(ch.id));
@@ -1104,12 +1173,22 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
   trigger={<svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="19" cy="12" r="1.7"/></svg>}>
   <button type="button" onClick={()=>active.other&&goToProfile(active.other.id)}>Открыть профиль</button>
   {active.other&&<button type="button" disabled={busy} onClick={()=>void toggleSavedContact(active.other!)}>{savedContactIds.has(active.other.id)?'Удалить из контактов':'＋ Добавить в контакты'}</button>}
-  <button type="button" onClick={()=>{setSearchInConversation(value=>!value);setMessageSearch("");}}>Поиск в переписке</button>
+  <button type="button" onClick={()=>{if(searchInConversation)resetMessageSearch();else setSearchInConversation(true);}}>Поиск в переписке</button>
   <button type="button" disabled={busy} onClick={()=>void chatAction(active.chat.id,active.chat.pinned_for?.includes(userId)?'unpin':'pin')}>{active.chat.pinned_for?.includes(userId)?'Открепить чат':'Закрепить чат'}</button>
   {active.other&&<button type="button" disabled={busy} onClick={()=>void toggleBlockedUser(active.other!)}>{blockedUserIds.has(active.other.id)?'Разблокировать':'Заблокировать'}</button>}
   <button type="button" disabled={busy} onClick={()=>void chatAction(active.chat.id,'delete_self')}>Удалить только у себя</button>
   <button type="button" disabled={busy} onClick={()=>void chatAction(active.chat.id,'delete_everyone')}>Удалить у обоих</button>
-</FloatingActionMenu></header>{activePartnerBlocked&&<div className="ik-chat-blocked-banner" role="status"><span>Собеседник заблокирован. Отправка сообщений отключена.</span><button type="button" onClick={()=>active.other&&void toggleBlockedUser(active.other)}>Разблокировать</button></div>}{searchInConversation&&<div className="ik-conversation-search"><input autoFocus aria-label="Поиск сообщений в текущем чате" placeholder="Найти сообщение…" value={messageSearch} onChange={e=>setMessageSearch(e.target.value)}/><span>{visibleMessages.length} сообщ.</span><button type="button" onClick={()=>{setSearchInConversation(false);setMessageSearch("");}}>✕</button></div>}{selectedMessages.length>0&&<div className="ik-selection-toolbar"><span>Выбрано: {selectedMessages.length}</span><button type="button" onClick={()=>{const text=chatMessages.filter(m=>selectedMessages.includes(m.id)).map(m=>m.body).join("\n\n");void navigator.clipboard.writeText(text).then(()=>setNotice("Сообщения скопированы")).catch(()=>setError("Не удалось скопировать"));}}>Копировать</button><button type="button" onClick={()=>setSelectedMessages([])}>Отмена</button></div>}<div className="conversation-history" ref={conversationHistoryRef} aria-live="polite" aria-busy={activeChatLoading} onScroll={event=>{
+</FloatingActionMenu></header>{activePartnerBlocked&&<div className="ik-chat-blocked-banner" role="status"><span>Собеседник заблокирован. Отправка сообщений отключена.</span><button type="button" onClick={()=>active.other&&void toggleBlockedUser(active.other)}>Разблокировать</button></div>}{searchInConversation&&<DirectMessageSearchPanel
+        query={messageSearch} onQueryChange={updateMessageSearch} onClose={resetMessageSearch}
+        results={messageSearchResults} loading={messageSearchLoading} failed={messageSearchError}
+        hasMore={messageSearchHasMore} onMore={()=>{
+          if(messageSearchError){setMessageSearchError(false);setMessageSearchRetry(retry=>retry+1);}
+          else if(!messageSearchLoading)setMessageSearchPage(page=>page+1);
+        }}
+        onOpen={id=>{void jumpToOriginalMessage(id,true);}}
+        userId={userId} partnerName={active.other?.display_name||active.other?.username||'Собеседник'}
+        locatingId={locatingReply}
+      />}{selectedMessages.length>0&&<div className="ik-selection-toolbar"><span>Выбрано: {selectedMessages.length}</span><button type="button" onClick={()=>{const text=chatMessages.filter(m=>selectedMessages.includes(m.id)).map(m=>m.body).join("\n\n");void navigator.clipboard.writeText(text).then(()=>setNotice("Сообщения скопированы")).catch(()=>setError("Не удалось скопировать"));}}>Копировать</button><button type="button" onClick={()=>setSelectedMessages([])}>Отмена</button></div>}<div className="conversation-history" ref={conversationHistoryRef} aria-live="polite" aria-busy={activeChatLoading} onScroll={event=>{
         const area=event.currentTarget;
         const distance=area.scrollHeight-area.scrollTop-area.clientHeight;
         chatAutoScrollRef.current=distance<120;
