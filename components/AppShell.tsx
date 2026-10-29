@@ -744,6 +744,18 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
     history.scrollTop=history.scrollHeight;
   },[chatMessages.length,selected]);
   useEffect(()=>{if(selected)setDraft(draftsRef.current[selected]||'');},[selected,userId]);
+  // Recover an uncertain send after an iOS tab reload. For replies, restore
+  // the target identity too; otherwise the same text could be sent again as a
+  // different *plain* message with a fresh UUID.
+  useEffect(()=>{
+    if(!selected||!userId||draftsOwnerRef.current!==userId)return;
+    const attempt=readDirectSendAttempt(userId,selected);
+    if(!attempt||(draftsRef.current[selected]||'').trim()!==attempt.body)return;
+    setDirectSendRetry({owner:userId,chat:selected,body:attempt.body,replyId:attempt.replyId});
+    if(attempt.replyId)setReplyingTo({
+      chatId:selected,id:attempt.replyId,name:'Собеседник',text:'Ответ на сообщение'
+    });
+  },[selected,userId]);
   useEffect(()=>{const field=composerRef.current;if(!field)return;field.style.height='auto';field.style.height=Math.min(field.scrollHeight,136)+'px';},[draft,selected]);
   useEffect(()=>{
     const keyboard=(event:KeyboardEvent)=>{
