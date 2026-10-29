@@ -3107,3 +3107,48 @@ body{position:relative}
 @media(prefers-reduced-motion:reduce){
   .ik-chat-photo-backdrop{animation:none}
 }
+
+
+/* Offline connectivity hint: never move the iPhone chat viewport or composer.
+   An offline draft stays editable and is not automatically sent on reconnect. */
+.ik-network-offline{
+  position:fixed;z-index:2400;
+  top:max(72px,calc(env(safe-area-inset-top,0px) + 62px));
+  right:clamp(12px,3vw,36px);
+  display:flex;align-items:flex-start;gap:10px;
+  width:max-content;max-width:min(360px,calc(100vw - 24px));
+  padding:12px 15px;box-sizing:border-box;
+  color:#29292f;background:rgba(251,251,253,.96);
+  border:1px solid #e8e8eb;border-radius:17px;
+  box-shadow:0 10px 35px rgba(0,0,0,.12);
+  -webkit-backdrop-filter:blur(20px);backdrop-filter:blur(20px);
+  pointer-events:none;
+  animation:ik-network-offline-appear .2s ease-out both;
+}
+.ik-network-offline-mark{
+  flex:0 0 auto;width:9px;height:9px;margin-top:5px;border-radius:50%;
+  background:#dc854a;box-shadow:0 0 0 3px #dc854a20;
+}
+.ik-network-offline strong{
+  display:block;font-size:12px;font-weight:750;line-height:1.3;
+}
+.ik-network-offline small{
+  display:block;margin-top:3px;
+  color:#77777f;font-size:11px;line-height:1.45;
+}
+@keyframes ik-network-offline-appear{
+  from{opacity:0;transform:translateY(-7px)}
+  to{opacity:1;transform:translateY(0)}
+}
+@media(max-width:800px){
+  .ik-network-offline{
+    left:50%;right:auto;transform:translateX(-50%);
+    top:max(68px,calc(env(safe-area-inset-top,0px) + 60px));
+    width:min(350px,calc(100vw - 24px));
+    max-width:calc(100vw - 24px);
+    animation:none;
+  }
+}
+@media(prefers-reduced-motion:reduce){
+  .ik-network-offline{animation:none}
+}
