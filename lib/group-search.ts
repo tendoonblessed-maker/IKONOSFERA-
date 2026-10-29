@@ -2,7 +2,7 @@ import {apiUrl} from './supabase-rest';
 import type {GroupMessage} from './groups';
 
 const anonKey=process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY??'';
-const UUID=/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
+const UUID=/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
 export const GROUP_SEARCH_PAGE_SIZE=24;
 export const GROUP_SEARCH_MAX_OFFSET=480;
 const MESSAGE_FIELDS='id,group_id,sender_id,body,created_at';
