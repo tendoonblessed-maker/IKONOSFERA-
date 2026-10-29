@@ -5,6 +5,7 @@ import { backendReady, createTemporaryAccount, consumeEmailLinkSession, clearSes
 import ProfilePanel from "@/components/ProfilePanel";
 import {mergeConfirmedRecentPage,prependEarlierPage,CONFIRMED_MESSAGE_GRACE_MS,type ConfirmedMessage} from "@/lib/chat-history";
 import {readChatDrafts,writeChatDrafts,clearChatDrafts,type ChatDrafts} from "@/lib/chat-drafts";
+import {readGroupDrafts,writeGroupDraft,clearGroupDrafts,type GroupDrafts} from "@/lib/group-drafts";
 import ChatMedia from "@/components/ChatMedia";
 import {subscribeDirectChatChanges} from "@/lib/direct-realtime";
 import {subscribeInboxChanges,type InboxChangeKind} from "@/lib/inbox-realtime";
@@ -112,6 +113,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
   const [attachmentCaption,setAttachmentCaption]=useState('');
   const [attachmentDragActive,setAttachmentDragActive]=useState(false);
   const [draftPreviews,setDraftPreviews]=useState<ChatDrafts>({});
+  const [groupDraftPreviews,setGroupDraftPreviews]=useState<GroupDrafts>({});
   const [showJumpToLatest,setShowJumpToLatest]=useState(false);
   const [replyingTo,setReplyingTo]=useState<{chatId:string;id:string;text:string;name:string}|null>(null);
   const [replyTargets,setReplyTargets]=useState<Record<string,ReplyTarget>>({});
@@ -142,6 +144,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
   const inboxOwnerRef=useRef('');
   const draftsRef=useRef<ChatDrafts>({});
   const draftsOwnerRef=useRef('');
+  const groupDraftsOwnerRef=useRef('');
   const replyTargetsQueriedRef=useRef<Set<string>>(new Set());
   const replyJumpRequestRef=useRef(0);
   const chatContextGenerationRef=useRef(0);
@@ -192,6 +195,15 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
     draftsRef.current=existing;
     setDraftPreviews({...existing});
   },[userId]);
+  useEffect(()=>{
+    if(groupDraftsOwnerRef.current===userId)return;
+    groupDraftsOwnerRef.current=userId;
+    setGroupDraftPreviews(userId?readGroupDrafts(userId):{});
+  },[userId]);
+  function updateGroupDraft(groupId:string,text:string){
+    if(!userId||groupDraftsOwnerRef.current!==userId)return;
+    setGroupDraftPreviews(writeGroupDraft(userId,groupId,text));
+  }
   function updateChatDraft(chatId:string,text:string){
     const next={...draftsRef.current};
     if(text.trim())next[chatId]=text;
@@ -1124,7 +1136,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
     }catch(e){setError(userFacingError(e));}
     finally{setSending(false);}
   }
-  async function logout(){if(!session)return;if(anonymous&&!window.confirm('Это временный аккаунт. После выхода восстановить его нельзя. Выйти?'))return;setBusy(true);try{await signOut(session.access_token);}catch(e){setError(userFacingError(e));}finally{inboxOwnerRef.current='';inboxRequestRef.current++;previewRequestRef.current++;groupOverviewRequestRef.current++;clearChatDrafts(userId);draftsOwnerRef.current='';draftsRef.current={};setDraftPreviews({});setDraft('');previewCacheRef.current={ownerId:'',previews:new Map()};clearSession();setSession(null);setUserId('');setProfile(null);setAnonymous(false);setRows([]);setSavedContacts([]);setBlockedUsers([]);setSelected(null);setProfileTarget(null);setSelectedChannel(null);setChannels([]);setChatMessages([]);setBusy(false);}}
+  async function logout(){if(!session)return;if(anonymous&&!window.confirm('Это временный аккаунт. После выхода восстановить его нельзя. Выйти?'))return;setBusy(true);try{await signOut(session.access_token);}catch(e){setError(userFacingError(e));}finally{inboxOwnerRef.current='';inboxRequestRef.current++;previewRequestRef.current++;groupOverviewRequestRef.current++;clearChatDrafts(userId);clearGroupDrafts(userId);groupDraftsOwnerRef.current='';setGroupDraftPreviews({});draftsOwnerRef.current='';draftsRef.current={};setDraftPreviews({});setDraft('');previewCacheRef.current={ownerId:'',previews:new Map()};clearSession();setSession(null);setUserId('');setProfile(null);setAnonymous(false);setRows([]);setSavedContacts([]);setBlockedUsers([]);setSelected(null);setProfileTarget(null);setSelectedChannel(null);setChannels([]);setChatMessages([]);setBusy(false);}}
   async function install(){if(installPrompt){await installPrompt.prompt();await installPrompt.userChoice;setInstallPrompt(null);}else setInstallHelp(true);}
   const storyContacts=useMemo(()=>{
     const byId=new Map<string,Profile>();
@@ -1221,7 +1233,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
       <div className="chat-list">
       {tab==='chats'&&loggedIn&&chatFilter==='bots'&&<div className="ik-bot-list"><button type="button" onClick={()=>{setSelectedBot('days');setSelected(null);setSelectedGroup(null);setSelectedChannel(null);setProfileTarget(null);}}><span>◷</span><strong>Сколько мне осталось?<small>Счётчик дней до выбранной даты</small></strong><b>›</b></button><button type="button" onClick={()=>{setSelectedBot('mood');setSelected(null);setSelectedGroup(null);setSelectedChannel(null);setProfileTarget(null);}}><span>✳</span><strong>Точка равновесия<small>15 вопросов о самочувствии</small></strong><b>›</b></button></div>}
       {tab==='chats'&&chatFilter!=='bots'&&(loggedIn?inboxItems.length?inboxItems.map(item=>item.kind==='group'
-       ? <GroupInboxRow key={'g-'+item.group.id} group={item.group} overview={groupOverviews[item.group.id]} active={selectedGroup?.id===item.group.id} onOpen={()=>{setSelectedGroup(item.group);setSelected(null);setSelectedChannel(null);setProfileTarget(null);}}/>
+       ? <GroupInboxRow key={'g-'+item.group.id} group={item.group} overview={groupOverviews[item.group.id]} draft={groupDraftPreviews[item.group.id]} active={selectedGroup?.id===item.group.id} onOpen={()=>{setSelectedGroup(item.group);setSelected(null);setSelectedChannel(null);setProfileTarget(null);}}/>
        : <ChatInboxRow key={'c-'+item.row.chat.id} row={item.row} currentUserId={userId} active={selected===item.row.chat.id} selectionMode={editingChats} selectedForBulk={selectedChatIds.includes(item.row.chat.id)}
           onOpen={()=>{if(editingChats){toggleChatSelection(item.row.chat.id);return;}setSelected(item.row.chat.id);setSelectedGroup(null);setSelectedChannel(null);setProfileTarget(null);setChatMessages([]);setError('');}}
           isSavedContact={Boolean(item.row.other&&savedContactIds.has(item.row.other.id))}
@@ -1414,7 +1426,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
         <span>Отпусти файл, чтобы добавить в сообщение</span>
       </div>}
       {selectedBot&&loggedIn?<BotsPanel userId={userId} bot={selectedBot} onBack={()=>setSelectedBot(null)}/>:
-      selectedGroup&&session&&loggedIn?<GroupPanel key={selectedGroup.id} token={session.access_token} userId={userId} group={selectedGroup} onBack={()=>setSelectedGroup(null)} onShowProfile={id=>{setSelectedGroup(null);goToProfile(id);}}/>:
+      selectedGroup&&session&&loggedIn?<GroupPanel key={selectedGroup.id} token={session.access_token} userId={userId} group={selectedGroup} onDraftChange={updateGroupDraft} onBack={()=>setSelectedGroup(null)} onShowProfile={id=>{setSelectedGroup(null);goToProfile(id);}}/>:
       profileTarget&&session&&loggedIn?<ProfilePanel key={profileTarget} token={session.access_token} userId={userId} targetId={profileTarget} onBack={()=>{setProfileTarget(null);if(tab==='profile')setTab('chats');}} onOwnProfileChange={()=>{void myProfile(session.access_token,userId).then(setProfile).catch(()=>{});}} onMessage={openDirectFromProfile} isBlocked={blockedUserIds.has(profileTarget)} onBlockUser={id=>void toggleProfileBlock(id)} onOpenChannel={channel=>{setProfileTarget(null);setSelected(null);setSelectedChannel(channel);setTab("channels");}}/>:
       selectedChannel&&session&&loggedIn?<ChannelsPanel key={selectedChannel.id} token={session.access_token} userId={userId} channel={selectedChannel} onBack={()=>setSelectedChannel(null)} onShowProfile={goToProfile} subscribed={subscriptions.includes(selectedChannel.id)||selectedChannel.owner_id===userId} onToggleSubscribe={()=>void toggleSubscription(selectedChannel.id)} onMessageAuthor={()=>void getChannelOwnerAndChat(selectedChannel.owner_id)} onChannelUpdated={updated=>{
     recentChannelUpdatesRef.current.set(updated.id,{channel:updated,expiresAt:Date.now()+CHANNEL_UPDATE_GRACE_MS});

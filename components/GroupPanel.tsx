@@ -5,16 +5,19 @@ import {listProfiles,type Profile} from '@/lib/supabase-rest';
 import StatusEmoji from '@/components/StatusEmoji';
 import {getUserActivities,activityLabel,type UserActivity} from '@/lib/activity';
 import {imageUrl} from '@/lib/social';
+import {readGroupDrafts} from '@/lib/group-drafts';
 import {subscribeGroupChanges} from '@/lib/group-realtime';
 import {mergeConfirmedGroupMessages,CONFIRMED_GROUP_MESSAGE_GRACE_MS,type ConfirmedGroupMessage} from '@/lib/group-history';
-type Props={token:string;userId:string;group:Group;onBack:()=>void;onShowProfile:(id:string)=>void};
-export default function GroupPanel({token,userId,group,onBack,onShowProfile}:Props){
+type Props={token:string;userId:string;group:Group;onBack:()=>void;onShowProfile:(id:string)=>void;onDraftChange:(groupId:string,text:string)=>void};
+export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDraftChange}:Props){
  const [messages,setMessages]=useState<GroupMessage[]>([]);
  const [members,setMembers]=useState<Profile[]>([]);
  const [presence,setPresence]=useState<Record<string,UserActivity>>({});
  const [membersOpen,setMembersOpen]=useState(false);
  const [memberSearch,setMemberSearch]=useState('');
- const [draft,setDraft]=useState('');
+ const [draft,setDraft]=useState(()=>readGroupDrafts(userId)[group.id]??'');
+ const [online,setOnline]=useState(true);
+ const draftVersionRef=useRef(0);
  const [busy,setBusy]=useState(false);
  const [error,setError]=useState('');
  const [initialLoading,setInitialLoading]=useState(true);
@@ -26,6 +29,24 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile}:Pro
  const contextRef=useRef({groupId:group.id,userId,token});
  contextRef.current={groupId:group.id,userId,token};
  useEffect(()=>{confirmedGroupMessagesRef.current.clear();},[group.id,userId]);
+ // Mounting or switching accounts must not show another person's draft.
+ useEffect(()=>{
+  draftVersionRef.current+=1;
+  setDraft(readGroupDrafts(userId)[group.id]??'');
+ },[group.id,userId]);
+ useEffect(()=>{
+  const update=()=>setOnline(navigator.onLine);
+  update();
+  window.addEventListener('online',update);
+  window.addEventListener('offline',update);
+  return()=>{window.removeEventListener('online',update);window.removeEventListener('offline',update);};
+ },[]);
+ function changeDraft(text:string){
+  draftVersionRef.current+=1;
+  setDraft(text);
+  onDraftChange(group.id,text);
+ }
+
  const refresh=useCallback(async()=>{
   const requestId=++requestSequenceRef.current;
   const msgs=await groupMessages(token,group.id);
@@ -104,8 +125,13 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile}:Pro
  useEffect(()=>{const history=historyRef.current;if(history&&followNewestRef.current)history.scrollTop=history.scrollHeight;},[messages.length,initialLoading]);
  useEffect(()=>{if(!membersOpen)return;const onKey=(event:KeyboardEvent)=>{if(event.key==='Escape')setMembersOpen(false);};window.addEventListener('keydown',onKey);return()=>window.removeEventListener('keydown',onKey);},[membersOpen]);
   useEffect(()=>{if(!membersOpen||!members.length)return;let gone=false;const load=()=>{if(document.visibilityState==='visible')void getUserActivities(token,members.map(m=>m.id)).then(value=>{if(!gone)setPresence(value);}).catch(()=>{});};load();const t=setInterval(load,40000);return()=>{gone=true;clearInterval(t);};},[token,membersOpen,members]);
- async function send(e:FormEvent){e.preventDefault();if(busy||!draft.trim())return;
+ async function send(e:FormEvent){
+ e.preventDefault();
+ if(busy||!draft.trim())return;
+ // Never queue a surprise send on reconnect. Let the user retry manually.
+ if(!online||!navigator.onLine){setError('Нет интернета. Сообщение осталось в черновике.');return;}
  const body=draft.trim(),groupId=group.id,accountId=userId,requestToken=token;
+ const sentDraftVersion=draftVersionRef.current;
  setBusy(true);setError('');
  try{
    const sent=await sendGroupMessage(requestToken,groupId,accountId,body);
@@ -119,8 +145,15 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile}:Pro
    setMessages(current=>mergeConfirmedGroupMessages(
      current,confirmedGroupMessagesRef.current,groupId,accountId
    ));
-   setDraft(current=>current.trim()===body?'':current);
- }catch(e){setError(e instanceof Error?e.message:'Ошибка отправки');}
+   // Do not wipe newer text typed while the server was saving the message.
+   if(draftVersionRef.current===sentDraftVersion){
+     draftVersionRef.current+=1;
+     setDraft('');
+     onDraftChange(groupId,'');
+   }
+ }catch(e){
+   setError((e instanceof Error?e.message:'Ошибка отправки')+' · Черновик сохранён.');
+ }
  finally{setBusy(false);}
  }
  const names=Object.fromEntries(members.map(p=>[p.id,p.display_name||p.username]));
@@ -142,7 +175,20 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile}:Pro
   <button type="button" onClick={()=>{setError('');setInitialLoading(true);void refresh().catch(e=>{setInitialLoading(false);setError(e instanceof Error?e.message:'Ошибка загрузки');});}}>Попробовать снова</button>
  </div>}
  {messages.map(m=><article key={m.id} className={'bubble '+(m.sender_id===userId?'mine':'theirs')}><strong className="group-author ik-name-with-status"><span>{m.sender_id===userId?'Вы':names[m.sender_id]||'Участник'}</span><StatusEmoji index={memberById.get(m.sender_id)?.status_emoji} decorative/></strong><div>{m.body}</div><time>{new Date(m.created_at).toLocaleTimeString('ru-RU',{hour:'2-digit',minute:'2-digit'})}</time></article>)}</div>
- <form className="composer" onSubmit={send}><input aria-label="Сообщение группе" placeholder="Сообщение группе…" maxLength={4000} value={draft} onChange={e=>setDraft(e.target.value)}/><button type="submit" className="send-button" disabled={busy||!draft.trim()}>➤</button></form>
+ <form className="composer ik-group-composer" onSubmit={send}>
+ <textarea aria-label="Сообщение группе" placeholder={online?"Сообщение группе…":"Нет сети · черновик сохранён"} rows={1} enterKeyHint="enter" maxLength={4000} value={draft}
+ onChange={e=>{changeDraft(e.target.value);if(error)setError('');}}
+ onKeyDown={e=>{
+   if(e.key!=='Enter'||e.nativeEvent.isComposing)return;
+   // Desktop: Enter sends, Shift+Enter inserts a newline.
+   // Mobile: Enter inserts a newline; Cmd/Ctrl+Enter always sends.
+   const sendKey=e.ctrlKey||e.metaKey||(!e.shiftKey&&window.matchMedia('(pointer:fine)').matches);
+   if(sendKey){e.preventDefault();e.currentTarget.form?.requestSubmit();}
+ }}
+ />
+ <button type="submit" className="send-button" aria-label="Отправить в группу" disabled={busy||!draft.trim()||!online}>➤</button>
+ </form>
+ {!online&&<p className="ik-group-offline" role="status">Нет соединения. Текст останется в черновике, отправь его после подключения.</p>}
  {error&&<p className="profile-error" role="alert">{error}</p>}
  {membersOpen&&<div className="ik-members-backdrop" role="dialog" aria-modal="true" aria-label="Участники группы">
  <div className="ik-members-modal"><div className="ik-members-header"><div><strong>{group.title}</strong><small>{members.length} участников</small></div><button type="button" onClick={()=>setMembersOpen(false)} aria-label="Закрыть список участников">✕</button></div>
