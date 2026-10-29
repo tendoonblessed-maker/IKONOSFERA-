@@ -6,6 +6,7 @@ import ProfilePanel from "@/components/ProfilePanel";
 import {mergeConfirmedRecentPage,prependEarlierPage,CONFIRMED_MESSAGE_GRACE_MS,type ConfirmedMessage} from "@/lib/chat-history";
 import {readChatDrafts,writeChatDrafts,clearChatDrafts,type ChatDrafts} from "@/lib/chat-drafts";
 import {readGroupDrafts,writeGroupDraft,clearGroupDrafts,type GroupDrafts} from "@/lib/group-drafts";
+import {clearAllGroupSendAttempts} from "@/lib/group-send-attempts";
 import ChatMedia from "@/components/ChatMedia";
 import {subscribeDirectChatChanges} from "@/lib/direct-realtime";
 import {subscribeInboxChanges,type InboxChangeKind} from "@/lib/inbox-realtime";
@@ -1136,7 +1137,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
     }catch(e){setError(userFacingError(e));}
     finally{setSending(false);}
   }
-  async function logout(){if(!session)return;if(anonymous&&!window.confirm('Это временный аккаунт. После выхода восстановить его нельзя. Выйти?'))return;setBusy(true);try{await signOut(session.access_token);}catch(e){setError(userFacingError(e));}finally{inboxOwnerRef.current='';inboxRequestRef.current++;previewRequestRef.current++;groupOverviewRequestRef.current++;clearChatDrafts(userId);clearGroupDrafts(userId);groupDraftsOwnerRef.current='';setGroupDraftPreviews({});draftsOwnerRef.current='';draftsRef.current={};setDraftPreviews({});setDraft('');previewCacheRef.current={ownerId:'',previews:new Map()};clearSession();setSession(null);setUserId('');setProfile(null);setAnonymous(false);setRows([]);setSavedContacts([]);setBlockedUsers([]);setSelected(null);setProfileTarget(null);setSelectedChannel(null);setChannels([]);setChatMessages([]);setBusy(false);}}
+  async function logout(){if(!session)return;if(anonymous&&!window.confirm('Это временный аккаунт. После выхода восстановить его нельзя. Выйти?'))return;setBusy(true);try{await signOut(session.access_token);}catch(e){setError(userFacingError(e));}finally{inboxOwnerRef.current='';inboxRequestRef.current++;previewRequestRef.current++;groupOverviewRequestRef.current++;clearChatDrafts(userId);clearGroupDrafts(userId);clearAllGroupSendAttempts(userId);groupDraftsOwnerRef.current='';setGroupDraftPreviews({});draftsOwnerRef.current='';draftsRef.current={};setDraftPreviews({});setDraft('');previewCacheRef.current={ownerId:'',previews:new Map()};clearSession();setSession(null);setUserId('');setProfile(null);setAnonymous(false);setRows([]);setSavedContacts([]);setBlockedUsers([]);setSelected(null);setProfileTarget(null);setSelectedChannel(null);setChannels([]);setChatMessages([]);setBusy(false);}}
   async function install(){if(installPrompt){await installPrompt.prompt();await installPrompt.userChoice;setInstallPrompt(null);}else setInstallHelp(true);}
   const storyContacts=useMemo(()=>{
     const byId=new Map<string,Profile>();

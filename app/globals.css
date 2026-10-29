@@ -3330,3 +3330,11 @@ body{position:relative}
   font-size:12px;
   line-height:1.4;
 }
+
+/* Recovery action after an ambiguous group send (manual retry, same UUID). */
+.ik-group-send-alert{display:flex;align-items:center;flex-wrap:wrap;gap:9px 14px;padding:10px 16px;background:#fff5f3;color:#79372e;font-size:13px;line-height:1.45}
+.ik-group-send-alert span{flex:1;min-width:min(190px,100%)}
+.ik-group-send-alert button{flex:none;border:1px solid #d5a9a0;border-radius:999px;padding:9px 14px;background:#fff;color:#743127;font:inherit;font-weight:650;cursor:pointer}
+.ik-group-send-alert button:hover{background:#ffede9}
+.ik-group-send-alert button:focus-visible{outline:2px solid currentColor;outline-offset:2px}
+.ik-group-send-alert button:disabled{opacity:.5;cursor:wait}
