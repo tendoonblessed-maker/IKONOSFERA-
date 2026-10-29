@@ -503,8 +503,8 @@ test('rapid chat switching never inserts a sent attachment or edited message in 
  }
  assert.match(shell,/draftsRef\.current\[chatId\].*\.trim\(\)===plainText/);
  assert.match(shell,/setDraft\(current=>current\.trim\(\)===plainText\?'':current\)/);
- assert.match(shell,/The next inbox sync will show the successfully sent message/);
- assert.match(shell,/Do not report a sent attachment as failed during refresh/);
+ assert.match(shell,/const sent=await postMessage\(token,chatId,userId,plainText,crypto\.randomUUID\(\),reply\?\.id\?\?null\)/);
+ assert.match(shell,/const sent=await sendDirectMedia\(token,chatId,userId,file,caption\)/);
 });
 test('group conversations always fetch newest messages and show real loading/errors',()=>{
  const api=load('lib/groups.ts');
@@ -589,8 +589,8 @@ test('loaded chat pages survive message polls, actions and switching conversatio
  const shell=load('components/AppShell.tsx');
  const css=load('app/globals.css');
  assert.match(load('lib/chat-history.ts'),/export function mergeRecentPage/);
- assert.match(shell,/setChatMessages\(current=>mergeRecentPage\(current,messages,CHAT_MESSAGE_PAGE_SIZE\)\)/);
- assert.match(shell,/setChatMessages\(current=>mergeRecentPage\(current,updated,CHAT_MESSAGE_PAGE_SIZE\)\)/);
+ assert.match(shell,/setChatMessages\(current=>mergeConfirmedRecentPage\(/);
+ assert.match(shell,/current,updated,CHAT_MESSAGE_PAGE_SIZE,confirmedMessagesRef\.current,chatId,userId/);
  assert.match(shell,/const \[hasOlderMessages,setHasOlderMessages\]=useState\(false\)/);
  assert.match(shell,/const prependScrollRef=useRef/);
  assert.match(shell,/history\.scrollTop=pending\.top\+\(history\.scrollHeight-pending\.height\)/);
@@ -1118,7 +1118,7 @@ test('attachments are reviewed with captions instead of being sent from the file
  assert.match(shell,/async function sendAttachment\(file:File\|undefined,caption=''\)/);
  assert.match(shell,/sendDirectMedia\(token,chatId,userId,file,caption\)/);
  assert.match(shell,/setPendingAttachment\(current=>current\?\.chatId===chatId&&current\.ownerId===userId&&current\.file===file\?null:current\)/);
- assert.match(shell,/Do not report a sent attachment as failed during refresh/);
+ assert.match(shell,/const sent=await sendDirectMedia\(token,chatId,userId,file,caption\)/);
  assert.match(shell,/queueAttachment\(e\.target\.files\?\.\[0\]\);e\.target\.value=""/);
  assert.doesNotMatch(shell,/void sendAttachment\(e\.target\.files\?\.\[0\]\)/);
  assert.match(shell,/pendingAttachment\?\.chatId===selected&&pendingAttachment\.ownerId===userId/);
@@ -1165,4 +1165,28 @@ test('desktop file dropping and clipboard screenshots never auto-send private fi
  assert.match(shell,/attachmentDragActive&&canPrepareAttachment&&<div className="ik-attachment-drop-overlay"/);
  assert.match(css,/\.ik-attachment-drop-overlay/);
  assert.match(css,/pointer-events:none/);
+});
+
+
+test('confirmed direct sends are visible without waiting for an additional history request',()=>{
+ const app=load('components/AppShell.tsx');
+ const history=load('lib/chat-history.ts');
+ const textSend=app.slice(app.indexOf('async function sendMessage('),app.indexOf('async function toggleSavedContact('));
+ const mediaSend=app.slice(app.indexOf('async function sendAttachment('),app.indexOf('async function logout('));
+ const polling=app.slice(app.indexOf('const sync=async(first=false)'),app.indexOf('void sync(true)'));
+ assert.match(textSend,/const sent=await postMessage\(/);
+ assert.match(mediaSend,/const sent=await sendDirectMedia\(/);
+ for(const part of [textSend,mediaSend]){
+  assert.match(part,/selectedRef\.current===chatId&&draftsOwnerRef\.current===userId/);
+  assert.match(part,/confirmedMessagesRef\.current\.set\(sent\.id/);
+  assert.match(part,/expiresAt:Date\.now\(\)\+CONFIRMED_MESSAGE_GRACE_MS/);
+  assert.match(part,/setChatMessages\(current=>prependEarlierPage\(current,\[sent\]\)\)/);
+  assert.doesNotMatch(part,/await listMessages\(/,'no second network round trip after send');
+ }
+ assert.match(polling,/mergeConfirmedRecentPage\(/);
+ assert.match(polling,/confirmedMessagesRef\.current,chatId,userId/);
+ assert.match(app,/confirmedMessagesRef\.current\.clear\(\)/);
+ assert.match(app,/confirmedMessagesRef\.current\.delete\(messageId\)/);
+ assert.match(history,/export const CONFIRMED_MESSAGE_GRACE_MS=60_000/);
+ assert.match(history,/export function mergeConfirmedRecentPage\(/);
 });
