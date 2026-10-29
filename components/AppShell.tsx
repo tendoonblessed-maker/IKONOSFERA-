@@ -8,6 +8,7 @@ import {readChatDrafts,writeChatDrafts,clearChatDrafts,type ChatDrafts} from "@/
 import ChatMedia from "@/components/ChatMedia";
 import {subscribeDirectChatChanges} from "@/lib/direct-realtime";
 import {subscribeInboxChanges,type InboxChangeKind} from "@/lib/inbox-realtime";
+import {isLatestAccountSnapshot} from "@/lib/inbox-snapshot";
 import {reconcileRecentChannelUpdates,CHANNEL_UPDATE_GRACE_MS,type RecentChannelUpdate} from "@/lib/channel-sync";
 import ChatAttachmentPreview from "@/components/ChatAttachmentPreview";
 import ChatInboxRow from "@/components/ChatInboxRow";
@@ -359,7 +360,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
     try{
       const rows=await listChatPreviews(token);
       const fetched=new Map(rows.map(item=>[item.chat_id,item]));
-      if(previewCacheRef.current.ownerId===ownerId&&requestId===previewRequestRef.current){
+      if(isLatestAccountSnapshot(requestId,previewRequestRef.current,ownerId,previewCacheRef.current.ownerId)){
         previewCacheRef.current={ownerId,previews:fetched};
       }
       return {overview:previewCacheRef.current.ownerId===ownerId?fetched:new Map<string,ChatPreview>(),failed:false};
@@ -385,7 +386,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
     const chatProfiles=await listProfiles(token,chatPartnerIds);
     const chatById=new Map(chatProfiles.map(person=>[person.id,person]));
     const overview=previewResult.overview;
-    if(inboxRequest===inboxRequestRef.current&&inboxOwnerRef.current===id)setRows(chats.filter(chat=>!chat.hidden_for?.includes(id))
+    if(isLatestAccountSnapshot(inboxRequest,inboxRequestRef.current,id,inboxOwnerRef.current))setRows(chats.filter(chat=>!chat.hidden_for?.includes(id))
       .sort((a,b)=>{
         const pinned=Number(Boolean(b.pinned_for?.includes(id)))-Number(Boolean(a.pinned_for?.includes(id)));
         if(pinned)return pinned;
@@ -403,7 +404,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
     // until the server itself returns matching values on the next refresh.
     setChannels(reconcileRecentChannelUpdates(allChannels,recentChannelUpdatesRef.current));
     setGroups(groupList);
-    if(groupRequest===groupOverviewRequestRef.current)
+    if(isLatestAccountSnapshot(groupRequest,groupOverviewRequestRef.current,id,inboxOwnerRef.current))
       setGroupOverviews(Object.fromEntries(groupSummaries.map(summary=>[summary.group_id,summary])));
     setSubscriptions(memberships.map(m=>m.channel_id));
     const moreIds=Array.from(new Set([...contactIds,...blockedIds].filter(pid=>!chatById.has(pid))));
@@ -430,7 +431,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
     const profiles=await listProfiles(token,others);
     const byId=new Map(profiles.map(person=>[person.id,person]));
     const overview=previewResult.overview;
-    if(requestId!==inboxRequestRef.current||inboxOwnerRef.current!==id)return;
+    if(!isLatestAccountSnapshot(requestId,inboxRequestRef.current,id,inboxOwnerRef.current))return;
     setRows(chats.filter(chat=>!chat.hidden_for?.includes(id))
       .sort((a,b)=>{
         const pinned=Number(Boolean(b.pinned_for?.includes(id)))-Number(Boolean(a.pinned_for?.includes(id)));
@@ -464,7 +465,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
         if(group){
           const requestId=++groupOverviewRequestRef.current;
           work.push(listGroupOverviews(token).then(summaries=>{
-            if(!cancelled&&inboxOwnerRef.current===userId&&requestId===groupOverviewRequestRef.current){
+            if(!cancelled&&isLatestAccountSnapshot(requestId,groupOverviewRequestRef.current,userId,inboxOwnerRef.current)){
               setGroupOverviews(Object.fromEntries(summaries.map(summary=>[summary.group_id,summary])));
             }
           }).catch(()=>{}));
