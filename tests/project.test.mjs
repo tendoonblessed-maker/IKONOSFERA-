@@ -689,7 +689,7 @@ test('status emoji is owner-editable, checked by Postgres, visible to signed-in 
  assert.match(sql,/grant update \(status_emoji\) on public\.profiles to authenticated/);
  assert.match(api,/export type Profile = \{[^}]*status_emoji\?:number\|null/);
  assert.equal((api.match(/select=id,username,display_name,avatar_path,cover_path,bio,status_emoji/g)||[]).length,4);
- assert.match(social,/featured_channel_id,status_emoji&id=eq\./);
+ assert.match(social,/featured_channel_id,status_emoji,age_years&id=eq\./);
  assert.match(social,/\|"status_emoji"\|"age_years">>/);
  assert.match(profile,/async function setStatusEmoji\(index:number\|null\)/);
  assert.match(profile,/updateFullProfile\(token,userId,\{status_emoji:index\}\)/);
