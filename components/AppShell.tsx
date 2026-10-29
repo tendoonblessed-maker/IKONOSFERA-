@@ -7,6 +7,7 @@ import {mergeConfirmedRecentPage,prependEarlierPage,CONFIRMED_MESSAGE_GRACE_MS,t
 import {readChatDrafts,writeChatDrafts,clearChatDrafts,type ChatDrafts} from "@/lib/chat-drafts";
 import ChatMedia from "@/components/ChatMedia";
 import {subscribeDirectChatChanges} from "@/lib/direct-realtime";
+import {subscribeInboxChanges,type InboxChangeKind} from "@/lib/inbox-realtime";
 import {reconcileRecentChannelUpdates,CHANNEL_UPDATE_GRACE_MS,type RecentChannelUpdate} from "@/lib/channel-sync";
 import ChatAttachmentPreview from "@/components/ChatAttachmentPreview";
 import ChatInboxRow from "@/components/ChatInboxRow";
@@ -134,6 +135,10 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
   const selectedRef=useRef<string|null>(null);
   const searchInputRef=useRef<HTMLInputElement|null>(null);
   const previewCacheRef=useRef<{ownerId:string;previews:Map<string,ChatPreview>}>({ownerId:'',previews:new Map()});
+  const inboxRequestRef=useRef(0);
+  const previewRequestRef=useRef(0);
+  const groupOverviewRequestRef=useRef(0);
+  const inboxOwnerRef=useRef('');
   const draftsRef=useRef<ChatDrafts>({});
   const draftsOwnerRef=useRef('');
   const replyTargetsQueriedRef=useRef<Set<string>>(new Set());
@@ -167,6 +172,15 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
   },[]);
 
   useEffect(()=>{confirmedMessagesRef.current.clear();},[userId]);
+  // Invalidate every in-flight request when a different account signs in.
+  useEffect(()=>{
+    if(inboxOwnerRef.current!==userId){
+      inboxOwnerRef.current=userId;
+      inboxRequestRef.current++;
+      previewRequestRef.current++;
+      groupOverviewRequestRef.current++;
+    }
+  },[userId]);
 
   useEffect(()=>{
     // Restore only the signed-in person's drafts; anonymous account drafts
@@ -336,6 +350,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
   },[]);
 
   const loadInboxPreviews=useCallback(async(token:string,ownerId:string)=>{
+    const requestId=++previewRequestRef.current;
     // Never expose another account's previous message snippets during logout
     // or a fast account switch, even when the preview endpoint is offline.
     if(previewCacheRef.current.ownerId!==ownerId){
@@ -344,7 +359,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
     try{
       const rows=await listChatPreviews(token);
       const fetched=new Map(rows.map(item=>[item.chat_id,item]));
-      if(previewCacheRef.current.ownerId===ownerId){
+      if(previewCacheRef.current.ownerId===ownerId&&requestId===previewRequestRef.current){
         previewCacheRef.current={ownerId,previews:fetched};
       }
       return {overview:previewCacheRef.current.ownerId===ownerId?fetched:new Map<string,ChatPreview>(),failed:false};
@@ -355,6 +370,9 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
     }
   },[]);
   const refresh=useCallback(async (token:string,id:string,activeChat:string|null)=>{
+    inboxOwnerRef.current=id;
+    const inboxRequest=++inboxRequestRef.current;
+    const groupRequest=++groupOverviewRequestRef.current;
     // Start slow discovery in parallel, but never delay the inbox on those calls.
     const extrasPromise=Promise.all([
       listChannels(token),listMySubscriptions(token,id),listGroups(token),
@@ -367,7 +385,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
     const chatProfiles=await listProfiles(token,chatPartnerIds);
     const chatById=new Map(chatProfiles.map(person=>[person.id,person]));
     const overview=previewResult.overview;
-    setRows(chats.filter(chat=>!chat.hidden_for?.includes(id))
+    if(inboxRequest===inboxRequestRef.current&&inboxOwnerRef.current===id)setRows(chats.filter(chat=>!chat.hidden_for?.includes(id))
       .sort((a,b)=>{
         const pinned=Number(Boolean(b.pinned_for?.includes(id)))-Number(Boolean(a.pinned_for?.includes(id)));
         if(pinned)return pinned;
@@ -378,22 +396,24 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
     // Chat list may now render, even if discovery or membership queries are slow.
     setLoading(false);
     const extras=await extrasPromise;
-    if(!extras)return; // Preserve last good channels/groups on an unrelated API error.
+    if(!extras||inboxOwnerRef.current!==id)return; // Do not apply another account's discovery.
     const [allChannels,memberships,groupList,groupSummaries,contactIds,blockedIds]=extras;
     // A list request launched before a successful avatar/settings PATCH may
     // finish later and return an older snapshot. Preserve the confirmed edit
     // until the server itself returns matching values on the next refresh.
     setChannels(reconcileRecentChannelUpdates(allChannels,recentChannelUpdatesRef.current));
     setGroups(groupList);
-    setGroupOverviews(Object.fromEntries(groupSummaries.map(summary=>[summary.group_id,summary])));
+    if(groupRequest===groupOverviewRequestRef.current)
+      setGroupOverviews(Object.fromEntries(groupSummaries.map(summary=>[summary.group_id,summary])));
     setSubscriptions(memberships.map(m=>m.channel_id));
     const moreIds=Array.from(new Set([...contactIds,...blockedIds].filter(pid=>!chatById.has(pid))));
     const moreProfiles=moreIds.length?await listProfiles(token,moreIds):[];
+    if(inboxOwnerRef.current!==id)return;
     const peopleById=new Map([...chatProfiles,...moreProfiles].map(person=>[person.id,person]));
     setSavedContacts(contactIds.map(personId=>peopleById.get(personId)).filter((p):p is Profile=>Boolean(p)));
     setBlockedUsers(blockedIds.map(personId=>peopleById.get(personId)).filter((p):p is Profile=>Boolean(p)));
     void getChannelSubscriberCounts(token,allChannels.map(channel=>channel.id))
-      .then(counts=>setSubscriberCounts(counts)).catch(()=>{});
+      .then(counts=>{if(inboxOwnerRef.current===id)setSubscriberCounts(counts);}).catch(()=>{});
     void activeChat;
 
   },[loadInboxPreviews]);
@@ -401,6 +421,8 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
   // Fast inbox refresh: keep channels, group feeds and contacts out of the
   // high-frequency path. Their full state is synced separately at a slower cadence.
   const refreshInbox=useCallback(async(token:string,id:string)=>{
+    inboxOwnerRef.current=id;
+    const requestId=++inboxRequestRef.current;
     const [chats,previewResult]=await Promise.all([
       listChats(token),loadInboxPreviews(token,id)
     ]);
@@ -408,6 +430,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
     const profiles=await listProfiles(token,others);
     const byId=new Map(profiles.map(person=>[person.id,person]));
     const overview=previewResult.overview;
+    if(requestId!==inboxRequestRef.current||inboxOwnerRef.current!==id)return;
     setRows(chats.filter(chat=>!chat.hidden_for?.includes(id))
       .sort((a,b)=>{
         const pinned=Number(Boolean(b.pinned_for?.includes(id)))-Number(Boolean(a.pinned_for?.includes(id)));
@@ -417,6 +440,58 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
       })
       .map(chat=>({chat,other:byId.get(chat.user_a===id?chat.user_b:chat.user_a)??null,preview:overview.get(chat.id)??null,previewUnavailable:previewResult.failed&&!overview.has(chat.id)})));
   },[loadInboxPreviews]);
+
+
+  // Realtime wakes the unread counters and last-message previews of any
+  // authorized DM/group; the canonical content still comes from HTTPS RPCs.
+  useEffect(()=>{
+    if(!session?.access_token||!userId)return;
+    const token=session.access_token;
+    let cancelled=false;
+    let inFlight=false;
+    let timer:number|null=null;
+    let pendingDirect=false;
+    let pendingGroup=false;
+    const flush=async()=>{
+      if(cancelled||document.visibilityState==='hidden'||!navigator.onLine)return;
+      if(inFlight)return;
+      inFlight=true;
+      const direct=pendingDirect,group=pendingGroup;
+      pendingDirect=false;pendingGroup=false;
+      try{
+        const work:Promise<unknown>[]=[];
+        if(direct)work.push(refreshInbox(token,userId).catch(()=>{}));
+        if(group){
+          const requestId=++groupOverviewRequestRef.current;
+          work.push(listGroupOverviews(token).then(summaries=>{
+            if(!cancelled&&inboxOwnerRef.current===userId&&requestId===groupOverviewRequestRef.current){
+              setGroupOverviews(Object.fromEntries(summaries.map(summary=>[summary.group_id,summary])));
+            }
+          }).catch(()=>{}));
+        }
+        await Promise.all(work);
+      }finally{
+        inFlight=false;
+        if(!cancelled&&(pendingDirect||pendingGroup))schedule();
+      }
+    };
+    const schedule=()=>{
+      if(cancelled||document.visibilityState==='hidden'||!navigator.onLine)return;
+      if(timer!==null)window.clearTimeout(timer);
+      timer=window.setTimeout(()=>{timer=null;void flush();},240);
+    };
+    const onChanged=(kind:InboxChangeKind)=>{
+      if(kind==='direct')pendingDirect=true;
+      else pendingGroup=true;
+      schedule();
+    };
+    const unsubscribe=subscribeInboxChanges(token,userId,onChanged);
+    return()=>{
+      cancelled=true;
+      if(timer!==null)window.clearTimeout(timer);
+      unsubscribe();
+    };
+  },[session?.access_token,userId,refreshInbox]);
 
   useEffect(()=>{
     if(!selected||!session?.access_token||!userId)return;
@@ -1048,7 +1123,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
     }catch(e){setError(userFacingError(e));}
     finally{setSending(false);}
   }
-  async function logout(){if(!session)return;if(anonymous&&!window.confirm('Это временный аккаунт. После выхода восстановить его нельзя. Выйти?'))return;setBusy(true);try{await signOut(session.access_token);}catch(e){setError(userFacingError(e));}finally{clearChatDrafts(userId);draftsOwnerRef.current='';draftsRef.current={};setDraftPreviews({});setDraft('');previewCacheRef.current={ownerId:'',previews:new Map()};clearSession();setSession(null);setUserId('');setProfile(null);setAnonymous(false);setRows([]);setSavedContacts([]);setBlockedUsers([]);setSelected(null);setProfileTarget(null);setSelectedChannel(null);setChannels([]);setChatMessages([]);setBusy(false);}}
+  async function logout(){if(!session)return;if(anonymous&&!window.confirm('Это временный аккаунт. После выхода восстановить его нельзя. Выйти?'))return;setBusy(true);try{await signOut(session.access_token);}catch(e){setError(userFacingError(e));}finally{inboxOwnerRef.current='';inboxRequestRef.current++;previewRequestRef.current++;groupOverviewRequestRef.current++;clearChatDrafts(userId);draftsOwnerRef.current='';draftsRef.current={};setDraftPreviews({});setDraft('');previewCacheRef.current={ownerId:'',previews:new Map()};clearSession();setSession(null);setUserId('');setProfile(null);setAnonymous(false);setRows([]);setSavedContacts([]);setBlockedUsers([]);setSelected(null);setProfileTarget(null);setSelectedChannel(null);setChannels([]);setChatMessages([]);setBusy(false);}}
   async function install(){if(installPrompt){await installPrompt.prompt();await installPrompt.userChoice;setInstallPrompt(null);}else setInstallHelp(true);}
   const storyContacts=useMemo(()=>{
     const byId=new Map<string,Profile>();
