@@ -676,7 +676,7 @@ test('all fifty authored glossy status emojis ship as a real WebP atlas',()=>{
  assert.match(picker,/Array.from\(\{length:STATUS_EMOJI_COUNT\}/);
  assert.match(picker,/onSelect\(null\)/);
  assert.match(picker,/aria-pressed=\{value===i\}/);
- assert.match(css,/background-image:url\('\/status-emojis\.webp'\)/);
+ assert.match(css,/background-image:url\\\('\/status-emojis\\.webp\\?v=2'\\\)/);
  assert.match(css,/background-size:1000% 500%/);
 });
 test('status emoji is owner-editable, checked by Postgres, visible to signed-in viewers',()=>{
