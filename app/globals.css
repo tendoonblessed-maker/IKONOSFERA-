@@ -2961,3 +2961,68 @@ body{position:relative}
     padding:10px 32px 11px 14px;
   }
 }
+
+
+/* Multiline message editing stays inside the bubble on small iPhones.
+   16px touch input prevents Safari from zooming the entire conversation. */
+.messenger.is-authenticated .conversation-history .message-edit-form.ik-message-edit-form{
+  display:flex;flex-direction:column;gap:9px;
+  width:min(68vw,430px);min-width:0;max-width:100%;
+  margin:2px 0;padding:0;box-sizing:border-box;
+}
+.messenger.is-authenticated .ik-message-edit-label{
+  display:block;margin:0;
+  color:#555560;font-size:12px;line-height:1.4;font-weight:750;
+}
+.messenger.is-authenticated .ik-message-edit-form textarea{
+  box-sizing:border-box;display:block;width:100%;
+  min-width:0;min-height:82px;max-height:180px;
+  resize:vertical;overflow:auto;
+  border:1px solid #b9bbc4;border-radius:13px;
+  padding:11px 12px;
+  background:#fff;color:#24242a;
+  font-family:inherit;font-size:16px;line-height:1.45;
+  outline:none;box-shadow:0 0 0 0 transparent;
+  -webkit-overflow-scrolling:touch;
+}
+.messenger.is-authenticated .ik-message-edit-form textarea:focus{
+  border-color:#7b7f8d;box-shadow:0 0 0 3px rgba(83,88,104,.12);
+}
+.messenger.is-authenticated .ik-message-edit-footer{
+  display:flex;justify-content:space-between;align-items:center;
+  flex-wrap:wrap;gap:8px;min-width:0;
+}
+.messenger.is-authenticated .ik-message-edit-footer small{
+  color:#797982;font-size:10px;line-height:1.35;
+}
+.messenger.is-authenticated .ik-message-edit-actions{
+  display:flex;gap:7px;justify-content:flex-end;flex-wrap:wrap;
+  margin-left:auto;
+}
+.messenger.is-authenticated .ik-message-edit-actions button{
+  border:0;border-radius:11px;min-height:38px;
+  padding:9px 12px;background:#e9e9ed;color:#303036;
+  font-family:inherit;font-size:12px;font-weight:720;
+}
+.messenger.is-authenticated .ik-message-edit-actions button[type=submit]{
+  background:#242428;color:#fff;
+}
+.messenger.is-authenticated .ik-message-edit-actions button:disabled{
+  opacity:.45;cursor:not-allowed;
+}
+.messenger.is-authenticated .ik-message-edit-actions button:focus-visible{
+  outline:2px solid #333;outline-offset:2px;
+}
+@media(max-width:800px){
+  .messenger.is-authenticated .conversation-history .message-edit-form.ik-message-edit-form{
+    width:min(70vw,365px);
+  }
+  .messenger.is-authenticated .ik-message-edit-footer small{
+    width:100%;
+  }
+}
+@media(prefers-reduced-motion:reduce){
+  .messenger.is-authenticated .ik-message-edit-form textarea{
+    scroll-behavior:auto;
+  }
+}
