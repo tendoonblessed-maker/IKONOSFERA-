@@ -8,7 +8,7 @@ export const GROUP_OLDER_PAGE_SIZE=70;
 export const GROUP_HISTORY_MAX_LOADED=1500;
 
 function subMillisecondFraction(timestamp:string):number{
- const part=/\\.(\\d{1,6})/.exec(timestamp)?.[1]??'';
+ const part=/\.(\d{1,6})/.exec(timestamp)?.[1]??'';
  return Number(part.padEnd(6,'0'));
 }
 export function compareGroupMessages(a:GroupMessage,b:GroupMessage):number{
