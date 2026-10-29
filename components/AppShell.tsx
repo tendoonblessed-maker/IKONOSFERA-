@@ -138,7 +138,11 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
   useEffect(()=>{
     // Browser online/offline is only a connectivity hint, not a guarantee
     // that Supabase is reachable. Never auto-send unsent chat drafts.
-    const update=()=>setNetworkOnline(navigator.onLine);
+    const update=()=>{
+      const connected=navigator.onLine;
+      setNetworkOnline(connected);
+      if(connected)setError(previous=>previous.startsWith('Нет соединения с интернетом.')?'':previous);
+    };
     update();
     window.addEventListener('online',update);
     window.addEventListener('offline',update);
