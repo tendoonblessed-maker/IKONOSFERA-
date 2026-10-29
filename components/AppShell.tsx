@@ -112,6 +112,8 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
   const [emailSent,setEmailSent]=useState(false);
   const [busy,setBusy]=useState(false);
   const [sending,setSending]=useState(false);
+  const [networkOnline,setNetworkOnline]=useState(true);
+  const [bootstrapRetryNonce,setBootstrapRetryNonce]=useState(0);
   const [loading,setLoading]=useState(true);
   const [error,setError]=useState('');
   const [notice,setNotice]=useState('');
@@ -132,6 +134,25 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
   const chatContextGenerationRef=useRef(0);
   const messageSearchRequestRef=useRef(0);
   const composerRef=useRef<HTMLTextAreaElement|null>(null);
+
+  useEffect(()=>{
+    // Browser online/offline is only a connectivity hint, not a guarantee
+    // that Supabase is reachable. Never auto-send unsent chat drafts.
+    const update=()=>{
+      const connected=navigator.onLine;
+      setNetworkOnline(connected);
+      if(connected)setError(previous=>previous.startsWith('Нет соединения с интернетом.')?'':previous);
+    };
+    update();
+    window.addEventListener('online',update);
+    window.addEventListener('offline',update);
+    window.addEventListener('pageshow',update); // iOS Safari back/forward cache
+    return()=>{
+      window.removeEventListener('online',update);
+      window.removeEventListener('offline',update);
+      window.removeEventListener('pageshow',update);
+    };
+  },[]);
 
   useEffect(()=>{
     // Restore only the signed-in person's drafts; anonymous account drafts
@@ -396,6 +417,9 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
     setMessageMenuId(null);
     const sync=async(first=false)=>{
       if(cancelled||inFlight||document.visibilityState==='hidden')return;
+      // Offline detection avoids pointless 18-second fetch timeouts.
+      // The 'online' listener below triggers an immediate retry.
+      if(!navigator.onLine)return;
       inFlight=true;
       try{
         const messages=(await listMessages(token,chatId)).reverse();
@@ -423,8 +447,14 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
     void sync(true);
     const timer=window.setInterval(()=>void sync(),6000);
     const onVisible=()=>{if(document.visibilityState==='visible')void sync();};
+    const onConnected=()=>{if(document.visibilityState==='visible')void sync(true);};
     document.addEventListener('visibilitychange',onVisible);
-    return()=>{cancelled=true;window.clearInterval(timer);document.removeEventListener('visibilitychange',onVisible);};
+    window.addEventListener('online',onConnected);
+    return()=>{
+      cancelled=true;window.clearInterval(timer);
+      document.removeEventListener('visibilitychange',onVisible);
+      window.removeEventListener('online',onConnected);
+    };
   },[selected,session?.access_token,userId,chatReloadNonce]);
 
   useEffect(()=>{
@@ -438,11 +468,22 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
         const p=await myProfile(valid.access_token,user.id);
         setSession(valid);setUserId(user.id);setProfile(p);setAnonymous(Boolean(user.is_anonymous));
         await refresh(valid.access_token,user.id,null);
+        if(!cancelled)setError('');
       } catch(e){if(!cancelled){setError(userFacingError(e));/* A transient network failure must not discard valid login credentials. */}}
       finally{if(!cancelled)setLoading(false);}
     })();
     return()=>{cancelled=true;};
-  },[refresh]);
+  },[refresh,bootstrapRetryNonce]);
+
+  // On an offline cold launch, profile fetching can fail before the signed-in
+  // session is hydrated. Retry bootstrap once connectivity returns; otherwise
+  // the app would remain on the sign-in screen until a manual reload.
+  useEffect(()=>{
+    if(session)return;
+    const retryBootstrap=()=>{if(backendReady)setBootstrapRetryNonce(count=>count+1);};
+    window.addEventListener('online',retryBootstrap);
+    return()=>window.removeEventListener('online',retryBootstrap);
+  },[session]);
 
   useEffect(()=>{
     if(!session||!userId)return;
@@ -451,6 +492,9 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
     let cycles=0;
     const run=async(forceFull=false)=>{
       if(cancelled||inFlight||document.visibilityState==='hidden')return;
+      // Offline detection avoids pointless 18-second fetch timeouts.
+      // The 'online' listener below triggers an immediate retry.
+      if(!navigator.onLine)return;
       inFlight=true;
       try{
         const valid=await validSession();
@@ -468,9 +512,15 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
       finally{inFlight=false;}
     };
     const onVisible=()=>{if(document.visibilityState==='visible')void run(true);};
+    const onConnected=()=>{if(document.visibilityState==='visible')void run(true);};
     const timer=window.setInterval(()=>void run(),12000);
     document.addEventListener('visibilitychange',onVisible);
-    return()=>{cancelled=true;window.clearInterval(timer);document.removeEventListener('visibilitychange',onVisible);};
+    window.addEventListener('online',onConnected);
+    return()=>{
+      cancelled=true;window.clearInterval(timer);
+      document.removeEventListener('visibilitychange',onVisible);
+      window.removeEventListener('online',onConnected);
+    };
   },[session,userId,refresh,refreshInbox]);
 
   useEffect(()=>{
@@ -781,6 +831,10 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
 
   async function sendMessage(e:React.FormEvent){
     e.preventDefault();if(!session||!selected||!userId||sending||activePartnerBlocked)return;
+    if(!networkOnline||!navigator.onLine){
+      setError('Нет соединения с интернетом. Сообщение осталось в черновике.');
+      return;
+    }
     const chatId=selected,plainText=draft.trim(),token=session.access_token;
     const reply=replyingTo?.chatId===chatId?replyingTo:null;
     // Reply metadata is stored server-side rather than prepended to plain text.
@@ -909,6 +963,10 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
   }
   async function sendAttachment(file:File|undefined){
     if(!file||!session||!selected||!userId||sending||activePartnerBlocked)return;
+    if(!networkOnline||!navigator.onLine){
+      setError('Нет соединения с интернетом. Выбери вложение повторно после подключения.');
+      return;
+    }
     const chatId=selected,token=session.access_token;
     setSending(true);setError("");
     try{
@@ -976,6 +1034,10 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
   const filteredChannels=(showRecommendations?recommendedChannels:myChannels).filter(ch=>!channelSearch.trim()||((ch.title+" "+ch.slug).toLowerCase().includes(channelSearch.trim().toLowerCase())));
 
   return <div className={`messenger ${loggedIn?"is-authenticated":"is-guest"}`} data-version="windows-desktop-v3" data-current-tab={tab}>
+    {!networkOnline&&<div className="ik-network-offline" role="status" aria-live="polite">
+      <span className="ik-network-offline-mark" aria-hidden="true"/>
+      <span><strong>Нет соединения</strong><small>Черновик останется в чате. Отправь сообщение после подключения.</small></span>
+    </div>}
     <aside className={`chats-pane ${detailOpen?'has-conversation':''}`}>
       <div className="pane-heading"><div className="brand-label"><img className="brand-mini" src="/branding/ikonosfera-wordmark.svg" alt="IKONOSFERA" width={132} height={70}/></div><button type="button" className="release-pill" onClick={()=>profile?.id&&goToProfile(profile.id)} disabled={!profile}>{profile ? "@"+profile.username : "ALPHA"}</button></div>
       <div className="pane-toolbar">
@@ -1239,7 +1301,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
         <div className="ik-inline-reply-copy"><strong>Ответ для {replyingTo.name}</strong><span>{replyingTo.text}</span></div>
         <button type="button" onClick={()=>setReplyingTo(null)} aria-label="Отменить ответ">✕</button>
       </div>}
-      <form className="composer" onSubmit={sendMessage}><label className="chat-attach-button" title="Прикрепить фото, видео, музыку или файл" aria-label="Прикрепить файл"><svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M20.5 11.5 12.3 19.7a5.4 5.4 0 0 1-7.7-7.7L13 3.6a3.6 3.6 0 0 1 5.1 5.1l-8.7 8.7a1.8 1.8 0 0 1-2.6-2.6l7.7-7.7"/></svg><input type="file" accept="image/*,video/mp4,video/webm,video/quicktime,audio/mpeg,audio/mp4,audio/wav,audio/ogg,.pdf,.txt,.zip,.doc,.docx,.xls,.xlsx" disabled={sending||activePartnerBlocked} onChange={e=>{void sendAttachment(e.target.files?.[0]);e.target.value="";}}/></label><textarea ref={composerRef} aria-label="Написать сообщение" enterKeyHint="enter" placeholder={activePartnerBlocked?"Вы заблокировали пользователя":"Сообщение…"} rows={1} disabled={activePartnerBlocked} value={draft} onChange={e=>{setDraft(e.target.value);if(selected)updateChatDraft(selected,e.target.value);}} onInput={e=>{const element=e.currentTarget;element.style.height='auto';element.style.height=Math.min(element.scrollHeight,136)+'px';}} onKeyDown={e=>{
+      <form className="composer" onSubmit={sendMessage}><label className="chat-attach-button" title="Прикрепить фото, видео, музыку или файл" aria-label="Прикрепить файл"><svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M20.5 11.5 12.3 19.7a5.4 5.4 0 0 1-7.7-7.7L13 3.6a3.6 3.6 0 0 1 5.1 5.1l-8.7 8.7a1.8 1.8 0 0 1-2.6-2.6l7.7-7.7"/></svg><input type="file" accept="image/*,video/mp4,video/webm,video/quicktime,audio/mpeg,audio/mp4,audio/wav,audio/ogg,.pdf,.txt,.zip,.doc,.docx,.xls,.xlsx" disabled={sending||activePartnerBlocked||!networkOnline} onChange={e=>{void sendAttachment(e.target.files?.[0]);e.target.value="";}}/></label><textarea ref={composerRef} aria-label="Написать сообщение" enterKeyHint="enter" placeholder={activePartnerBlocked?"Вы заблокировали пользователя":"Сообщение…"} rows={1} disabled={activePartnerBlocked} value={draft} onChange={e=>{setDraft(e.target.value);if(selected)updateChatDraft(selected,e.target.value);}} onInput={e=>{const element=e.currentTarget;element.style.height='auto';element.style.height=Math.min(element.scrollHeight,136)+'px';}} onKeyDown={e=>{
         // On iOS/Android the Return key must create a newline, not send the
         // message unexpectedly. Hardware-keyboard users retain Enter-to-send.
         const softKeyboard=/iPhone|iPad|iPod|Android/i.test(navigator.userAgent)
@@ -1248,7 +1310,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
           e.preventDefault();
           if(draft.trim()&&!sending)e.currentTarget.form?.requestSubmit();
         }
-      }} maxLength={4000}/><button type="submit" className="send-button" disabled={!draft.trim()||sending||activePartnerBlocked} aria-label="Отправить сообщение"><svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 19V5m-6 6 6-6 6 6"/></svg></button></form></>:selected&&loggedIn?<div className="ik-chat-entry-loading" aria-live="polite" role="status">
+      }} maxLength={4000}/><button type="submit" className="send-button" disabled={!draft.trim()||sending||activePartnerBlocked||!networkOnline} aria-label="Отправить сообщение" title={!networkOnline?'Нет соединения с интернетом':undefined}><svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 19V5m-6 6 6-6 6 6"/></svg></button></form></>:selected&&loggedIn?<div className="ik-chat-entry-loading" aria-live="polite" role="status">
        <header className="conversation-header"><button type="button" className="back-button" aria-label="Назад к чатам" onClick={()=>setSelected(null)}>‹</button><strong>Открываем диалог…</strong></header>
        <div className="ik-chat-loading"><div className="ik-chat-loading-bubble incoming"/><div className="ik-chat-loading-bubble incoming short"/><div className="ik-chat-loading-bubble outgoing"/><span className="ik-chat-loading-label"><span className="ik-chat-loading-spinner" aria-hidden="true"/>Загружаем переписку…</span></div>
      </div>:<div className="conversation-placeholder">{!loggedIn&&<div className="guest-brand"><img src="/branding/ikonosfera-wordmark.svg" alt="IKONOSFERA" width={250} height={108}/><span>© BY TENDO888</span></div>}{loggedIn&&<div className="welcome-mark" aria-hidden="true">IKONOSFERA<span> / DESKTOP</span></div>}<h2>{loggedIn?'Твои разговоры начинаются здесь':emailSent?'Остался один шаг':'Больше чем просто мессенджер'}</h2><p>{loggedIn?'Выбери переписку слева или найди человека по юзернейму.':emailSent?'Открой письмо и перейди по ссылке Sign in.':'IKONOSFERA — современный мессенджер для Android, iPhone, macOS и Windows. Работает без VPN и ограничений!'}</p>{loggedIn&&<div className="desktop-welcome-actions"><button type="button" className="accent-button" onClick={()=>switchTab('contacts')}>＋ Найти человека</button><button type="button" className="secondary-action" onClick={()=>switchTab('channels')}>Открыть каналы</button></div>}{!loggedIn&&(backendReady?<div className="auth-panel"><h3>{emailSent?'Проверь почту':'Войти или зарегистрироваться'}</h3>{!emailSent?<form onSubmit={requestSignInLink}><label htmlFor="authEmail">Электронная почта</label><input id="authEmail" type="email" autoComplete="email" value={email} onChange={e=>setEmail(e.target.value)} placeholder="you@example.com" required/><button className="accent-button" disabled={busy}>{busy?'Отправляем…':'Получить ссылку для входа'}</button></form>:<div className="email-signin-result"><div className="email-signin-guide" role="status"><strong>Письмо отправлено на {email}</strong><p>Открой почту и найди письмо от <b>Supabase Auth</b> с темой <b>Your sign-in link</b>.</p><p>Нажми синюю ссылку <b>Sign in</b> («Войти»). После перехода IKONOSFERA откроется с твоим аккаунтом.</p><small>Если письма нет, проверь «Спам». Ссылка одноразовая; вводить код не требуется.</small></div><button type="button" className="text-button" onClick={()=>{setEmailSent(false);setError('');}}>Использовать другой адрес</button></div>}<div className="temporary-login"><button type="button" className="secondary-action" onClick={()=>void beginTemporaryAccount()} disabled={busy}>Попробовать без почты — тестовый аккаунт</button><p>Бесплатный тестовый вход. Для работы требуется включить Anonymous Sign-Ins в Supabase. Не используй реальные личные данные.</p></div></div>:<div className="setup-notice"><strong>Подключаем сообщения</strong><p>Сервер переписки ещё не настроен. Как только будет подключена база, здесь появится вход.</p></div>)}</div>}
