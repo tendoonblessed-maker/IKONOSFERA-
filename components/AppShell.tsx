@@ -4,6 +4,7 @@ import { backendReady, createTemporaryAccount, consumeEmailLinkSession, clearSes
 
 import ProfilePanel from "@/components/ProfilePanel";
 import {mergeRecentPage,prependEarlierPage} from "@/lib/chat-history";
+import {readChatDrafts,writeChatDrafts,clearChatDrafts,type ChatDrafts} from "@/lib/chat-drafts";
 import ChatMedia from "@/components/ChatMedia";
 import ChatInboxRow from "@/components/ChatInboxRow";
 import StatusEmoji from "@/components/StatusEmoji";
@@ -91,6 +92,8 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
   const [createMenuOpen,setCreateMenuOpen]=useState(false);
   const [lookup,setLookup]=useState(initialUsername);
   const [draft,setDraft]=useState('');
+  const [draftPreviews,setDraftPreviews]=useState<ChatDrafts>({});
+  const [showJumpToLatest,setShowJumpToLatest]=useState(false);
   const [replyingTo,setReplyingTo]=useState<{chatId:string;id:string;text:string;name:string}|null>(null);
   const [email,setEmail]=useState('');
   const [emailSent,setEmailSent]=useState(false);
@@ -108,10 +111,29 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
   const prependScrollRef=useRef<{chatId:string;height:number;top:number}|null>(null);
   const selectedRef=useRef<string|null>(null);
   const searchInputRef=useRef<HTMLInputElement|null>(null);
-  const draftsRef=useRef<Record<string,string>>({});
+  const draftsRef=useRef<ChatDrafts>({});
+  const draftsOwnerRef=useRef('');
   const composerRef=useRef<HTMLTextAreaElement|null>(null);
 
-  useEffect(()=>{selectedRef.current=selected;setReplyingTo(null);},[selected]);
+  useEffect(()=>{
+    // Restore only the signed-in person's drafts; anonymous account drafts
+    // never appear in someone else's account after switching users.
+    if(userId===draftsOwnerRef.current)return;
+    draftsOwnerRef.current=userId;
+    const existing=userId?readChatDrafts(userId):{};
+    draftsRef.current=existing;
+    setDraftPreviews({...existing});
+  },[userId]);
+  function updateChatDraft(chatId:string,text:string){
+    const next={...draftsRef.current};
+    if(text.trim())next[chatId]=text;
+    else delete next[chatId];
+    draftsRef.current=next;
+    setDraftPreviews(next);
+    if(userId)writeChatDrafts(userId,next);
+  }
+
+  useEffect(()=>{selectedRef.current=selected;setReplyingTo(null);setShowJumpToLatest(false);},[selected]);
   // iOS Safari's visual viewport shrinks when the keyboard appears.
   // Follow that visible area rather than a stale 100dvh layout height,
   // without disabling the user's ability to pinch-zoom for accessibility.
@@ -367,7 +389,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
     // Never pull the reader away from older messages during incoming polls.
     history.scrollTop=history.scrollHeight;
   },[chatMessages.length,selected]);
-  useEffect(()=>{if(selected)setDraft(draftsRef.current[selected]||'');},[selected]);
+  useEffect(()=>{if(selected)setDraft(draftsRef.current[selected]||'');},[selected,userId]);
   useEffect(()=>{const field=composerRef.current;if(!field)return;field.style.height='auto';field.style.height=Math.min(field.scrollHeight,136)+'px';},[draft,selected]);
   useEffect(()=>{
     const keyboard=(event:KeyboardEvent)=>{
@@ -518,7 +540,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
       // Users may type their next message while the previous send is in flight.
       // Only clear the exact draft that was submitted, not their new text.
       if((draftsRef.current[chatId]||'').trim()===plainText){
-        delete draftsRef.current[chatId];
+        updateChatDraft(chatId,'');
         if(selectedRef.current===chatId)setDraft(current=>current.trim()===plainText?'':current);
       }
       if(reply)setReplyingTo(current=>current?.id===reply.id&&current.chatId===chatId?null:current);
@@ -647,7 +669,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
     }catch(e){setError(userFacingError(e));}
     finally{setSending(false);}
   }
-  async function logout(){if(!session)return;if(anonymous&&!window.confirm('Это временный аккаунт. После выхода восстановить его нельзя. Выйти?'))return;setBusy(true);try{await signOut(session.access_token);}catch(e){setError(userFacingError(e));}finally{clearSession();setSession(null);setUserId('');setProfile(null);setAnonymous(false);setRows([]);setSavedContacts([]);setBlockedUsers([]);setSelected(null);setProfileTarget(null);setSelectedChannel(null);setChannels([]);setChatMessages([]);setBusy(false);}}
+  async function logout(){if(!session)return;if(anonymous&&!window.confirm('Это временный аккаунт. После выхода восстановить его нельзя. Выйти?'))return;setBusy(true);try{await signOut(session.access_token);}catch(e){setError(userFacingError(e));}finally{clearChatDrafts(userId);draftsOwnerRef.current='';draftsRef.current={};setDraftPreviews({});setDraft('');clearSession();setSession(null);setUserId('');setProfile(null);setAnonymous(false);setRows([]);setSavedContacts([]);setBlockedUsers([]);setSelected(null);setProfileTarget(null);setSelectedChannel(null);setChannels([]);setChatMessages([]);setBusy(false);}}
   async function install(){if(installPrompt){await installPrompt.prompt();await installPrompt.userChoice;setInstallPrompt(null);}else setInstallHelp(true);}
   const storyContacts=useMemo(()=>{
     const byId=new Map<string,Profile>();
@@ -742,6 +764,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
           onOpen={()=>{if(editingChats){toggleChatSelection(item.row.chat.id);return;}setSelected(item.row.chat.id);setSelectedGroup(null);setSelectedChannel(null);setProfileTarget(null);setChatMessages([]);setError('');}}
           isSavedContact={Boolean(item.row.other&&savedContactIds.has(item.row.other.id))}
           isBlocked={Boolean(item.row.other&&blockedUserIds.has(item.row.other.id))}
+          draft={draftPreviews[item.row.chat.id]||''}
           onContactAction={()=>{if(item.row.other)void toggleSavedContact(item.row.other);}}
           onBlockAction={()=>{if(item.row.other)void toggleBlockedUser(item.row.other);}}
           onAction={action=>void chatAction(item.row.chat.id,action)}/>
@@ -910,7 +933,9 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
   <button type="button" disabled={busy} onClick={()=>void chatAction(active.chat.id,'delete_everyone')}>Удалить у обоих</button>
 </FloatingActionMenu></header>{activePartnerBlocked&&<div className="ik-chat-blocked-banner" role="status"><span>Собеседник заблокирован. Отправка сообщений отключена.</span><button type="button" onClick={()=>active.other&&void toggleBlockedUser(active.other)}>Разблокировать</button></div>}{searchInConversation&&<div className="ik-conversation-search"><input autoFocus aria-label="Поиск сообщений в текущем чате" placeholder="Найти сообщение…" value={messageSearch} onChange={e=>setMessageSearch(e.target.value)}/><span>{visibleMessages.length} сообщ.</span><button type="button" onClick={()=>{setSearchInConversation(false);setMessageSearch("");}}>✕</button></div>}{selectedMessages.length>0&&<div className="ik-selection-toolbar"><span>Выбрано: {selectedMessages.length}</span><button type="button" onClick={()=>{const text=chatMessages.filter(m=>selectedMessages.includes(m.id)).map(m=>m.body).join("\n\n");void navigator.clipboard.writeText(text).then(()=>setNotice("Сообщения скопированы")).catch(()=>setError("Не удалось скопировать"));}}>Копировать</button><button type="button" onClick={()=>setSelectedMessages([])}>Отмена</button></div>}<div className="conversation-history" ref={conversationHistoryRef} aria-live="polite" aria-busy={activeChatLoading} onScroll={event=>{
         const area=event.currentTarget;
-        chatAutoScrollRef.current=area.scrollHeight-area.scrollTop-area.clientHeight<120;
+        const distance=area.scrollHeight-area.scrollTop-area.clientHeight;
+        chatAutoScrollRef.current=distance<120;
+        setShowJumpToLatest(distance>220&&!activeChatLoading);
       }}>
       {!activeChatLoading&&!activeChatLoadError&&hasOlderMessages&&<div className="ik-chat-older-controls">
         <button type="button" className="ik-chat-older-button" disabled={loadingOlderMessages} onClick={()=>void loadOlderChatMessages()}>
@@ -931,12 +956,16 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
  <button type="button" className="reaction-add" aria-label="Добавить реакцию" onClick={()=>setMessageReactionPicker(messageReactionPicker===message.id?null:message.id)}>☺ +</button>
  {messageReactionPicker===message.id&&<div className="reaction-picker">{REACTION_EMOJIS.map(emoji=><button type="button" key={emoji} disabled={sending} onClick={()=>void reactToMessage(message.id,emoji)} aria-label={"Реакция "+emoji}>{emoji}</button>)}</div>}
  </div></div></SwipeReplyMessage></Fragment>)}<div ref={messageEnd}/></div>
+      {showJumpToLatest&&!activeChatLoading&&<button type="button" className="ik-jump-to-latest" aria-label="Перейти к последним сообщениям" title="К последним сообщениям"
+        onClick={()=>{const history=conversationHistoryRef.current;if(history){chatAutoScrollRef.current=true;history.scrollTop=history.scrollHeight;}setShowJumpToLatest(false);}}>
+        <svg viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m5 9 7 7 7-7"/></svg>
+      </button>}
       {replyingTo?.chatId===selected&&<div className="ik-inline-reply" role="status">
         <div className="ik-inline-reply-mark" aria-hidden="true"/>
         <div className="ik-inline-reply-copy"><strong>Ответ для {replyingTo.name}</strong><span>{replyingTo.text}</span></div>
         <button type="button" onClick={()=>setReplyingTo(null)} aria-label="Отменить ответ">✕</button>
       </div>}
-      <form className="composer" onSubmit={sendMessage}><label className="chat-attach-button" title="Прикрепить фото, видео, музыку или файл" aria-label="Прикрепить файл"><svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M20.5 11.5 12.3 19.7a5.4 5.4 0 0 1-7.7-7.7L13 3.6a3.6 3.6 0 0 1 5.1 5.1l-8.7 8.7a1.8 1.8 0 0 1-2.6-2.6l7.7-7.7"/></svg><input type="file" accept="image/*,video/mp4,video/webm,video/quicktime,audio/mpeg,audio/mp4,audio/wav,audio/ogg,.pdf,.txt,.zip,.doc,.docx,.xls,.xlsx" disabled={sending||activePartnerBlocked} onChange={e=>{void sendAttachment(e.target.files?.[0]);e.target.value="";}}/></label><textarea ref={composerRef} aria-label="Написать сообщение" placeholder={activePartnerBlocked?"Вы заблокировали пользователя":"Сообщение…"} rows={1} disabled={activePartnerBlocked} value={draft} onChange={e=>{setDraft(e.target.value);if(selected)draftsRef.current[selected]=e.target.value;}} onInput={e=>{const element=e.currentTarget;element.style.height='auto';element.style.height=Math.min(element.scrollHeight,136)+'px';}} onKeyDown={e=>{if(e.key==='Enter'&&!e.shiftKey&&!e.nativeEvent.isComposing){e.preventDefault();if(draft.trim()&&!sending)e.currentTarget.form?.requestSubmit();}}} maxLength={4000}/><button type="submit" className="send-button" disabled={!draft.trim()||sending||activePartnerBlocked} aria-label="Отправить сообщение"><svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 19V5m-6 6 6-6 6 6"/></svg></button></form></>:selected&&loggedIn?<div className="ik-chat-entry-loading" aria-live="polite" role="status">
+      <form className="composer" onSubmit={sendMessage}><label className="chat-attach-button" title="Прикрепить фото, видео, музыку или файл" aria-label="Прикрепить файл"><svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M20.5 11.5 12.3 19.7a5.4 5.4 0 0 1-7.7-7.7L13 3.6a3.6 3.6 0 0 1 5.1 5.1l-8.7 8.7a1.8 1.8 0 0 1-2.6-2.6l7.7-7.7"/></svg><input type="file" accept="image/*,video/mp4,video/webm,video/quicktime,audio/mpeg,audio/mp4,audio/wav,audio/ogg,.pdf,.txt,.zip,.doc,.docx,.xls,.xlsx" disabled={sending||activePartnerBlocked} onChange={e=>{void sendAttachment(e.target.files?.[0]);e.target.value="";}}/></label><textarea ref={composerRef} aria-label="Написать сообщение" placeholder={activePartnerBlocked?"Вы заблокировали пользователя":"Сообщение…"} rows={1} disabled={activePartnerBlocked} value={draft} onChange={e=>{setDraft(e.target.value);if(selected)updateChatDraft(selected,e.target.value);}} onInput={e=>{const element=e.currentTarget;element.style.height='auto';element.style.height=Math.min(element.scrollHeight,136)+'px';}} onKeyDown={e=>{if(e.key==='Enter'&&!e.shiftKey&&!e.nativeEvent.isComposing){e.preventDefault();if(draft.trim()&&!sending)e.currentTarget.form?.requestSubmit();}}} maxLength={4000}/><button type="submit" className="send-button" disabled={!draft.trim()||sending||activePartnerBlocked} aria-label="Отправить сообщение"><svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 19V5m-6 6 6-6 6 6"/></svg></button></form></>:selected&&loggedIn?<div className="ik-chat-entry-loading" aria-live="polite" role="status">
        <header className="conversation-header"><button type="button" className="back-button" aria-label="Назад к чатам" onClick={()=>setSelected(null)}>‹</button><strong>Открываем диалог…</strong></header>
        <div className="ik-chat-loading"><div className="ik-chat-loading-bubble incoming"/><div className="ik-chat-loading-bubble incoming short"/><div className="ik-chat-loading-bubble outgoing"/><span className="ik-chat-loading-label"><span className="ik-chat-loading-spinner" aria-hidden="true"/>Загружаем переписку…</span></div>
      </div>:<div className="conversation-placeholder">{!loggedIn&&<div className="guest-brand"><img src="/branding/ikonosfera-wordmark.svg" alt="IKONOSFERA" width={250} height={108}/><span>© BY TENDO888</span></div>}{loggedIn&&<div className="welcome-mark" aria-hidden="true">IKONOSFERA<span> / DESKTOP</span></div>}<h2>{loggedIn?'Твои разговоры начинаются здесь':emailSent?'Остался один шаг':'Больше чем просто мессенджер'}</h2><p>{loggedIn?'Выбери переписку слева или найди человека по юзернейму.':emailSent?'Открой письмо и перейди по ссылке Sign in.':'IKONOSFERA — современный мессенджер для Android, iPhone, macOS и Windows. Работает без VPN и ограничений!'}</p>{loggedIn&&<div className="desktop-welcome-actions"><button type="button" className="accent-button" onClick={()=>switchTab('contacts')}>＋ Найти человека</button><button type="button" className="secondary-action" onClick={()=>switchTab('channels')}>Открыть каналы</button></div>}{!loggedIn&&(backendReady?<div className="auth-panel"><h3>{emailSent?'Проверь почту':'Войти или зарегистрироваться'}</h3>{!emailSent?<form onSubmit={requestSignInLink}><label htmlFor="authEmail">Электронная почта</label><input id="authEmail" type="email" autoComplete="email" value={email} onChange={e=>setEmail(e.target.value)} placeholder="you@example.com" required/><button className="accent-button" disabled={busy}>{busy?'Отправляем…':'Получить ссылку для входа'}</button></form>:<div className="email-signin-result"><div className="email-signin-guide" role="status"><strong>Письмо отправлено на {email}</strong><p>Открой почту и найди письмо от <b>Supabase Auth</b> с темой <b>Your sign-in link</b>.</p><p>Нажми синюю ссылку <b>Sign in</b> («Войти»). После перехода IKONOSFERA откроется с твоим аккаунтом.</p><small>Если письма нет, проверь «Спам». Ссылка одноразовая; вводить код не требуется.</small></div><button type="button" className="text-button" onClick={()=>{setEmailSent(false);setError('');}}>Использовать другой адрес</button></div>}<div className="temporary-login"><button type="button" className="secondary-action" onClick={()=>void beginTemporaryAccount()} disabled={busy}>Попробовать без почты — тестовый аккаунт</button><p>Бесплатный тестовый вход. Для работы требуется включить Anonymous Sign-Ins в Supabase. Не используй реальные личные данные.</p></div></div>:<div className="setup-notice"><strong>Подключаем сообщения</strong><p>Сервер переписки ещё не настроен. Как только будет подключена база, здесь появится вход.</p></div>)}</div>}
