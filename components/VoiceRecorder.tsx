@@ -14,7 +14,7 @@ type Capture={
  chunks:Blob[];
  bytes:number;
  startedAt:number;
- discarded:boolean;
+ discard:boolean;
  clock:number|null;
  limit:number|null;
 };
@@ -113,7 +113,7 @@ export default function VoiceRecorder({disabled,onRecorded,onError}:Props){
    const recorder=new MediaRecorder(stream,{mimeType:mime,audioBitsPerSecond:64000});
    const capture:Capture={
     recorder,stream,chunks:[],bytes:0,startedAt:Date.now(),
-    discarded:false,clock:null,limit:null
+    discard:false,clock:null,limit:null
    };
    captureRef.current=capture;
    recorder.ondataavailable=event=>{
