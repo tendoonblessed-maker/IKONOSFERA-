@@ -988,7 +988,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
     setSending(true);setError("");
     try{
       await sendDirectMedia(token,chatId,userId,file,caption);
-      if(selectedRef.current===chatId){
+      if(selectedRef.current===chatId&&draftsOwnerRef.current===userId){
         setPendingAttachment(current=>current?.chatId===chatId&&current.ownerId===userId&&current.file===file?null:current);
         setAttachmentCaption('');
       }
