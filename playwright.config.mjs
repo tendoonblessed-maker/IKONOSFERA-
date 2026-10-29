@@ -9,8 +9,10 @@ export default defineConfig({
   reporter:process.env.CI?'list':'line',
   use:{baseURL:'http://localhost:3210',trace:'retain-on-failure',serviceWorkers:'block'},
   projects:[
-    {name:'iPhone-like Chromium',use:{...devices['iPhone 13'],browserName:'chromium'}},
-    {name:'desktop Chromium',use:{browserName:'chromium',viewport:{width:1280,height:800}}}
+    {name:'iPhone Chromium',use:{...devices['iPhone 13'],browserName:'chromium'}},
+    {name:'iPhone WebKit',use:{...devices['iPhone 13'],browserName:'webkit'}},
+    {name:'Android Chrome',use:{...devices['Pixel 7'],browserName:'chromium'}},
+    {name:'Desktop Chromium',use:{browserName:'chromium',viewport:{width:1280,height:800}}}
   ],
   webServer:{
     command:'npm run dev -- -p 3210',
