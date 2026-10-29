@@ -689,8 +689,8 @@ test('status emoji is owner-editable, checked by Postgres, visible to signed-in 
  assert.match(sql,/grant update \(status_emoji\) on public\.profiles to authenticated/);
  assert.match(api,/export type Profile = \{[^}]*status_emoji\?:number\|null/);
  assert.equal((api.match(/select=id,username,display_name,avatar_path,cover_path,bio,status_emoji/g)||[]).length,4);
- assert.match(social,/featured_channel_id,status_emoji&id=eq\./);
- assert.match(social,/\|"status_emoji"\|"age_years">>/);
+ assert.match(social,/featured_channel_id,status_emoji,age_years&id=eq\./);
+ assert.match(social,/"status_emoji"\|"age_years"/);
  assert.match(profile,/async function setStatusEmoji\(index:number\|null\)/);
  assert.match(profile,/updateFullProfile\(token,userId,\{status_emoji:index\}\)/);
  assert.match(profile,/updated.status_emoji!==index/);
@@ -725,7 +725,7 @@ test('channel list uses the actual stored avatar and Settings tab keeps it in co
  assert.match(css,/\.pane-nav \.nav-profile-avatar\{\s*filter:none!important/);
  assert.match(css,/\.ik-channel-list-avatar\{[^}]*object-fit:cover/s);
 });
-test('Telegram-like black profile and settings preserve working privacy and editing',()=>{
+test('Telegram-like LIGHT profile and settings preserve privacy and editing',()=>{
  const profile=load('components/ProfilePanel.tsx');
  const app=load('components/AppShell.tsx');
  const css=load('app/globals.css');
@@ -744,6 +744,11 @@ test('Telegram-like black profile and settings preserve working privacy and edit
  assert.match(profile,/onSelect=\{index=>void setStatusEmoji\(index\)\}/);
  assert.match(profile,/await updateFullProfile\(token,userId,\{featured_channel_id:next\}\)/);
  assert.match(css,/\.settings-panel\.ik-settings-redesign\{/);
+ assert.match(css,/\.settings-panel\.ik-settings-redesign\{[\s\S]{0,110}background:#f5f5f7!important/);
+ assert.match(css,/\.ik-settings-group\{[\s\S]{0,130}background:#fff/);
+ assert.match(css,/\.ik-settings-row\{[\s\S]{0,180}background:#fff!important/);
+ assert.match(css,/\.ik-settings-hero-avatar img\{[\s\S]{0,160}filter:none!important/);
+
  assert.match(css,/\.ik-profile-redesign \.profile-cover:not\(\[style\]\)/);
 });
 
