@@ -752,3 +752,31 @@ test('profile updates return age_years alongside status emoji and bio',()=>{
  assert.match(social,/featured_channel_id,status_emoji,age_years&id=eq/);
  assert.match(social,/'age_years'|"age_years"/);
 });
+
+
+test('share button confirms a copied link without internal ChatGPT debug wording',()=>{
+ const shell=load('components/AppShell.tsx');
+ const start=shell.indexOf('async function copyCleanLink()');
+ const end=shell.indexOf('// Scroll only the message history',start);
+ assert.ok(start>=0&&end>start);
+ const fragment=shell.slice(start,end);
+ assert.match(fragment,/navigator\.clipboard\.writeText\(window\.location\.origin\+'\/'\)/);
+ assert.match(fragment,/setNotice\('Ссылка скопирована!'\)/);
+ assert.doesNotMatch(fragment,/Скопирована чистая ссылка без меток ChatGPT/);
+ assert.match(fragment,/setTimeout\(\(\)=>\{/);
+ assert.match(fragment,/2800/);
+ assert.match(shell,/toast-copy-success/);
+});
+test('white profile and settings colors override dark legacy rules',()=>{
+ const css=load('app/globals.css');
+ const last=css.slice(css.lastIndexOf('/* 2026-10-29: IKONOSFERA LIGHT PROFILE + SETTINGS.'));
+ assert.ok(last.length>2000);
+ assert.match(last,/\.settings-panel\.ik-settings-redesign\{\s*background:#fff!important/);
+ assert.match(last,/\.ik-settings-group\{\s*background:#f6f6f8!important/);
+ assert.match(last,/\.ik-settings-row,/);
+ assert.match(last,/\.ik-settings-privacy-group select\{/);
+ assert.match(last,/\.profile-view\.ik-profile-redesign,/);
+ assert.match(last,/\.toast\.toast-copy-success\{/);
+ assert.match(last,/background:#fff;color:#24242b/);
+ assert.match(last,/data-current-tab="settings"/);
+});
