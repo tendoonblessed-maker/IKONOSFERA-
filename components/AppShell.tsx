@@ -768,24 +768,81 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
           {ch.owner_id===userId?<span className="channel-owner-badge">Мой</span>:<button type="button" disabled={busy} className="channel-subscribe-button" onClick={()=>void toggleSubscription(ch.id)}>{subscriptions.includes(ch.id)?"Отписаться":"Подписаться"}</button>}
         </div>):<p className="channel-empty-list">{!loggedIn?"Войди, чтобы увидеть каналы.":showRecommendations?"Новых рекомендаций пока нет.":"Ты ещё не подписан на каналы. Загляни в рекомендации."}</p>}</div>
       </div>}
-      {tab==='settings'&&<div className="settings-panel"><h2>Мой профиль</h2>{loggedIn?<><button type="button" className="open-own-profile" onClick={()=>goToProfile(userId)}><span className="contact-avatar">{imageUrl(profile?.avatar_path)?<img className="avatar-image" src={imageUrl(profile?.avatar_path)||""} alt=""/>:(profile?.display_name||'?').charAt(0).toUpperCase()}</span><span><strong className="ik-name-with-status"><span>{profile?.display_name||"Мой профиль"}</span><StatusEmoji index={profile?.status_emoji} decorative/></strong><small>Оформление · фото · истории</small></span><span>›</span></button><p>Люди могут найти тебя по уникальному имени.</p>{anonymous&&<p className="test-account-warning">Тестовый аккаунт без почты: доступ хранится только на этом устройстве. После удаления приложения, очистки данных или выхода восстановить его нельзя.</p>}<button type="button" className="settings-edit-button" onClick={()=>goToProfile(userId)}>✎ Редактировать профиль</button><div className="ik-blocklist-settings">
-  <button type="button" className="ik-blocklist-toggle" onClick={()=>setBlocklistOpen(value=>!value)} aria-expanded={blocklistOpen} aria-controls="ik-blocklist-content">
-    <span className="ik-settings-lock" aria-hidden="true">⊘</span><span className="ik-settings-row-text"><strong>Чёрный список</strong><small>Заблокированные пользователи</small></span><span className="ik-block-count">{blockedUsers.length}</span><span className="ik-block-chevron" aria-hidden="true">{blocklistOpen?'⌄':'›'}</span>
-  </button>
-  {blocklistOpen&&<div id="ik-blocklist-content" className="ik-blocklist-content">
-    {blockedUsers.length?blockedUsers.map(person=><div className="ik-blocked-person" key={person.id}>
-      <span className="contact-avatar">{imageUrl(person.avatar_path)?<img className="avatar-image" alt="" src={imageUrl(person.avatar_path)||''}/>:((person.display_name||person.username)[0]||'?').toUpperCase()}</span>
-      <span className="ik-blocked-person-info"><strong className="ik-name-with-status"><span>{person.display_name||person.username}</span><StatusEmoji index={person.status_emoji} decorative/></strong><small>@{person.username}</small></span>
-      <button type="button" disabled={busy} onClick={()=>void toggleBlockedUser(person)}>Разблокировать</button>
-    </div>):<p className="ik-empty-blocklist">Здесь пока никого нет.</p>}
-  </div>}
-</div>
-<div className="ik-privacy-settings"><h3>Время последнего посещения</h3><p>Кто видит твою активность: по умолчанию показывается только приблизительный период.</p>
-<label htmlFor="ik-presence-privacy">Показывать другим</label><select id="ik-presence-privacy" value={activityVisibility} onChange={e=>void changeActivityVisibility(e.target.value as ActivityVisibility)}>
-<option value="approximate">Приблизительно: недавно / на неделе / в этом году / давно</option>
-<option value="exact">Точное время и статус «В сети»</option></select>
-<p className="ik-privacy-note">При скрытом времени другие не увидят, когда именно ты был в сети.</p></div>
-<button type="button" className="secondary-action ik-copy-link" onClick={()=>void copyCleanLink()}>Копировать ссылку на IKONOSFERA</button><button className="secondary-action" onClick={logout} disabled={busy}>Выйти из аккаунта</button></>:<p>Войди, чтобы настроить профиль.</p>}<div className="settings-meta"><span>Платформа</span><strong>{platform.ios?'iPhone / iPad':'Android / Desktop'}</strong><span>Запуск</span><strong>{platform.standalone?'Установленное приложение':'Браузер'}</strong><span>Сервер</span><strong>{backendReady?'Настроен':'Не подключён'}</strong></div>{!platform.standalone&&<button className="secondary-action" onClick={()=>void install()}>Установить приложение</button>}</div>}
+      {tab==='settings'&&<div className="settings-panel ik-settings-redesign">
+        <header className="ik-settings-page-header">
+          <h2>Настройки</h2>
+          {loggedIn&&<button type="button" className="ik-settings-header-edit" onClick={()=>goToProfile(userId)}>Изм.</button>}
+        </header>
+        {loggedIn?<>
+          <div className="ik-settings-hero">
+            <button type="button" className="ik-settings-profile-link" onClick={()=>goToProfile(userId)} aria-label="Открыть мой профиль">
+              <span className="ik-settings-hero-avatar">{imageUrl(profile?.avatar_path)
+                ?<img src={imageUrl(profile?.avatar_path)||""} alt="" decoding="async"/>
+                :(profile?.display_name||'?').charAt(0).toUpperCase()}</span>
+              <span className="ik-settings-hero-name ik-name-with-status"><strong>{profile?.display_name||"Мой профиль"}</strong><StatusEmoji index={profile?.status_emoji} decorative/></span>
+              <span className="ik-settings-hero-username">@{profile?.username||'профиль'}</span>
+            </button>
+          </div>
+          {anonymous&&<p className="test-account-warning">Тестовый аккаунт без почты: доступ сохраняется только на этом устройстве. После выхода или очистки данных восстановить его нельзя.</p>}
+          <section className="ik-settings-section" aria-label="Аккаунт">
+            <h3>АККАУНТ</h3>
+            <div className="ik-settings-group">
+              <button type="button" className="ik-settings-row" onClick={()=>goToProfile(userId)}>
+                <span className="ik-settings-icon" aria-hidden="true">◉</span><span className="ik-settings-row-label">Мой профиль</span><span className="ik-settings-chevron" aria-hidden="true">›</span>
+              </button>
+              <button type="button" className="ik-settings-row" onClick={()=>switchTab('contacts')}>
+                <span className="ik-settings-icon" aria-hidden="true">♙</span><span className="ik-settings-row-label">Контакты</span><span className="ik-settings-chevron" aria-hidden="true">›</span>
+              </button>
+              <button type="button" className="ik-settings-row" onClick={()=>switchTab('channels')}>
+                <span className="ik-settings-icon" aria-hidden="true">#</span><span className="ik-settings-row-label">Мои каналы</span><span className="ik-settings-chevron" aria-hidden="true">›</span>
+              </button>
+            </div>
+          </section>
+          <section className="ik-settings-section" aria-label="Приватность">
+            <h3>КОНФИДЕНЦИАЛЬНОСТЬ</h3>
+            <div className="ik-settings-group ik-settings-privacy-group">
+              <div className="ik-blocklist-settings">
+                <button type="button" className="ik-blocklist-toggle ik-settings-row" onClick={()=>setBlocklistOpen(value=>!value)} aria-expanded={blocklistOpen} aria-controls="ik-blocklist-content">
+                  <span className="ik-settings-icon" aria-hidden="true">⊘</span><span className="ik-settings-row-label">Чёрный список</span><span className="ik-block-count">{blockedUsers.length}</span><span className="ik-settings-chevron" aria-hidden="true">{blocklistOpen?'⌄':'›'}</span>
+                </button>
+                {blocklistOpen&&<div id="ik-blocklist-content" className="ik-blocklist-content">
+                  {blockedUsers.length?blockedUsers.map(person=><div className="ik-blocked-person" key={person.id}>
+                    <span className="contact-avatar">{imageUrl(person.avatar_path)?<img className="avatar-image" alt="" src={imageUrl(person.avatar_path)||''}/>:((person.display_name||person.username)[0]||'?').toUpperCase()}</span>
+                    <span className="ik-blocked-person-info"><strong className="ik-name-with-status"><span>{person.display_name||person.username}</span><StatusEmoji index={person.status_emoji} decorative/></strong><small>@{person.username}</small></span>
+                    <button type="button" disabled={busy} onClick={()=>void toggleBlockedUser(person)}>Разблокировать</button>
+                  </div>):<p className="ik-empty-blocklist">Здесь пока никого нет.</p>}
+                </div>}
+              </div>
+              <div className="ik-privacy-settings">
+                <label htmlFor="ik-presence-privacy" className="ik-settings-privacy-heading">
+                  <span className="ik-settings-icon" aria-hidden="true">◷</span><span>Последняя активность</span>
+                </label>
+                <select id="ik-presence-privacy" value={activityVisibility} onChange={e=>void changeActivityVisibility(e.target.value as ActivityVisibility)}>
+                  <option value="approximate">Приблизительно: недавно / на неделе / давно</option>
+                  <option value="exact">Точное время и статус «В сети»</option>
+                </select>
+                <p className="ik-privacy-note">Управляй тем, как другие видят твою активность.</p>
+              </div>
+            </div>
+          </section>
+          <section className="ik-settings-section" aria-label="Приложение">
+            <h3>ПРИЛОЖЕНИЕ</h3>
+            <div className="ik-settings-group">
+              <button type="button" className="ik-settings-row" onClick={()=>void copyCleanLink()}>
+                <span className="ik-settings-icon" aria-hidden="true">↗</span><span className="ik-settings-row-label">Поделиться IKONOSFERA</span><span className="ik-settings-chevron" aria-hidden="true">›</span>
+              </button>
+              {!platform.standalone&&<button type="button" className="ik-settings-row" onClick={()=>void install()}>
+                <span className="ik-settings-icon" aria-hidden="true">↓</span><span className="ik-settings-row-label">Установить приложение</span><span className="ik-settings-chevron" aria-hidden="true">›</span>
+              </button>}
+              <div className="ik-settings-row ik-settings-info-row"><span className="ik-settings-icon" aria-hidden="true">ⓘ</span>
+                <span className="ik-settings-row-label">Подключение</span>
+                <span className="ik-settings-row-value">{backendReady?'Работает':'Не подключено'}</span>
+              </div>
+            </div>
+          </section>
+          <button type="button" className="ik-settings-logout" disabled={busy} onClick={logout}>Выйти из аккаунта</button>
+        </>:<p className="ik-settings-login-hint">Войди, чтобы настроить профиль.</p>}
+      </div>}
       </div>
       <nav className="pane-nav" aria-label="Основные разделы">
   <button type="button" aria-label="Контакты" aria-current={tab==='contacts'?'page':undefined} className={tab==='contacts'?'current':''} onClick={()=>switchTab('contacts')}><span className="nav-art"><svg viewBox="0 0 28 28" width="25" height="25" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="14" cy="9" r="5"/><path d="M4 25v-2.5c0-5 4.3-8 10-8s10 3 10 8V25"/></svg></span><span className="nav-label">Контакты</span></button>
