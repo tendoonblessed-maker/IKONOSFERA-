@@ -170,3 +170,46 @@ test('refresh response must match both session generation and refresh token',()=
  assert.match(source,/if\(loadSession\(\)\?\.access_token===token\)clearSession\(\)/);
  assert.doesNotMatch(source,/finally \{ clearSession\(\); \}/);
 });
+
+
+test('late startup requests check current session before displaying a profile or refreshing private data',()=>{
+ const shell=readFileSync(new URL('../components/AppShell.tsx',import.meta.url),'utf8');
+ const start=shell.indexOf('const valid=consumeEmailLinkSession()');
+ const end=shell.indexOf('await refresh(valid.access_token,user.id,null)',start);
+ assert.ok(start>=0&&end>start);
+ const code=shell.slice(start,end);
+ assert.match(code,/const user=await currentUser\(valid\.access_token\)/);
+ assert.match(code,/if\(cancelled\|\|loadSession\(\)\?\.access_token!==valid\.access_token\)return;/);
+ const guards=code.match(/if\(cancelled\|\|loadSession\(\)\?\.access_token!==valid\.access_token\)return;/g);
+ assert.equal(guards?.length,2,'verify session after both user and profile network awaits');
+ const second=code.lastIndexOf('if(cancelled||loadSession()?.access_token!==valid.access_token)return;');
+ const update=code.indexOf('setSession(valid);');
+ assert.ok(second<update,'identity must be checked before touching account UI');
+});
+
+test('another tab changing or clearing credentials immediately invalidates the mounted private UI even when offline',()=>{
+ const shell=readFileSync(new URL('../components/AppShell.tsx',import.meta.url),'utf8');
+ const begin=shell.indexOf('// Cross-tab sign-in, sign-out and token replacement require rehydration.');
+ const end=shell.indexOf('// On an offline cold launch',begin);
+ assert.ok(begin>0&&end>begin);
+ const effect=shell.slice(begin,end);
+ assert.match(effect,/event\.storageArea!==localStorage/);
+ assert.match(effect,/event\.key!=='ikonosfera-session-v1'&&event\.key!==null/);
+ assert.match(effect,/stored\?\.access_token===session\?\.access_token/);
+ assert.match(effect,/window\.location\.reload\(\)/);
+ assert.match(effect,/window\.addEventListener\('storage',onStorage\)/);
+ assert.match(effect,/window\.removeEventListener\('storage',onStorage\)/);
+ assert.doesNotMatch(effect,/currentUser\(stored\.access_token\)/,
+  'do not leave another account visible during a failed offline identity request');
+});
+
+test('background auth refresh never keeps old userId when a different valid account is stored',()=>{
+ const shell=readFileSync(new URL('../components/AppShell.tsx',import.meta.url),'utf8');
+ const begin=shell.indexOf('// A cross-tab account switch can rotate localStorage credentials.');
+ const end=shell.indexOf('// Only every ~72 seconds refresh large data',begin);
+ assert.ok(begin>0&&end>begin);
+ const effect=shell.slice(begin,end);
+ assert.match(effect,/const owner=await currentUser\(valid\.access_token\)/);
+ assert.match(effect,/if\(cancelled\|\|loadSession\(\)\?\.access_token!==valid\.access_token\)return;/);
+ assert.match(effect,/if\(owner\.id!==userId\)\{window\.location\.reload\(\);return;\}/);
+});
