@@ -902,7 +902,8 @@ test('tapping old quoted messages loads bounded history and scrolls only the cha
  assert.match(shell,/setPendingReplyJump\(\{chatId,id\}\)/);
  assert.match(shell,/useLayoutEffect\(\(\)=>\{\s*if\(!pendingReplyJump/);
  assert.match(shell,/scrollToHistoryMessage\(pendingReplyJump\.id\)/);
- assert.match(shell,/setSearchInConversation\(false\);setMessageSearch\(''\)/);
+ assert.match(shell,/if\(!fromSearch\)resetMessageSearch\(\)/);
+ assert.match(shell,/if\(fromSearch\)resetMessageSearch\(\)/);
  assert.match(shell,/const centeredTop=history\.scrollTop/);
  assert.doesNotMatch(shell,/original\.scrollIntoView/);
  assert.match(shell,/setNotice\(more\s*\?'Загружены ранние сообщения/);
