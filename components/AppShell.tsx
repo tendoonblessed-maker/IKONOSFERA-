@@ -1,11 +1,12 @@
 'use client';
 import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { backendReady, createTemporaryAccount, consumeEmailLinkSession, clearSession, currentUser, findProfileByUsername, listChats, listChatPreviews, listMessages, listOlderMessages, listReplyTargets, searchDirectMessages, type DirectMessageSearchResult, DIRECT_MESSAGE_SEARCH_PAGE_SIZE, type ReplyTarget, CHAT_MESSAGE_PAGE_SIZE, manageChat, manageMessage, listMessageReactions, setMessageReaction, markChatRead, listProfiles, myProfile, postMessage, reopenChat, sendDirectMedia, sendEmailCode, signOut, startDirectChat, validSession, type ChatMessage, type MessageReaction, type DirectChat, type Profile, type Session, type ChatPreview } from '@/lib/supabase-rest';
+import { backendReady, createTemporaryAccount, consumeEmailLinkSession, clearSession, currentUser, findProfileByUsername, listChats, listChatPreviews, listMessages, listOlderMessages, listReplyTargets, searchDirectMessages, type DirectMessageSearchResult, DIRECT_MESSAGE_SEARCH_PAGE_SIZE, type ReplyTarget, CHAT_MESSAGE_PAGE_SIZE, manageChat, manageMessage, listMessageReactions, setMessageReaction, markChatRead, listProfiles, myProfile, postMessage, reopenChat, sendDirectMedia, validateDirectMediaFile, sendEmailCode, signOut, startDirectChat, validSession, type ChatMessage, type MessageReaction, type DirectChat, type Profile, type Session, type ChatPreview } from '@/lib/supabase-rest';
 
 import ProfilePanel from "@/components/ProfilePanel";
 import {mergeRecentPage,prependEarlierPage} from "@/lib/chat-history";
 import {readChatDrafts,writeChatDrafts,clearChatDrafts,type ChatDrafts} from "@/lib/chat-drafts";
 import ChatMedia from "@/components/ChatMedia";
+import ChatAttachmentPreview from "@/components/ChatAttachmentPreview";
 import ChatInboxRow from "@/components/ChatInboxRow";
 import StatusEmoji from "@/components/StatusEmoji";
 import SwipeReplyMessage from "@/components/SwipeReplyMessage";
@@ -102,6 +103,9 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
   const [createMenuOpen,setCreateMenuOpen]=useState(false);
   const [lookup,setLookup]=useState(initialUsername);
   const [draft,setDraft]=useState('');
+  const [pendingAttachment,setPendingAttachment]=useState<{chatId:string;ownerId:string;file:File}|null>(null);
+  const [attachmentCaption,setAttachmentCaption]=useState('');
+  const [attachmentDragActive,setAttachmentDragActive]=useState(false);
   const [draftPreviews,setDraftPreviews]=useState<ChatDrafts>({});
   const [showJumpToLatest,setShowJumpToLatest]=useState(false);
   const [replyingTo,setReplyingTo]=useState<{chatId:string;id:string;text:string;name:string}|null>(null);
@@ -134,6 +138,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
   const chatContextGenerationRef=useRef(0);
   const messageSearchRequestRef=useRef(0);
   const composerRef=useRef<HTMLTextAreaElement|null>(null);
+  const attachmentDragDepthRef=useRef(0);
 
   useEffect(()=>{
     // Browser online/offline is only a connectivity hint, not a guarantee
@@ -179,6 +184,8 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
     setLocatingReply(null);setPendingReplyJump(null);
     setReplyingTo(null);setShowJumpToLatest(false);
     setEditingMessageId(null);setEditingMessageBody('');
+    setPendingAttachment(null);setAttachmentCaption('');
+    attachmentDragDepthRef.current=0;setAttachmentDragActive(false);
     resetMessageSearch();
   },[selected,userId]);
   useEffect(()=>{replyTargetsQueriedRef.current.clear();setReplyTargets({});},[selected,userId]);
@@ -961,16 +968,30 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
       }catch{/* Reaction was saved; the chat poll will reload its state. */}
     }catch(e){setError(userFacingError(e));}finally{setSending(false);}
   }
-  async function sendAttachment(file:File|undefined){
+  function queueAttachment(file:File|undefined){
+    if(!file||!selected||!userId||sending||activePartnerBlocked)return;
+    const problem=validateDirectMediaFile(file);
+    if(problem){setError(problem);return;}
+    setError('');
+    setAttachmentCaption('');
+    setPendingAttachment({chatId:selected,ownerId:userId,file});
+  }
+  async function sendAttachment(file:File|undefined,caption=''){
     if(!file||!session||!selected||!userId||sending||activePartnerBlocked)return;
     if(!networkOnline||!navigator.onLine){
-      setError('Нет соединения с интернетом. Выбери вложение повторно после подключения.');
+      setError('Нет соединения с интернетом. Вложение осталось в предпросмотре.');
       return;
     }
     const chatId=selected,token=session.access_token;
+    const problem=validateDirectMediaFile(file);
+    if(problem){setError(problem);return;}
     setSending(true);setError("");
     try{
-      await sendDirectMedia(token,chatId,userId,file);
+      await sendDirectMedia(token,chatId,userId,file,caption);
+      if(selectedRef.current===chatId){
+        setPendingAttachment(current=>current?.chatId===chatId&&current.ownerId===userId&&current.file===file?null:current);
+        setAttachmentCaption('');
+      }
       setNotice("Вложение отправлено.");
       try{
         const updated=(await listMessages(token,chatId)).reverse();
