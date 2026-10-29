@@ -1,9 +1,11 @@
 'use client';
-import {useCallback,useEffect,useRef,useState,type FormEvent} from 'react';
+import {useCallback,useEffect,useLayoutEffect,useRef,useState,type FormEvent} from 'react';
 import {groupMessages,sendGroupMessage,groupMembers,markGroupRead,type Group,type GroupMessage} from '@/lib/groups';
 import {listProfiles,type Profile} from '@/lib/supabase-rest';
 import StatusEmoji from '@/components/StatusEmoji';
 import ChatMessageText from '@/components/ChatMessageText';
+import GroupSearchPanel from '@/components/GroupSearchPanel';
+import {searchGroupMessages,getGroupMessageContext,normalizeGroupSearch,GROUP_SEARCH_PAGE_SIZE,GROUP_SEARCH_MAX_OFFSET} from '@/lib/group-search';
 import {getUserActivities,activityLabel,type UserActivity} from '@/lib/activity';
 import {imageUrl} from '@/lib/social';
 import {readGroupDrafts} from '@/lib/group-drafts';
@@ -27,9 +29,22 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
  const [initialLoading,setInitialLoading]=useState(true);
  const [showJumpToLatest,setShowJumpToLatest]=useState(false);
  const [newMessagesBelow,setNewMessagesBelow]=useState(0);
+ const [searchOpen,setSearchOpen]=useState(false);
+ const [searchQuery,setSearchQuery]=useState('');
+ const [searchPage,setSearchPage]=useState(0);
+ const [searchRetry,setSearchRetry]=useState(0);
+ const [searchResults,setSearchResults]=useState<GroupMessage[]>([]);
+ const [searchLoading,setSearchLoading]=useState(false);
+ const [searchError,setSearchError]=useState('');
+ const [searchHasMore,setSearchHasMore]=useState(false);
+ const [searchLocating,setSearchLocating]=useState<string|null>(null);
+ const [pendingSearchJump,setPendingSearchJump]=useState<string|null>(null);
  const historyRef=useRef<HTMLDivElement|null>(null);
  const composerFormRef=useRef<HTMLFormElement|null>(null);
  const followNewestRef=useRef(true);
+ const browsingOlderRef=useRef(false);
+ const searchRequestRef=useRef(0);
+ const searchJumpRequestRef=useRef(0);
  const lastReadRef=useRef<string|null>(null);
  const latestGroupMessageRef=useRef<string|null>(null);
  const previousMessageIdsRef=useRef<{groupId:string;ownerId:string;ids:Set<string>}>({
@@ -44,6 +59,12 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
   latestGroupMessageRef.current=null;
   lastReadRef.current=null;
   followNewestRef.current=true;
+  browsingOlderRef.current=false;
+  searchRequestRef.current++;
+  searchJumpRequestRef.current++;
+  setSearchOpen(false);setSearchQuery('');setSearchPage(0);setSearchRetry(0);
+  setSearchResults([]);setSearchLoading(false);setSearchError('');setSearchHasMore(false);
+  setSearchLocating(null);setPendingSearchJump(null);
   previousMessageIdsRef.current={groupId:group.id,ownerId:userId,ids:new Set()};
   setShowJumpToLatest(false);
   setNewMessagesBelow(0);
@@ -69,7 +90,7 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
 
  const acknowledgeLatestIfVisible=useCallback(()=>{
   const last=latestGroupMessageRef.current;
-  if(!shouldAcknowledgeGroupRead(last,lastReadRef.current,
+  if(browsingOlderRef.current||!shouldAcknowledgeGroupRead(last,lastReadRef.current,
      followNewestRef.current,document.visibilityState==='visible'))return;
   // The outgoing read RPC is scoped to this membership and never runs while
   // the user is reading older items, even if Realtime has delivered new ones.
@@ -87,7 +108,7 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
   if(requestId!==requestSequenceRef.current
    ||contextRef.current.groupId!==group.id
    ||contextRef.current.userId!==userId
-   ||contextRef.current.token!==token)return;
+   ||contextRef.current.token!==token||browsingOlderRef.current)return;
   setMessages(mergeConfirmedGroupMessages(
    msgs,confirmedGroupMessagesRef.current,group.id,userId
   ));
@@ -102,7 +123,7 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
   let realtimeTimer:number|null=null;
   setInitialLoading(true);
   const sync=()=>{
-    if(cancelled||document.visibilityState==='hidden'||!navigator.onLine)return;
+    if(cancelled||document.visibilityState==='hidden'||!navigator.onLine||browsingOlderRef.current)return;
     if(inFlight){queuedSync=true;return;}
     inFlight=true;
     void refresh().then(()=>{if(!cancelled)setError('');}).catch(e=>{
@@ -138,6 +159,89 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
     window.removeEventListener('online',onOnline);
   };
  },[refresh,token,group.id]);
+ // Search runs against the full group history via the existing RLS-filtered
+ // PostgREST table. Old responses cannot cross a changed query/account/group.
+ useEffect(()=>{
+  const id=++searchRequestRef.current;
+  const term=normalizeGroupSearch(searchQuery);
+  if(!searchOpen||term.length<2){setSearchLoading(false);setSearchError('');return;}
+  let cancelled=false;
+  setSearchLoading(true);setSearchError('');
+  const timeout=window.setTimeout(()=>{
+   const requestGroup=group.id,requestOwner=userId,requestToken=token;
+   void searchGroupMessages(token,group.id,term,searchPage*GROUP_SEARCH_PAGE_SIZE)
+    .then(rows=>{
+     if(cancelled||id!==searchRequestRef.current
+        ||contextRef.current.groupId!==requestGroup
+        ||contextRef.current.userId!==requestOwner
+        ||contextRef.current.token!==requestToken)return;
+     const next=rows.slice(0,GROUP_SEARCH_PAGE_SIZE);
+     setSearchResults(previous=>searchPage===0?next:[
+      ...previous,...next.filter(m=>!previous.some(old=>old.id===m.id))
+     ]);
+     setSearchHasMore(rows.length>GROUP_SEARCH_PAGE_SIZE
+      &&(searchPage+1)*GROUP_SEARCH_PAGE_SIZE<=GROUP_SEARCH_MAX_OFFSET);
+    })
+    .catch(e=>{
+     if(!cancelled&&id===searchRequestRef.current)
+       setSearchError(e instanceof Error?e.message:'Ошибка поиска');
+    })
+    .finally(()=>{
+     if(!cancelled&&id===searchRequestRef.current)setSearchLoading(false);
+    });
+  },searchPage===0?320:0);
+  return()=>{cancelled=true;searchRequestRef.current++;window.clearTimeout(timeout);};
+ },[searchOpen,searchQuery,searchPage,searchRetry,group.id,userId,token]);
+ function closeSearch(){searchRequestRef.current++;setSearchOpen(false);setSearchQuery('');
+  setSearchResults([]);setSearchPage(0);setSearchError('');setSearchHasMore(false);
+ }
+ function changeSearch(query:string){setSearchQuery(query);setSearchPage(0);setSearchRetry(0);
+  setSearchResults([]);setSearchError('');setSearchHasMore(false);
+ }
+ async function openSearchResult(message:GroupMessage){
+  if(searchLocating)return;
+  const groupId=group.id,ownerId=userId,requestToken=token;
+  const requestId=++searchJumpRequestRef.current;
+  setSearchLocating(message.id);
+  // Pause recent-page polling so it cannot overwrite a historical jump.
+  browsingOlderRef.current=true;
+  followNewestRef.current=false;
+  setShowJumpToLatest(true);
+  setNewMessagesBelow(0);
+  try{
+   const current=messages.some(row=>row.id===message.id);
+   const around=current?messages:await getGroupMessageContext(token,groupId,message.id,message.created_at);
+   if(requestId!==searchJumpRequestRef.current
+      ||contextRef.current.groupId!==groupId
+      ||contextRef.current.userId!==ownerId
+      ||contextRef.current.token!==requestToken)return;
+   if(!around.some(row=>row.id===message.id))throw Error('Сообщение больше недоступно.');
+   previousMessageIdsRef.current={groupId,ownerId,ids:new Set(around.map(row=>row.id))};
+   if(!current)setMessages(around);
+   setPendingSearchJump(message.id);
+   closeSearch();
+  }catch(e){
+   if(requestId===searchJumpRequestRef.current){
+    browsingOlderRef.current=false;
+    setSearchError(e instanceof Error?e.message:'Не удалось открыть сообщение');
+   }
+  }finally{
+   if(requestId===searchJumpRequestRef.current)setSearchLocating(null);
+  }
+ }
+ useLayoutEffect(()=>{
+  if(!pendingSearchJump)return;
+  const history=historyRef.current;
+  const target=history?.querySelector<HTMLElement>('[data-group-message-id="'+pendingSearchJump+'"]');
+  if(!history||!target)return;
+  const offset=target.getBoundingClientRect().top-history.getBoundingClientRect().top;
+  history.scrollTop=Math.max(0,history.scrollTop+offset-(history.clientHeight-target.offsetHeight)/2);
+  target.classList.remove('ik-group-search-target');
+  void target.offsetWidth; // Restart highlight on repeated jumps.
+  target.classList.add('ik-group-search-target');
+  setPendingSearchJump(null);
+ },[pendingSearchJump,messages]);
+
  // Group membership and profiles change much less often than chat messages.
  useEffect(()=>{
   let cancelled=false;
@@ -213,11 +317,25 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
  return <section className="group-view">
  <header className="conversation-header"><button type="button" className="back-button" onClick={onBack} aria-label="Назад">‹</button>
  <button type="button" className="conversation-heading group-member-trigger" onClick={()=>setMembersOpen(true)} aria-label="Показать участников группы"><strong>{group.title}</strong><small>{members.length} участников · нажми, чтобы посмотреть</small></button>
+ <button type="button" className="ik-group-search-trigger" aria-label="Поиск сообщений в группе"
+  aria-expanded={searchOpen} onClick={()=>searchOpen?closeSearch():setSearchOpen(true)}>
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
+   <circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 5 5"/>
+  </svg>
+ </button>
  </header>
+ {searchOpen&&<GroupSearchPanel query={searchQuery} onQueryChange={changeSearch}
+  onClose={closeSearch} results={searchResults} loading={searchLoading}
+  error={searchError} hasMore={searchHasMore} locatingId={searchLocating}
+  ownerId={userId} names={names}
+  onMore={()=>{
+   if(searchError){setSearchRetry(value=>value+1);setSearchError('');}
+   else if(!searchLoading)setSearchPage(page=>page+1);
+  }} onOpen={message=>{void openSearchResult(message);}}/>}
  <div className="ik-group-history-wrap">
  <div className="conversation-history" ref={historyRef} aria-busy={initialLoading} onScroll={event=>{
  const area=event.currentTarget;
- const nearBottom=area.scrollHeight-area.scrollTop-area.clientHeight<120;
+ const nearBottom=!browsingOlderRef.current&&area.scrollHeight-area.scrollTop-area.clientHeight<120;
  followNewestRef.current=nearBottom;
  setShowJumpToLatest(!nearBottom);
  if(nearBottom){setNewMessagesBelow(0);acknowledgeLatestIfVisible();}
@@ -229,14 +347,16 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
   <p>Проверь подключение. Сообщения не удалены.</p>
   <button type="button" onClick={()=>{setError('');setInitialLoading(true);void refresh().catch(e=>{setInitialLoading(false);setError(e instanceof Error?e.message:'Ошибка загрузки');});}}>Попробовать снова</button>
  </div>}
- {messages.map(m=><article key={m.id} className={'bubble '+(m.sender_id===userId?'mine':'theirs')}><strong className="group-author ik-name-with-status"><span>{m.sender_id===userId?'Вы':names[m.sender_id]||'Участник'}</span><StatusEmoji index={memberById.get(m.sender_id)?.status_emoji} decorative/></strong><div><ChatMessageText text={m.body}/></div><time>{new Date(m.created_at).toLocaleTimeString('ru-RU',{hour:'2-digit',minute:'2-digit'})}</time></article>)}</div>
+ {messages.map(m=><article key={m.id} data-group-message-id={m.id} className={'bubble '+(m.sender_id===userId?'mine':'theirs')}><strong className="group-author ik-name-with-status"><span>{m.sender_id===userId?'Вы':names[m.sender_id]||'Участник'}</span><StatusEmoji index={memberById.get(m.sender_id)?.status_emoji} decorative/></strong><div><ChatMessageText text={m.body}/></div><time>{new Date(m.created_at).toLocaleTimeString('ru-RU',{hour:'2-digit',minute:'2-digit'})}</time></article>)}</div>
  {showJumpToLatest&&<button type="button" className="ik-group-jump-latest"
   aria-label={newMessagesBelow>0?`К последним сообщениям, новых: ${newMessagesBelow}`:'К последним сообщениям'}
   onClick={()=>{
    const history=historyRef.current;
    if(!history)return;
+   browsingOlderRef.current=false;
    followNewestRef.current=true;
    history.scrollTop=history.scrollHeight;
+   void refresh().catch(e=>setError(e instanceof Error?e.message:'Ошибка загрузки новых сообщений'));
    setShowJumpToLatest(false);
    setNewMessagesBelow(0);
    acknowledgeLatestIfVisible();
