@@ -796,7 +796,9 @@ test('inbox displays per-chat drafts and keeps cached previews during transient 
  assert.match(app,/draft=\{draftPreviews\[item\.row\.chat\.id\]\|\|''\}/);
  assert.match(row,/Черновик:/);
  assert.match(app,/const loadInboxPreviews=useCallback/);
- assert.match(app,/previewCacheRef\.current=new Map/);
+ assert.match(app,/previewCacheRef\.current=\{ownerId,previews:fetched\}/);
+ assert.match(app,/previewCacheRef\.current\.ownerId!==ownerId/);
+ assert.match(app,/previewCacheRef\.current=\{ownerId:'',previews:new Map\(\)\}/);
  assert.match(app,/previewUnavailable:previewResult\.failed&&!overview\.has\(chat\.id\)/);
  assert.match(row,/Не удалось обновить сообщения/);
 });
