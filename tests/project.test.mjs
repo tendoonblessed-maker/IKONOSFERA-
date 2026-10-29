@@ -558,7 +558,8 @@ test('new incoming messages never force scrolling when reading chat history',()=
  const group=load('components/GroupPanel.tsx');
  assert.match(personal,/chatAutoScrollRef=useRef\(true\)/);
  assert.match(personal,/if\(!history\|\|!chatAutoScrollRef\.current\)return/);
- assert.match(personal,/chatAutoScrollRef\.current=area\.scrollHeight-area\.scrollTop-area\.clientHeight<120/);
+ assert.match(personal,/chatAutoScrollRef\.current=distance<120/);
+ assert.match(personal,/const distance=area\.scrollHeight-area\.scrollTop-area\.clientHeight/);
  assert.match(group,/followNewestRef=useRef\(true\)/);
  assert.match(group,/followNewestRef\.current=area\.scrollHeight-area\.scrollTop-area\.clientHeight<120/);
 });
@@ -779,4 +780,35 @@ test('white profile and settings colors override dark legacy rules',()=>{
  assert.match(last,/\.toast\.toast-copy-success\{/);
  assert.match(last,/background:#fff;color:#24242b/);
  assert.match(last,/data-current-tab="settings"/);
+});
+
+
+test('inbox displays per-chat drafts and keeps cached previews during transient failures',()=>{
+ const app=load('components/AppShell.tsx');
+ const row=load('components/ChatInboxRow.tsx');
+ const module=load('lib/chat-drafts.ts');
+ assert.match(module,/sessionStorage/);
+ assert.match(module,/MAX_CHATS=48/);
+ assert.match(app,/const \[draftPreviews,setDraftPreviews\]=useState/);
+ assert.match(app,/readChatDrafts\(userId\)/);
+ assert.match(app,/writeChatDrafts\(userId,next\)/);
+ assert.match(app,/clearChatDrafts\(userId\)/);
+ assert.match(app,/draft=\{draftPreviews\[item\.row\.chat\.id\]\|\|''\}/);
+ assert.match(row,/Черновик:/);
+ assert.match(app,/const loadInboxPreviews=useCallback/);
+ assert.match(app,/previewCacheRef\.current=new Map/);
+ assert.match(app,/previewUnavailable:previewResult\.failed&&!overview\.has\(chat\.id\)/);
+ assert.match(row,/Не удалось обновить сообщения/);
+});
+
+test('jump to latest is accessible and remains above the iPhone composer',()=>{
+ const app=load('components/AppShell.tsx');
+ const css=load('app/globals.css');
+ assert.match(app,/setShowJumpToLatest\(distance>220&&!activeChatLoading\)/);
+ assert.match(app,/aria-label="Перейти к последним сообщениям"/);
+ assert.match(app,/history\.scrollTop=history\.scrollHeight/);
+ assert.match(app,/with-reply/);
+ assert.match(css,/\.ik-jump-to-latest/);
+ assert.match(css,/\.ik-jump-to-latest\.with-reply/);
+ assert.match(css,/env\(safe-area-inset-bottom/);
 });
