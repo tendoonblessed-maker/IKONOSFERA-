@@ -13,6 +13,7 @@ import {subscribeInboxChanges,type InboxChangeKind} from "@/lib/inbox-realtime";
 import {isLatestAccountSnapshot} from "@/lib/inbox-snapshot";
 import {reconcileRecentChannelUpdates,CHANNEL_UPDATE_GRACE_MS,type RecentChannelUpdate} from "@/lib/channel-sync";
 import ChatAttachmentPreview from "@/components/ChatAttachmentPreview";
+import VoiceRecorder from "@/components/VoiceRecorder";
 import ChatInboxRow from "@/components/ChatInboxRow";
 import StatusEmoji from "@/components/StatusEmoji";
 import SwipeReplyMessage from "@/components/SwipeReplyMessage";
@@ -1501,7 +1502,11 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
         <div className="ik-inline-reply-copy"><strong>Ответ для {replyingTo.name}</strong><span>{replyingTo.text}</span></div>
         <button type="button" onClick={()=>setReplyingTo(null)} aria-label="Отменить ответ">✕</button>
       </div>}
-      <form className="composer" onSubmit={sendMessage}><label className="chat-attach-button" title="Прикрепить фото, видео, музыку или файл" aria-label="Прикрепить файл"><svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M20.5 11.5 12.3 19.7a5.4 5.4 0 0 1-7.7-7.7L13 3.6a3.6 3.6 0 0 1 5.1 5.1l-8.7 8.7a1.8 1.8 0 0 1-2.6-2.6l7.7-7.7"/></svg><input type="file" accept="image/*,video/mp4,video/webm,video/quicktime,audio/mpeg,audio/mp4,audio/wav,audio/ogg,.pdf,.txt,.zip,.doc,.docx,.xls,.xlsx" disabled={sending||activePartnerBlocked||!networkOnline} onChange={e=>{queueAttachment(e.target.files?.[0]);e.target.value="";}}/></label><textarea ref={composerRef} aria-label="Написать сообщение" enterKeyHint="enter" placeholder={activePartnerBlocked?"Вы заблокировали пользователя":"Сообщение…"} rows={1} disabled={activePartnerBlocked} value={draft} onChange={e=>{setDraft(e.target.value);if(selected)updateChatDraft(selected,e.target.value);}} onInput={e=>{const element=e.currentTarget;element.style.height='auto';element.style.height=Math.min(element.scrollHeight,136)+'px';}} onKeyDown={e=>{
+      <form className="composer" onSubmit={sendMessage}><label className="chat-attach-button" title="Прикрепить фото, видео, музыку или файл" aria-label="Прикрепить файл"><svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M20.5 11.5 12.3 19.7a5.4 5.4 0 0 1-7.7-7.7L13 3.6a3.6 3.6 0 0 1 5.1 5.1l-8.7 8.7a1.8 1.8 0 0 1-2.6-2.6l7.7-7.7"/></svg><input type="file" accept="image/*,video/mp4,video/webm,video/quicktime,audio/mpeg,audio/mp4,audio/wav,audio/ogg,audio/webm,.pdf,.txt,.zip,.doc,.docx,.xls,.xlsx" disabled={sending||activePartnerBlocked||!networkOnline} onChange={e=>{queueAttachment(e.target.files?.[0]);e.target.value="";}}/></label>
+      <VoiceRecorder key={userId+':'+selected} disabled={sending||activePartnerBlocked||Boolean(pendingAttachment)}
+       onRecorded={file=>queueAttachment(file)}
+       onError={message=>setError(message)}/>
+      <textarea ref={composerRef} aria-label="Написать сообщение" enterKeyHint="enter" placeholder={activePartnerBlocked?"Вы заблокировали пользователя":"Сообщение…"} rows={1} disabled={activePartnerBlocked} value={draft} onChange={e=>{setDraft(e.target.value);if(selected)updateChatDraft(selected,e.target.value);}} onInput={e=>{const element=e.currentTarget;element.style.height='auto';element.style.height=Math.min(element.scrollHeight,136)+'px';}} onKeyDown={e=>{
         // On iOS/Android the Return key must create a newline, not send the
         // message unexpectedly. Hardware-keyboard users retain Enter-to-send.
         const softKeyboard=/iPhone|iPad|iPod|Android/i.test(navigator.userAgent)
