@@ -10,6 +10,7 @@ import {readGroupDrafts} from '@/lib/group-drafts';
 import {getOrCreateGroupSendAttempt,clearGroupSendAttempt} from '@/lib/group-send-attempts';
 import {subscribeGroupChanges} from '@/lib/group-realtime';
 import {mergeConfirmedGroupMessages,CONFIRMED_GROUP_MESSAGE_GRACE_MS,type ConfirmedGroupMessage} from '@/lib/group-history';
+import {shouldAcknowledgeGroupRead,countNewIncomingBelow} from '@/lib/group-read-position';
 type Props={token:string;userId:string;group:Group;onBack:()=>void;onShowProfile:(id:string)=>void;onDraftChange:(groupId:string,text:string)=>void};
 export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDraftChange}:Props){
  const [messages,setMessages]=useState<GroupMessage[]>([]);
@@ -24,15 +25,29 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
  const [error,setError]=useState('');
  const [retryAvailable,setRetryAvailable]=useState(false);
  const [initialLoading,setInitialLoading]=useState(true);
+ const [showJumpToLatest,setShowJumpToLatest]=useState(false);
+ const [newMessagesBelow,setNewMessagesBelow]=useState(0);
  const historyRef=useRef<HTMLDivElement|null>(null);
  const composerFormRef=useRef<HTMLFormElement|null>(null);
  const followNewestRef=useRef(true);
  const lastReadRef=useRef<string|null>(null);
+ const latestGroupMessageRef=useRef<string|null>(null);
+ const previousMessageIdsRef=useRef<{groupId:string;ownerId:string;ids:Set<string>}>({
+  groupId:group.id,ownerId:userId,ids:new Set()
+ });
  const requestSequenceRef=useRef(0);
  const confirmedGroupMessagesRef=useRef<Map<string,ConfirmedGroupMessage>>(new Map());
  const contextRef=useRef({groupId:group.id,userId,token});
  contextRef.current={groupId:group.id,userId,token};
- useEffect(()=>{confirmedGroupMessagesRef.current.clear();},[group.id,userId]);
+ useEffect(()=>{
+  confirmedGroupMessagesRef.current.clear();
+  latestGroupMessageRef.current=null;
+  lastReadRef.current=null;
+  followNewestRef.current=true;
+  previousMessageIdsRef.current={groupId:group.id,ownerId:userId,ids:new Set()};
+  setShowJumpToLatest(false);
+  setNewMessagesBelow(0);
+ },[group.id,userId]);
  // Mounting or switching accounts must not show another person's draft.
  useEffect(()=>{
   draftVersionRef.current+=1;
@@ -52,6 +67,18 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
   onDraftChange(group.id,text);
  }
 
+ const acknowledgeLatestIfVisible=useCallback(()=>{
+  const last=latestGroupMessageRef.current;
+  if(!shouldAcknowledgeGroupRead(last,lastReadRef.current,
+     followNewestRef.current,document.visibilityState==='visible'))return;
+  // The outgoing read RPC is scoped to this membership and never runs while
+  // the user is reading older items, even if Realtime has delivered new ones.
+  lastReadRef.current=last;
+  void markGroupRead(token,group.id).catch(()=>{
+    if(lastReadRef.current===last)lastReadRef.current=null;
+  });
+ },[token,group.id]);
+
  const refresh=useCallback(async()=>{
   const requestId=++requestSequenceRef.current;
   const msgs=await groupMessages(token,group.id);
@@ -65,12 +92,9 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
    msgs,confirmedGroupMessagesRef.current,group.id,userId
   ));
   setInitialLoading(false);
-  const last=msgs.length?msgs[msgs.length-1].id:null;
-  if(document.visibilityState==='visible'&&last!==lastReadRef.current){
-    lastReadRef.current=last;
-    void markGroupRead(token,group.id).catch(()=>{if(lastReadRef.current===last)lastReadRef.current=null;});
-  }
- },[token,group.id,userId]);
+  latestGroupMessageRef.current=msgs.length?msgs[msgs.length-1].id:null;
+  acknowledgeLatestIfVisible();
+ },[token,group.id,userId,acknowledgeLatestIfVisible]);
  useEffect(()=>{
   let cancelled=false;
   let inFlight=false;
@@ -127,7 +151,21 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
   const timer=window.setInterval(updateMembers,120000);
   return()=>{cancelled=true;window.clearInterval(timer);};
  },[token,group.id]);
- useEffect(()=>{const history=historyRef.current;if(history&&followNewestRef.current)history.scrollTop=history.scrollHeight;},[messages.length,initialLoading]);
+ useEffect(()=>{
+  const history=historyRef.current;
+  if(history&&followNewestRef.current)history.scrollTop=history.scrollHeight;
+ },[messages.length,initialLoading]);
+ useEffect(()=>{
+  const previous=previousMessageIdsRef.current;
+  if(previous.groupId!==group.id||previous.ownerId!==userId){
+    previousMessageIdsRef.current={groupId:group.id,ownerId:userId,ids:new Set(messages.map(m=>m.id))};
+    setNewMessagesBelow(0);
+    return;
+  }
+  const newBelow=countNewIncomingBelow(messages,previous.ids,userId,followNewestRef.current);
+  previous.ids=new Set(messages.map(m=>m.id));
+  if(newBelow>0)setNewMessagesBelow(n=>Math.min(99,n+newBelow));
+ },[messages,group.id,userId]);
  useEffect(()=>{if(!membersOpen)return;const onKey=(event:KeyboardEvent)=>{if(event.key==='Escape')setMembersOpen(false);};window.addEventListener('keydown',onKey);return()=>window.removeEventListener('keydown',onKey);},[membersOpen]);
   useEffect(()=>{if(!membersOpen||!members.length)return;let gone=false;const load=()=>{if(document.visibilityState==='visible')void getUserActivities(token,members.map(m=>m.id)).then(value=>{if(!gone)setPresence(value);}).catch(()=>{});};load();const t=setInterval(load,40000);return()=>{gone=true;clearInterval(t);};},[token,membersOpen,members]);
  async function send(e:FormEvent){
@@ -176,9 +214,13 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
  <header className="conversation-header"><button type="button" className="back-button" onClick={onBack} aria-label="Назад">‹</button>
  <button type="button" className="conversation-heading group-member-trigger" onClick={()=>setMembersOpen(true)} aria-label="Показать участников группы"><strong>{group.title}</strong><small>{members.length} участников · нажми, чтобы посмотреть</small></button>
  </header>
+ <div className="ik-group-history-wrap">
  <div className="conversation-history" ref={historyRef} aria-busy={initialLoading} onScroll={event=>{
  const area=event.currentTarget;
- followNewestRef.current=area.scrollHeight-area.scrollTop-area.clientHeight<120;
+ const nearBottom=area.scrollHeight-area.scrollTop-area.clientHeight<120;
+ followNewestRef.current=nearBottom;
+ setShowJumpToLatest(!nearBottom);
+ if(nearBottom){setNewMessagesBelow(0);acknowledgeLatestIfVisible();}
  }}>
  {initialLoading&&<div className="ik-chat-loading" role="status" aria-label="Загружаем сообщения группы"><div className="ik-chat-loading-bubble incoming"/><div className="ik-chat-loading-bubble incoming short"/><div className="ik-chat-loading-bubble outgoing"/><span className="ik-chat-loading-label">Загружаем сообщения…</span></div>}
  {!initialLoading&&!error&&messages.length===0&&<p className="group-empty">Группа создана. Напиши первое сообщение!</p>}
@@ -188,6 +230,20 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
   <button type="button" onClick={()=>{setError('');setInitialLoading(true);void refresh().catch(e=>{setInitialLoading(false);setError(e instanceof Error?e.message:'Ошибка загрузки');});}}>Попробовать снова</button>
  </div>}
  {messages.map(m=><article key={m.id} className={'bubble '+(m.sender_id===userId?'mine':'theirs')}><strong className="group-author ik-name-with-status"><span>{m.sender_id===userId?'Вы':names[m.sender_id]||'Участник'}</span><StatusEmoji index={memberById.get(m.sender_id)?.status_emoji} decorative/></strong><div><ChatMessageText text={m.body}/></div><time>{new Date(m.created_at).toLocaleTimeString('ru-RU',{hour:'2-digit',minute:'2-digit'})}</time></article>)}</div>
+ {showJumpToLatest&&<button type="button" className="ik-group-jump-latest"
+  aria-label={newMessagesBelow>0?`К последним сообщениям, новых: ${newMessagesBelow}`:'К последним сообщениям'}
+  onClick={()=>{
+   const history=historyRef.current;
+   if(!history)return;
+   followNewestRef.current=true;
+   history.scrollTop=history.scrollHeight;
+   setShowJumpToLatest(false);
+   setNewMessagesBelow(0);
+   acknowledgeLatestIfVisible();
+  }}>
+  <span aria-hidden="true">↓</span>{newMessagesBelow>0&&<span className="ik-group-jump-count">{newMessagesBelow<99?newMessagesBelow:'99+'}</span>}
+ </button>}
+ </div>
  <form ref={composerFormRef} className="composer ik-group-composer" onSubmit={send}>
  <textarea aria-label="Сообщение группе" placeholder={online?"Сообщение группе…":"Нет сети · черновик сохранён"} rows={1} enterKeyHint="enter" maxLength={4000} value={draft}
  onChange={e=>{changeDraft(e.target.value);if(error)setError('');}}
