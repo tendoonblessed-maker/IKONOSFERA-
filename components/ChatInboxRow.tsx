@@ -5,7 +5,7 @@ import FloatingActionMenu from '@/components/FloatingActionMenu';
 import StatusEmoji from '@/components/StatusEmoji';
 import type {ChatPreview,DirectChat,Profile} from '@/lib/supabase-rest';
 
-type Row={chat:DirectChat;other:Profile|null;preview:ChatPreview|null};
+type Row={chat:DirectChat;other:Profile|null;preview:ChatPreview|null;previewUnavailable?:boolean};
 type Props={
  row:Row;
  currentUserId:string;
@@ -14,6 +14,7 @@ type Props={
  selectedForBulk?:boolean;
  isSavedContact?:boolean;
  isBlocked?:boolean;
+ draft?:string;
  onOpen:()=>void;
  onContactAction:()=>void;
  onBlockAction:()=>void;
@@ -32,11 +33,12 @@ function timeLabel(input:string|null){
  return date.toLocaleDateString('ru-RU',{day:'2-digit',month:'2-digit'});
 }
 
-export default function ChatInboxRow({row,currentUserId,active,selectionMode=false,selectedForBulk=false,isSavedContact=false,isBlocked=false,onOpen,onContactAction,onBlockAction,onAction}:Props){
+export default function ChatInboxRow({row,currentUserId,active,selectionMode=false,selectedForBulk=false,isSavedContact=false,isBlocked=false,draft='',onOpen,onContactAction,onBlockAction,onAction}:Props){
  const {chat,other,preview}=row;
  const pinned=Boolean(chat.pinned_for?.includes(currentUserId));
  const unread=Math.max(0,Number(preview?.unread_count||0));
- const previewText=preview?.last_body?.trim()||'Начало переписки';
+ const previewText=preview?.last_body?.trim()||(row.previewUnavailable?'Не удалось обновить сообщения':'Начало переписки');
+ const draftText=draft.trim().replace(/\s+/g,' ').slice(0,110);
  const outgoing=preview?.last_sender_id===currentUserId;
  const lastText=outgoing?'Вы: '+previewText:previewText;
  const name=other?.display_name||other?.username||'Собеседник';
@@ -47,7 +49,7 @@ export default function ChatInboxRow({row,currentUserId,active,selectionMode=fal
      <span className="contact-avatar">{imageUrl(other?.avatar_path)?<img className="avatar-image" src={imageUrl(other?.avatar_path)||''} alt=""/>:name.slice(0,1).toUpperCase()}</span>
      <span className="contact-info">
        <span className="ik-chat-title"><strong className="ik-name-with-status"><span>{name}</span><StatusEmoji index={other?.status_emoji} decorative/></strong>{pinned&&<span className="ik-pin-mark" title="Закреплён"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m15 3 6 6-3 1-3 3-4-4 3-3zM9 11 3 21l10-6M9 11l4 4"/></svg></span>}</span>
-       <span className="ik-chat-preview">{lastText}</span>
+       <span className="ik-chat-preview">{draftText?<><span className="ik-chat-draft-label">Черновик:</span> {draftText}</>:lastText}</span>
      </span>
      <span className="ik-chat-meta">
        {stamp&&<time dateTime={preview?.last_created_at||undefined}>{stamp}</time>}

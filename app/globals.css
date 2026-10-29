@@ -2780,3 +2780,36 @@ body{position:relative}
 .messenger.is-authenticated .toast.toast-copy-success button{
   font-size:18px;margin-left:0;color:#8b8b92;
 }
+
+
+/* Chat drafts + Telegram-style return to latest message (iPhone safe area). */
+.messenger.is-authenticated .chat-list .ik-chat-draft-label{
+  color:#d64b5c!important;font-weight:730!important;
+}
+.messenger.is-authenticated .ik-jump-to-latest{
+  position:absolute;right:18px;bottom:calc(88px + env(safe-area-inset-bottom,0px));
+  z-index:12;display:grid;place-items:center;
+  width:43px;height:43px;min-width:43px;border-radius:50%;
+  border:1px solid rgba(208,208,215,.8);
+  background:rgba(255,255,255,.96);color:#34343a;
+  -webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px);
+  box-shadow:0 4px 18px #0000001c;cursor:pointer;
+  animation:ik-jump-in .18s ease-out;
+}
+.messenger.is-authenticated .ik-jump-to-latest svg{display:block}
+.messenger.is-authenticated .ik-jump-to-latest:active{transform:scale(.95)}
+.messenger.is-authenticated .ik-jump-to-latest.with-reply{bottom:calc(143px + env(safe-area-inset-bottom,0px))}
+.messenger.is-authenticated .ik-jump-to-latest:focus-visible{outline:2px solid #222;outline-offset:2px}
+@keyframes ik-jump-in{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
+@media(max-width:800px){
+  .messenger.is-authenticated .ik-jump-to-latest{
+    right:13px;bottom:calc(80px + env(safe-area-inset-bottom,0px));
+    height:41px;width:41px;min-width:41px;
+  }
+  .messenger.is-authenticated .ik-jump-to-latest.with-reply{
+    bottom:calc(138px + env(safe-area-inset-bottom,0px));
+  }
+}
+@media(prefers-reduced-motion:reduce){
+  .messenger.is-authenticated .ik-jump-to-latest{animation:none}
+}
