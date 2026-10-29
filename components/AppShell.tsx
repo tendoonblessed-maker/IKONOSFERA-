@@ -613,32 +613,22 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
     return()=>{cancelled=true;};
   },[refresh,bootstrapRetryNonce]);
 
-  // Cross-tab logout and account switch must never leave someone else's
-  // messages on screen. Same-account token rotations update without reload.
+  // Cross-tab sign-in, sign-out and token replacement require rehydration.
+  // The event can arrive while offline, when checking the NEW token via Auth
+  // fails. Never retain the previous user's messages waiting for that request:
+  // reload immediately; the ordinary bootstrap verifies the stored session.
   useEffect(()=>{
     if(!backendReady)return;
-    let active=true;
     const onStorage=(event:StorageEvent)=>{
       if(event.storageArea!==localStorage||
-        (event.key!=='ikonosfera-session-v1'&&event.key!==null))return;
+         (event.key!=='ikonosfera-session-v1'&&event.key!==null))return;
       const stored=loadSession();
-      if(!stored||!session){
-        window.location.reload();
-        return;
-      }
-      if(stored.access_token===session.access_token)return;
-      void currentUser(stored.access_token).then(owner=>{
-        if(!active||loadSession()?.access_token!==stored.access_token)return;
-        if(owner.id!==userId)window.location.reload();
-        else setSession(stored);
-      }).catch(()=>{
-        // Offline validation is retried by the normal inbox polling. Do not
-        // assume an unknown token belongs to this account.
-      });
+      if(stored?.access_token===session?.access_token)return;
+      window.location.reload();
     };
     window.addEventListener('storage',onStorage);
-    return()=>{active=false;window.removeEventListener('storage',onStorage);};
-  },[session,userId]);
+    return()=>window.removeEventListener('storage',onStorage);
+  },[session?.access_token]);
 
   // On an offline cold launch, profile fetching can fail before the signed-in
   // session is hydrated. Retry bootstrap once connectivity returns; otherwise
