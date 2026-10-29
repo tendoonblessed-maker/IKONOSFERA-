@@ -1091,3 +1091,50 @@
     transition:none!important;
   }
 }
+
+
+/* Soft creation card in Channels — same shape as the supplied reference. */
+.messenger.is-authenticated .ik-channel-create-promo{
+  display:flex;align-items:center;gap:13px;
+  width:calc(100% - 24px);margin:10px 12px 13px;
+  min-height:82px;padding:12px;
+  border:1px solid #e5ebff;border-radius:20px;
+  background:linear-gradient(112deg,#f1edff 0%,#e8f0ff 100%);
+  box-shadow:0 5px 17px rgba(94,104,186,.075);
+  color:#273456;text-align:left;cursor:pointer;
+}
+.messenger.is-authenticated .ik-channel-create-promo-icon{
+  display:grid;place-items:center;
+  width:52px;height:52px;flex:0 0 52px;border-radius:16px;
+  color:#fff;background:linear-gradient(135deg,#9c8bfb,#6889ee);
+}
+.messenger.is-authenticated .ik-channel-create-promo>span:nth-child(2){
+  display:flex;flex:1;min-width:0;flex-direction:column;gap:5px;
+}
+.messenger.is-authenticated .ik-channel-create-promo strong{
+  font-size:13px;font-weight:790;color:#263149;
+}
+.messenger.is-authenticated .ik-channel-create-promo small{
+  color:#858ea8;font-size:11px;line-height:1.34;
+}
+.messenger.is-authenticated .ik-channel-create-promo-arrow{
+  font-size:24px;color:#5877c0;
+}
+.messenger.is-authenticated .ik-channel-create-promo:focus-visible{
+  outline:2px solid var(--ik-soft-blue);outline-offset:3px;
+}
+.messenger.is-authenticated .home-stories{
+  margin-top:1px!important;
+}
+@media(max-width:800px){
+  .messenger.is-authenticated .channel-browser:has(.ik-channel-create-promo) .channel-tools>.secondary-action{
+    display:none!important;
+  }
+  .messenger.is-authenticated .ik-channel-create-promo{
+    margin:9px 12px 12px;
+    min-height:79px;
+  }
+  .messenger.is-authenticated .home-stories{
+    padding-top:0!important;
+  }
+}
