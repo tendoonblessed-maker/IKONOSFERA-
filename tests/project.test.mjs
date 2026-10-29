@@ -746,3 +746,37 @@ test('Telegram-like black profile and settings preserve working privacy and edit
  assert.match(css,/\.settings-panel\.ik-settings-redesign\{/);
  assert.match(css,/\.ik-profile-redesign \.profile-cover:not\(\[style\]\)/);
 });
+
+
+test('QA: changing a profile avatar does not accidentally open story playback',()=>{
+ const profile=load('components/ProfilePanel.tsx');
+ assert.match(profile,/event\.target as HTMLElement\)\.closest\('\.profile-avatar-camera'\)/);
+ assert.match(profile,/className="profile-avatar-camera" title="Изменить фото" onClick=\{event=>event\.stopPropagation\(\)\}/);
+ assert.match(profile,/onKeyDown=\{event=>event\.stopPropagation\(\)\}/);
+});
+test('QA: profile data remains readable if stories or channel listing fails',()=>{
+ const profile=load('components/ProfilePanel.tsx');
+ assert.match(profile,/const p=await getFullProfile\(token,targetId\)/);
+ assert.match(profile,/Promise\.allSettled/);
+ assert.match(profile,/gallery\.status==='fulfilled'/);
+ assert.match(profile,/active\.status==='fulfilled'/);
+ assert.match(profile,/try\{await reload\(\);\}/);
+ assert.match(profile,/Сохранено\. Данные обновятся при повторном открытии профиля/);
+});
+test('QA: channel details and posts respect real loading and persisted data',()=>{
+ const channel=load('components/ChannelsPanel.tsx');
+ assert.match(channel,/Boolean\(currentChannel\.description\)/);
+ assert.ok(!channel.includes('{channel.description&&<p className="channel-description">'));
+ assert.match(channel,/const \[postsLoaded,setPostsLoaded\]=useState\(false\)/);
+ assert.match(channel,/Загружаем публикации/);
+ assert.match(channel,/Не удалось загрузить публикации/);
+ assert.match(channel,/setPosts\(previous=>\[created,\.\.\.previous\.filter\(post=>post\.id!==created\.id\)\]\)/);
+ assert.match(channel,/setNotice\("Пост опубликован\."\)/);
+});
+test('QA: long dark settings scroll independently from the persistent tab bar',()=>{
+ const css=load('app/globals.css');
+ assert.match(css,/\.settings-panel\.ik-settings-redesign\{\s*flex:1 1 0%!important/);
+ assert.match(css,/overflow-y:auto!important/);
+ assert.match(css,/\.chats-pane>\.pane-nav\{flex:0 0 auto/);
+ assert.match(css,/\.pane-nav \.nav-profile-avatar\{\s*filter:none!important/);
+});
