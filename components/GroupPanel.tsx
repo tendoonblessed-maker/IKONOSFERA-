@@ -378,6 +378,13 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
      browsingOlderRef.current=false;
      followNewestRef.current=true;
      latestGroupMessageRef.current=null;
+     initialPageLoadedRef.current=false;
+     prependScrollRef.current=null;
+     olderRequestRef.current++;
+     olderLoadingRef.current=false;
+     setHasOlder(false);setLoadingOlder(false);setOlderError('');
+     setMessages([]);
+     setInitialLoading(true);
      setShowJumpToLatest(false);
      setNewMessagesBelow(0);
      void refresh().catch(e=>setError(e instanceof Error?e.message:'Ошибка обновления группы'));
@@ -455,8 +462,20 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
   onClick={()=>{
    const history=historyRef.current;
    if(!history)return;
+   const wasBrowsingArchive=browsingOlderRef.current;
    browsingOlderRef.current=false;
    followNewestRef.current=true;
+   // Do not merge a potentially distant historical context with the newest
+   // page: otherwise a false continuous gap appears in the chat history.
+   if(wasBrowsingArchive){
+    initialPageLoadedRef.current=false;
+    olderRequestRef.current++;
+    olderLoadingRef.current=false;
+    prependScrollRef.current=null;
+    setHasOlder(false);setLoadingOlder(false);setOlderError('');
+    setMessages([]);
+    setInitialLoading(true);
+   }
    // The old context is not the latest page. Do not acknowledge it.
    latestGroupMessageRef.current=null;
    void refresh().catch(e=>setError(e instanceof Error?e.message:'Ошибка загрузки новых сообщений'));
