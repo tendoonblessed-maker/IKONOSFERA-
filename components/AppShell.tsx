@@ -111,7 +111,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
   const prependScrollRef=useRef<{chatId:string;height:number;top:number}|null>(null);
   const selectedRef=useRef<string|null>(null);
   const searchInputRef=useRef<HTMLInputElement|null>(null);
-  const previewCacheRef=useRef<Map<string,ChatPreview>>(new Map());
+  const previewCacheRef=useRef<{ownerId:string;previews:Map<string,ChatPreview>}>({ownerId:'',previews:new Map()});
   const draftsRef=useRef<ChatDrafts>({});
   const draftsOwnerRef=useRef('');
   const composerRef=useRef<HTMLTextAreaElement|null>(null);
@@ -185,14 +185,23 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
     return ()=>window.removeEventListener('beforeinstallprompt',onInstall);
   },[]);
 
-  const loadInboxPreviews=useCallback(async(token:string)=>{
+  const loadInboxPreviews=useCallback(async(token:string,ownerId:string)=>{
+    // Never expose another account's previous message snippets during logout
+    // or a fast account switch, even when the preview endpoint is offline.
+    if(previewCacheRef.current.ownerId!==ownerId){
+      previewCacheRef.current={ownerId,previews:new Map()};
+    }
     try{
       const rows=await listChatPreviews(token);
-      previewCacheRef.current=new Map(rows.map(item=>[item.chat_id,item]));
-      return {overview:previewCacheRef.current,failed:false};
+      const fetched=new Map(rows.map(item=>[item.chat_id,item]));
+      if(previewCacheRef.current.ownerId===ownerId){
+        previewCacheRef.current={ownerId,previews:fetched};
+      }
+      return {overview:previewCacheRef.current.ownerId===ownerId?fetched:new Map<string,ChatPreview>(),failed:false};
     }catch{
+      const same=previewCacheRef.current.ownerId===ownerId;
       // Intermittent preview endpoint errors must not erase last-message text.
-      return {overview:previewCacheRef.current,failed:true};
+      return {overview:same?previewCacheRef.current.previews:new Map<string,ChatPreview>(),failed:true};
     }
   },[]);
   const refresh=useCallback(async (token:string,id:string,activeChat:string|null)=>{
@@ -202,7 +211,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
       listGroupOverviews(token),listSavedContacts(token,id),listBlockedUsers(token,id)
     ]).catch(()=>null);
     const [chats,previewResult]=await Promise.all([
-      listChats(token),loadInboxPreviews(token)
+      listChats(token),loadInboxPreviews(token,id)
     ]);
     const chatPartnerIds=Array.from(new Set(chats.map(chat=>chat.user_a===id?chat.user_b:chat.user_a)));
     const chatProfiles=await listProfiles(token,chatPartnerIds);
@@ -240,7 +249,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
   // high-frequency path. Their full state is synced separately at a slower cadence.
   const refreshInbox=useCallback(async(token:string,id:string)=>{
     const [chats,previewResult]=await Promise.all([
-      listChats(token),loadInboxPreviews(token)
+      listChats(token),loadInboxPreviews(token,id)
     ]);
     const others=Array.from(new Set(chats.map(chat=>chat.user_a===id?chat.user_b:chat.user_a)));
     const profiles=await listProfiles(token,others);
@@ -680,7 +689,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
     }catch(e){setError(userFacingError(e));}
     finally{setSending(false);}
   }
-  async function logout(){if(!session)return;if(anonymous&&!window.confirm('Это временный аккаунт. После выхода восстановить его нельзя. Выйти?'))return;setBusy(true);try{await signOut(session.access_token);}catch(e){setError(userFacingError(e));}finally{clearChatDrafts(userId);draftsOwnerRef.current='';draftsRef.current={};setDraftPreviews({});setDraft('');previewCacheRef.current.clear();clearSession();setSession(null);setUserId('');setProfile(null);setAnonymous(false);setRows([]);setSavedContacts([]);setBlockedUsers([]);setSelected(null);setProfileTarget(null);setSelectedChannel(null);setChannels([]);setChatMessages([]);setBusy(false);}}
+  async function logout(){if(!session)return;if(anonymous&&!window.confirm('Это временный аккаунт. После выхода восстановить его нельзя. Выйти?'))return;setBusy(true);try{await signOut(session.access_token);}catch(e){setError(userFacingError(e));}finally{clearChatDrafts(userId);draftsOwnerRef.current='';draftsRef.current={};setDraftPreviews({});setDraft('');previewCacheRef.current={ownerId:'',previews:new Map()};clearSession();setSession(null);setUserId('');setProfile(null);setAnonymous(false);setRows([]);setSavedContacts([]);setBlockedUsers([]);setSelected(null);setProfileTarget(null);setSelectedChannel(null);setChannels([]);setChatMessages([]);setBusy(false);}}
   async function install(){if(installPrompt){await installPrompt.prompt();await installPrompt.userChoice;setInstallPrompt(null);}else setInstallHelp(true);}
   const storyContacts=useMemo(()=>{
     const byId=new Map<string,Profile>();
