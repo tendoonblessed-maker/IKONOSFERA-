@@ -231,7 +231,7 @@ test('Telegram-like layout retains IKONOSFERA assets and sorts personal and grou
  assert.match(shell,/chatFilter==='private'/);
  assert.match(shell,/chatFilter==='groups'/);
  assert.match(shell,/chatFilter==='unread'/);
- assert.ok(shell.indexOf('<StoriesStrip')<shell.indexOf('ref={searchInputRef}'));
+ assert.ok(shell.indexOf('ref={searchInputRef}')<shell.indexOf('<StoriesStrip'));
  assert.match(css,/\.messenger\.is-authenticated \.chat-list \.chat-row-wrap\{/);
  assert.match(css,/\.messenger\.is-authenticated \.chat-list \.telegram-chat-row\{/);
  assert.match(css,/\.messenger\.is-authenticated \.pane-nav \.nav-art\{/);
