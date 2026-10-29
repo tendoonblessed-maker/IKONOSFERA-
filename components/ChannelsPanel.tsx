@@ -127,10 +127,14 @@ export default function ChannelsPanel({token,userId,channel,onBack,onShowProfile
   try{
    const attachment=file?await uploadChannelAttachment(token,userId,file):null;
    path=attachment?.path??null;
-   try{await publishPost(token,userId,channel.id,body,null,attachment);}
+   let created:ChannelPost;
+   try{created=await publishPost(token,userId,channel.id,body,null,attachment);}
    catch(e){if(path)await removeUpload(token,path).catch(()=>{});throw e;}
+   // Supabase returned the persisted post. Show it immediately; avoid an
+   // unnecessary follow-up GET that can fail after the write succeeded.
+   setPosts(previous=>[created,...previous.filter(post=>post.id!==created.id)]);
+   setPostsLoaded(true);setPostsLoadError(false);
    setBody("");setFile(null);setNotice("Пост опубликован.");
-   await reload().catch(()=>{setPostsLoadError(true);});
   }catch(e){setError(readable(e));}finally{setBusy(false);}
  }
  async function writeComment(e:FormEvent){
