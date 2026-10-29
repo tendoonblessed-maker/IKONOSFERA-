@@ -96,7 +96,7 @@ test('message/chat actions open contextual menus, not a stack of destructive but
  const ui=load('components/AppShell.tsx'), inbox=load('components/ChatInboxRow.tsx');
  assert.match(inbox,/chat-row-menu/);
  assert.match(ui,/message-menu/);
- assert.match(ui,/settings-edit-button/);
+ assert.match(ui,/ik-settings-header-edit/);
 });
 
 
@@ -160,7 +160,7 @@ test('Presence statuses hide exact timestamps unless users opt in',()=>{
  assert.match(sql,/revoke all on function public.get_user_activity/);
  assert.match(activity,/activityLabel/);
  assert.match(shell,/changeActivityVisibility/);
- assert.match(shell,/Время последнего посещения/);
+ assert.match(shell,/Последняя активность/);
  assert.match(profile,/getUserActivities/);
 });
 test('Channels expose subscriber totals without private subscriber identities',()=>{
@@ -710,4 +710,39 @@ test('status emoji follows the nickname throughout chats, contacts, groups and p
  assert.match(app,/profile\?\.status_emoji/);
  const inbox=load('components/ChatInboxRow.tsx');
  assert.match(inbox,/other\?\.status_emoji/);
+});
+
+
+test('channel list uses the actual stored avatar and Settings tab keeps it in color',()=>{
+ const shell=load('components/AppShell.tsx');
+ const css=load('app/globals.css');
+ const channel=load('components/ChannelsPanel.tsx');
+ assert.match(shell,/className="channel-list-icon">\{ch\.avatar_path&&imageUrl\(ch\.avatar_path\)\?/);
+ assert.match(shell,/className="ik-channel-list-avatar"/);
+ assert.match(channel,/setCurrentChannel\(updated\);onChannelUpdated\?\.\(updated\)/);
+ assert.match(shell,/setChannels\(old=>old\.map\(ch=>ch\.id===updated\.id\?updated:ch\)\)/);
+ assert.match(css,/\.ik-channel-list-avatar\{/);
+ assert.match(css,/\.pane-nav \.nav-profile-avatar\{\s*filter:none!important/);
+ assert.match(css,/\.ik-channel-list-avatar\{[^}]*object-fit:cover/s);
+});
+test('Telegram-like black profile and settings preserve working privacy and editing',()=>{
+ const profile=load('components/ProfilePanel.tsx');
+ const app=load('components/AppShell.tsx');
+ const css=load('app/globals.css');
+ assert.match(app,/settings-panel ik-settings-redesign/);
+ assert.match(app,/className="ik-settings-hero-avatar"/);
+ assert.match(app,/className="ik-settings-group ik-settings-privacy-group"/);
+ assert.match(app,/className="ik-blocklist-toggle ik-settings-row"/);
+ assert.match(app,/onClick=\{\(\)=>void toggleBlockedUser\(person\)\}/);
+ assert.match(app,/onChange=\{e=>void changeActivityVisibility/);
+ assert.match(app,/onClick=\{logout\}/);
+ assert.match(app,/data-current-tab=\{tab\}/);
+ assert.match(profile,/profile-view ik-profile-redesign/);
+ assert.match(profile,/ik-profile-content-tabs/);
+ assert.match(profile,/profileContentTab==='stories'/);
+ assert.match(profile,/profileContentTab==='photos'/);
+ assert.match(profile,/onSelect=\{index=>void setStatusEmoji\(index\)\}/);
+ assert.match(profile,/await updateFullProfile\(token,userId,\{featured_channel_id:next\}\)/);
+ assert.match(css,/\.settings-panel\.ik-settings-redesign\{/);
+ assert.match(css,/\.ik-profile-redesign \.profile-cover:not\(\[style\]\)/);
 });

@@ -26,6 +26,7 @@ export default function ProfilePanel({token,userId,targetId,onBack,onOwnProfileC
  const [chosenChannelId,setChosenChannelId]=useState<string>("");
  const [pinningChannel,setPinningChannel]=useState(false);
  const [statusPickerOpen,setStatusPickerOpen]=useState(false);
+ const [profileContentTab,setProfileContentTab]=useState<'stories'|'photos'>('stories');
  const [name,setName]=useState("");const [username,setUsername]=useState("");const [bio,setBio]=useState("");
  const [editing,setEditing]=useState(false);
  const [visitorPreview,setVisitorPreview]=useState(false);
@@ -127,8 +128,8 @@ export default function ProfilePanel({token,userId,targetId,onBack,onOwnProfileC
  const avatar=profile?imageUrl(profile.avatar_path):null;
  const viewingAsVisitor=!mine||visitorPreview;
  const cover=profile?imageUrl(profile.cover_path):null;
- return <section className="profile-view" aria-label="Профиль пользователя">
-   <header className="profile-topbar"><button type="button" className="profile-back" onClick={onBack} aria-label="Назад">‹ <span>Назад</span></button>
+ return <section className="profile-view ik-profile-redesign" aria-label="Профиль пользователя">
+   <header className="profile-topbar"><button type="button" className="profile-back" onClick={onBack} aria-label="Назад"><svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m15 5-7 7 7 7"/></svg><span>Назад</span></button>
      <strong>{visitorPreview?"Профиль глазами других":"Профиль"}</strong>{mine?<div className="ik-profile-top-actions"><button type="button" className="profile-edit-trigger" onClick={()=>{setVisitorPreview(v=>!v);setEditing(false);}}>{visitorPreview?"Вернуться":"Как видят другие"}</button>{!visitorPreview&&<button type="button" className="profile-edit-trigger" onClick={()=>setEditing(v=>!v)} aria-expanded={editing}>{editing?"Закрыть":"✎ Редактировать"}</button>}</div>:<span/>}</header>
    <div className="profile-scroll">
     <div className="profile-hero">
@@ -200,7 +201,11 @@ export default function ProfilePanel({token,userId,targetId,onBack,onOwnProfileC
         </div>}
       </div>}
     </div>}
-    <div className="profile-content-section">
+    <nav className="ik-profile-content-tabs" aria-label="Разделы профиля">
+      <button type="button" className={profileContentTab==='stories'?'selected':''} aria-current={profileContentTab==='stories'?'page':undefined} onClick={()=>setProfileContentTab('stories')}>Истории{stories.length>0&&<span>{stories.length}</span>}</button>
+      <button type="button" className={profileContentTab==='photos'?'selected':''} aria-current={profileContentTab==='photos'?'page':undefined} onClick={()=>setProfileContentTab('photos')}>Фотографии{photos.length>0&&<span>{photos.length}</span>}</button>
+    </nav>
+    {profileContentTab==='stories'&&<div className="profile-content-section ik-profile-gallery-section">
      <div className="profile-section-title"><div><h2>Истории</h2><p>Доступны 24 часа</p></div>
        {!viewingAsVisitor&&<label className="profile-action">+ История<input type="file" aria-label="Добавить историю" accept="image/png,image/jpeg,image/webp" disabled={busy} onChange={e=>{void chooseImage(e.target.files?.[0],"story");e.target.value="";}}/></label>}</div>
      {stories.length?<div className="profile-stories">{stories.map(st=><div className="profile-story" key={st.id}>
@@ -208,15 +213,15 @@ export default function ProfilePanel({token,userId,targetId,onBack,onOwnProfileC
       <small>{new Date(st.expires_at).toLocaleTimeString("ru-RU",{hour:"2-digit",minute:"2-digit"})}</small>
       {!viewingAsVisitor&&<button disabled={busy} className="profile-small-delete" type="button" onClick={()=>void run(async()=>{await deleteStory(token,st.id);await removeUpload(token,st.image_path).catch(()=>{});})}>Удалить</button>}
      </div>)}</div>:<p className="profile-empty">Пока нет активных историй.</p>}
-    </div>
-    <div className="profile-content-section">
+    </div>}
+    {profileContentTab==='photos'&&<div className="profile-content-section ik-profile-gallery-section">
      <div className="profile-section-title"><div><h2>Фото профиля</h2><p>Твоя галерея</p></div>
        {!viewingAsVisitor&&<label className="profile-action">+ Фото<input aria-label="Выложить фото в профиль" type="file" accept="image/png,image/jpeg,image/webp" disabled={busy} onChange={e=>{void chooseImage(e.target.files?.[0],"photo");e.target.value="";}}/></label>}</div>
      {photos.length?<div className="profile-photo-grid">{photos.map(photo=><div className="profile-grid-cell" key={photo.id}>
       <button type="button" onClick={()=>{const url=imageUrl(photo.image_path);if(url)setViewer({url,caption:photo.caption});}}><img src={imageUrl(photo.image_path)||""} alt="Фото в профиле"/></button>
       {!viewingAsVisitor&&<button type="button" className="profile-grid-delete" disabled={busy} title="Удалить фото" onClick={()=>void run(async()=>{await deleteProfilePhoto(token,photo.id);await removeUpload(token,photo.image_path).catch(()=>{});})}>×</button>}
      </div>)}</div>:<p className="profile-empty">В галерее пока нет фотографий.</p>}
-    </div>
+    </div>}
     <p className="profile-privacy">Фото и истории доступны другим зарегистрированным пользователям. Не публикуй личные документы.</p>
     {(error||notice)&&<p role="status" className={error?"profile-error":"profile-success"}>{error||notice}</p>}
    </div>
