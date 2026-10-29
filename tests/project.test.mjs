@@ -1066,3 +1066,38 @@ test('private photo attachments open a modal inside the chat without leaking pre
  assert.match(css,/safe-area-inset-top/);
  assert.match(css,/@media\(prefers-reduced-motion:reduce\)/);
 });
+
+
+test('offline direct chats preserve drafts and resume polling immediately on reconnect',()=>{
+ const shell=load('components/AppShell.tsx');
+ const drafts=load('lib/chat-drafts.ts');
+ const css=load('app/globals.css');
+ assert.match(shell,/networkOnline,setNetworkOnline\]=useState\(true\)/);
+ assert.match(shell,/const connected=navigator\.onLine/);
+ assert.match(shell,/window\.addEventListener\('offline',update\)/);
+ assert.match(shell,/window\.addEventListener\('online',update\)/);
+ assert.match(shell,/window\.addEventListener\('pageshow',update\)/);
+ assert.match(shell,/window\.removeEventListener\('offline',update\)/);
+ assert.match(shell,/window\.removeEventListener\('online',update\)/);
+ assert.equal((shell.match(/if\(!navigator\.onLine\)return;/g)||[]).length,2);
+ assert.equal((shell.match(/window\.addEventListener\('online',onConnected\)/g)||[]).length,2);
+ assert.equal((shell.match(/window\.removeEventListener\('online',onConnected\)/g)||[]).length,2);
+ assert.match(shell,/void sync\(true\)/);
+ assert.match(shell,/void run\(true\)/);
+ assert.match(shell,/bootstrapRetryNonce,setBootstrapRetryNonce/);
+ assert.match(shell,/if\(session\)return;\s*const retryBootstrap=/);
+ assert.match(shell,/setBootstrapRetryNonce\(count=>count\+1\)/);
+ assert.match(shell,/\[refresh,bootstrapRetryNonce\]/);
+ assert.match(shell,/e\.preventDefault\(\);if\(!session\|\|!selected\|\|!userId\|\|sending\|\|activePartnerBlocked\)return;\s*if\(!networkOnline\|\|!navigator\.onLine\)/);
+ assert.match(shell,/Сообщение осталось в черновике/);
+ assert.match(shell,/Выбери вложение повторно после подключения/);
+ assert.match(shell,/disabled=\{sending\|\|activePartnerBlocked\|\|!networkOnline\}/);
+ assert.match(shell,/disabled=\{!draft\.trim\(\)\|\|sending\|\|activePartnerBlocked\|\|!networkOnline\}/);
+ assert.match(shell,/aria-label="Написать сообщение" enterKeyHint="enter"/);
+ assert.match(shell,/onChange=\{e=>\{setDraft\(e\.target\.value\);if\(selected\)updateChatDraft\(selected,e\.target\.value\);\}\}/);
+ assert.match(drafts,/sessionStorage/);
+ assert.match(shell,/!networkOnline&&<div className="ik-network-offline" role="status"/);
+ assert.match(css,/\.ik-network-offline\{/);
+ assert.match(css,/pointer-events:none/);
+ assert.match(css,/max-width:calc\(100vw - 24px\)/);
+});
