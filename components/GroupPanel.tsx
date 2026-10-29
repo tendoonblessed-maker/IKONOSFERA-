@@ -13,6 +13,7 @@ import {getOrCreateGroupSendAttempt,clearGroupSendAttempt} from '@/lib/group-sen
 import {subscribeGroupChanges} from '@/lib/group-realtime';
 import {mergeConfirmedGroupMessages,CONFIRMED_GROUP_MESSAGE_GRACE_MS,type ConfirmedGroupMessage} from '@/lib/group-history';
 import {shouldAcknowledgeGroupRead,countNewIncomingBelow} from '@/lib/group-read-position';
+import {fetchOlderGroupMessages,prependOlderGroupMessages,preserveOlderGroupMessages,GROUP_HISTORY_MAX_LOADED} from '@/lib/group-pagination';
 type Props={token:string;userId:string;group:Group;onBack:()=>void;onShowProfile:(id:string)=>void;onDraftChange:(groupId:string,text:string)=>void};
 export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDraftChange}:Props){
  const [messages,setMessages]=useState<GroupMessage[]>([]);
@@ -27,6 +28,9 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
  const [error,setError]=useState('');
  const [retryAvailable,setRetryAvailable]=useState(false);
  const [initialLoading,setInitialLoading]=useState(true);
+ const [hasOlder,setHasOlder]=useState(false);
+ const [loadingOlder,setLoadingOlder]=useState(false);
+ const [olderError,setOlderError]=useState('');
  const [showJumpToLatest,setShowJumpToLatest]=useState(false);
  const [newMessagesBelow,setNewMessagesBelow]=useState(0);
  const [searchOpen,setSearchOpen]=useState(false);
@@ -40,6 +44,10 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
  const [searchLocating,setSearchLocating]=useState<string|null>(null);
  const [pendingSearchJump,setPendingSearchJump]=useState<string|null>(null);
  const historyRef=useRef<HTMLDivElement|null>(null);
+ const prependScrollRef=useRef<{groupId:string;userId:string;height:number;top:number}|null>(null);
+ const olderLoadingRef=useRef(false);
+ const olderRequestRef=useRef(0);
+ const initialPageLoadedRef=useRef(false);
  const composerFormRef=useRef<HTMLFormElement|null>(null);
  const followNewestRef=useRef(true);
  const browsingOlderRef=useRef(false);
@@ -56,6 +64,13 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
  contextRef.current={groupId:group.id,userId,token};
  useEffect(()=>{
   confirmedGroupMessagesRef.current.clear();
+  olderRequestRef.current++;
+  olderLoadingRef.current=false;
+  initialPageLoadedRef.current=false;
+  prependScrollRef.current=null;
+  setHasOlder(false);setLoadingOlder(false);setOlderError('');
+  setMessages([]);
+  setInitialLoading(true);
   latestGroupMessageRef.current=null;
   lastReadRef.current=null;
   followNewestRef.current=true;
@@ -109,12 +124,19 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
    ||contextRef.current.groupId!==group.id
    ||contextRef.current.userId!==userId
    ||contextRef.current.token!==token||browsingOlderRef.current)return;
-  setMessages(mergeConfirmedGroupMessages(
-   msgs,confirmedGroupMessagesRef.current,group.id,userId
+  if(!initialPageLoadedRef.current){
+   initialPageLoadedRef.current=true;
+   // Current API returns at most 150 latest rows. Only allow paging
+   // once the initial window is known (avoids pointless empty requests).
+   setHasOlder(msgs.length>=150);
+  }
+  setMessages(current=>mergeConfirmedGroupMessages(
+   preserveOlderGroupMessages(current,msgs),
+   confirmedGroupMessagesRef.current,group.id,userId
   ));
   setInitialLoading(false);
   latestGroupMessageRef.current=msgs.length?msgs[msgs.length-1].id:null;
- },[token,group.id,userId,acknowledgeLatestIfVisible]);
+ },[token,group.id,userId]);
  useEffect(()=>{
   let cancelled=false;
   let inFlight=false;
@@ -215,6 +237,12 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
       ||contextRef.current.userId!==ownerId
       ||contextRef.current.token!==requestToken)return;
    if(!around.some(row=>row.id===message.id))throw Error('Сообщение больше недоступно.');
+   olderRequestRef.current++;
+   olderLoadingRef.current=false;
+   prependScrollRef.current=null;
+   setLoadingOlder(false);setOlderError('');
+   // This is a historical window, so older pages are available on demand.
+   if(!current)setHasOlder(true);
    previousMessageIdsRef.current={groupId,ownerId,ids:new Set(around.map(row=>row.id))};
    if(!current)setMessages(around);
    setPendingSearchJump(message.id);
@@ -240,6 +268,53 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
   target.classList.add('ik-group-search-target');
   setPendingSearchJump(null);
  },[pendingSearchJump,messages]);
+
+ // Explicit cursor paging protects equally timestamped messages from loss.
+ // Stale pages from another group/account or a search jump are discarded.
+ async function loadOlder(){
+  if(olderLoadingRef.current||!hasOlder||initialLoading||!online||!messages.length)return;
+  const history=historyRef.current,oldest=messages[0];
+  const groupId=group.id,ownerId=userId,requestToken=token;
+  const requestId=++olderRequestRef.current;
+  olderLoadingRef.current=true;
+  setLoadingOlder(true);setOlderError('');
+  if(history)prependScrollRef.current={
+   groupId,userId:ownerId,height:history.scrollHeight,top:history.scrollTop
+  };
+  followNewestRef.current=false;
+  try{
+   const page=await fetchOlderGroupMessages(requestToken,groupId,oldest);
+   if(requestId!==olderRequestRef.current
+      ||contextRef.current.groupId!==groupId
+      ||contextRef.current.userId!==ownerId
+      ||contextRef.current.token!==requestToken)return;
+   if(!page.messages.length){
+    prependScrollRef.current=null;
+    setHasOlder(false);
+   }else{
+    setMessages(current=>prependOlderGroupMessages(current,page.messages));
+    setHasOlder(page.hasMore&&messages.length+page.messages.length<GROUP_HISTORY_MAX_LOADED);
+   }
+  }catch(e){
+   if(requestId===olderRequestRef.current){
+    prependScrollRef.current=null;
+    setOlderError(e instanceof Error?e.message:'Ошибка загрузки истории группы');
+   }
+  }finally{
+   if(requestId===olderRequestRef.current){
+    olderLoadingRef.current=false;
+    setLoadingOlder(false);
+   }
+  }
+ }
+ useLayoutEffect(()=>{
+  const snapshot=prependScrollRef.current,history=historyRef.current;
+  if(!snapshot||!history)return;
+  prependScrollRef.current=null;
+  if(snapshot.groupId!==group.id||snapshot.userId!==userId)return;
+  const growth=history.scrollHeight-snapshot.height;
+  history.scrollTop=Math.max(0,snapshot.top+growth);
+ },[messages,group.id,userId]);
 
  // Group membership and profiles change much less often than chat messages.
  useEffect(()=>{
@@ -350,10 +425,23 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
  <div className="conversation-history" ref={historyRef} aria-busy={initialLoading} onScroll={event=>{
  const area=event.currentTarget;
  const nearBottom=!browsingOlderRef.current&&area.scrollHeight-area.scrollTop-area.clientHeight<120;
+ if(area.scrollTop<100&&area.scrollHeight>area.clientHeight+30&&
+    hasOlder&&!loadingOlder&&!olderError&&online&&!initialLoading){
+  void loadOlder();
+ }
  followNewestRef.current=nearBottom;
  setShowJumpToLatest(!nearBottom);
  if(nearBottom){setNewMessagesBelow(0);acknowledgeLatestIfVisible();}
  }}>
+ {!initialLoading&&hasOlder&&<div className="ik-group-older-control">
+  <button type="button" disabled={loadingOlder||!online} onClick={()=>{void loadOlder();}}>
+   {loadingOlder?'Загружаем старые сообщения…':'Показать более ранние сообщения'}
+  </button>
+ </div>}
+ {!initialLoading&&olderError&&<div className="ik-group-older-error" role="alert">
+  <span>{olderError}</span>
+  <button type="button" onClick={()=>{setOlderError('');void loadOlder();}}>Повторить</button>
+ </div>}
  {initialLoading&&<div className="ik-chat-loading" role="status" aria-label="Загружаем сообщения группы"><div className="ik-chat-loading-bubble incoming"/><div className="ik-chat-loading-bubble incoming short"/><div className="ik-chat-loading-bubble outgoing"/><span className="ik-chat-loading-label">Загружаем сообщения…</span></div>}
  {!initialLoading&&!error&&messages.length===0&&<p className="group-empty">Группа создана. Напиши первое сообщение!</p>}
  {!initialLoading&&error&&messages.length===0&&<div className="ik-chat-load-error" role="alert">
