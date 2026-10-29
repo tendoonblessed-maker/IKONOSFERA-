@@ -91,7 +91,8 @@ export default function VoiceRecorder({disabled,onRecorded,onError}:Props){
    errorRef.current('Запись с микрофона недоступна в этом браузере или без HTTPS.');
    return;
   }
-  const mime=chooseVoiceMimeType(type=>MediaRecorder.isTypeSupported(type));
+  const mime=typeof MediaRecorder.isTypeSupported==='function'
+   ?chooseVoiceMimeType(type=>MediaRecorder.isTypeSupported(type)):null;
   if(!mime){
    errorRef.current('Браузер не поддерживает доступные форматы голосовых сообщений.');
    return;
