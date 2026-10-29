@@ -565,7 +565,8 @@ test('new incoming messages never force scrolling when reading chat history',()=
  assert.match(personal,/chatAutoScrollRef\.current=distance<120/);
  assert.match(personal,/const distance=area\.scrollHeight-area\.scrollTop-area\.clientHeight/);
  assert.match(group,/followNewestRef=useRef\(true\)/);
- assert.match(group,/followNewestRef\.current=area\.scrollHeight-area\.scrollTop-area\.clientHeight<120/);
+ assert.match(group,/const nearBottom=area\.scrollHeight-area\.scrollTop-area\.clientHeight<120/);
+ assert.match(group,/followNewestRef\.current=nearBottom/);
 });
 
 
