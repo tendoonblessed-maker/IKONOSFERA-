@@ -90,6 +90,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
   const [messageSearch,setMessageSearch]=useState('');
   const [searchInConversation,setSearchInConversation]=useState(false);
   const [messageSearchResults,setMessageSearchResults]=useState<DirectMessageSearchResult[]>([]);
+  const [messageSearchOwner,setMessageSearchOwner]=useState<{chatId:string;userId:string;query:string}|null>(null);
   const [messageSearchLoading,setMessageSearchLoading]=useState(false);
   const [messageSearchError,setMessageSearchError]=useState(false);
   const [messageSearchHasMore,setMessageSearchHasMore]=useState(false);
@@ -209,6 +210,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
       void searchDirectMessages(token,chatId,term,offset).then(matches=>{
         if(!belongs())return;
         const page=matches.slice(0,DIRECT_MESSAGE_SEARCH_PAGE_SIZE);
+        setMessageSearchOwner({chatId,userId,query:term});
         setMessageSearchResults(previous=>offset===0?page:[
           ...previous,...page.filter(item=>!previous.some(old=>old.id===item.id))
         ]);
@@ -230,6 +232,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
     setMessageSearchPage(0);
     setMessageSearchRetry(0);
     setMessageSearchResults([]);
+    setMessageSearchOwner(null);
     setMessageSearchError(false);
     setMessageSearchHasMore(false);
     setMessageSearchLoading(false);
@@ -239,6 +242,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
     setMessageSearchPage(0);
     setMessageSearchRetry(0);
     setMessageSearchResults([]);
+    setMessageSearchOwner(null);
     setMessageSearchHasMore(false);
   }
 
@@ -1180,7 +1184,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
   <button type="button" disabled={busy} onClick={()=>void chatAction(active.chat.id,'delete_everyone')}>Удалить у обоих</button>
 </FloatingActionMenu></header>{activePartnerBlocked&&<div className="ik-chat-blocked-banner" role="status"><span>Собеседник заблокирован. Отправка сообщений отключена.</span><button type="button" onClick={()=>active.other&&void toggleBlockedUser(active.other)}>Разблокировать</button></div>}{searchInConversation&&<DirectMessageSearchPanel
         query={messageSearch} onQueryChange={updateMessageSearch} onClose={resetMessageSearch}
-        results={messageSearchResults} loading={messageSearchLoading} failed={messageSearchError}
+        results={messageSearchOwner?.chatId===selected&&messageSearchOwner.userId===userId&&messageSearchOwner.query===messageSearch.trim()?messageSearchResults:[]} loading={messageSearchLoading} failed={messageSearchError}
         hasMore={messageSearchHasMore} onMore={()=>{
           if(messageSearchError){setMessageSearchError(false);setMessageSearchRetry(retry=>retry+1);}
           else if(!messageSearchLoading)setMessageSearchPage(page=>page+1);
