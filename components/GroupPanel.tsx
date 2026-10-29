@@ -6,6 +6,7 @@ import StatusEmoji from '@/components/StatusEmoji';
 import {getUserActivities,activityLabel,type UserActivity} from '@/lib/activity';
 import {imageUrl} from '@/lib/social';
 import {readGroupDrafts} from '@/lib/group-drafts';
+import {getOrCreateGroupSendAttempt,clearGroupSendAttempt} from '@/lib/group-send-attempts';
 import {subscribeGroupChanges} from '@/lib/group-realtime';
 import {mergeConfirmedGroupMessages,CONFIRMED_GROUP_MESSAGE_GRACE_MS,type ConfirmedGroupMessage} from '@/lib/group-history';
 type Props={token:string;userId:string;group:Group;onBack:()=>void;onShowProfile:(id:string)=>void;onDraftChange:(groupId:string,text:string)=>void};
@@ -20,6 +21,7 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
  const draftVersionRef=useRef(0);
  const [busy,setBusy]=useState(false);
  const [error,setError]=useState('');
+ const [retryAvailable,setRetryAvailable]=useState(false);
  const [initialLoading,setInitialLoading]=useState(true);
  const historyRef=useRef<HTMLDivElement|null>(null);
  const followNewestRef=useRef(true);
@@ -44,6 +46,7 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
  function changeDraft(text:string){
   draftVersionRef.current+=1;
   setDraft(text);
+  setRetryAvailable(false);
   onDraftChange(group.id,text);
  }
 
@@ -132,9 +135,12 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
  if(!online||!navigator.onLine){setError('Нет интернета. Сообщение осталось в черновике.');return;}
  const body=draft.trim(),groupId=group.id,accountId=userId,requestToken=token;
  const sentDraftVersion=draftVersionRef.current;
- setBusy(true);setError('');
+ setBusy(true);setError('');setRetryAvailable(false);
  try{
-   const sent=await sendGroupMessage(requestToken,groupId,accountId,body);
+   // A network timeout does not tell us whether the POST committed. Reuse a
+   // UUID stored for this exact draft until the server confirms its row.
+   const attempt=getOrCreateGroupSendAttempt(accountId,groupId,body);
+   const sent=await sendGroupMessage(requestToken,groupId,accountId,body,attempt.id);
    // Use the actual server-returned message instead of waiting for another
    // network request. Ignore results after account/group navigation.
    if(contextRef.current.groupId!==groupId||contextRef.current.userId!==accountId
@@ -142,6 +148,8 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
    confirmedGroupMessagesRef.current.set(sent.id,{
      message:sent,expiresAt:Date.now()+CONFIRMED_GROUP_MESSAGE_GRACE_MS
    });
+   // Clear the attempt only after DB acknowledgment and account/group guard.
+   clearGroupSendAttempt(accountId,groupId,attempt.id);
    setMessages(current=>mergeConfirmedGroupMessages(
      current,confirmedGroupMessagesRef.current,groupId,accountId
    ));
@@ -152,6 +160,9 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
      onDraftChange(groupId,'');
    }
  }catch(e){
+   if(contextRef.current.groupId!==groupId||contextRef.current.userId!==accountId
+      ||contextRef.current.token!==requestToken)return;
+   setRetryAvailable(true);
    setError((e instanceof Error?e.message:'Ошибка отправки')+' · Черновик сохранён.');
  }
  finally{setBusy(false);}
@@ -189,7 +200,10 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
  <button type="submit" className="send-button" aria-label="Отправить в группу" disabled={busy||!draft.trim()||!online}>➤</button>
  </form>
  {!online&&<p className="ik-group-offline" role="status">Нет соединения. Текст останется в черновике, отправь его после подключения.</p>}
- {error&&<p className="profile-error" role="alert">{error}</p>}
+ {error&&<div className="ik-group-send-alert" role="alert">
+ <span>{error}</span>
+ {retryAvailable&&online&&draft.trim()&&<button type="button" onClick={()=>{const form=document.querySelector('.group-view .ik-group-composer') as HTMLFormElement|null;form?.requestSubmit();}} disabled={busy}>Повторить отправку</button>}
+ </div>}
  {membersOpen&&<div className="ik-members-backdrop" role="dialog" aria-modal="true" aria-label="Участники группы">
  <div className="ik-members-modal"><div className="ik-members-header"><div><strong>{group.title}</strong><small>{members.length} участников</small></div><button type="button" onClick={()=>setMembersOpen(false)} aria-label="Закрыть список участников">✕</button></div>
  <input className="ik-members-search" aria-label="Найти участника" placeholder="Поиск участников" value={memberSearch} onChange={e=>setMemberSearch(e.target.value)}/>
