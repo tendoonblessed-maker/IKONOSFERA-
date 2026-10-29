@@ -3367,3 +3367,30 @@ body{position:relative}
 @media(prefers-reduced-motion:reduce){
  .ik-voice-dot.is-recording{animation:none}
 }
+
+
+/* HTTP(S) auto-links: never use HTML parsing; preserve literal message text,
+   newlines, long addresses, light and dark chat bubbles on desktop/mobile. */
+.ik-message-rich-text{
+  display:inline;
+  white-space:pre-wrap;
+  overflow-wrap:anywhere;
+  word-break:break-word;
+  unicode-bidi:plaintext;
+}
+.ik-message-rich-text a{
+  color:inherit;
+  font:inherit;
+  text-decoration:underline;
+  text-decoration-thickness:1px;
+  text-underline-offset:3px;
+  text-decoration-color:currentColor;
+  overflow-wrap:anywhere;
+  cursor:pointer;
+}
+.ik-message-rich-text a:hover{text-decoration-thickness:2px}
+.ik-message-rich-text a:focus-visible{
+  outline:2px solid currentColor;
+  outline-offset:3px;
+  border-radius:2px;
+}
