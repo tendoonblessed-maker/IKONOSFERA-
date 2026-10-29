@@ -852,3 +852,39 @@ test('reply UX submits plain text with a real target ID and private off-page pre
  assert.match(css,/\.ik-message-reply-reference/);
  assert.match(css,/prefers-reduced-motion/);
 });
+
+
+test('mobile Enter inserts line breaks while desktop Enter sends and Shift+Enter is preserved',()=>{
+ const shell=load('components/AppShell.tsx');
+ assert.match(shell,/enterKeyHint="enter"/);
+ assert.match(shell,/const softKeyboard=\/iPhone\|iPad\|iPod\|Android\/i\.test\(navigator\.userAgent\)/);
+ assert.match(shell,/window\.matchMedia\('\(pointer:coarse\) and \(hover:none\)'\)/);
+ assert.match(shell,/!e\.nativeEvent\.isComposing&&!softKeyboard/);
+ assert.match(shell,/if\(draft\.trim\(\)&&!sending\)e\.currentTarget\.form\?\.requestSubmit\(\)/);
+});
+test('message long press never interferes with swipe, scrolling or media controls',()=>{
+ const swipe=load('components/SwipeReplyMessage.tsx');
+ const shell=load('components/AppShell.tsx');
+ const css=load('app/globals.css');
+ assert.match(swipe,/onOpenMenu\?:\(\)=>void/);
+ assert.match(swipe,/HOLD_DURATION_MS=520/);
+ assert.match(swipe,/HOLD_MOVE_TOLERANCE_PX=12/);
+ assert.match(swipe,/event\.touches\.length!==1/);
+ assert.match(swipe,/Math\.hypot\(finger\.clientX-origin\.x,finger\.clientY-origin\.y\)/);
+ assert.match(swipe,/cancelHold\(\); \/\/ A swipe must never also open/);
+ assert.match(swipe,/preventScrollOnSwipe:false/);
+ assert.match(swipe,/onContextMenu=\{event=>/);
+ assert.match(swipe,/event\.target instanceof Element&&event\.target\.closest/);
+ assert.match(swipe,/data-long-press-menu/);
+ assert.match(shell,/onOpenMenu=\{!message\.deleted_for_everyone/);
+ assert.match(css,/-webkit-touch-callout:none/);
+});
+test('reply jump scrolls only the messages viewport and never the iPhone page',()=>{
+ const shell=load('components/AppShell.tsx');
+ assert.match(shell,/const history=conversationHistoryRef\.current;/);
+ assert.match(shell,/history\?\.querySelector<HTMLElement>\('#ik-chat-message-'\+id\)/);
+ assert.match(shell,/original\.getBoundingClientRect\(\)\.top-history\.getBoundingClientRect\(\)\.top/);
+ assert.match(shell,/history\.scrollTo\(\{/);
+ assert.match(shell,/prefers-reduced-motion: reduce/);
+ assert.doesNotMatch(shell,/original\.scrollIntoView/);
+});

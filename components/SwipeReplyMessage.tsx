@@ -1,6 +1,6 @@
 'use client';
 
-import {useState,type ReactNode} from 'react';
+import {useEffect,useRef,useState,type ReactNode,type TouchEvent} from 'react';
 import {useSwipeable} from 'react-swipeable';
 
 type Props={
@@ -8,11 +8,51 @@ type Props={
   className:string;
   disabled?:boolean;
   onReply:()=>void;
+  onOpenMenu?:()=>void;
 };
 
-/** MIT react-swipeable gesture, with iOS vertical scrolling left intact. */
-export default function SwipeReplyMessage({children,className,disabled=false,onReply}:Props){
+const HOLD_DURATION_MS=520;
+const HOLD_MOVE_TOLERANCE_PX=12;
+
+/** MIT react-swipeable gesture with iOS vertical scroll and long-press actions. */
+export default function SwipeReplyMessage({children,className,disabled=false,onReply,onOpenMenu}:Props){
   const [movement,setMovement]=useState(0);
+  const holdTimer=useRef<number|null>(null);
+  const touchOrigin=useRef<{x:number;y:number}|null>(null);
+  const wasHeld=useRef(false);
+
+  const cancelHold=()=>{
+    if(holdTimer.current!==null){
+      window.clearTimeout(holdTimer.current);
+      holdTimer.current=null;
+    }
+    touchOrigin.current=null;
+  };
+  useEffect(()=>()=>cancelHold(),[]);
+
+  const onTouchStart=(event:TouchEvent<HTMLDivElement>)=>{
+    cancelHold();
+    wasHeld.current=false;
+    if(disabled||!onOpenMenu||event.touches.length!==1)return;
+    // Never hijack play/pause, opening an attachment, or tapping a quote.
+    if(event.target instanceof Element&&event.target.closest('button,a,input,textarea,select,video,audio,[role="button"],[contenteditable="true"]'))return;
+    const finger=event.touches[0];
+    touchOrigin.current={x:finger.clientX,y:finger.clientY};
+    holdTimer.current=window.setTimeout(()=>{
+      holdTimer.current=null;
+      touchOrigin.current=null;
+      wasHeld.current=true;
+      setMovement(0);
+      onOpenMenu();
+    },HOLD_DURATION_MS);
+  };
+  const onTouchMove=(event:TouchEvent<HTMLDivElement>)=>{
+    const origin=touchOrigin.current;
+    if(!origin||event.touches.length!==1){cancelHold();return;}
+    const finger=event.touches[0];
+    if(Math.hypot(finger.clientX-origin.x,finger.clientY-origin.y)>HOLD_MOVE_TOLERANCE_PX)cancelHold();
+  };
+
   const handlers=useSwipeable({
     trackTouch:true,
     trackMouse:false,
@@ -20,20 +60,38 @@ export default function SwipeReplyMessage({children,className,disabled=false,onR
     delta:16,
     swipeDuration:700,
     onSwiping:({dir,deltaX})=>{
-      if(disabled)return;
+      cancelHold(); // A swipe must never also open the long-press menu.
+      if(disabled||wasHeld.current)return;
       if(dir==='Right')setMovement(Math.min(72,Math.max(0,deltaX)));
       else if(dir==='Left')setMovement(Math.max(-72,Math.min(0,deltaX)));
     },
     onSwiped:({dir,absX})=>{
+      cancelHold();
       setMovement(0);
-      if(!disabled&&(dir==='Right'||dir==='Left')&&absX>=54)onReply();
+      if(!disabled&&!wasHeld.current&&(dir==='Right'||dir==='Left')&&absX>=54)onReply();
     },
-    onTouchEndOrOnMouseUp:()=>setMovement(0)
+    onTouchEndOrOnMouseUp:()=>{
+      cancelHold();
+      setMovement(0);
+    }
   });
 
   return <div {...handlers} className={className+' ik-swipe-message'}
+    onTouchStart={onTouchStart}
+    onTouchMove={onTouchMove}
+    onTouchEnd={cancelHold}
+    onTouchCancel={cancelHold}
+    onContextMenu={event=>{
+      if(disabled||!onOpenMenu)return;
+      const target=event.target;
+      if(target instanceof Element&&target.closest('button,a,input,textarea,select,video,audio,[role="button"],[contenteditable="true"]'))return;
+      event.preventDefault();
+      cancelHold();
+      setMovement(0);
+      onOpenMenu();
+    }}
     style={{transform:movement?'translate3d('+movement+'px,0,0)':undefined}}
-    data-swipe-to-reply="true">
+    data-swipe-to-reply="true" data-long-press-menu={Boolean(onOpenMenu)}>
     <span className="ik-swipe-reply-icon" aria-hidden="true" style={{
       opacity:Math.min(1,Math.abs(movement)/55),
       transform:'translateY(-50%) scale('+(.8+Math.min(1,Math.abs(movement)/55)*.2)+')'
