@@ -1581,10 +1581,10 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
  <button type="button" className="reaction-add" aria-label="Добавить реакцию" onClick={()=>setMessageReactionPicker(messageReactionPicker===message.id?null:message.id)}>☺ +</button>
  {messageReactionPicker===message.id&&<div className="reaction-picker">{REACTION_EMOJIS.map(emoji=><button type="button" key={emoji} disabled={sending} onClick={()=>void reactToMessage(message.id,emoji)} aria-label={"Реакция "+emoji}>{emoji}</button>)}</div>}
  </div></div></SwipeReplyMessage></Fragment>)}<div ref={messageEnd}/></div>
-      {showJumpToLatest&&!activeChatLoading&&<button type="button" className={"ik-jump-to-latest"+(replyingTo?.chatId===selected?" with-reply":"")} aria-label={newDirectMessagesBelow>0?'К последним сообщениям, новых: '+(newDirectMessagesBelow>99?'99+':newDirectMessagesBelow):'Перейти к последним сообщениям'} title="К последним сообщениям"
+      {showJumpToLatest&&!activeChatLoading&&<button type="button" className={"ik-jump-to-latest"+(replyingTo?.chatId===selected?" with-reply":"")} aria-label="Перейти к последним сообщениям" aria-describedby={newDirectMessagesBelow>0?'ik-direct-unseen-count':undefined} title="К последним сообщениям"
         onClick={()=>{const history=conversationHistoryRef.current;if(history){chatAutoScrollRef.current=true;history.scrollTop=history.scrollHeight;acknowledgeDirectIfVisible();}setNewDirectMessagesBelow(0);setShowJumpToLatest(false);}}>
         <svg viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m5 9 7 7 7-7"/></svg>
-        {newDirectMessagesBelow>0&&<span className="ik-direct-unseen-badge" aria-hidden="true">{newDirectMessagesBelow>99?'99+':newDirectMessagesBelow}</span>}
+        {newDirectMessagesBelow>0&&<span id="ik-direct-unseen-count" className="ik-direct-unseen-badge" aria-label={'Новых сообщений: '+(newDirectMessagesBelow>99?'99+':newDirectMessagesBelow)}>{newDirectMessagesBelow>99?'99+':newDirectMessagesBelow}</span>}
       </button>}
       {replyingTo?.chatId===selected&&<div className="ik-inline-reply" role="status">
         <div className="ik-inline-reply-mark" aria-hidden="true"/>
