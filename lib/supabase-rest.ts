@@ -218,13 +218,60 @@ export async function searchDirectMessages(
  });
 }
 
+// Every send uses a stable client UUID. The DB already has a unique
+// (sender_id,client_message_id) index, so a manual retry is idempotent.
+const DIRECT_SEND_UUID=/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
+type DirectSendRow=ChatMessage & {client_message_id?:string|null};
+function verifyDirectSend(
+  row:DirectSendRow|null|undefined,chatId:string,userId:string,body:string,
+  clientMessageId:string,replyToMessageId:string|null
+):ChatMessage{
+  if(!row||row.chat_id!==chatId||row.sender_id!==userId
+     ||row.client_message_id!==clientMessageId||row.body!==body
+     ||(row.reply_to_message_id??null)!==replyToMessageId){
+    throw Error('Не удалось подтвердить отправку именно этого сообщения.');
+  }
+  return row;
+}
+
+/** A lost HTTP response does not prove that an INSERT failed. Never
+ * automatically repeat the POST. A read-only RLS-scoped verification can
+ * recover a committed message, otherwise the caller retains its UUID for
+ * an explicit user-triggered retry.
+ */
 export async function postMessage(token: string, chatId: string, userId: string, body: string, clientMessageId: string = crypto.randomUUID(), replyToMessageId:string|null=null) {
-  void userId;
+  const trimmed=body.trim();
+  if(!DIRECT_SEND_UUID.test(chatId)||!DIRECT_SEND_UUID.test(userId)
+     ||!DIRECT_SEND_UUID.test(clientMessageId)
+     ||(replyToMessageId!==null&&!DIRECT_SEND_UUID.test(replyToMessageId))
+     ||!trimmed||trimmed.length>4000)throw Error('Некорректные параметры сообщения.');
   const endpoint=replyToMessageId?'/rest/v1/rpc/send_direct_reply':'/rest/v1/rpc/send_direct_message';
-  const payload={p_chat_id:chatId,p_body:body,p_client_message_id:clientMessageId};
-  const message=await http<ChatMessage>(endpoint,{token,method:'POST',body:replyToMessageId?{...payload,p_reply_to_message_id:replyToMessageId}:payload});
-  if(!message?.id)throw Error('Сообщение не сохранено');
-  return message;
+  const payload={p_chat_id:chatId,p_body:trimmed,p_client_message_id:clientMessageId};
+  let message:DirectSendRow;
+  try{
+    message=await http<DirectSendRow>(endpoint,{
+      token,method:'POST',body:replyToMessageId?{...payload,p_reply_to_message_id:replyToMessageId}:payload
+    });
+  }catch(error){
+    // Validation/permission failures are definite responses, not ambiguous
+    // lost network acknowledgments. Do not hide the underlying server error.
+    if(error instanceof SupabaseHttpError&&error.status>=400&&error.status<500
+       &&error.status!==408&&error.status!==429)throw error;
+    const lookup='/rest/v1/messages?select=id,chat_id,sender_id,body,created_at,media_path,media_type,read_at,reply_to_message_id,client_message_id'
+      +'&chat_id=eq.'+encodeURIComponent(chatId)
+      +'&sender_id=eq.'+encodeURIComponent(userId)
+      +'&client_message_id=eq.'+encodeURIComponent(clientMessageId)+'&limit=1';
+    try{
+      const rows=await http<DirectSendRow[]>(lookup,{token});
+      if(rows[0])return verifyDirectSend(rows[0],chatId,userId,trimmed,clientMessageId,replyToMessageId);
+    }catch(verificationError){
+      // A mismatched UUID must NEVER count as success.
+      if(verificationError instanceof Error&&verificationError.message.includes('именно этого сообщения'))
+        throw verificationError;
+    }
+    throw Error('Не удалось подтвердить отправку. Черновик сохранён — повтори вручную.');
+  }
+  return verifyDirectSend(message,chatId,userId,trimmed,clientMessageId,replyToMessageId);
 }
 
 export const DIRECT_MEDIA_FORMATS:Record<string,string>={
