@@ -97,6 +97,8 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
   const [showJumpToLatest,setShowJumpToLatest]=useState(false);
   const [replyingTo,setReplyingTo]=useState<{chatId:string;id:string;text:string;name:string}|null>(null);
   const [replyTargets,setReplyTargets]=useState<Record<string,ReplyTarget>>({});
+  const [locatingReply,setLocatingReply]=useState<string|null>(null);
+  const [pendingReplyJump,setPendingReplyJump]=useState<{chatId:string;id:string}|null>(null);
   const [email,setEmail]=useState('');
   const [emailSent,setEmailSent]=useState(false);
   const [busy,setBusy]=useState(false);
@@ -117,6 +119,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
   const draftsRef=useRef<ChatDrafts>({});
   const draftsOwnerRef=useRef('');
   const replyTargetsQueriedRef=useRef<Set<string>>(new Set());
+  const replyJumpRequestRef=useRef(0);
   const composerRef=useRef<HTMLTextAreaElement|null>(null);
 
   useEffect(()=>{
@@ -137,7 +140,12 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
     if(userId)writeChatDrafts(userId,next);
   }
 
-  useEffect(()=>{selectedRef.current=selected;setReplyingTo(null);setShowJumpToLatest(false);},[selected]);
+  useEffect(()=>{
+    selectedRef.current=selected;
+    replyJumpRequestRef.current+=1;
+    setLocatingReply(null);setPendingReplyJump(null);
+    setReplyingTo(null);setShowJumpToLatest(false);
+  },[selected,userId]);
   useEffect(()=>{replyTargetsQueriedRef.current.clear();setReplyTargets({});},[selected,userId]);
   // Quotations may refer to messages outside the newest page. Fetch only those
   // target IDs, under normal Supabase RLS; never cache quotes between accounts.
@@ -427,6 +435,12 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
     history.scrollTop=pending.top+(history.scrollHeight-pending.height);
     prependScrollRef.current=null;
   },[chatMessages.length,selected]);
+  // React must first commit the newly fetched page before we can scroll to
+  // a quoted source. The earlier effect restores the reader's scroll anchor.
+  useLayoutEffect(()=>{
+    if(!pendingReplyJump||pendingReplyJump.chatId!==selected)return;
+    if(scrollToHistoryMessage(pendingReplyJump.id))setPendingReplyJump(null);
+  },[pendingReplyJump,chatMessages,searchInConversation,messageSearch,selected]);
   useEffect(()=>{
     const history=conversationHistoryRef.current;
     if(!history||!chatAutoScrollRef.current)return;
@@ -555,28 +569,115 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
         setOlderMessagesError(true);
       }
     }finally{
-      loadingOlderRef.current=false;
-      if(selectedRef.current===chatId)setLoadingOlderMessages(false);
+      // An old chat request must not unlock a newly opened chat's pagination.
+      if(selectedRef.current===chatId){
+        loadingOlderRef.current=false;
+        setLoadingOlderMessages(false);
+      }
     }
   }
 
-  function jumpToOriginalMessage(id:string){
-    // scrollIntoView() can scroll the entire iPhone page and hide the composer.
-    // Only move the message history; never reposition the viewport or its parent.
+  function scrollToHistoryMessage(id:string):boolean{
+    // Never scroll the page itself: iOS Safari would hide the composer.
     const history=conversationHistoryRef.current;
     const original=history?.querySelector<HTMLElement>('#ik-chat-message-'+id);
-    if(original&&history){
-      const distance=original.getBoundingClientRect().top-history.getBoundingClientRect().top;
-      const centeredTop=history.scrollTop+distance-(history.clientHeight-original.offsetHeight)/2;
-      history.scrollTo({
-        top:Math.max(0,centeredTop),
-        behavior:window.matchMedia('(prefers-reduced-motion: reduce)').matches?'instant':'smooth'
-      });
-      original.classList.remove('ik-reply-target-flash');
-      void original.offsetWidth; // Restart highlight on repeated navigation.
-      original.classList.add('ik-reply-target-flash');
-    }else{
-      setNotice('Исходное сообщение находится в более ранней истории. Нажми «Показать предыдущие сообщения».');
+    if(!original||!history)return false;
+    chatAutoScrollRef.current=false;
+    const distance=original.getBoundingClientRect().top-history.getBoundingClientRect().top;
+    const centeredTop=history.scrollTop+distance-(history.clientHeight-original.offsetHeight)/2;
+    history.scrollTo({
+      top:Math.max(0,centeredTop),
+      behavior:window.matchMedia('(prefers-reduced-motion: reduce)').matches?'instant':'smooth'
+    });
+    original.classList.remove('ik-reply-target-flash');
+    void original.offsetWidth; // Restart highlight on repeated navigation.
+    original.classList.add('ik-reply-target-flash');
+    return true;
+  }
+
+  async function jumpToOriginalMessage(id:string){
+    if(!session||!selected||!userId||locatingReply)return;
+    const chatId=selected,token=session.access_token;
+    // Search must not hide the referenced message after it is loaded.
+    setSearchInConversation(false);setMessageSearch('');
+    if(chatMessages.some(message=>message.id===id)){
+      const hidden=chatMessages.some(message=>message.id===id&&message.deleted_for?.includes(userId));
+      if(hidden){setNotice('Исходное сообщение скрыто в твоей истории.');return;}
+      setPendingReplyJump({chatId,id});
+      return;
+    }
+    if(loadingOlderRef.current){
+      setNotice('Дождись окончания загрузки истории и нажми на цитату ещё раз.');
+      return;
+    }
+    const requestId=++replyJumpRequestRef.current;
+    loadingOlderRef.current=true;
+    chatAutoScrollRef.current=false;
+    setLoadingOlderMessages(true);setOlderMessagesError(false);setLocatingReply(id);
+    const history=conversationHistoryRef.current;
+    if(history)prependScrollRef.current={chatId,height:history.scrollHeight,top:history.scrollTop};
+    const stillInChat=()=>selectedRef.current===chatId&&replyJumpRequestRef.current===requestId;
+    try{
+      // First confirm that the original is still visible under the user's
+      // normal database RLS. Never search a different chat or hidden content.
+      const source=replyTargets[id]??(await listReplyTargets(token,chatId,[id]))[0];
+      if(!stillInChat())return;
+      if(!source){
+        prependScrollRef.current=null;
+        setNotice('Исходное сообщение удалено или больше недоступно.');
+        return;
+      }
+      let cursor=chatMessages[0];
+      let more=hasOlderMessages;
+      const loaded:ChatMessage[]=[];
+      let found=false;
+      // Bound each tap to five pages, instead of downloading an unbounded
+      // conversation. Another tap continues from the earliest loaded page.
+      for(let page=0;page<5&&more;page++){
+        const older=await listOlderMessages(token,chatId,cursor);
+        if(!stillInChat())return;
+        if(!older.length){more=false;break;}
+        loaded.push(...older);
+        cursor=older[older.length-1];
+        more=older.length===CHAT_MESSAGE_PAGE_SIZE;
+        if(older.some(message=>message.id===id)){found=true;break;}
+      }
+      if(loaded.length){
+        setChatMessages(current=>prependEarlierPage(current,loaded));
+        setHasOlderMessages(more);
+        // Keep reaction counts on fetched pages without creating a URL with
+        // hundreds of message IDs. Errors never interrupt quote navigation.
+        for(let offset=0;offset<loaded.length;offset+=CHAT_MESSAGE_PAGE_SIZE){
+          const ids=loaded.slice(offset,offset+CHAT_MESSAGE_PAGE_SIZE).map(message=>message.id);
+          void listMessageReactions(token,ids).then(reactions=>{
+            if(!stillInChat())return;
+            const batch=new Set(ids);
+            setMessageReactions(current=>[
+              ...current.filter(reaction=>!batch.has(reaction.message_id)),...reactions
+            ]);
+          }).catch(()=>{});
+        }
+      }else prependScrollRef.current=null;
+      if(found){
+        prependScrollRef.current=null;
+        setPendingReplyJump({chatId,id});
+      }else{
+        setNotice(more
+          ?'Загружены ранние сообщения. Нажми на цитату ещё раз, чтобы продолжить поиск.'
+          :'Исходное сообщение не найдено в доступной истории.');
+      }
+    }catch{
+      if(stillInChat()){
+        prependScrollRef.current=null;
+        setOlderMessagesError(true);
+        setNotice('Не удалось загрузить старые сообщения. Нажми на цитату ещё раз.');
+      }
+    }finally{
+      if(stillInChat()){
+        loadingOlderRef.current=false;
+        setLoadingOlderMessages(false);
+        setLocatingReply(null);
+      }
     }
   }
 
@@ -1022,7 +1123,8 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
           {!message.deleted_for_everyone&&message.reply_to_message_id&&<ReplyQuote
             target={messageById.get(message.reply_to_message_id)??replyTargets[message.reply_to_message_id]??null}
             senderName={!(messageById.get(message.reply_to_message_id)??replyTargets[message.reply_to_message_id])?'Исходное сообщение':((messageById.get(message.reply_to_message_id)??replyTargets[message.reply_to_message_id])?.sender_id===userId)?'Вы':active?.other?.display_name||active?.other?.username||'Собеседник'}
-            onJump={()=>jumpToOriginalMessage(message.reply_to_message_id!)}
+            onJump={()=>void jumpToOriginalMessage(message.reply_to_message_id!)}
+            loading={locatingReply===message.reply_to_message_id}
           />}{!message.deleted_for_everyone&&message.media_path&&message.media_type&&session&&<ChatMedia token={session.access_token} path={message.media_path} type={message.media_type}/>} {message.deleted_for_everyone?<span className="message-deleted">Сообщение удалено</span>:editingMessageId===message.id?<form className="message-edit-form" onSubmit={e=>{e.preventDefault();void messageAction(message.id,"edit",editingMessageBody);}}><input value={editingMessageBody} onChange={e=>setEditingMessageBody(e.target.value)} maxLength={4000}/><button type="submit">Сохранить</button><button type="button" onClick={()=>setEditingMessageId(null)}>Отмена</button></form>:message.body&&<span>{message.body}</span>}<time dateTime={message.created_at}>{message.edited_at&&!message.deleted_for_everyone&&<span className="message-edited-label" title="Сообщение отредактировано">изм. · </span>}{message.sender_id===userId&&<span className={"message-receipt"+(message.read_at?" read":"")} title={message.read_at?"Просмотрено":"Отправлено"}>{message.read_at?"✓✓":"✓"}</span>}{new Date(message.created_at).toLocaleTimeString('ru-RU',{hour:'2-digit',minute:'2-digit'})}</time></div><div className="chat-message-tools">{!message.deleted_for_everyone&&<button type="button" className="ik-message-menu-toggle" aria-label="Действия с сообщением" onClick={()=>{setMessageMenuId(message.id);setMessageReactionPicker(null);}}>···</button>}<div className="reaction-bar message-reaction-bar">
  {REACTION_EMOJIS.filter(emoji=>messageReactions.some(r=>r.message_id===message.id&&r.emoji===emoji)).map(emoji=><button key={emoji} type="button" className={"reaction-pill"+(messageReactions.some(r=>r.message_id===message.id&&r.user_id===userId&&r.emoji===emoji)?" mine":"")} onClick={()=>void reactToMessage(message.id,emoji)} disabled={sending}>{emoji} <span>{messageReactions.filter(r=>r.message_id===message.id&&r.emoji===emoji).length}</span></button>)}
  <button type="button" className="reaction-add" aria-label="Добавить реакцию" onClick={()=>setMessageReactionPicker(messageReactionPicker===message.id?null:message.id)}>☺ +</button>
