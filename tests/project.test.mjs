@@ -160,7 +160,7 @@ test('Presence statuses hide exact timestamps unless users opt in',()=>{
  assert.match(sql,/revoke all on function public.get_user_activity/);
  assert.match(activity,/activityLabel/);
  assert.match(shell,/changeActivityVisibility/);
- assert.match(shell,/Время последнего посещения/);
+ assert.match(shell,/Последняя активность/);
  assert.match(profile,/getUserActivities/);
 });
 test('Channels expose subscriber totals without private subscriber identities',()=>{
@@ -731,7 +731,7 @@ test('Telegram-like black profile and settings preserve working privacy and edit
  const css=load('app/globals.css');
  assert.match(app,/settings-panel ik-settings-redesign/);
  assert.match(app,/className="ik-settings-hero-avatar"/);
- assert.match(app,/className="ik-settings-privacy-group"/);
+ assert.match(app,/className="ik-settings-group ik-settings-privacy-group"/);
  assert.match(app,/className="ik-blocklist-toggle ik-settings-row"/);
  assert.match(app,/onClick=\{\(\)=>void toggleBlockedUser\(person\)\}/);
  assert.match(app,/onChange=\{e=>void changeActivityVisibility/);
