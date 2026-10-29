@@ -121,7 +121,13 @@ export default function ProfilePanel({token,userId,targetId,onBack,onOwnProfileC
   await run(async()=>{
    const updated=await updateFullProfile(token,userId,{featured_channel_id:next});
    if(updated.featured_channel_id!==next)throw Error("Канал не сохранился. Попробуй ещё раз.");
+   // Apply the confirmed value immediately: the linked channel is visible
+   // in the profile even if a subsequent profile refresh is slow or fails.
+   setProfile(updated);
+   setFeaturedChannel(next?ownedChannels.find(channel=>channel.id===next)??null:null);
+   setChosenChannelId(next??"");
    setPinningChannel(false);
+   onOwnProfileChange();
    setNotice(next?"Канал теперь отображается в профиле.":"Канал откреплён.");
   });
  }
