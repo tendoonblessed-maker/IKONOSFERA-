@@ -593,7 +593,8 @@ test('loaded chat pages survive message polls, actions and switching conversatio
  assert.match(shell,/const \[hasOlderMessages,setHasOlderMessages\]=useState\(false\)/);
  assert.match(shell,/const prependScrollRef=useRef/);
  assert.match(shell,/history\.scrollTop=pending\.top\+\(history\.scrollHeight-pending\.height\)/);
- assert.match(shell,/if\(selectedRef\.current!==chatId\)return/);
+ assert.match(shell,/if\(!stillInChat\(\)\)return/);
+ assert.match(shell,/chatContextGenerationRef\.current===generation/);
  assert.match(shell,/loadingOlderRef\.current=true/);
  assert.match(shell,/className="ik-chat-older-button"/);
  assert.match(shell,/Показать предыдущие сообщения/);
