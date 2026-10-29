@@ -1,10 +1,10 @@
 /* Stage 0 app-shell-only offline fallback. Never cache private chat content. */
-const CACHE_NAME = "ikonosfera-shell-v5";
+const CACHE_NAME = "ikonosfera-shell-v6";
 const OFFLINE_URL = "/offline.html";
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => cache.addAll([OFFLINE_URL, "/icon-192.png", "/status-emojis.webp"]))
+    caches.open(CACHE_NAME).then((cache) => cache.addAll([OFFLINE_URL, "/icon-192.png", "/status-emojis.webp?v=2"]))
   );
   self.skipWaiting();
 });
@@ -23,7 +23,7 @@ self.addEventListener("fetch", (event) => {
   const url = new URL(request.url);
   if (url.origin !== self.location.origin) return;
   if (url.pathname === "/status-emojis.webp") {
-    // The single 99KB atlas loads from the local cache after installation.
+    // The single 144KB corrected atlas loads from the local cache after installation.
     // This cache contains only public artwork, never user/profile/chat data.
     event.respondWith(caches.match(request).then(cached =>
       cached ?? fetch(request).then(async response => {

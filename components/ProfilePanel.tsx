@@ -28,6 +28,7 @@ export default function ProfilePanel({token,userId,targetId,onBack,onOwnProfileC
  const [statusPickerOpen,setStatusPickerOpen]=useState(false);
  const [profileContentTab,setProfileContentTab]=useState<'stories'|'photos'>('stories');
  const [name,setName]=useState("");const [username,setUsername]=useState("");const [bio,setBio]=useState("");
+ const [ageInput,setAgeInput]=useState("");
  const [editing,setEditing]=useState(false);
  const [visitorPreview,setVisitorPreview]=useState(false);
  const [usernameTouched,setUsernameTouched]=useState(false);
@@ -49,6 +50,7 @@ export default function ProfilePanel({token,userId,targetId,onBack,onOwnProfileC
   setFeaturedChannel(pinned);
   setChosenChannelId(p?.featured_channel_id??"");
   setName(p?.display_name||"");setUsername(p?.username||"");setBio(p?.bio||"");
+  setAgeInput(p?.age_years==null?"":String(p.age_years));
  },[token,targetId]);
  useEffect(()=>{let mounted=true;void reload().catch(e=>{if(mounted)setError(readableError(e));});return()=>{mounted=false;};},[reload]);
  useEffect(()=>{let mounted=true;const poll=()=>{if(document.visibilityState!=='visible')return;void getUserActivities(token,[targetId]).then(rows=>{if(mounted)setUserActivity(rows[targetId]||null);}).catch(()=>{});};poll();const timer=window.setInterval(poll,30000);return()=>{mounted=false;window.clearInterval(timer);};},[token,targetId]);
@@ -78,10 +80,14 @@ export default function ProfilePanel({token,userId,targetId,onBack,onOwnProfileC
   const validation=validateUsername(username);
   if(validation){setError(validation);return;}
   if(!name.trim()){setError("Имя не может быть пустым.");return;}
+  const requestedAge=ageInput.trim()===""?null:Number(ageInput);
+  if(requestedAge!==null&&(!Number.isInteger(requestedAge)||requestedAge<1||requestedAge>120)){
+    setError("Возраст должен быть целым числом от 1 до 120 или пустым.");return;
+  }
   await run(async()=>{
    try{await changeProfile(token,userId,username.trim().toLowerCase().replace(/^@/,""),name.trim());}
    catch(e){throw Error(explainProfileError(e));}
-   await updateFullProfile(token,userId,{bio:bio.trim()});
+   await updateFullProfile(token,userId,{bio:bio.trim(),age_years:requestedAge});
    onOwnProfileChange();setEditing(false);setNotice("Профиль обновлён.");
   });
  }
@@ -151,7 +157,9 @@ export default function ProfilePanel({token,userId,targetId,onBack,onOwnProfileC
           </button>
           :<StatusEmoji index={profile.status_emoji}/>}
        </div>
-       <p>@{profile.username}</p><p className={userActivity?.status==="в сети"?"ik-profile-activity ik-online-label":"ik-profile-activity"}>{activityLabel(userActivity)}</p>
+       <p>@{profile.username}</p>
+       {profile.age_years!==null&&Number.isInteger(profile.age_years)&&<p className="ik-profile-age">{profile.age_years} {profile.age_years%10===1&&profile.age_years%100!==11?"год":profile.age_years%10>=2&&profile.age_years%10<=4&&(profile.age_years%100<12||profile.age_years%100>14)?"года":"лет"}</p>}
+       <p className={userActivity?.status==="в сети"?"ik-profile-activity ik-online-label":"ik-profile-activity"}>{activityLabel(userActivity)}</p>
         {profile.bio&&<div className="profile-bio">{profile.bio}</div>}
         {!mine&&<div className="ik-profile-conversation-actions">
           <button type="button" className="accent-button profile-message-button" disabled={isBlocked} onClick={()=>onMessage(profile.username)}>{isBlocked?"Заблокирован":"Написать сообщение"}</button>
@@ -177,6 +185,13 @@ export default function ProfilePanel({token,userId,targetId,onBack,onOwnProfileC
      <h2>Редактирование профиля</h2><p className="profile-editor-intro">Измени информацию о себе и нажми «Сохранить изменения».</p>
      <label>Имя<input value={name} onChange={e=>setName(e.target.value)} maxLength={60} required/></label>
      <label>Юзернейм<input value={username} onChange={e=>{setUsername(e.target.value);setUsernameTouched(true);}} onBlur={()=>setUsernameTouched(true)} maxLength={48} aria-invalid={Boolean(usernameError)} aria-describedby="username-feedback" required/><small id="username-feedback" className={usernameError?"profile-field-error":"profile-field-hint"}>{usernameError||"От 3 до 24 символов: латинские буквы, цифры и _. Например, tendo888."}</small></label>
+     <label>Возраст (необязательно)
+       <input type="text" inputMode="numeric" autoComplete="off" value={ageInput}
+         onChange={e=>setAgeInput(e.target.value.replace(/[^0-9]/g,'').slice(0,3))}
+         onBlur={()=>setAgeInput(current=>current===""?"":String(Number(current)))}
+         placeholder="Например, 18" maxLength={3} aria-describedby="ik-profile-age-hint"/>
+       <small id="ik-profile-age-hint" className="profile-field-hint">От 1 до 120 лет. Будет виден другим пользователям. Оставь пустым, чтобы скрыть.</small>
+     </label>
      <label>О себе<textarea value={bio} onChange={e=>setBio(e.target.value)} maxLength={160} rows={3} placeholder="Расскажи немного о себе"/></label>
 
      <button className="accent-button" disabled={busy} type="submit">{busy?"Сохраняем…":"Сохранить изменения"}</button>

@@ -2052,7 +2052,7 @@ body{position:relative}
 .ik-status-emoji{
   display:inline-block;vertical-align:middle;
   width:20px;height:25px;flex:0 0 20px;
-  background-image:url('/status-emojis.webp');
+  background-image:url('/status-emojis.webp?v=2');
   background-size:1000% 500%;
   background-repeat:no-repeat;
   background-color:transparent;
