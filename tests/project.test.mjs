@@ -1100,7 +1100,7 @@ test('offline direct chats preserve drafts and resume polling immediately on rec
  assert.match(shell,/disabled=\{sending\|\|activePartnerBlocked\|\|!networkOnline\}/);
  assert.match(shell,/disabled=\{!draft\.trim\(\)\|\|sending\|\|activePartnerBlocked\|\|!networkOnline\}/);
  assert.match(shell,/aria-label="Написать сообщение" enterKeyHint="enter"/);
- assert.match(shell,/onChange=\{e=>\{setDraft\(e\.target\.value\);if\(selected\)updateChatDraft\(selected,e\.target\.value\);\}\}/);
+ assert.match(shell,/onChange=\{e=>\{setDraft\(e\.target\.value\);setDirectSendRetry\(null\);if\(selected\)updateChatDraft\(selected,e\.target\.value\);\}\}/);
  assert.match(drafts,/sessionStorage/);
  assert.match(shell,/!networkOnline&&<div className="ik-network-offline" role="status"/);
  assert.match(css,/\.ik-network-offline\{/);
