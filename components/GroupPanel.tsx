@@ -297,9 +297,20 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
    });
    // Clear the attempt only after DB acknowledgment and account/group guard.
    clearGroupSendAttempt(accountId,groupId,attempt.id);
-   setMessages(current=>mergeConfirmedGroupMessages(
-     current,confirmedGroupMessagesRef.current,groupId,accountId
-   ));
+   if(browsingOlderRef.current){
+     // Sending from an archived search result should return to the current
+     // conversation rather than append a new post to historical context.
+     browsingOlderRef.current=false;
+     followNewestRef.current=true;
+     latestGroupMessageRef.current=null;
+     setShowJumpToLatest(false);
+     setNewMessagesBelow(0);
+     void refresh().catch(e=>setError(e instanceof Error?e.message:'Ошибка обновления группы'));
+   }else{
+     setMessages(current=>mergeConfirmedGroupMessages(
+       current,confirmedGroupMessagesRef.current,groupId,accountId
+     ));
+   }
    // Do not wipe newer text typed while the server was saving the message.
    if(draftVersionRef.current===sentDraftVersion){
      draftVersionRef.current+=1;
