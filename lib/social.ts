@@ -45,7 +45,7 @@ export async function getFullProfile(token:string,userId:string):Promise<FullPro
   return rows[0]??null;
 }
 export async function updateFullProfile(token:string,userId:string,fields:Partial<Pick<FullProfile,"avatar_path"|"cover_path"|"bio"|"featured_channel_id"|"status_emoji"|"age_years">>):Promise<FullProfile>{
-  const rows=await api<FullProfile[]>("/rest/v1/profiles?select=id,username,display_name,bio,avatar_path,cover_path,featured_channel_id,status_emoji&id=eq."+encodeURIComponent(userId),token,"PATCH",fields);
+  const rows=await api<FullProfile[]>("/rest/v1/profiles?select=id,username,display_name,bio,avatar_path,cover_path,featured_channel_id,status_emoji,age_years&id=eq."+encodeURIComponent(userId),token,"PATCH",fields);
   if(!rows[0])throw Error("Профиль не найден");return rows[0];
 }
 export async function getProfilePhotos(token:string,userId:string):Promise<ProfilePhoto[]>{
