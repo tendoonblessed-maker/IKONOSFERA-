@@ -589,8 +589,8 @@ test('loaded chat pages survive message polls, actions and switching conversatio
  const shell=load('components/AppShell.tsx');
  const css=load('app/globals.css');
  assert.match(load('lib/chat-history.ts'),/export function mergeRecentPage/);
- assert.match(shell,/setChatMessages\(current=>mergeRecentPage\(current,messages,CHAT_MESSAGE_PAGE_SIZE\)\)/);
- assert.match(shell,/setChatMessages\(current=>mergeRecentPage\(current,updated,CHAT_MESSAGE_PAGE_SIZE\)\)/);
+ assert.match(shell,/setChatMessages\(current=>mergeConfirmedRecentPage\(/);
+ assert.match(shell,/current,updated,CHAT_MESSAGE_PAGE_SIZE,confirmedMessagesRef\.current,chatId,userId/);
  assert.match(shell,/const \[hasOlderMessages,setHasOlderMessages\]=useState\(false\)/);
  assert.match(shell,/const prependScrollRef=useRef/);
  assert.match(shell,/history\.scrollTop=pending\.top\+\(history\.scrollHeight-pending\.height\)/);
