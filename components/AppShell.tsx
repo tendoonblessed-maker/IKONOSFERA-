@@ -22,7 +22,7 @@ import { REACTION_EMOJIS, type ReactionEmoji, createChannel, imageUrl, listChann
 
 type Tab = 'chats' | 'contacts' | 'channels' | 'profile' | 'settings';
 type Platform = { ios: boolean; standalone: boolean };
-type ChatRow = { chat: DirectChat; other: Profile | null; preview:ChatPreview|null };
+type ChatRow = { chat: DirectChat; other: Profile | null; preview:ChatPreview|null; previewUnavailable?:boolean };
 function dayLabel(value:string):string{
  const date=new Date(value),now=new Date();
  if(date.toDateString()===now.toDateString())return 'Сегодня';
@@ -111,6 +111,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
   const prependScrollRef=useRef<{chatId:string;height:number;top:number}|null>(null);
   const selectedRef=useRef<string|null>(null);
   const searchInputRef=useRef<HTMLInputElement|null>(null);
+  const previewCacheRef=useRef<Map<string,ChatPreview>>(new Map());
   const draftsRef=useRef<ChatDrafts>({});
   const draftsOwnerRef=useRef('');
   const composerRef=useRef<HTMLTextAreaElement|null>(null);
@@ -184,19 +185,29 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
     return ()=>window.removeEventListener('beforeinstallprompt',onInstall);
   },[]);
 
+  const loadInboxPreviews=useCallback(async(token:string)=>{
+    try{
+      const rows=await listChatPreviews(token);
+      previewCacheRef.current=new Map(rows.map(item=>[item.chat_id,item]));
+      return {overview:previewCacheRef.current,failed:false};
+    }catch{
+      // Intermittent preview endpoint errors must not erase last-message text.
+      return {overview:previewCacheRef.current,failed:true};
+    }
+  },[]);
   const refresh=useCallback(async (token:string,id:string,activeChat:string|null)=>{
     // Start slow discovery in parallel, but never delay the inbox on those calls.
     const extrasPromise=Promise.all([
       listChannels(token),listMySubscriptions(token,id),listGroups(token),
       listGroupOverviews(token),listSavedContacts(token,id),listBlockedUsers(token,id)
     ]).catch(()=>null);
-    const [chats,previews]=await Promise.all([
-      listChats(token),listChatPreviews(token).catch(()=>[] as ChatPreview[])
+    const [chats,previewResult]=await Promise.all([
+      listChats(token),loadInboxPreviews(token)
     ]);
     const chatPartnerIds=Array.from(new Set(chats.map(chat=>chat.user_a===id?chat.user_b:chat.user_a)));
     const chatProfiles=await listProfiles(token,chatPartnerIds);
     const chatById=new Map(chatProfiles.map(person=>[person.id,person]));
-    const overview=new Map(previews.map(preview=>[preview.chat_id,preview]));
+    const overview=previewResult.overview;
     setRows(chats.filter(chat=>!chat.hidden_for?.includes(id))
       .sort((a,b)=>{
         const pinned=Number(Boolean(b.pinned_for?.includes(id)))-Number(Boolean(a.pinned_for?.includes(id)));
@@ -204,7 +215,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
         return Date.parse(overview.get(b.id)?.last_created_at||b.created_at)
           -Date.parse(overview.get(a.id)?.last_created_at||a.created_at);
       })
-      .map(chat=>({chat,other:chatById.get(chat.user_a===id?chat.user_b:chat.user_a)??null,preview:overview.get(chat.id)??null})));
+      .map(chat=>({chat,other:chatById.get(chat.user_a===id?chat.user_b:chat.user_a)??null,preview:overview.get(chat.id)??null,previewUnavailable:previewResult.failed&&!overview.has(chat.id)})));
     // Chat list may now render, even if discovery or membership queries are slow.
     setLoading(false);
     const extras=await extrasPromise;
@@ -223,18 +234,18 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
       .then(counts=>setSubscriberCounts(counts)).catch(()=>{});
     void activeChat;
 
-  },[]);
+  },[loadInboxPreviews]);
 
   // Fast inbox refresh: keep channels, group feeds and contacts out of the
   // high-frequency path. Their full state is synced separately at a slower cadence.
   const refreshInbox=useCallback(async(token:string,id:string)=>{
-    const [chats,previews]=await Promise.all([
-      listChats(token),listChatPreviews(token).catch(()=>[] as ChatPreview[])
+    const [chats,previewResult]=await Promise.all([
+      listChats(token),loadInboxPreviews(token)
     ]);
     const others=Array.from(new Set(chats.map(chat=>chat.user_a===id?chat.user_b:chat.user_a)));
     const profiles=await listProfiles(token,others);
     const byId=new Map(profiles.map(person=>[person.id,person]));
-    const overview=new Map(previews.map(preview=>[preview.chat_id,preview]));
+    const overview=previewResult.overview;
     setRows(chats.filter(chat=>!chat.hidden_for?.includes(id))
       .sort((a,b)=>{
         const pinned=Number(Boolean(b.pinned_for?.includes(id)))-Number(Boolean(a.pinned_for?.includes(id)));
@@ -242,8 +253,8 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
         return Date.parse(overview.get(b.id)?.last_created_at||b.created_at)
           -Date.parse(overview.get(a.id)?.last_created_at||a.created_at);
       })
-      .map(chat=>({chat,other:byId.get(chat.user_a===id?chat.user_b:chat.user_a)??null,preview:overview.get(chat.id)??null})));
-  },[]);
+      .map(chat=>({chat,other:byId.get(chat.user_a===id?chat.user_b:chat.user_a)??null,preview:overview.get(chat.id)??null,previewUnavailable:previewResult.failed&&!overview.has(chat.id)})));
+  },[loadInboxPreviews]);
 
   useEffect(()=>{
     if(!selected||!session?.access_token||!userId)return;
@@ -669,7 +680,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
     }catch(e){setError(userFacingError(e));}
     finally{setSending(false);}
   }
-  async function logout(){if(!session)return;if(anonymous&&!window.confirm('Это временный аккаунт. После выхода восстановить его нельзя. Выйти?'))return;setBusy(true);try{await signOut(session.access_token);}catch(e){setError(userFacingError(e));}finally{clearChatDrafts(userId);draftsOwnerRef.current='';draftsRef.current={};setDraftPreviews({});setDraft('');clearSession();setSession(null);setUserId('');setProfile(null);setAnonymous(false);setRows([]);setSavedContacts([]);setBlockedUsers([]);setSelected(null);setProfileTarget(null);setSelectedChannel(null);setChannels([]);setChatMessages([]);setBusy(false);}}
+  async function logout(){if(!session)return;if(anonymous&&!window.confirm('Это временный аккаунт. После выхода восстановить его нельзя. Выйти?'))return;setBusy(true);try{await signOut(session.access_token);}catch(e){setError(userFacingError(e));}finally{clearChatDrafts(userId);draftsOwnerRef.current='';draftsRef.current={};setDraftPreviews({});setDraft('');previewCacheRef.current.clear();clearSession();setSession(null);setUserId('');setProfile(null);setAnonymous(false);setRows([]);setSavedContacts([]);setBlockedUsers([]);setSelected(null);setProfileTarget(null);setSelectedChannel(null);setChannels([]);setChatMessages([]);setBusy(false);}}
   async function install(){if(installPrompt){await installPrompt.prompt();await installPrompt.userChoice;setInstallPrompt(null);}else setInstallHelp(true);}
   const storyContacts=useMemo(()=>{
     const byId=new Map<string,Profile>();
