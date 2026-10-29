@@ -138,3 +138,10 @@ test('older search results cannot silently count as read before latest page is r
  assert.match(panel,/useLayoutEffect\(\(\)=>\{\n  const history=historyRef\.current;\n  if\(history&&followNewestRef\.current\)\{/);
  assert.match(panel,/acknowledgeLatestIfVisible\(\)/);
 });
+
+test('sending a new post from an archival result restores the current group timeline',()=>{
+ const panel=read('components/GroupPanel.tsx');
+ assert.match(panel,/if\(browsingOlderRef\.current\)\{\n     \/\/ Sending from an archived search result/);
+ assert.match(panel,/browsingOlderRef\.current=false;\n     followNewestRef\.current=true;\n     latestGroupMessageRef\.current=null;/);
+ assert.match(panel,/void refresh\(\)\.catch\(e=>setError/);
+});
