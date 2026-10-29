@@ -3,6 +3,7 @@ import {useCallback,useEffect,useRef,useState,type FormEvent} from 'react';
 import {groupMessages,sendGroupMessage,groupMembers,markGroupRead,type Group,type GroupMessage} from '@/lib/groups';
 import {listProfiles,type Profile} from '@/lib/supabase-rest';
 import StatusEmoji from '@/components/StatusEmoji';
+import ChatMessageText from '@/components/ChatMessageText';
 import {getUserActivities,activityLabel,type UserActivity} from '@/lib/activity';
 import {imageUrl} from '@/lib/social';
 import {readGroupDrafts} from '@/lib/group-drafts';
@@ -186,7 +187,7 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
   <p>Проверь подключение. Сообщения не удалены.</p>
   <button type="button" onClick={()=>{setError('');setInitialLoading(true);void refresh().catch(e=>{setInitialLoading(false);setError(e instanceof Error?e.message:'Ошибка загрузки');});}}>Попробовать снова</button>
  </div>}
- {messages.map(m=><article key={m.id} className={'bubble '+(m.sender_id===userId?'mine':'theirs')}><strong className="group-author ik-name-with-status"><span>{m.sender_id===userId?'Вы':names[m.sender_id]||'Участник'}</span><StatusEmoji index={memberById.get(m.sender_id)?.status_emoji} decorative/></strong><div>{m.body}</div><time>{new Date(m.created_at).toLocaleTimeString('ru-RU',{hour:'2-digit',minute:'2-digit'})}</time></article>)}</div>
+ {messages.map(m=><article key={m.id} className={'bubble '+(m.sender_id===userId?'mine':'theirs')}><strong className="group-author ik-name-with-status"><span>{m.sender_id===userId?'Вы':names[m.sender_id]||'Участник'}</span><StatusEmoji index={memberById.get(m.sender_id)?.status_emoji} decorative/></strong><div><ChatMessageText text={m.body}/></div><time>{new Date(m.created_at).toLocaleTimeString('ru-RU',{hour:'2-digit',minute:'2-digit'})}</time></article>)}</div>
  <form ref={composerFormRef} className="composer ik-group-composer" onSubmit={send}>
  <textarea aria-label="Сообщение группе" placeholder={online?"Сообщение группе…":"Нет сети · черновик сохранён"} rows={1} enterKeyHint="enter" maxLength={4000} value={draft}
  onChange={e=>{changeDraft(e.target.value);if(error)setError('');}}
