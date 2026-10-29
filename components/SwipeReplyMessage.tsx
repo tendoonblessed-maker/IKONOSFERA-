@@ -17,7 +17,7 @@ const HOLD_MOVE_TOLERANCE_PX=12;
 /** MIT react-swipeable gesture with iOS vertical scroll and long-press actions. */
 export default function SwipeReplyMessage({children,className,disabled=false,onReply,onOpenMenu}:Props){
   const [movement,setMovement]=useState(0);
-  const holdTimer=useRef<ReturnType<typeof setTimeout>|null>(null);
+  const holdTimer=useRef<number|null>(null);
   const touchOrigin=useRef<{x:number;y:number}|null>(null);
   const wasHeld=useRef(false);
 
