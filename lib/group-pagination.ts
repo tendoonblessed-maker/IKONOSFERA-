@@ -7,8 +7,15 @@ const TIMESTAMP=/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?(?:Z|[+-]\d{2
 export const GROUP_OLDER_PAGE_SIZE=70;
 export const GROUP_HISTORY_MAX_LOADED=1500;
 
+function subMillisecondFraction(timestamp:string):number{
+ const part=/\\.(\\d{1,6})/.exec(timestamp)?.[1]??'';
+ return Number(part.padEnd(6,'0'));
+}
 export function compareGroupMessages(a:GroupMessage,b:GroupMessage):number{
- return a.created_at.localeCompare(b.created_at)||a.id.localeCompare(b.id);
+ const milli=Date.parse(a.created_at)-Date.parse(b.created_at);
+ if(milli!==0)return milli;
+ const fraction=subMillisecondFraction(a.created_at)-subMillisecondFraction(b.created_at);
+ return fraction||a.id.localeCompare(b.id);
 }
 /** A stable cursor includes ID: many messages can have the same timestamp. */
 export function olderGroupMessagesPath(groupId:string,oldest:Pick<GroupMessage,'created_at'|'id'>):string{
