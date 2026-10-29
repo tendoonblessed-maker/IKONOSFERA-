@@ -789,7 +789,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
               <span className="ik-settings-hero-details">
                 <span className="ik-settings-hero-name ik-name-with-status"><strong>{profile?.display_name||"Мой профиль"}</strong><StatusEmoji index={profile?.status_emoji} decorative/></span>
                 <span className="ik-settings-hero-username">@{profile?.username||'профиль'}</span>
-                <span className="ik-settings-hero-presence"><span aria-hidden="true"/>Мой аккаунт</span>
+                <span className={"ik-settings-hero-presence"+(userActivities[userId]?.status==='в сети'?" is-online":"")}><span aria-hidden="true"/>{userActivities[userId]?.status==='в сети'?"В сети":"Мой аккаунт"}</span>
               </span>
               <span className="ik-settings-chevron" aria-hidden="true">›</span>
             </button>
