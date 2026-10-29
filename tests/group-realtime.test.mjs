@@ -82,7 +82,7 @@ test('group realtime never renders WebSocket payload or stores another user sess
  assert.match(panel,/window\.setInterval\(sync,6000\)/);
  assert.match(panel,/window\.addEventListener\('online',onOnline\)/);
  assert.match(panel,/unsubscribeRealtime\(\)/);
- assert.match(panel,/const sent=await sendGroupMessage\(requestToken,groupId,accountId,body\)/);
+ assert.match(panel,/const sent=await sendGroupMessage\(requestToken,groupId,accountId,body,attempt\.id\)/);
  assert.doesNotMatch(panel.slice(panel.indexOf('async function send('),panel.indexOf('const names=')),/await refresh\(/);
  assert.match(panel,/mergeConfirmedGroupMessages\(/);
  assert.match(api,/if\(!rows\[0\]\?\.id\|\|rows\[0\]\.group_id!==id\|\|rows\[0\]\.sender_id!==userId\)/);
