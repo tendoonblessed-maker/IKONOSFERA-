@@ -573,10 +573,12 @@ test('new incoming messages never force scrolling when reading chat history',()=
 test('temporary Supabase outages never silently erase a valid saved session',()=>{
  const auth=load('lib/supabase-rest.ts');
  assert.match(auth,/class SupabaseHttpError extends Error/);
- assert.match(auth,/let sessionRefreshPromise:Promise<Session\|null>\|null=null/);
- assert.match(auth,/if\(sessionRefreshPromise\)return sessionRefreshPromise/);
+ assert.match(auth,/let sessionRefreshPromise:PendingRefresh\|null=null/);
+ assert.match(auth,/sessionRefreshPromise\?\.refreshToken===s\.refresh_token/);
+ assert.match(auth,/sessionRefreshPromise\.generation===generation/);
  assert.match(auth,/if\(error instanceof SupabaseHttpError&&\[400,401,403\]\.includes\(error\.status\)\)/);
- assert.match(auth,/if\(loadSession\(\)\?\.refresh_token===s\.refresh_token\)clearSession\(\)/);
+ assert.match(auth,/if\(sessionGeneration===generation&&loadSession\(\)\?\.refresh_token===s\.refresh_token\)/);
+ assert.match(auth,/if\(sessionRefreshPromise===pending\)sessionRefreshPromise=null/);
  assert.match(auth,/throw error;/);
  assert.ok(!auth.includes('catch { clearSession(); return null; }'));
 });
