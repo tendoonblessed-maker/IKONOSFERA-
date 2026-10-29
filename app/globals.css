@@ -3640,3 +3640,12 @@ body{position:relative}
  .ik-group-older-control{padding-top:10px}
  .ik-group-older-control button{min-height:44px}
 }
+
+/* Direct chats: new incoming messages while browsing older history. */
+.messenger.is-authenticated .ik-direct-unseen-badge{
+  position:absolute;top:-9px;right:-9px;min-width:21px;height:21px;
+  padding:0 5px;border-radius:11px;display:flex;align-items:center;justify-content:center;
+  box-sizing:border-box;background:#222;color:#fff;border:2px solid #fff;
+  font-size:11px;font-weight:800;line-height:1;font-variant-numeric:tabular-nums;
+  box-shadow:0 2px 8px #0002;pointer-events:none;
+}
