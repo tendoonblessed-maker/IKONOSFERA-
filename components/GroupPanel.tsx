@@ -114,7 +114,6 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
   ));
   setInitialLoading(false);
   latestGroupMessageRef.current=msgs.length?msgs[msgs.length-1].id:null;
-  acknowledgeLatestIfVisible();
  },[token,group.id,userId,acknowledgeLatestIfVisible]);
  useEffect(()=>{
   let cancelled=false;
@@ -255,10 +254,14 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
   const timer=window.setInterval(updateMembers,120000);
   return()=>{cancelled=true;window.clearInterval(timer);};
  },[token,group.id]);
- useEffect(()=>{
+ useLayoutEffect(()=>{
   const history=historyRef.current;
-  if(history&&followNewestRef.current)history.scrollTop=history.scrollHeight;
- },[messages.length,initialLoading]);
+  if(history&&followNewestRef.current){
+   history.scrollTop=history.scrollHeight;
+   // Only acknowledge after the new messages have been painted into history.
+   acknowledgeLatestIfVisible();
+  }
+ },[messages,initialLoading,acknowledgeLatestIfVisible]);
  useEffect(()=>{
   const previous=previousMessageIdsRef.current;
   if(previous.groupId!==group.id||previous.ownerId!==userId){
@@ -355,7 +358,8 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
    if(!history)return;
    browsingOlderRef.current=false;
    followNewestRef.current=true;
-   history.scrollTop=history.scrollHeight;
+   // The old context is not the latest page. Do not acknowledge it.
+   latestGroupMessageRef.current=null;
    void refresh().catch(e=>setError(e instanceof Error?e.message:'Ошибка загрузки новых сообщений'));
    setShowJumpToLatest(false);
    setNewMessagesBelow(0);
