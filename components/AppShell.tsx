@@ -1021,6 +1021,8 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
     const active=rows.find(r=>r.chat.id===selected);
   const activePartnerId=active?.other?.id??null;
   const activePartnerBlocked=Boolean(activePartnerId&&blockedUserIds.has(activePartnerId));
+  const canPrepareAttachment=Boolean(active&&session&&userId&&!activePartnerBlocked
+    &&!profileTarget&&!selectedGroup&&!selectedChannel&&!selectedBot);
   const menuMessage=chatMessages.find(message=>message.id===messageMenuId)||null;
   useEffect(()=>{
     if(!messageMenuId)return;
@@ -1249,7 +1251,44 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
   <button type="button" aria-label="Настройки" aria-current={tab==='settings'||tab==='profile'?'page':undefined} className={tab==='settings'||tab==='profile'?'current':''} onClick={()=>switchTab('settings')}><span className="nav-art">{imageUrl(profile?.avatar_path)?<img className="nav-profile-avatar" src={imageUrl(profile?.avatar_path)||''} alt=""/>:<svg viewBox="0 0 28 28" width="25" height="25" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="14" cy="9" r="5"/><path d="M5 25v-2c0-5 4-8 9-8s9 3 9 8v2"/></svg>}</span><span className="nav-label">Настройки</span></button>
 </nav>
     </aside>
-    <main className={`conversation-pane ${detailOpen?'open':''}`}>
+    <main className={`conversation-pane ${detailOpen?'open':''}${attachmentDragActive?' ik-attachment-dragging':''}`}
+      onPaste={event=>{
+        if(!canPrepareAttachment||sending)return;
+        const target=event.target;
+        if(target instanceof Element&&target.closest('input,textarea,[contenteditable="true"]')
+          &&target!==composerRef.current)return;
+        const pasted=Array.from(event.clipboardData.items)
+          .find(item=>item.kind==='file'&&item.type.startsWith('image/'))?.getAsFile();
+        if(!pasted)return;
+        event.preventDefault();
+        queueAttachment(pasted);
+      }}
+      onDragEnter={event=>{
+        if(!canPrepareAttachment||sending||!Array.from(event.dataTransfer.types).includes('Files'))return;
+        event.preventDefault();attachmentDragDepthRef.current+=1;
+        setAttachmentDragActive(true);
+      }}
+      onDragOver={event=>{
+        if(!canPrepareAttachment||sending||!Array.from(event.dataTransfer.types).includes('Files'))return;
+        event.preventDefault();event.dataTransfer.dropEffect='copy';
+      }}
+      onDragLeave={event=>{
+        if(!attachmentDragDepthRef.current)return;
+        event.preventDefault();
+        attachmentDragDepthRef.current=Math.max(0,attachmentDragDepthRef.current-1);
+        if(attachmentDragDepthRef.current===0)setAttachmentDragActive(false);
+      }}
+      onDrop={event=>{
+        if(!canPrepareAttachment||!Array.from(event.dataTransfer.types).includes('Files'))return;
+        event.preventDefault();attachmentDragDepthRef.current=0;setAttachmentDragActive(false);
+        if(sending)return;
+        const files=Array.from(event.dataTransfer.files);
+        queueAttachment(files[0]);
+        if(files.length>1)setNotice('Сейчас можно отправлять по одному вложению за раз.');
+      }}>
+      {attachmentDragActive&&canPrepareAttachment&&<div className="ik-attachment-drop-overlay" aria-hidden="true">
+        <span>Отпусти файл, чтобы добавить в сообщение</span>
+      </div>}
       {selectedBot&&loggedIn?<BotsPanel userId={userId} bot={selectedBot} onBack={()=>setSelectedBot(null)}/>:
       selectedGroup&&session&&loggedIn?<GroupPanel key={selectedGroup.id} token={session.access_token} userId={userId} group={selectedGroup} onBack={()=>setSelectedGroup(null)} onShowProfile={id=>{setSelectedGroup(null);goToProfile(id);}}/>:
       profileTarget&&session&&loggedIn?<ProfilePanel key={profileTarget} token={session.access_token} userId={userId} targetId={profileTarget} onBack={()=>{setProfileTarget(null);if(tab==='profile')setTab('chats');}} onOwnProfileChange={()=>{void myProfile(session.access_token,userId).then(setProfile).catch(()=>{});}} onMessage={openDirectFromProfile} isBlocked={blockedUserIds.has(profileTarget)} onBlockUser={id=>void toggleProfileBlock(id)} onOpenChannel={channel=>{setProfileTarget(null);setSelected(null);setSelectedChannel(channel);setTab("channels");}}/>:
@@ -1322,7 +1361,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
         <div className="ik-inline-reply-copy"><strong>Ответ для {replyingTo.name}</strong><span>{replyingTo.text}</span></div>
         <button type="button" onClick={()=>setReplyingTo(null)} aria-label="Отменить ответ">✕</button>
       </div>}
-      <form className="composer" onSubmit={sendMessage}><label className="chat-attach-button" title="Прикрепить фото, видео, музыку или файл" aria-label="Прикрепить файл"><svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M20.5 11.5 12.3 19.7a5.4 5.4 0 0 1-7.7-7.7L13 3.6a3.6 3.6 0 0 1 5.1 5.1l-8.7 8.7a1.8 1.8 0 0 1-2.6-2.6l7.7-7.7"/></svg><input type="file" accept="image/*,video/mp4,video/webm,video/quicktime,audio/mpeg,audio/mp4,audio/wav,audio/ogg,.pdf,.txt,.zip,.doc,.docx,.xls,.xlsx" disabled={sending||activePartnerBlocked||!networkOnline} onChange={e=>{void sendAttachment(e.target.files?.[0]);e.target.value="";}}/></label><textarea ref={composerRef} aria-label="Написать сообщение" enterKeyHint="enter" placeholder={activePartnerBlocked?"Вы заблокировали пользователя":"Сообщение…"} rows={1} disabled={activePartnerBlocked} value={draft} onChange={e=>{setDraft(e.target.value);if(selected)updateChatDraft(selected,e.target.value);}} onInput={e=>{const element=e.currentTarget;element.style.height='auto';element.style.height=Math.min(element.scrollHeight,136)+'px';}} onKeyDown={e=>{
+      <form className="composer" onSubmit={sendMessage}><label className="chat-attach-button" title="Прикрепить фото, видео, музыку или файл" aria-label="Прикрепить файл"><svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M20.5 11.5 12.3 19.7a5.4 5.4 0 0 1-7.7-7.7L13 3.6a3.6 3.6 0 0 1 5.1 5.1l-8.7 8.7a1.8 1.8 0 0 1-2.6-2.6l7.7-7.7"/></svg><input type="file" accept="image/*,video/mp4,video/webm,video/quicktime,audio/mpeg,audio/mp4,audio/wav,audio/ogg,.pdf,.txt,.zip,.doc,.docx,.xls,.xlsx" disabled={sending||activePartnerBlocked||!networkOnline} onChange={e=>{queueAttachment(e.target.files?.[0]);e.target.value="";}}/></label><textarea ref={composerRef} aria-label="Написать сообщение" enterKeyHint="enter" placeholder={activePartnerBlocked?"Вы заблокировали пользователя":"Сообщение…"} rows={1} disabled={activePartnerBlocked} value={draft} onChange={e=>{setDraft(e.target.value);if(selected)updateChatDraft(selected,e.target.value);}} onInput={e=>{const element=e.currentTarget;element.style.height='auto';element.style.height=Math.min(element.scrollHeight,136)+'px';}} onKeyDown={e=>{
         // On iOS/Android the Return key must create a newline, not send the
         // message unexpectedly. Hardware-keyboard users retain Enter-to-send.
         const softKeyboard=/iPhone|iPad|iPod|Android/i.test(navigator.userAgent)
@@ -1336,6 +1375,14 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
        <div className="ik-chat-loading"><div className="ik-chat-loading-bubble incoming"/><div className="ik-chat-loading-bubble incoming short"/><div className="ik-chat-loading-bubble outgoing"/><span className="ik-chat-loading-label"><span className="ik-chat-loading-spinner" aria-hidden="true"/>Загружаем переписку…</span></div>
      </div>:<div className="conversation-placeholder">{!loggedIn&&<div className="guest-brand"><img src="/branding/ikonosfera-wordmark.svg" alt="IKONOSFERA" width={250} height={108}/><span>© BY TENDO888</span></div>}{loggedIn&&<div className="welcome-mark" aria-hidden="true">IKONOSFERA<span> / DESKTOP</span></div>}<h2>{loggedIn?'Твои разговоры начинаются здесь':emailSent?'Остался один шаг':'Больше чем просто мессенджер'}</h2><p>{loggedIn?'Выбери переписку слева или найди человека по юзернейму.':emailSent?'Открой письмо и перейди по ссылке Sign in.':'IKONOSFERA — современный мессенджер для Android, iPhone, macOS и Windows. Работает без VPN и ограничений!'}</p>{loggedIn&&<div className="desktop-welcome-actions"><button type="button" className="accent-button" onClick={()=>switchTab('contacts')}>＋ Найти человека</button><button type="button" className="secondary-action" onClick={()=>switchTab('channels')}>Открыть каналы</button></div>}{!loggedIn&&(backendReady?<div className="auth-panel"><h3>{emailSent?'Проверь почту':'Войти или зарегистрироваться'}</h3>{!emailSent?<form onSubmit={requestSignInLink}><label htmlFor="authEmail">Электронная почта</label><input id="authEmail" type="email" autoComplete="email" value={email} onChange={e=>setEmail(e.target.value)} placeholder="you@example.com" required/><button className="accent-button" disabled={busy}>{busy?'Отправляем…':'Получить ссылку для входа'}</button></form>:<div className="email-signin-result"><div className="email-signin-guide" role="status"><strong>Письмо отправлено на {email}</strong><p>Открой почту и найди письмо от <b>Supabase Auth</b> с темой <b>Your sign-in link</b>.</p><p>Нажми синюю ссылку <b>Sign in</b> («Войти»). После перехода IKONOSFERA откроется с твоим аккаунтом.</p><small>Если письма нет, проверь «Спам». Ссылка одноразовая; вводить код не требуется.</small></div><button type="button" className="text-button" onClick={()=>{setEmailSent(false);setError('');}}>Использовать другой адрес</button></div>}<div className="temporary-login"><button type="button" className="secondary-action" onClick={()=>void beginTemporaryAccount()} disabled={busy}>Попробовать без почты — тестовый аккаунт</button><p>Бесплатный тестовый вход. Для работы требуется включить Anonymous Sign-Ins в Supabase. Не используй реальные личные данные.</p></div></div>:<div className="setup-notice"><strong>Подключаем сообщения</strong><p>Сервер переписки ещё не настроен. Как только будет подключена база, здесь появится вход.</p></div>)}</div>}
     </main>
+    {pendingAttachment?.chatId===selected&&pendingAttachment.ownerId===userId
+      &&canPrepareAttachment&&<ChatAttachmentPreview
+        file={pendingAttachment.file} caption={attachmentCaption}
+        sending={sending||!networkOnline}
+        onCaptionChange={setAttachmentCaption}
+        onCancel={()=>{setPendingAttachment(null);setAttachmentCaption('');}}
+        onSend={()=>{void sendAttachment(pendingAttachment.file,attachmentCaption);}}
+      />}
     {menuMessage&&<div className="ik-message-menu-backdrop" onClick={()=>setMessageMenuId(null)}>
       <div className="ik-message-menu-sheet" role="dialog" aria-modal="true" aria-label="Действия с сообщением" onClick={e=>e.stopPropagation()}>
         <div className="ik-message-menu-preview">
