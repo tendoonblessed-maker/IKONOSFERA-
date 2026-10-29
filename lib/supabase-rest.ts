@@ -5,7 +5,7 @@ const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? '';
 export const backendReady = Boolean(apiUrl && anonKey);
 
 export type Session = { access_token: string; refresh_token: string; expires_at: number };
-export type Profile = { id: string; username: string; display_name: string; avatar_path?: string|null; cover_path?: string|null; bio?: string; status_emoji?:number|null };
+export type Profile = { id: string; username: string; display_name: string; avatar_path?: string|null; cover_path?: string|null; bio?: string; status_emoji?:number|null; age_years?:number|null };
 export type DirectChat = { id: string; user_a: string; user_b: string; created_at: string; hidden_for?:string[]; pinned_for?:string[] };
 export type ChatMessage = { id: string; chat_id: string; sender_id: string; body: string; created_at: string; media_path: string|null; media_type: "image"|"video"|"audio"|"file"|null; read_at: string|null; edited_at?:string|null; deleted_for?:string[]; deleted_for_everyone?:boolean };
 const STORAGE = 'ikonosfera-session-v1';
@@ -152,7 +152,7 @@ export async function deleteContact(token:string,ownerId:string,contactId:string
 
 export async function listProfiles(token: string, ids: string[]) {
   if (!ids.length) return [];
-  return http<Profile[]>(`/rest/v1/profiles?select=id,username,display_name,avatar_path,cover_path,bio,status_emoji&id=in.(${ids.map(encodeURIComponent).join(',')})`,{token});
+  return http<Profile[]>(`/rest/v1/profiles?select=id,username,display_name,avatar_path,cover_path,bio,status_emoji,age_years&id=in.(${ids.map(encodeURIComponent).join(',')})`,{token});
 }
 export const CHAT_MESSAGE_PAGE_SIZE=100;
 const CHAT_MESSAGE_COLUMNS='id,chat_id,sender_id,body,created_at,media_path,media_type,read_at,edited_at,deleted_for,deleted_for_everyone';
