@@ -68,7 +68,7 @@ test('both the full and lightweight inbox discard older responses and avoid stal
  assert.match(shell,/const groupRequest=\+\+groupOverviewRequestRef\.current/);
  assert.match(shell,/isLatestAccountSnapshot\(groupRequest,groupOverviewRequestRef\.current,id,inboxOwnerRef\.current\)/);
  assert.match(shell,/isLatestAccountSnapshot\(requestId,inboxRequestRef\.current,id,inboxOwnerRef\.current\)/);
- assert.match(shell,/inboxOwnerRef\.current='';inboxRequestRef\.current\+\+;previewRequestRef\.current\+\+;groupOverviewRequestRef\.current\+\+/);
+ assert.match(shell,/inboxOwnerRef\.current='';\s*inboxRequestRef\.current\+\+;\s*previewRequestRef\.current\+\+;\s*groupOverviewRequestRef\.current\+\+/);
 });
 
 test('inbox Realtime never replaces six-second conversation and twelve-second inbox fallbacks',()=>{

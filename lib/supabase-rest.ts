@@ -13,7 +13,11 @@ const STORAGE = 'ikonosfera-session-v1';
 class SupabaseHttpError extends Error {
   constructor(message:string,readonly status:number){super(message);this.name='SupabaseHttpError';}
 }
-let sessionRefreshPromise:Promise<Session|null>|null=null;
+type PendingRefresh={refreshToken:string;generation:number;promise:Promise<Session|null>};
+let sessionRefreshPromise:PendingRefresh|null=null;
+// Invalidate old async responses after logout, a new login, or another token
+// rotation. Another browser tab is covered by rechecking localStorage.
+let sessionGeneration=0;
 
 function ensureReady() { if (!backendReady) throw Error('Сервер пока не подключён'); }
 function headers(token?: string, extras?: Record<string,string>) {
@@ -43,36 +47,53 @@ export function loadSession(): Session | null {
   try { const s = JSON.parse(localStorage.getItem(STORAGE) || 'null') as Session | null; return s?.access_token && s.refresh_token ? s : null; } catch { return null; }
 }
 export function saveSession(s: { access_token: string; refresh_token: string; expires_in?: number; expires_at?: number }) {
+  if(!s.access_token||!s.refresh_token)throw Error('Сервер не выдал действительную сессию.');
   const session: Session = { access_token: s.access_token, refresh_token: s.refresh_token, expires_at: s.expires_at ?? (Math.floor(Date.now()/1000) + (s.expires_in ?? 3600) - 60) };
   localStorage.setItem(STORAGE, JSON.stringify(session));
+  sessionGeneration++;
   return session;
 }
-export function clearSession() { localStorage.removeItem(STORAGE); }
+export function clearSession() { sessionGeneration++; localStorage.removeItem(STORAGE); }
 export async function validSession(): Promise<Session | null> {
   const s=loadSession();
   if(!s)return null;
   if(s.expires_at>Math.floor(Date.now()/1000))return s;
   // A refresh token is single-use: concurrent UI requests must not refresh it
   // twice, otherwise the second request may invalidate an otherwise valid login.
-  if(sessionRefreshPromise)return sessionRefreshPromise;
-  sessionRefreshPromise=(async()=>{
+  const generation=sessionGeneration;
+  // Only share an in-flight refresh for the EXACT same session and generation.
+  // A second login must never receive the previous account's access token.
+  if(sessionRefreshPromise?.refreshToken===s.refresh_token
+     &&sessionRefreshPromise.generation===generation)
+    return sessionRefreshPromise.promise;
+  const pending:PendingRefresh={refreshToken:s.refresh_token,generation,promise:null!};
+  pending.promise=(async()=>{
     try{
       const next=await http<{access_token:string;refresh_token:string;expires_in:number}>(
         '/auth/v1/token?grant_type=refresh_token',{method:'POST',body:{refresh_token:s.refresh_token}}
       );
+      if(sessionGeneration!==generation||loadSession()?.refresh_token!==s.refresh_token)
+        return null; // Logout, account switch, or another tab changed the session.
       return saveSession(next);
     }catch(error){
-      // Do not log users out because of offline mode, a timeout, or HTTP 5xx.
-      // Only Supabase's explicit invalid/revoked refresh-token responses end
-      // the session. Keep the stored token for a retry on reconnection.
+      // A revoked token only clears the session that initiated this request.
+      // Network errors never silently erase the login.
       if(error instanceof SupabaseHttpError&&[400,401,403].includes(error.status)){
-        if(loadSession()?.refresh_token===s.refresh_token)clearSession();
+        if(sessionGeneration===generation&&loadSession()?.refresh_token===s.refresh_token)
+          clearSession();
         return null;
       }
+      // A stale network error should not disrupt a newer signed-in account.
+      if(sessionGeneration!==generation||loadSession()?.refresh_token!==s.refresh_token)
+        return null;
       throw error;
     }
-  })().finally(()=>{sessionRefreshPromise=null;});
-  return sessionRefreshPromise;
+  })().finally(()=>{
+    // A delayed older request must not delete a newer refresh in progress.
+    if(sessionRefreshPromise===pending)sessionRefreshPromise=null;
+  });
+  sessionRefreshPromise=pending;
+  return pending.promise;
 }
 /** Development-only anonymous account. No email and no recovery after local data is lost.
  * Requires Anonymous Sign-Ins enabled in Supabase Authentication settings.
@@ -106,7 +127,12 @@ export async function verifyEmailCode(email: string, token: string) {
   return saveSession(response);
 }
 export async function currentUser(token: string) { return http<{id:string;email?:string;is_anonymous?:boolean}>('/auth/v1/user',{token}); }
-export async function signOut(token: string) { try { await http('/auth/v1/logout',{token,method:'POST'}); } finally { clearSession(); } }
+export async function signOut(token: string) {
+  // Local sign-out is immediate, even when the network is offline. Never clear
+  // a *different* account signed in while an older logout request was pending.
+  if(loadSession()?.access_token===token)clearSession();
+  await http('/auth/v1/logout',{token,method:'POST'});
+}
 export async function myProfile(token: string, id: string) {
   const profiles=await http<Profile[]>(`/rest/v1/profiles?select=id,username,display_name,avatar_path,cover_path,bio,status_emoji&id=eq.${encodeURIComponent(id)}&limit=1`,{token});
   return profiles[0] ?? null;
