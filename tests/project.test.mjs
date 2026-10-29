@@ -1090,7 +1090,7 @@ test('offline direct chats preserve drafts and resume polling immediately on rec
  assert.match(shell,/\[refresh,bootstrapRetryNonce\]/);
  assert.match(shell,/e\.preventDefault\(\);if\(!session\|\|!selected\|\|!userId\|\|sending\|\|activePartnerBlocked\)return;\s*if\(!networkOnline\|\|!navigator\.onLine\)/);
  assert.match(shell,/Сообщение осталось в черновике/);
- assert.match(shell,/Выбери вложение повторно после подключения/);
+ assert.match(shell,/Вложение осталось в предпросмотре/);
  assert.match(shell,/disabled=\{sending\|\|activePartnerBlocked\|\|!networkOnline\}/);
  assert.match(shell,/disabled=\{!draft\.trim\(\)\|\|sending\|\|activePartnerBlocked\|\|!networkOnline\}/);
  assert.match(shell,/aria-label="Написать сообщение" enterKeyHint="enter"/);
