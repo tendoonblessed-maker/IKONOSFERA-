@@ -1138,3 +1138,18 @@
     padding-top:0!important;
   }
 }
+
+
+/* Do not paint a misleading green online indicator without presence data. */
+.messenger.is-authenticated .ik-settings-hero-presence{
+  color:#98a1b1!important;
+}
+.messenger.is-authenticated .ik-settings-hero-presence>span{
+  background:#b9c0cd!important;
+}
+.messenger.is-authenticated .ik-settings-hero-presence.is-online{
+  color:#3da77b!important;
+}
+.messenger.is-authenticated .ik-settings-hero-presence.is-online>span{
+  background:#49c58d!important;
+}
