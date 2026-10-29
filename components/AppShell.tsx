@@ -1378,7 +1378,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
     {pendingAttachment?.chatId===selected&&pendingAttachment.ownerId===userId
       &&canPrepareAttachment&&<ChatAttachmentPreview
         file={pendingAttachment.file} caption={attachmentCaption}
-        sending={sending||!networkOnline}
+        sending={sending} online={networkOnline}
         onCaptionChange={setAttachmentCaption}
         onCancel={()=>{setPendingAttachment(null);setAttachmentCaption('');}}
         onSend={()=>{void sendAttachment(pendingAttachment.file,attachmentCaption);}}
