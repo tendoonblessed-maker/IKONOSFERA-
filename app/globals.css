@@ -2537,3 +2537,34 @@ body{position:relative}
  .messenger.is-authenticated .ik-settings-hero-avatar{width:106px;height:106px}
  .messenger.is-authenticated .ik-profile-redesign .profile-topbar>strong{display:none}
 }
+
+
+/* QA: keep the dark Settings list scrollable within the mobile/desktop
+   sidebar. A min-height:100% pane otherwise pushes bottom navigation away. */
+.messenger.is-authenticated .settings-panel.ik-settings-redesign{
+  flex:1 1 0%!important;
+  min-height:0!important;
+  max-height:100%!important;
+  overflow-x:hidden!important;
+  overflow-y:auto!important;
+  overscroll-behavior-y:contain;
+  -webkit-overflow-scrolling:touch;
+  scrollbar-gutter:stable;
+}
+.messenger.is-authenticated .ik-settings-redesign .ik-settings-page-header,
+.messenger.is-authenticated .ik-settings-redesign .ik-settings-hero,
+.messenger.is-authenticated .ik-settings-redesign .ik-settings-section{
+  max-width:100%;min-width:0;
+}
+.messenger.is-authenticated .ik-settings-redesign .ik-settings-row-label,
+.messenger.is-authenticated .ik-settings-redesign .ik-settings-hero-username{
+  overflow-wrap:anywhere;
+}
+@media(max-width:800px){
+ .messenger.is-authenticated .settings-panel.ik-settings-redesign{
+   padding-bottom:max(20px,env(safe-area-inset-bottom,0px))!important;
+   scrollbar-width:none;
+ }
+ .messenger.is-authenticated .settings-panel.ik-settings-redesign::-webkit-scrollbar{display:none}
+ .messenger.is-authenticated .chats-pane>.pane-nav{flex:0 0 auto;}
+}
