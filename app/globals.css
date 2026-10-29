@@ -2046,3 +2046,97 @@ body{position:relative}
   .ik-floating-menu-panel{border-radius:15px!important}
   .messenger.is-authenticated .ik-inline-reply{padding:8px 12px;background:#f8f8fa}
 }
+
+
+/* IKONOSFERA ORIGINAL STATUS EMOJIS · 50 custom glossy silhouettes in one atlas */
+.ik-status-emoji{
+  display:inline-block;vertical-align:middle;
+  width:20px;height:25px;flex:0 0 20px;
+  background-image:url('/status-emojis.webp');
+  background-size:1000% 500%;
+  background-repeat:no-repeat;
+  background-color:transparent;
+  pointer-events:none;
+  filter:drop-shadow(0 1px 1px #00000012);
+}
+.ik-status-emoji--large{width:34px;height:42px;flex-basis:34px}
+.ik-status-emoji--picker{width:30px;height:37px;flex-basis:30px;filter:drop-shadow(0 1px 2px #0000001a)}
+.ik-name-with-status{display:inline-flex!important;align-items:center;min-width:0;gap:5px;max-width:100%;vertical-align:middle}
+.ik-name-with-status>span:first-child{min-width:0;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ik-name-with-status>.ik-status-emoji{flex-shrink:0}
+.ik-profile-name-row{display:flex;align-items:center;justify-content:center;gap:8px;flex-wrap:wrap}
+.ik-profile-name-row h1{margin:0;max-width:min(100%,500px);overflow-wrap:anywhere}
+.ik-profile-status-click{
+ display:inline-flex;align-items:center;justify-content:center;
+ min-width:27px;min-height:29px;padding:2px 4px;
+ border:0;border-radius:9px;background:transparent;
+ transition:background .16s ease;
+}
+.ik-profile-status-click:hover{background:#eeeef0}
+.ik-profile-status-placeholder{
+ display:grid;place-items:center;width:24px;height:26px;
+ border:1px dashed #acacb3;border-radius:10px;color:#8a8a91;font-size:19px;
+}
+.ik-status-section{padding:0!important;margin:10px 14px 14px!important;background:transparent!important;box-shadow:none!important;border:0!important}
+.ik-status-setting{
+ display:flex;align-items:center;gap:13px;width:100%;
+ min-height:68px;border:0;border-radius:18px;
+ background:#fff;padding:12px 17px;color:#222227;
+ text-align:left;box-shadow:0 1px 3px #00000006;cursor:pointer;
+}
+.ik-status-setting:hover{background:#f9f9fa}
+.ik-status-setting-image{
+ display:grid;place-items:center;width:44px;height:44px;flex:0 0 44px;
+ border-radius:50%;background:#f3f3f5;color:#7e7e86;font-size:24px;
+}
+.ik-status-setting-text{display:flex;flex-direction:column;gap:4px;flex:1;min-width:0}
+.ik-status-setting-text strong{font-size:14px;font-weight:750}
+.ik-status-setting-text small{font-size:12px;color:#94949c}
+.ik-status-setting-chevron{font-size:24px;color:#b3b3bc}
+.ik-status-picker{
+ display:flex;flex-direction:column;gap:15px;
+ background:#fff;border:1px solid #ededf0;border-radius:18px;
+ margin-top:8px;padding:16px 15px 13px;
+ box-shadow:0 7px 30px #0000000b;
+}
+.ik-status-picker-intro{display:flex;align-items:center;justify-content:space-between;gap:14px;min-height:42px}
+.ik-status-picker-intro>div{display:flex;flex-direction:column;gap:4px;min-width:0}
+.ik-status-picker-intro strong{font-size:15px;font-weight:750}
+.ik-status-picker-intro div span{font-size:12px;color:#83838c}
+.ik-status-picker-grid{display:grid;grid-template-columns:repeat(8,minmax(0,1fr));gap:6px;max-height:340px;overflow-y:auto;overscroll-behavior:contain;padding:2px}
+.ik-status-choice{
+ display:grid;place-items:center;position:relative;min-width:0;min-height:48px;
+ padding:3px 1px;border:1.5px solid transparent;border-radius:14px;
+ background:#f5f5f7;color:#73737b;cursor:pointer;
+ transition:transform .15s ease,background .15s ease,border-color .15s ease;
+}
+.ik-status-choice:active{transform:scale(.93)}
+.ik-status-choice.is-selected{border-color:#25252b;background:#eeeef1;box-shadow:inset 0 0 0 1px #24242819}
+.ik-status-choice.is-selected::after{
+ content:'✓';position:absolute;right:1px;top:0;width:15px;height:15px;
+ display:grid;place-items:center;border-radius:50%;background:#242428;
+ color:#fff;font-size:10px;line-height:1;
+}
+.ik-status-choice:focus-visible,.ik-status-setting:focus-visible,.ik-profile-status-click:focus-visible{outline:2px solid #2b2b31;outline-offset:2px}
+.ik-status-choice:disabled{cursor:progress;opacity:.56}
+.ik-status-none span{font-size:24px;line-height:1;color:#85858e}
+.ik-status-picker-help{margin:0!important;font-size:11px!important;line-height:1.5!important;color:#96969f!important}
+.messenger.is-authenticated .chat-list .ik-chat-title .ik-name-with-status{
+ display:inline-flex!important;max-width:100%;min-width:0;
+}
+.messenger.is-authenticated .chat-list .ik-chat-title .ik-name-with-status>span:first-child{
+ font-weight:inherit;overflow:hidden;text-overflow:ellipsis;
+}
+.messenger.is-authenticated .ik-contact-person-text strong .ik-status-emoji{vertical-align:middle}
+@media(max-width:800px){
+ .ik-status-picker-grid{grid-template-columns:repeat(6,minmax(0,1fr));gap:5px}
+ .ik-status-choice{min-height:48px;border-radius:13px}
+ .ik-status-section{margin:10px 12px 12px!important;padding:0!important}
+ .ik-status-picker{padding:14px 11px;gap:13px}
+ .ik-status-setting{border-radius:17px}
+ .ik-status-emoji--inline{width:19px;height:24px;flex-basis:19px}
+}
+@media(max-width:360px){
+ .ik-status-picker-grid{grid-template-columns:repeat(5,minmax(0,1fr))}
+}
+@media(prefers-reduced-motion:reduce){.ik-status-choice,.ik-profile-status-click{transition:none}}

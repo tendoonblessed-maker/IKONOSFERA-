@@ -5,7 +5,7 @@ const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? '';
 export const backendReady = Boolean(apiUrl && anonKey);
 
 export type Session = { access_token: string; refresh_token: string; expires_at: number };
-export type Profile = { id: string; username: string; display_name: string; avatar_path?: string|null; cover_path?: string|null; bio?: string };
+export type Profile = { id: string; username: string; display_name: string; avatar_path?: string|null; cover_path?: string|null; bio?: string; status_emoji?:number|null };
 export type DirectChat = { id: string; user_a: string; user_b: string; created_at: string; hidden_for?:string[]; pinned_for?:string[] };
 export type ChatMessage = { id: string; chat_id: string; sender_id: string; body: string; created_at: string; media_path: string|null; media_type: "image"|"video"|"audio"|"file"|null; read_at: string|null; edited_at?:string|null; deleted_for?:string[]; deleted_for_everyone?:boolean };
 const STORAGE = 'ikonosfera-session-v1';
@@ -108,11 +108,11 @@ export async function verifyEmailCode(email: string, token: string) {
 export async function currentUser(token: string) { return http<{id:string;email?:string;is_anonymous?:boolean}>('/auth/v1/user',{token}); }
 export async function signOut(token: string) { try { await http('/auth/v1/logout',{token,method:'POST'}); } finally { clearSession(); } }
 export async function myProfile(token: string, id: string) {
-  const profiles=await http<Profile[]>(`/rest/v1/profiles?select=id,username,display_name,avatar_path,cover_path,bio&id=eq.${encodeURIComponent(id)}&limit=1`,{token});
+  const profiles=await http<Profile[]>(`/rest/v1/profiles?select=id,username,display_name,avatar_path,cover_path,bio,status_emoji&id=eq.${encodeURIComponent(id)}&limit=1`,{token});
   return profiles[0] ?? null;
 }
 export async function changeProfile(token: string, id: string, username: string, display_name: string) {
-  const profiles=await http<Profile[]>(`/rest/v1/profiles?id=eq.${encodeURIComponent(id)}&select=id,username,display_name,avatar_path,cover_path,bio`,{token,method:'PATCH',body:{username,display_name},extraHeaders:{Prefer:'return=representation'}});
+  const profiles=await http<Profile[]>(`/rest/v1/profiles?id=eq.${encodeURIComponent(id)}&select=id,username,display_name,avatar_path,cover_path,bio,status_emoji`,{token,method:'PATCH',body:{username,display_name},extraHeaders:{Prefer:'return=representation'}});
   if (!profiles[0]) throw Error('Профиль не найден');
   return profiles[0];
 }
@@ -152,7 +152,7 @@ export async function deleteContact(token:string,ownerId:string,contactId:string
 
 export async function listProfiles(token: string, ids: string[]) {
   if (!ids.length) return [];
-  return http<Profile[]>(`/rest/v1/profiles?select=id,username,display_name,avatar_path,cover_path,bio&id=in.(${ids.map(encodeURIComponent).join(',')})`,{token});
+  return http<Profile[]>(`/rest/v1/profiles?select=id,username,display_name,avatar_path,cover_path,bio,status_emoji&id=in.(${ids.map(encodeURIComponent).join(',')})`,{token});
 }
 export const CHAT_MESSAGE_PAGE_SIZE=100;
 const CHAT_MESSAGE_COLUMNS='id,chat_id,sender_id,body,created_at,media_path,media_type,read_at,edited_at,deleted_for,deleted_for_everyone';
@@ -290,7 +290,7 @@ export async function manageMessage(token:string,messageId:string,action:"hide"|
 export async function findProfileByUsername(token:string,username:string):Promise<Profile|null>{
  const value=username.trim().replace(/^@/,"").toLowerCase();
  if(!/^[a-z0-9_]{3,24}$/.test(value))throw Error("Введи юзернейм: 3–24 латинских символа, цифры или _.");
- const rows=await http<Profile[]>('/rest/v1/profiles?select=id,username,display_name,avatar_path,cover_path,bio&username=eq.'+encodeURIComponent(value)+'&limit=1',{token});
+ const rows=await http<Profile[]>('/rest/v1/profiles?select=id,username,display_name,avatar_path,cover_path,bio,status_emoji&username=eq.'+encodeURIComponent(value)+'&limit=1',{token});
  return rows[0]??null;
 }
 

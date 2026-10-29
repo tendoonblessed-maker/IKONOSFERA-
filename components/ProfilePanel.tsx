@@ -4,6 +4,8 @@ import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { changeProfile, explainProfileError, validateUsername } from "@/lib/supabase-rest";
 import {getUserActivities,activityLabel,type UserActivity} from "@/lib/activity";
 import {useStoryProgress} from "@/lib/use-story-progress";
+import StatusEmoji from "@/components/StatusEmoji";
+import StatusEmojiPicker from "@/components/StatusEmojiPicker";
 import {
  addProfilePhoto, addStory, deleteProfilePhoto, deleteStory, getFullProfile, getProfilePhotos,
  getStories, imageUrl, listOwnedChannels, getChannelById, removeUpload, updateFullProfile, uploadPhoto,
@@ -23,6 +25,7 @@ export default function ProfilePanel({token,userId,targetId,onBack,onOwnProfileC
  const [featuredChannel,setFeaturedChannel]=useState<Channel|null>(null);
  const [chosenChannelId,setChosenChannelId]=useState<string>("");
  const [pinningChannel,setPinningChannel]=useState(false);
+ const [statusPickerOpen,setStatusPickerOpen]=useState(false);
  const [name,setName]=useState("");const [username,setUsername]=useState("");const [bio,setBio]=useState("");
  const [editing,setEditing]=useState(false);
  const [visitorPreview,setVisitorPreview]=useState(false);
@@ -81,6 +84,18 @@ export default function ProfilePanel({token,userId,targetId,onBack,onOwnProfileC
    onOwnProfileChange();setEditing(false);setNotice("Профиль обновлён.");
   });
  }
+ async function setStatusEmoji(index:number|null){
+  if(!mine||!profile||busy)return;
+  if(index===profile.status_emoji){setStatusPickerOpen(false);return;}
+  await run(async()=>{
+   const updated=await updateFullProfile(token,userId,{status_emoji:index});
+   if(updated.status_emoji!==index)throw Error("Не получилось сохранить эмодзи-статус.");
+   setProfile(updated);
+   setStatusPickerOpen(false);
+   onOwnProfileChange();
+   setNotice(index===null?"Эмодзи-статус убран.":"Эмодзи-статус установлен.");
+  });
+ }
  async function pinChannel(){
   if(!profile||!mine||busy)return;
   const next=chosenChannelId||null;
@@ -123,13 +138,40 @@ export default function ProfilePanel({token,userId,targetId,onBack,onOwnProfileC
      <div className={"profile-avatar-large"+(stories.length?" profile-avatar-has-story":"")} onClick={()=>{if(stories.length)setStoryIndex(0);}} role={stories.length?"button":undefined} tabIndex={stories.length?0:undefined} onKeyDown={e=>{if(stories.length&&(e.key==="Enter"||e.key===" ")){e.preventDefault();setStoryIndex(0);}}} aria-label={stories.length?"Посмотреть истории":undefined}>{avatar?<img src={avatar} alt="Аватар пользователя"/>:<span>{(profile?.display_name||"?").charAt(0).toUpperCase()}</span>}
       {!viewingAsVisitor&&<label className="profile-avatar-camera" title="Изменить фото"><span aria-hidden="true">▣</span><input aria-label="Загрузить фото профиля" type="file" accept="image/png,image/jpeg,image/webp" disabled={busy} onChange={e=>{void chooseImage(e.target.files?.[0],"avatar");e.target.value="";}}/></label>}
      </div>
-     {profile?<div className="profile-identity"><h1>{profile.display_name}</h1><p>@{profile.username}</p><p className={userActivity?.status==="в сети"?"ik-profile-activity ik-online-label":"ik-profile-activity"}>{activityLabel(userActivity)}</p>
+     {profile?<div className="profile-identity">
+       <div className="ik-profile-name-row">
+        <h1>{profile.display_name}</h1>
+        {mine&&!visitorPreview?
+          <button type="button" className="ik-profile-status-click" disabled={busy}
+            aria-label={profile.status_emoji===null?"Поставить эмодзи-статус":"Изменить эмодзи-статус"}
+            aria-expanded={statusPickerOpen}
+            onClick={()=>setStatusPickerOpen(open=>!open)}>
+            {profile.status_emoji!==null?<StatusEmoji index={profile.status_emoji}/>:<span className="ik-profile-status-placeholder" aria-hidden="true">＋</span>}
+          </button>
+          :<StatusEmoji index={profile.status_emoji}/>}
+       </div>
+       <p>@{profile.username}</p><p className={userActivity?.status==="в сети"?"ik-profile-activity ik-online-label":"ik-profile-activity"}>{activityLabel(userActivity)}</p>
         {profile.bio&&<div className="profile-bio">{profile.bio}</div>}
         {!mine&&<div className="ik-profile-conversation-actions">
           <button type="button" className="accent-button profile-message-button" disabled={isBlocked} onClick={()=>onMessage(profile.username)}>{isBlocked?"Заблокирован":"Написать сообщение"}</button>
           {!isBlocked&&onBlockUser&&<button type="button" className="ik-profile-block-action" onClick={()=>onBlockUser(targetId)}>Заблокировать</button>}
         </div>}</div>:<p>Загрузка профиля…</p>}
     </div>
+    {mine&&!visitorPreview&&<section className="profile-content-section ik-status-section" aria-label="Настройка эмодзи-статуса">
+      <button type="button" className="ik-status-setting" aria-expanded={statusPickerOpen}
+        aria-controls="ik-profile-status-chooser"
+        disabled={busy} onClick={()=>setStatusPickerOpen(open=>!open)}>
+        <span className="ik-status-setting-image">{profile?.status_emoji!==null&&profile?.status_emoji!==undefined?
+          <StatusEmoji index={profile.status_emoji} size="large" decorative/>:
+          <span aria-hidden="true">✦</span>}</span>
+        <span className="ik-status-setting-text"><strong>Эмодзи-статус</strong>
+        <small>{profile?.status_emoji!==null&&profile?.status_emoji!==undefined?"Изменить или убрать":"Выбрать фигурку рядом с именем"}</small></span>
+        <span className="ik-status-setting-chevron" aria-hidden="true">{statusPickerOpen?"⌄":"›"}</span>
+      </button>
+      {statusPickerOpen&&<div id="ik-profile-status-chooser">
+        <StatusEmojiPicker value={profile?.status_emoji??null} disabled={busy} onSelect={index=>void setStatusEmoji(index)}/>
+      </div>}
+    </section>}
     {mine&&!visitorPreview&&editing&&<form className="profile-editor" onSubmit={save}>
      <h2>Редактирование профиля</h2><p className="profile-editor-intro">Измени информацию о себе и нажми «Сохранить изменения».</p>
      <label>Имя<input value={name} onChange={e=>setName(e.target.value)} maxLength={60} required/></label>

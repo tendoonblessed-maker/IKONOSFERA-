@@ -6,7 +6,7 @@ test('PWA supports Android and iPhone',()=>{const m=JSON.parse(load('public/mani
 test('original specification preserved and pivot documented',()=>{assert.ok(load('docs/SPEC.md').includes('Мессенджер для людей'));assert.ok(load('PROJECT_NOTES.md').includes('мессенджера'));});
 test('messages use authenticated backend; no fake chat data',()=>{assert.match(load('lib/supabase-rest.ts'),/\/rest\/v1\/messages\?select=/);assert.match(load('lib/supabase-rest.ts'),/Bearer/);assert.ok(!/mockMessages|fakeSend|seedMessages/.test(load('components/AppShell.tsx')));});
 test('SQL restricts messages with RLS',()=>{const sql=load('supabase/migrations/20261028_120000_direct_messages.sql');for(const name of ['profiles','chats','chat_members','messages'])assert.ok(sql.includes(`alter table public.${name} enable row level security;`));assert.ok(sql.includes('public.is_chat_member(chat_id)'));assert.ok(!sql.includes('on public.messages for update'));});
-test('service worker never caches private messages',()=>{const sw=load('public/sw.js');assert.match(sw,/request\.mode !== "navigate"/);assert.ok(!sw.includes('cache.put(request'));});
+test('service worker caches only the public emoji atlas, never private messages',()=>{const sw=load('public/sw.js');assert.match(sw,/request\.mode !== "navigate"/);assert.match(sw,/url.pathname === "\/status-emojis.webp"/);assert.match(sw,/cache.addAll\(\[OFFLINE_URL, "\/icon-192.png", "\/status-emojis.webp"\]\)/);assert.ok(!sw.includes('/rest/v1/messages'));});
 test('mobile safe area + reduced motion',()=>{const css=load('app/globals.css');assert.ok(css.includes('safe-area-inset-top'));assert.ok(css.includes('safe-area-inset-bottom'));assert.ok(css.includes('prefers-reduced-motion:reduce'));});
 
 test('invite URL passes initial username into messenger UI',()=>{const route=load('app/u/[username]/page.tsx');const ui=load('components/AppShell.tsx');assert.ok(route.includes('initialUsername={username'));assert.ok(ui.includes('initialUsername?: string'));});
@@ -16,7 +16,7 @@ test('temporary test account uses authenticated Supabase session, not mock messa
 
 test('white edition has monochrome UI, original wordmark and light PWA chrome',()=>{const css=load('app/globals.css');const shell=load('components/AppShell.tsx');const layout=load('app/layout.tsx');const manifest=JSON.parse(load('public/manifest.webmanifest'));assert.match(css,/color-scheme: light/);assert.match(css,/--bg:#ffffff/);assert.match(shell,/branding\/ikonosfera.svg/);assert.match(shell,/branding\/ikonosfera-wordmark.svg/);assert.match(layout,/statusBarStyle: "default"/);assert.equal(manifest.theme_color,'#ffffff');for(const img of ['ikonosfera.svg','ikonosfera-wordmark.svg'])assert.ok(existsSync(new URL('../public/branding/'+img,import.meta.url)));});
 
-test('white offline fallback and refreshed service worker cache',()=>{const offline=load('public/offline.html');const sw=load('public/sw.js');assert.ok(offline.includes('background:#fff;color:#111111'));assert.ok(offline.includes('/branding/ikonosfera.svg'));assert.ok(sw.includes('ikonosfera-shell-v4'));});
+test('white offline fallback and refreshed service worker cache',()=>{const offline=load('public/offline.html');const sw=load('public/sw.js');assert.ok(offline.includes('background:#fff;color:#111111'));assert.ok(offline.includes('/branding/ikonosfera.svg'));assert.ok(sw.includes('ikonosfera-shell-v5'));});
 
 test('social schema protects photo uploads, stories, channels, posts and comments',()=>{
  const sql=load('supabase/migrations/20261028_130000_social_profiles_channels.sql');
@@ -654,4 +654,60 @@ test('Telegram-inspired monochrome UI keeps fonts and responsive mobile keyboard
  assert.match(css,/font-size:16px!important/);
  assert.match(app,/aria-label="Написать сообщение"/);
  assert.match(app,/className=\{`chat-message-row/);
+});
+
+
+test('all fifty authored glossy status emojis ship as a real WebP atlas',()=>{
+ const source=load('components/StatusEmoji.tsx');
+ const picker=load('components/StatusEmojiPicker.tsx');
+ const css=load('app/globals.css');
+ const image=new URL('../public/status-emojis.webp',import.meta.url);
+ assert.ok(existsSync(image),'the user-designed emoji atlas must be bundled');
+ const bytes=readFileSync(image);
+ assert.equal(bytes.subarray(0,4).toString('ascii'),'RIFF');
+ assert.equal(bytes.subarray(8,12).toString('ascii'),'WEBP');
+ assert.ok(bytes.length>10000&&bytes.length<180000,'ship the optimized transparent sprites');
+ assert.match(source,/STATUS_EMOJI_COUNT=50/);
+ assert.match(source,/index%10/);
+ assert.match(source,/Math.floor\(index\/10\)/);
+ assert.match(source,/col\/9\*100/);
+ assert.match(source,/row\/4\*100/);
+ assert.match(source,/Number.isInteger\(index\)/);
+ assert.match(picker,/Array.from\(\{length:STATUS_EMOJI_COUNT\}/);
+ assert.match(picker,/onSelect\(null\)/);
+ assert.match(picker,/aria-pressed=\{value===i\}/);
+ assert.match(css,/background-image:url\('\/status-emojis\.webp'\)/);
+ assert.match(css,/background-size:1000% 500%/);
+});
+test('status emoji is owner-editable, checked by Postgres, visible to signed-in viewers',()=>{
+ const sql=load('supabase/migrations/20261029_060000_profile_status_emojis.sql');
+ const api=load('lib/supabase-rest.ts');
+ const social=load('lib/social.ts');
+ const profile=load('components/ProfilePanel.tsx');
+ assert.match(sql,/add column if not exists status_emoji smallint/);
+ assert.match(sql,/status_emoji between 0 and 49/);
+ assert.match(sql,/grant update \(status_emoji\) on public\.profiles to authenticated/);
+ assert.match(api,/export type Profile = \{[^}]*status_emoji\?:number\|null/);
+ assert.equal((api.match(/select=id,username,display_name,avatar_path,cover_path,bio,status_emoji/g)||[]).length,4);
+ assert.match(social,/featured_channel_id,status_emoji&id=eq\./);
+ assert.match(social,/\|"status_emoji">>/);
+ assert.match(profile,/async function setStatusEmoji\(index:number\|null\)/);
+ assert.match(profile,/updateFullProfile\(token,userId,\{status_emoji:index\}\)/);
+ assert.match(profile,/updated.status_emoji!==index/);
+ assert.match(profile,/onOwnProfileChange\(\)/);
+ assert.match(profile,/StatusEmojiPicker/);
+ assert.match(profile,/ik-profile-name-row/);
+});
+test('status emoji follows the nickname throughout chats, contacts, groups and profile',()=>{
+ for(const path of ['components/ChatInboxRow.tsx','components/GroupPanel.tsx','components/ChannelsPanel.tsx','components/AppShell.tsx','components/ProfilePanel.tsx']){
+   const source=load(path);
+   assert.match(source,/StatusEmoji/);
+   assert.match(source,/\.status_emoji/);
+ }
+ const app=load('components/AppShell.tsx');
+ assert.match(app,/active\.other\?\.status_emoji/);
+ assert.match(app,/person\.status_emoji/);
+ assert.match(app,/profile\?\.status_emoji/);
+ const inbox=load('components/ChatInboxRow.tsx');
+ assert.match(inbox,/other\?\.status_emoji/);
 });
