@@ -113,6 +113,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
   const [busy,setBusy]=useState(false);
   const [sending,setSending]=useState(false);
   const [networkOnline,setNetworkOnline]=useState(true);
+  const [bootstrapRetryNonce,setBootstrapRetryNonce]=useState(0);
   const [loading,setLoading]=useState(true);
   const [error,setError]=useState('');
   const [notice,setNotice]=useState('');
@@ -463,11 +464,22 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
         const p=await myProfile(valid.access_token,user.id);
         setSession(valid);setUserId(user.id);setProfile(p);setAnonymous(Boolean(user.is_anonymous));
         await refresh(valid.access_token,user.id,null);
+        if(!cancelled)setError('');
       } catch(e){if(!cancelled){setError(userFacingError(e));/* A transient network failure must not discard valid login credentials. */}}
       finally{if(!cancelled)setLoading(false);}
     })();
     return()=>{cancelled=true;};
-  },[refresh]);
+  },[refresh,bootstrapRetryNonce]);
+
+  // On an offline cold launch, profile fetching can fail before the signed-in
+  // session is hydrated. Retry bootstrap once connectivity returns; otherwise
+  // the app would remain on the sign-in screen until a manual reload.
+  useEffect(()=>{
+    if(session)return;
+    const retryBootstrap=()=>{if(backendReady)setBootstrapRetryNonce(count=>count+1);};
+    window.addEventListener('online',retryBootstrap);
+    return()=>window.removeEventListener('online',retryBootstrap);
+  },[session]);
 
   useEffect(()=>{
     if(!session||!userId)return;
