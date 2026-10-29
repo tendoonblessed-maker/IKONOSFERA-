@@ -3288,3 +3288,45 @@ body{position:relative}
 @media(prefers-reduced-motion:reduce){
   .ik-attachment-preview-dialog{animation:none}
 }
+
+
+/* Group composer and recoverable drafts: mobile keyboard does not iOS-zoom. */
+.messenger.is-authenticated .group-view .ik-group-composer textarea{
+  flex:1;
+  min-width:0;
+  width:100%;
+  min-height:47px;
+  max-height:136px;
+  field-sizing:content;
+  resize:none;
+  overflow-y:auto;
+  border-radius:23px;
+  padding:13px 17px;
+  background:#f4f5f6;
+  border:1px solid #e7eaed;
+  color:#181a1e;
+  font:inherit;
+  font-size:16px;
+  line-height:1.45;
+  outline:none;
+}
+.messenger.is-authenticated .group-view .ik-group-composer textarea:focus{
+  background:#fff;
+  border-color:#c2c8ce;
+  box-shadow:0 0 0 3px #9fa7af13;
+}
+.ik-group-inbox-text small{
+  display:block;
+  overflow:hidden;
+  white-space:nowrap;
+  text-overflow:ellipsis;
+}
+.ik-group-draft-label{color:#b7614b;font-weight:650}
+.ik-group-offline{
+  margin:0;
+  padding:8px 18px 12px;
+  background:#fff9f0;
+  color:#8d5c2b;
+  font-size:12px;
+  line-height:1.4;
+}
