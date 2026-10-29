@@ -503,7 +503,7 @@ test('rapid chat switching never inserts a sent attachment or edited message in 
  }
  assert.match(shell,/draftsRef\.current\[chatId\].*\.trim\(\)===plainText/);
  assert.match(shell,/setDraft\(current=>current\.trim\(\)===plainText\?'':current\)/);
- assert.match(shell,/const sent=await postMessage\(token,chatId,userId,plainText,crypto\.randomUUID\(\),reply\?\.id\?\?null\)/);
+ assert.match(shell,/const sent=await postMessage\(token,chatId,userId,plainText,attempt\.id,reply\?\.id\?\?null\)/);
  assert.match(shell,/const sent=await sendDirectMedia\(token,chatId,userId,file,caption\)/);
 });
 test('group conversations always fetch newest messages and show real loading/errors',()=>{
@@ -851,7 +851,7 @@ test('reply UX submits plain text with a real target ID and private off-page pre
  assert.match(api,/endpoint=replyToMessageId\?'/);
  assert.match(api,/send_direct_reply/);
  assert.match(api,/p_reply_to_message_id:replyToMessageId/);
- assert.match(shell,/postMessage\(token,chatId,userId,plainText,crypto\.randomUUID\(\),reply\?\.id\?\?null\)/);
+ assert.match(shell,/postMessage\(token,chatId,userId,plainText,attempt\.id,reply\?\.id\?\?null\)/);
  assert.doesNotMatch(shell,/const body=reply\?'↪ '/);
  assert.match(shell,/replyTargetsQueriedRef/);
  assert.match(shell,/ReplyQuote/);
