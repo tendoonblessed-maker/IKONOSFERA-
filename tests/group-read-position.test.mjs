@@ -41,7 +41,9 @@ test('group read RPC is called from visibility-safe and bottom-safe action, not 
  assert.match(panel,/followNewestRef\.current,document\.visibilityState==='visible'/);
  assert.match(panel,/markGroupRead\(token,group\.id\)/);
  assert.match(refresh,/latestGroupMessageRef\.current=msgs\.length\?msgs\[msgs\.length-1\]\.id:null/);
- assert.match(refresh,/acknowledgeLatestIfVisible\(\)/);
+ assert.doesNotMatch(refresh,/acknowledgeLatestIfVisible\(\)/,'do not acknowledge before React commits the fetched page');
+ assert.match(panel,/useLayoutEffect\(\(\)=>\{\n  const history=historyRef\.current;/);
+ assert.match(panel,/history\.scrollTop=history\.scrollHeight;\n   \/\/ Only acknowledge after/);
  assert.doesNotMatch(refresh,/void markGroupRead\(/,'refresh never marks read unconditionally');
  assert.match(panel,/if\(nearBottom\)\{setNewMessagesBelow\(0\);acknowledgeLatestIfVisible\(\);\}/);
 });
