@@ -1005,3 +1005,27 @@ test('long press uses capture listeners without replacing react-swipeable touch 
  assert.match(swipe,/onTouchEndOrOnMouseUp:\(\)=>\{/);
  assert.match(swipe,/event\.target instanceof Element&&event\.target\.closest/);
 });
+
+
+test('editing a direct message supports multiline text with safe iPhone actions',()=>{
+ const shell=load('components/AppShell.tsx');
+ const editor=load('components/MessageEditForm.tsx');
+ const css=load('app/globals.css');
+ assert.match(shell,/import MessageEditForm from/);
+ assert.match(shell,/editingMessageId===message\.id\?<MessageEditForm/);
+ assert.match(shell,/onSave=\{body=>messageAction\(message\.id,'edit',body\)\}/);
+ assert.match(shell,/setEditingMessageId\(null\);setEditingMessageBody\(''\)/);
+ assert.doesNotMatch(shell,/editingMessageId===message\.id\?<form/);
+ assert.match(editor,/<textarea id=\{fieldId\}/);
+ assert.match(editor,/maxLength=\{4000\}/);
+ assert.match(editor,/fontSize|onInput=\{event=>/);
+ assert.match(editor,/event\.key==='Enter'&&\(event\.ctrlKey\|\|event\.metaKey\)/);
+ assert.match(editor,/event\.key==='Escape'/);
+ assert.match(editor,/event\.currentTarget\.form\?\.requestSubmit\(\)/);
+ assert.match(editor,/if\(saving\|\|!value\.trim\(\)\|\|value\.length>4000\)return/);
+ assert.match(editor,/disabled=\{saving\|\|!value\.trim\(\)\}/);
+ assert.match(css,/\.ik-message-edit-form textarea/);
+ assert.match(css,/font-family:inherit;font-size:16px;line-height:1\.45/);
+ assert.match(css,/\.ik-message-edit-actions button/);
+ assert.match(css,/width:min\(70vw,365px\)/);
+});
