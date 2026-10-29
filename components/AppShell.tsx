@@ -120,6 +120,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
   const draftsOwnerRef=useRef('');
   const replyTargetsQueriedRef=useRef<Set<string>>(new Set());
   const replyJumpRequestRef=useRef(0);
+  const chatContextGenerationRef=useRef(0);
   const composerRef=useRef<HTMLTextAreaElement|null>(null);
 
   useEffect(()=>{
@@ -142,6 +143,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
 
   useEffect(()=>{
     selectedRef.current=selected;
+    chatContextGenerationRef.current+=1;
     replyJumpRequestRef.current+=1;
     setLocatingReply(null);setPendingReplyJump(null);
     setReplyingTo(null);setShowJumpToLatest(false);
@@ -152,7 +154,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
   useEffect(()=>{
     const chatId=selected;
     if(!session||!chatId||chatLoad?.id!==chatId||chatLoad.status!=='ready')return;
-    const generation=replyJumpRequestRef.current;
+    const generation=chatContextGenerationRef.current;
     const inChat=chatMessages.filter(message=>message.chat_id===chatId);
     const loaded=new Set(inChat.map(message=>message.id));
     const missing=[...new Set(inChat.map(message=>message.reply_to_message_id).filter((id):id is string=>Boolean(id)))].filter(id=>!loaded.has(id)&&!replyTargetsQueriedRef.current.has(id));
@@ -162,7 +164,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
     // pages are not silently discarded after the first 100 IDs.
     const batches:Array<string[]>=[];
     for(let start=0;start<missing.length;start+=100)batches.push(missing.slice(start,start+100));
-    const stillInChat=()=>selectedRef.current===chatId&&replyJumpRequestRef.current===generation;
+    const stillInChat=()=>selectedRef.current===chatId&&chatContextGenerationRef.current===generation;
     void Promise.all(batches.map(ids=>listReplyTargets(session.access_token,chatId,ids)))
       .then(results=>{
         if(!stillInChat())return;
@@ -550,8 +552,8 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
   async function loadOlderChatMessages(){
     if(!session||!selected||loadingOlderRef.current||!hasOlderMessages||!chatMessages.length)return;
     const chatId=selected,token=session.access_token,oldest=chatMessages[0];
-    const generation=replyJumpRequestRef.current;
-    const stillInChat=()=>selectedRef.current===chatId&&replyJumpRequestRef.current===generation;
+    const generation=chatContextGenerationRef.current;
+    const stillInChat=()=>selectedRef.current===chatId&&chatContextGenerationRef.current===generation;
     const history=conversationHistoryRef.current;
     loadingOlderRef.current=true;
     chatAutoScrollRef.current=false;
