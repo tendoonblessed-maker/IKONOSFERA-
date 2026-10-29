@@ -696,8 +696,8 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
           {tab==='chats'?<svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 5H5a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-7"/><path d="m13 11 7.5-7.5a2.1 2.1 0 0 1 3 3L16 14l-4 1 1-4Z"/></svg>:<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>}
         </button>
       </div>
-      {tab==='chats'&&loggedIn&&session&&<StoriesStrip token={session.access_token} userId={userId} contacts={storyContacts} ownProfile={profile}/>}
       {tab==='chats'&&<div className="pane-search"><span aria-hidden="true" className="ik-search-glyph"><svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="10.7" cy="10.7" r="6.4"/><path d="m15.5 15.5 5 5"/></svg></span><input ref={searchInputRef} aria-label="Поиск по чатам" placeholder="Поиск по чатам и сообщениям" value={search} onChange={e=>setSearch(e.target.value)} disabled={!loggedIn}/></div>}
+      {tab==='chats'&&loggedIn&&session&&<StoriesStrip token={session.access_token} userId={userId} contacts={storyContacts} ownProfile={profile}/>}
       {tab==='chats'&&loggedIn&&<div className="ik-chat-actions">
         {createMenuOpen&&<div className="ik-create-menu" role="group" aria-label="Новая беседа">
           <button type="button" onClick={()=>{setCreateMenuOpen(false);switchTab('contacts');}}>✉ <span>Личное сообщение</span></button>
@@ -763,6 +763,13 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
           <button type="submit" className="accent-button" disabled={busy||!loggedIn}>{busy?"Создаём…":"Создать"}</button>
         </form>}
         <div className="channel-browser-tabs"><button type="button" className={!showRecommendations?"selected":""} onClick={()=>setShowRecommendations(false)}>Мои каналы</button><button type="button" className={showRecommendations?"selected":""} onClick={()=>setShowRecommendations(true)}>Рекомендации</button></div>
+        {!channelCreating&&loggedIn&&<button type="button" className="ik-channel-create-promo" onClick={()=>setChannelCreating(true)}>
+          <span className="ik-channel-create-promo-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round"><path d="M4 11v-2a3 3 0 0 1 3-3h6l7-3v18l-7-3H7a3 3 0 0 1-3-3v-4Z"/><path d="m8 18 2 4h4l-3-4"/></svg>
+          </span>
+          <span><strong>Создать канал</strong><small>Делись идеями, новостями и общайся с подписчиками</small></span>
+          <span className="ik-channel-create-promo-arrow" aria-hidden="true">›</span>
+        </button>}
         <div className="channel-list">{filteredChannels.length?filteredChannels.map(ch=><div key={ch.id} className={"channel-list-row"+(ch.id===selectedChannel?.id?" active":"")}>
           <button type="button" className="channel-row-open" onClick={()=>{setSelectedChannel(ch);setSelected(null);setProfileTarget(null);setError("");}}><span className="channel-list-icon">{ch.avatar_path&&imageUrl(ch.avatar_path)?<img className="ik-channel-list-avatar" src={imageUrl(ch.avatar_path)||""} alt="" loading="lazy" decoding="async"/>:"#"} </span><span><strong>{ch.title}</strong><small>@{ch.slug} · {(subscriberCounts[ch.id]??0).toLocaleString('ru-RU')} подписчиков</small></span></button>
           {ch.owner_id===userId?<span className="channel-owner-badge">Мой</span>:<button type="button" disabled={busy} className="channel-subscribe-button" onClick={()=>void toggleSubscription(ch.id)}>{subscriptions.includes(ch.id)?"Отписаться":"Подписаться"}</button>}
