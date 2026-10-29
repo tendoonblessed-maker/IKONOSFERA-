@@ -779,8 +779,26 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
               <span className="ik-settings-hero-avatar">{imageUrl(profile?.avatar_path)
                 ?<img src={imageUrl(profile?.avatar_path)||""} alt="" decoding="async"/>
                 :(profile?.display_name||'?').charAt(0).toUpperCase()}</span>
-              <span className="ik-settings-hero-name ik-name-with-status"><strong>{profile?.display_name||"Мой профиль"}</strong><StatusEmoji index={profile?.status_emoji} decorative/></span>
-              <span className="ik-settings-hero-username">@{profile?.username||'профиль'}</span>
+              <span className="ik-settings-hero-details">
+                <span className="ik-settings-hero-name ik-name-with-status"><strong>{profile?.display_name||"Мой профиль"}</strong><StatusEmoji index={profile?.status_emoji} decorative/></span>
+                <span className="ik-settings-hero-username">@{profile?.username||'профиль'}</span>
+                <span className="ik-settings-hero-presence"><span aria-hidden="true"/>Мой аккаунт</span>
+              </span>
+              <span className="ik-settings-chevron" aria-hidden="true">›</span>
+            </button>
+            <button type="button" className="ik-settings-edit-profile" onClick={()=>goToProfile(userId)}>
+              <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M4 20h16m-14-5L16.8 4.2a2.2 2.2 0 0 1 3.1 3.1L9.1 18.1l-4 .9.9-4Z"/></svg>
+              Редактировать профиль
+            </button>
+          </div>
+          <div className="ik-settings-shortcuts">
+            <button type="button" onClick={()=>goToProfile(userId)}>
+              <span className="ik-settings-shortcut-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="23" height="23" fill="none" stroke="currentColor" strokeWidth="1.8"><rect x="3" y="4" width="18" height="16" rx="3"/><circle cx="9" cy="10" r="2"/><path d="m5 18 6-6 4 4 3-3 3 3"/></svg></span>
+              <span><strong>Фото и истории</strong><small>Управление</small></span><span aria-hidden="true">›</span>
+            </button>
+            <button type="button" onClick={()=>switchTab('channels')}>
+              <span className="ik-settings-shortcut-icon ik-settings-shortcut-channel" aria-hidden="true"><svg viewBox="0 0 24 24" width="23" height="23" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M4 11v-2c0-1.7 1.3-3 3-3h6l7-3v18l-7-3H7c-1.7 0-3-1.3-3-3v-4Z"/><path d="m8 18 2 4h4l-3-4"/></svg></span>
+              <span><strong>Мои каналы</strong><small>Публикации</small></span><span aria-hidden="true">›</span>
             </button>
           </div>
           {anonymous&&<p className="test-account-warning">Тестовый аккаунт без почты: доступ сохраняется только на этом устройстве. После выхода или очистки данных восстановить его нельзя.</p>}
