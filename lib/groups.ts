@@ -15,7 +15,13 @@ export async function groupMessages(token:string,id:string){
  const latest=await request<GroupMessage[]>(token,'/rest/v1/group_messages?select=*&group_id=eq.'+encodeURIComponent(id)+'&order=created_at.desc&limit=150');
  return latest.reverse();
 }
-export async function sendGroupMessage(token:string,id:string,userId:string,body:string){await request<GroupMessage[]>(token,'/rest/v1/group_messages','POST',{group_id:id,sender_id:userId,body:body.trim()});}
+export async function sendGroupMessage(token:string,id:string,userId:string,body:string):Promise<GroupMessage>{
+ const rows=await request<GroupMessage[]>(token,'/rest/v1/group_messages','POST',{
+  group_id:id,sender_id:userId,body:body.trim()
+ });
+ if(!rows[0]?.id||rows[0].group_id!==id||rows[0].sender_id!==userId)throw Error('Сообщение группы не подтверждено сервером');
+ return rows[0];
+}
 
 export async function listGroupOverviews(token:string):Promise<GroupOverview[]>{
  return request<GroupOverview[]>(token,'/rest/v1/rpc/list_group_overviews','POST',{});
