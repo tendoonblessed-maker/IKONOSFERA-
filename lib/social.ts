@@ -1,7 +1,7 @@
 /* IKONOSFERA social API. All writes use the signed-in user's JWT and Supabase RLS. */
 import { apiUrl } from "@/lib/supabase-rest";
 const publicKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "";
-export type FullProfile = { id:string; username:string; display_name:string; avatar_path:string|null; cover_path:string|null; bio:string; featured_channel_id:string|null };
+export type FullProfile = { id:string; username:string; display_name:string; avatar_path:string|null; cover_path:string|null; bio:string; featured_channel_id:string|null; status_emoji:number|null };
 export type ProfilePhoto = { id:string; user_id:string; image_path:string; caption:string; created_at:string };
 export type Story = { id:string; user_id:string; image_path:string; caption:string; created_at:string; expires_at:string };
 export type Channel = { id:string; owner_id:string; title:string; slug:string; description:string; discussion_enabled:boolean; avatar_path?:string|null; created_at:string };
@@ -41,11 +41,11 @@ export async function removeUpload(token:string,path:string):Promise<void>{
   if(!res.ok&&res.status!==404){const obj=await res.json().catch(()=>null);throw Error(obj?.message||"Не удалось удалить файл");}
 }
 export async function getFullProfile(token:string,userId:string):Promise<FullProfile|null>{
-  const rows=await api<FullProfile[]>("/rest/v1/profiles?select=id,username,display_name,bio,avatar_path,cover_path,featured_channel_id&id=eq."+encodeURIComponent(userId)+"&limit=1",token);
+  const rows=await api<FullProfile[]>("/rest/v1/profiles?select=id,username,display_name,bio,avatar_path,cover_path,featured_channel_id,status_emoji&id=eq."+encodeURIComponent(userId)+"&limit=1",token);
   return rows[0]??null;
 }
-export async function updateFullProfile(token:string,userId:string,fields:Partial<Pick<FullProfile,"avatar_path"|"cover_path"|"bio"|"featured_channel_id">>):Promise<FullProfile>{
-  const rows=await api<FullProfile[]>("/rest/v1/profiles?select=id,username,display_name,bio,avatar_path,cover_path,featured_channel_id&id=eq."+encodeURIComponent(userId),token,"PATCH",fields);
+export async function updateFullProfile(token:string,userId:string,fields:Partial<Pick<FullProfile,"avatar_path"|"cover_path"|"bio"|"featured_channel_id"|"status_emoji">>):Promise<FullProfile>{
+  const rows=await api<FullProfile[]>("/rest/v1/profiles?select=id,username,display_name,bio,avatar_path,cover_path,featured_channel_id,status_emoji&id=eq."+encodeURIComponent(userId),token,"PATCH",fields);
   if(!rows[0])throw Error("Профиль не найден");return rows[0];
 }
 export async function getProfilePhotos(token:string,userId:string):Promise<ProfilePhoto[]>{
