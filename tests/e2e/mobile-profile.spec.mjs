@@ -7,7 +7,7 @@ const CHAT='af65d75e-9be4-4a90-b247-34d644c15def';
 const AVATAR=USER+'/a45d88d3-7dd3-4d34-88fa-7192966bb7e0.jpg';
 const SECOND_AVATAR=USER+'/41161e7c-7a16-422e-97be-128459fe4587.jpg';
 const profile={id:USER,username:'tester',display_name:'Test User',avatar_path:AVATAR,
- cover_path:null,bio:'Test profile',featured_channel_id:CHANNEL,status_emoji:18};
+ cover_path:null,bio:'Test profile',featured_channel_id:CHANNEL,status_emoji:18,age_years:null};
 const partner={id:PARTNER,username:'friend',display_name:'Друг',avatar_path:null,status_emoji:null};
 const baseChannel={id:CHANNEL,owner_id:USER,title:'Тестовый канал',slug:'testing',
  description:'',avatar_path:SECOND_AVATAR,discussion_enabled:false,created_at:'2026-10-29T00:00:00Z'};
@@ -15,6 +15,7 @@ const gifPixel=Buffer.from('R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=','base64');
 
 async function setup(page,options={}){
  const {chat=false,stories=true,delayMessages=false}=options;
+ profile.age_years=null;profile.featured_channel_id=CHANNEL;
  let channel={...baseChannel};
  let edited=false;
  const requests=[];
@@ -36,6 +37,7 @@ async function setup(page,options={}){
   if(path==='/auth/v1/user'){
    response={id:USER,email:'tester@example.com',is_anonymous:false};
   }else if(path==='/rest/v1/profiles'){
+   if(method==='PATCH')Object.assign(profile,JSON.parse(request.postData()||'{}'));
    response=url.searchParams.toString().includes(PARTNER)?[partner]:[profile];
   }else if(path==='/rest/v1/channels'){
    if(method==='PATCH'){
@@ -91,6 +93,8 @@ test('Settings scroll independently and never push bottom navigation offscreen',
  await expect(page.locator('.ik-settings-hero-avatar img')).toBeVisible();
  const filter=await page.locator('.pane-nav .nav-profile-avatar').evaluate(el=>getComputedStyle(el).filter);
  expect(filter).toBe('none');
+ const color=await panel.evaluate(el=>getComputedStyle(el).backgroundColor);
+ expect(color).toBe('rgb(249, 250, 251)');
 });
 
 test('Channels preserve uploaded avatar and show description immediately after save',async({page})=>{
@@ -144,4 +148,43 @@ test('Chat loading skeleton transitions to messages with visible composer',async
  const zoom=await page.evaluate(()=>window.visualViewport?.scale??1);
  expect(zoom).toBeGreaterThanOrEqual(0.99);
  expect(zoom).toBeLessThanOrEqual(1.01);
+});
+
+
+test('Profile has white UI, 50 complete emoji figures and optional age without leading zero',async({page})=>{
+ await setup(page);
+ await enterSettings(page);
+ await page.getByRole('button',{name:'Открыть мой профиль'}).click();
+ const sheet=page.locator('.ik-profile-redesign');
+ await expect(sheet).toBeVisible();
+ const color=await sheet.evaluate(el=>getComputedStyle(el).backgroundColor);
+ expect(color).toBe('rgb(249, 250, 251)');
+ const atlas=await page.evaluate(async()=>{
+  const asset=new Image();
+  asset.src='/status-emojis.webp';
+  await asset.decode();
+  return [asset.naturalWidth,asset.naturalHeight];
+ });
+ expect(atlas).toEqual([800,500]);
+ await page.getByRole('button',{name:/Изменить профиль/}).click();
+ const age=page.getByPlaceholder('Например, 18');
+ await age.fill('065');
+ await expect(age).toHaveValue('65');
+ await age.fill('18');
+ await page.getByRole('button',{name:'Сохранить изменения'}).click();
+ await expect(page.locator('.ik-profile-age')).toHaveText('Возраст: 18');
+});
+test('Featured channel can be detached and attached again in a real UI flow',async({page})=>{
+ await setup(page);
+ await enterSettings(page);
+ await page.getByRole('button',{name:'Открыть мой профиль'}).click();
+ await expect(page.locator('.profile-featured-channel')).toBeVisible();
+ await page.getByRole('button',{name:'Изменить закреплённый канал'}).click();
+ await page.locator('#ik-profile-channel-choice').selectOption('');
+ await page.getByRole('button',{name:'Сохранить канал'}).click();
+ await expect(page.locator('.profile-featured-channel')).toHaveCount(0);
+ await page.getByRole('button',{name:'+ Прикрепить канал'}).click();
+ await page.locator('#ik-profile-channel-choice').selectOption(CHANNEL);
+ await page.getByRole('button',{name:'Сохранить канал'}).click();
+ await expect(page.locator('.profile-featured-channel')).toContainText('Тестовый канал');
 });
