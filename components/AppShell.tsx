@@ -7,7 +7,7 @@ import {mergeConfirmedRecentPage,prependEarlierPage,CONFIRMED_MESSAGE_GRACE_MS,t
 import {readChatDrafts,writeChatDrafts,clearChatDrafts,type ChatDrafts} from "@/lib/chat-drafts";
 import {readGroupDrafts,writeGroupDraft,clearGroupDrafts,type GroupDrafts} from "@/lib/group-drafts";
 import {clearAllGroupSendAttempts} from "@/lib/group-send-attempts";
-import {getOrCreateDirectSendAttempt,clearDirectSendAttempt,clearAllDirectSendAttempts} from "@/lib/direct-send-attempts";
+import {readDirectSendAttempt,getOrCreateDirectSendAttempt,clearDirectSendAttempt,clearAllDirectSendAttempts} from "@/lib/direct-send-attempts";
 import ChatMedia from "@/components/ChatMedia";
 import ChatMessageText from "@/components/ChatMessageText";
 import {subscribeDirectChatChanges} from "@/lib/direct-realtime";
