@@ -39,23 +39,35 @@ export default function ProfilePanel({token,userId,targetId,onBack,onOwnProfileC
  const activeStory=storyIndex===null?null:stories[storyIndex]??null;
  const progressRef=useStoryProgress(activeStory?.id??null,()=>setStoryIndex(i=>i===null?null:i+1>=stories.length?null:i+1),storyPaused);
  const reload=useCallback(async()=>{
-  const [p,gallery,active,owned]=await Promise.all([
-   getFullProfile(token,targetId),getProfilePhotos(token,targetId),getStories(token,targetId),mine?listOwnedChannels(token,targetId):Promise.resolve([] as Channel[])
+  // The main profile must render even if optional photos/stories/channels
+  // fail independently, for example on a spotty iPhone mobile connection.
+  const p=await getFullProfile(token,targetId);
+  setProfile(p);
+  setName(p?.display_name||"");setUsername(p?.username||"");setBio(p?.bio||"");
+  const [gallery,active,ownedResult]=await Promise.allSettled([
+    getProfilePhotos(token,targetId),getStories(token,targetId),
+    mine?listOwnedChannels(token,targetId):Promise.resolve([] as Channel[])
   ]);
+  if(gallery.status==='fulfilled')setPhotos(gallery.value);
+  if(active.status==='fulfilled')setStories(active.value);
+  const owned=ownedResult.status==='fulfilled'?ownedResult.value:[];
+  if(ownedResult.status==='fulfilled')setOwnedChannels(owned);
   const pinned=p?.featured_channel_id
     ? owned.find(ch=>ch.id===p.featured_channel_id)??await getChannelById(token,p.featured_channel_id).catch(()=>null)
     : null;
-  setProfile(p);setPhotos(gallery);setStories(active);setOwnedChannels(owned);
   setFeaturedChannel(pinned);
   setChosenChannelId(p?.featured_channel_id??"");
-  setName(p?.display_name||"");setUsername(p?.username||"");setBio(p?.bio||"");
- },[token,targetId]);
+ },[token,targetId,mine]);
  useEffect(()=>{let mounted=true;void reload().catch(e=>{if(mounted)setError(readableError(e));});return()=>{mounted=false;};},[reload]);
  useEffect(()=>{let mounted=true;const poll=()=>{if(document.visibilityState!=='visible')return;void getUserActivities(token,[targetId]).then(rows=>{if(mounted)setUserActivity(rows[targetId]||null);}).catch(()=>{});};poll();const timer=window.setInterval(poll,30000);return()=>{mounted=false;window.clearInterval(timer);};},[token,targetId]);
  const run=async(action:()=>Promise<void>)=>{
   if(busy)return;setBusy(true);setError("");setNotice("");
-  try{await action();await reload();}
-  catch(e){setError(readableError(e));}
+  try{
+   await action();
+   // A successful server write stays successful if the follow-up read fails.
+   try{await reload();}
+   catch{setNotice(current=>current||"Сохранено. Данные обновятся при повторном открытии профиля.");}
+  }catch(e){setError(readableError(e));}
   finally{setBusy(false);}
  };
  async function chooseImage(file:File|undefined,kind:"avatar"|"cover"|"photo"|"story"){
@@ -136,8 +148,8 @@ export default function ProfilePanel({token,userId,targetId,onBack,onOwnProfileC
      <div className="profile-cover" style={cover?{backgroundImage:"url("+cover+")"}:undefined}>
        {!viewingAsVisitor&&<label className="profile-cover-action">Изменить обложку<input aria-label="Выбрать обложку" type="file" accept="image/png,image/jpeg,image/webp" disabled={busy} onChange={e=>{void chooseImage(e.target.files?.[0],"cover");e.target.value="";}}/></label>}
      </div>
-     <div className={"profile-avatar-large"+(stories.length?" profile-avatar-has-story":"")} onClick={()=>{if(stories.length)setStoryIndex(0);}} role={stories.length?"button":undefined} tabIndex={stories.length?0:undefined} onKeyDown={e=>{if(stories.length&&(e.key==="Enter"||e.key===" ")){e.preventDefault();setStoryIndex(0);}}} aria-label={stories.length?"Посмотреть истории":undefined}>{avatar?<img src={avatar} alt="Аватар пользователя"/>:<span>{(profile?.display_name||"?").charAt(0).toUpperCase()}</span>}
-      {!viewingAsVisitor&&<label className="profile-avatar-camera" title="Изменить фото"><span aria-hidden="true">▣</span><input aria-label="Загрузить фото профиля" type="file" accept="image/png,image/jpeg,image/webp" disabled={busy} onChange={e=>{void chooseImage(e.target.files?.[0],"avatar");e.target.value="";}}/></label>}
+     <div className={"profile-avatar-large"+(stories.length?" profile-avatar-has-story":"")} onClick={event=>{if((event.target as HTMLElement).closest('.profile-avatar-camera'))return;if(stories.length)setStoryIndex(0);}} role={stories.length?"button":undefined} tabIndex={stories.length?0:undefined} onKeyDown={e=>{if(stories.length&&(e.key==="Enter"||e.key===" ")){e.preventDefault();setStoryIndex(0);}}} aria-label={stories.length?"Посмотреть истории":undefined}>{avatar?<img src={avatar} alt="Аватар пользователя"/>:<span>{(profile?.display_name||"?").charAt(0).toUpperCase()}</span>}
+      {!viewingAsVisitor&&<label className="profile-avatar-camera" title="Изменить фото" onClick={event=>event.stopPropagation()} onKeyDown={event=>event.stopPropagation()}><span aria-hidden="true">▣</span><input aria-label="Загрузить фото профиля" type="file" accept="image/png,image/jpeg,image/webp" disabled={busy} onChange={e=>{void chooseImage(e.target.files?.[0],"avatar");e.target.value="";}}/></label>}
      </div>
      {profile?<div className="profile-identity">
        <div className="ik-profile-name-row">
