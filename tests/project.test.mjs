@@ -333,7 +333,7 @@ test('blocklist is private and blocks delivery server-side for text and files',(
  assert.match(sql,/revoke all on function public\.enforce_direct_message_blocks\(\) from public, anon, authenticated/);
  assert.match(shell,/className="ik-blocklist-settings"/);
  assert.match(shell,/Разблокировать/);
- assert.match(shell,/disabled=\{sending\|\|activePartnerBlocked\}/);
+ assert.match(shell,/disabled=\{sending\|\|activePartnerBlocked\|\|!networkOnline\}/);
 });
 test('chat removal for me erases own history without deleting recipient data',()=>{
  const sql=load('supabase/migrations/20261029_020000_persistent_contacts_blocklist_chat_cleanup.sql');
