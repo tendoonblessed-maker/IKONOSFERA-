@@ -2537,3 +2537,246 @@ body{position:relative}
  .messenger.is-authenticated .ik-settings-hero-avatar{width:106px;height:106px}
  .messenger.is-authenticated .ik-profile-redesign .profile-topbar>strong{display:none}
 }
+
+
+/* 2026-10-29: IKONOSFERA LIGHT PROFILE + SETTINGS.
+   Keep Telegram-inspired geometry without the black canvas. */
+.messenger.is-authenticated .settings-panel.ik-settings-redesign{
+  background:#fff!important;color:#1b1b20!important;
+  --ik-setting-surface:#f5f5f7;
+}
+.messenger.is-authenticated .ik-settings-page-header h2{
+  color:#1b1b20!important;
+}
+.messenger.is-authenticated .ik-settings-header-edit{
+  background:#f1f1f4!important;color:#202026!important;border:1px solid #e6e6ea;
+}
+.messenger.is-authenticated .ik-settings-profile-link,
+.messenger.is-authenticated .ik-settings-hero-name,
+.messenger.is-authenticated .ik-settings-hero-name strong{
+  color:#1b1b20!important;
+}
+.messenger.is-authenticated .ik-settings-hero-avatar{
+  background:#e8e8ec!important;color:#26262b!important;
+}
+.messenger.is-authenticated .ik-settings-hero-username{
+  color:#8b8b95!important;
+}
+.messenger.is-authenticated .ik-settings-section h3{
+  color:#85858d!important;
+}
+.messenger.is-authenticated .ik-settings-group{
+  background:#f6f6f8!important;
+  border:1px solid #ebebee!important;
+}
+.messenger.is-authenticated .ik-settings-row,
+.messenger.is-authenticated .ik-settings-privacy-group .ik-blocklist-toggle{
+  background:#f6f6f8!important;color:#242429!important;
+  border-bottom:1px solid #e8e8ed!important;
+}
+.messenger.is-authenticated .ik-settings-row:active{
+  background:#eaeaf0!important;
+}
+.messenger.is-authenticated .ik-settings-icon{
+  background:#e7e7ec!important;color:#35353c!important;
+}
+.messenger.is-authenticated .ik-settings-chevron{color:#9b9ba4!important}
+.messenger.is-authenticated .ik-settings-row-value{color:#72727b!important}
+.messenger.is-authenticated .ik-settings-privacy-group .ik-blocklist-settings,
+.messenger.is-authenticated .ik-settings-privacy-group .ik-privacy-settings{
+  background:#f6f6f8!important;color:#242429!important;
+}
+.messenger.is-authenticated .ik-settings-privacy-group .ik-block-count{
+  color:#66666f!important;background:#e5e5ea!important;
+}
+.messenger.is-authenticated .ik-settings-privacy-group .ik-blocklist-content{
+  background:#f0f0f3!important;
+}
+.messenger.is-authenticated .ik-settings-privacy-group .ik-blocked-person{
+  color:#242429!important;border-bottom:1px solid #dedee3!important;
+}
+.messenger.is-authenticated .ik-settings-privacy-group .ik-blocked-person-info strong{
+  color:#25252a!important;
+}
+.messenger.is-authenticated .ik-settings-privacy-group .ik-blocked-person-info small,
+.messenger.is-authenticated .ik-settings-privacy-group .ik-empty-blocklist{
+  color:#7e7e87!important;
+}
+.messenger.is-authenticated .ik-settings-privacy-group .ik-blocked-person>button{
+  background:#e2e2e8!important;color:#222229!important;
+}
+.messenger.is-authenticated .ik-settings-privacy-heading{
+  color:#242429!important;
+}
+.messenger.is-authenticated .ik-settings-privacy-group select{
+  background:#fff!important;color:#29292e!important;
+  border:1px solid #dadade!important;
+  border-radius:12px!important;
+  min-width:0;width:100%;text-overflow:ellipsis;
+}
+.messenger.is-authenticated .ik-settings-privacy-group .ik-privacy-note{
+  color:#808089!important;
+}
+.messenger.is-authenticated .ik-settings-logout{
+  background:#fff4f4!important;border:1px solid #f1dddd!important;
+  color:#bd424c!important;
+}
+.messenger.is-authenticated .settings-panel.ik-settings-redesign .test-account-warning{
+  color:#393943!important;background:#fff5e5!important;
+  border:1px solid #f2dec0!important;
+}
+.messenger.is-authenticated .ik-settings-login-hint{
+  color:#85858e!important;
+}
+/* White page chrome (including safe-area background) on the Settings tab. */
+@media(max-width:800px){
+  .messenger.is-authenticated[data-current-tab="settings"],
+  .messenger.is-authenticated[data-current-tab="settings"] .chats-pane,
+  .messenger.is-authenticated[data-current-tab="settings"] .pane-heading,
+  .messenger.is-authenticated[data-current-tab="settings"] .pane-toolbar{
+    background:#fff!important;color:#1b1b20!important;border-color:#fff!important;
+  }
+  .messenger.is-authenticated[data-current-tab="settings"] .pane-nav{
+    background:rgba(255,255,255,.96)!important;
+    border-top:1px solid #e8e8ec!important;
+  }
+  .messenger.is-authenticated[data-current-tab="settings"] .pane-nav button{
+    color:#8f8f98!important;
+  }
+  .messenger.is-authenticated[data-current-tab="settings"] .pane-nav button.current{
+    color:#1a1a20!important;background:#eeeeF1!important;
+  }
+}
+/* Keep profile page consistent with Settings even when older dark rules remain. */
+.messenger.is-authenticated .profile-view.ik-profile-redesign,
+.messenger.is-authenticated .ik-profile-redesign .profile-scroll,
+.messenger.is-authenticated .ik-profile-redesign .profile-hero,
+.messenger.is-authenticated .ik-profile-redesign .profile-topbar{
+  background:#fff!important;color:#202025!important;
+}
+.messenger.is-authenticated .ik-profile-redesign .profile-topbar>strong,
+.messenger.is-authenticated .ik-profile-redesign .profile-identity,
+.messenger.is-authenticated .ik-profile-redesign .profile-identity h1{
+  color:#202025!important;
+}
+.messenger.is-authenticated .ik-profile-redesign .profile-back,
+.messenger.is-authenticated .ik-profile-redesign .profile-edit-trigger{
+  background:#f2f2f4!important;color:#24242a!important;
+  border:1px solid #e5e5e9!important;
+}
+.messenger.is-authenticated .ik-profile-redesign .profile-cover:not([style]){
+  background:#fff!important;
+}
+.messenger.is-authenticated .ik-profile-redesign .profile-cover[style]{
+  background-color:#ebebed!important;
+}
+.messenger.is-authenticated .ik-profile-redesign .profile-avatar-large,
+.messenger.is-authenticated .ik-profile-redesign .profile-avatar-has-story{
+  border-color:#fff!important;background:#e7e7eb!important;color:#202025!important;
+}
+.messenger.is-authenticated .ik-profile-redesign .profile-avatar-camera{
+  background:#f2f2f5!important;color:#222229!important;
+  border-color:#fff!important;
+}
+.messenger.is-authenticated .ik-profile-redesign .profile-cover-action{
+  background:#ffffffde;color:#24242a;border:1px solid #dddde2;
+}
+.messenger.is-authenticated .ik-profile-redesign .profile-identity>p,
+.messenger.is-authenticated .ik-profile-redesign .profile-identity .ik-profile-activity{
+  color:#888891!important;
+}
+.messenger.is-authenticated .ik-profile-redesign .profile-identity .ik-profile-activity.ik-online-label{
+  color:#65656f!important;
+}
+.messenger.is-authenticated .ik-profile-redesign .profile-bio{
+  color:#53535c!important;
+}
+.messenger.is-authenticated .ik-profile-redesign .ik-profile-block-action{
+  background:#f3f3f6!important;color:#484850!important;border-color:#dedee4!important;
+}
+.messenger.is-authenticated .ik-profile-redesign .profile-content-section,
+.messenger.is-authenticated .ik-profile-redesign .profile-editor,
+.messenger.is-authenticated .ik-profile-redesign .profile-featured-channel{
+  color:#25252b!important;background:#f6f6f8!important;
+  border:1px solid #e9e9ed!important;
+}
+.messenger.is-authenticated .ik-profile-redesign .profile-featured-icon{
+  background:#e9e9ee!important;color:#29292e!important;
+}
+.messenger.is-authenticated .ik-profile-redesign .profile-featured-details strong,
+.messenger.is-authenticated .ik-profile-redesign .profile-section-title h2,
+.messenger.is-authenticated .ik-profile-redesign .ik-status-setting strong{
+  color:#24242a!important;
+}
+.messenger.is-authenticated .ik-profile-redesign .profile-featured-details small,
+.messenger.is-authenticated .ik-profile-redesign .profile-story small{
+  color:#85858e!important;
+}
+.messenger.is-authenticated .ik-profile-redesign .ik-profile-pin-toggle,
+.messenger.is-authenticated .ik-profile-redesign .ik-status-setting{
+  color:#52525c!important;
+}
+.messenger.is-authenticated .ik-profile-redesign .ik-profile-pin-picker{
+  background:#f0f0f4!important;color:#29292f!important;
+}
+.messenger.is-authenticated .ik-profile-redesign .ik-profile-pin-picker label{
+  color:#3f3f49!important;
+}
+.messenger.is-authenticated .ik-profile-redesign .ik-profile-pin-picker select{
+  background:#fff!important;color:#29292f!important;
+  border:1px solid #dddde2!important;
+}
+.messenger.is-authenticated .ik-profile-redesign .ik-profile-pin-save{
+  background:#202026!important;color:#fff!important;
+}
+.messenger.is-authenticated .ik-profile-redesign .ik-status-setting-image{
+  background:#e6e6e9!important;color:#34343a!important;
+}
+.messenger.is-authenticated .ik-profile-redesign .ik-profile-content-tabs{
+  background:#f1f1f4!important;border:1px solid #e9e9ee!important;
+}
+.messenger.is-authenticated .ik-profile-redesign .ik-profile-content-tabs button{
+  color:#7a7a83!important;
+}
+.messenger.is-authenticated .ik-profile-redesign .ik-profile-content-tabs button.selected{
+  background:#fff!important;color:#222228!important;
+  box-shadow:0 1px 4px #0000000a;
+}
+.messenger.is-authenticated .ik-profile-redesign .profile-action{
+  background:#e8e8ed!important;color:#33333a!important;
+}
+.messenger.is-authenticated .ik-profile-redesign .profile-editor label,
+.messenger.is-authenticated .ik-profile-redesign .profile-editor h2,
+.messenger.is-authenticated .ik-profile-redesign .profile-editor-intro{
+  color:#2c2c32!important;
+}
+.messenger.is-authenticated .ik-profile-redesign .profile-editor input,
+.messenger.is-authenticated .ik-profile-redesign .profile-editor textarea{
+  background:#fff!important;color:#27272d!important;
+  border:1px solid #dddde2!important;
+}
+.messenger.is-authenticated .ik-profile-redesign .profile-grid-cell{
+  background:#ededf0!important;
+}
+.messenger.is-authenticated .ik-profile-redesign .profile-error,
+.messenger.is-authenticated .ik-profile-redesign .profile-success{
+  background:#f3f3f6!important;color:#2a2a30!important;
+  border:1px solid #dddde3!important;
+}
+/* Small, clear confirmation after sharing a link, not a debug-style message. */
+.messenger.is-authenticated .toast.toast-copy-success{
+  width:auto;max-width:min(90vw,295px);
+  left:50%;right:auto;bottom:max(81px,calc(env(safe-area-inset-bottom,0px) + 64px));
+  transform:translateX(-50%);
+  justify-content:center;gap:12px;
+  padding:12px 15px;border:1px solid #e8e8ec;
+  border-radius:16px;background:#fff;color:#24242b;
+  box-shadow:0 8px 32px #00000016;
+  font-size:13px;font-weight:680;
+}
+.messenger.is-authenticated .toast.toast-copy-success>span{
+  min-width:0;white-space:nowrap;
+}
+.messenger.is-authenticated .toast.toast-copy-success button{
+  font-size:18px;margin-left:0;color:#8b8b92;
+}
