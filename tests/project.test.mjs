@@ -929,3 +929,51 @@ test('reply fetching never leaks old-account previews or unbounded PostgREST ID 
  assert.match(api,/const unique=\[\.\.\.new Set\(ids\)\]/);
  assert.match(shell,/if\(stillInChat\(\)\)/);
 });
+
+
+test('full-history direct-message search is literal, scoped and private',()=>{
+ const sql=load('supabase/migrations/20261029_080000_direct_message_full_history_search.sql');
+ const api=load('lib/supabase-rest.ts');
+ assert.match(sql,/public\.search_direct_messages/);
+ assert.match(sql,/security invoker/);
+ assert.match(sql,/set search_path = ''/);
+ assert.match(sql,/public\.is_chat_member\(p_chat_id\)/);
+ assert.match(sql,/m\.chat_id = p_chat_id/);
+ assert.match(sql,/position\(lower\(btrim\(p_query\)\) in lower\(m\.body\)\) > 0/);
+ assert.match(sql,/not \(\(select auth\.uid\(\)\) = any\(coalesce\(m\.deleted_for/);
+ assert.match(sql,/coalesce\(m\.deleted_for_everyone,false\) = false/);
+ assert.match(sql,/revoke all on function public\.search_direct_messages/);
+ assert.match(sql,/from public, anon/);
+ assert.match(sql,/to authenticated/);
+ assert.match(sql,/between 2 and 120/);
+ assert.match(sql,/least\(coalesce\(p_limit,31\),31\)/);
+ assert.match(sql,/least\(coalesce\(p_offset,0\),600\)/);
+ assert.doesNotMatch(sql,/security definer/);
+ assert.match(api,/export async function searchDirectMessages/);
+ assert.match(api,/DIRECT_MESSAGE_SEARCH_PAGE_SIZE=30/);
+ assert.match(api,/\/rest\/v1\/rpc\/search_direct_messages/);
+ assert.match(api,/p_limit:DIRECT_MESSAGE_SEARCH_PAGE_SIZE\+1/);
+});
+test('direct-chat search debounces and never renders old account results',()=>{
+ const shell=load('components/AppShell.tsx');
+ const panel=load('components/DirectMessageSearchPanel.tsx');
+ const css=load('app/globals.css');
+ assert.match(shell,/messageSearchRequestRef=useRef\(0\)/);
+ assert.match(shell,/const requestId=\+\+messageSearchRequestRef\.current/);
+ assert.match(shell,/chatContextGenerationRef\.current===generation&&selectedRef\.current===chatId/);
+ assert.match(shell,/void searchDirectMessages\(token,chatId,term,offset\)/);
+ assert.match(shell,/messageSearchPage===0\?320:0/);
+ assert.match(shell,/setMessageSearchResults\(previous=>offset===0\?page/);
+ assert.match(shell,/resetMessageSearch\(\)/);
+ assert.match(shell,/messageSearchRetry/);
+ assert.match(shell,/onOpen=\{id=>\{void jumpToOriginalMessage\(id,true\);\}\}/);
+ assert.match(shell,/if\(fromSearch\)resetMessageSearch\(\)/);
+ assert.match(shell,/visibleMessages=chatMessages\.filter\(message=>!message\.deleted_for\?\.includes\(userId\)\)/);
+ assert.match(panel,/aria-label="Поиск по всей переписке"/);
+ assert.match(panel,/maxLength=\{120\}/);
+ assert.match(panel,/onClick=\{\(\)=>onOpen\(message\.id\)\}/);
+ assert.match(panel,/Показать ещё совпадения/);
+ assert.match(panel,/isLocating/);
+ assert.match(css,/\.ik-direct-search-results/);
+ assert.match(css,/max-height:min\(39dvh,290px\)/);
+});
