@@ -967,7 +967,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
  <button type="button" className="reaction-add" aria-label="Добавить реакцию" onClick={()=>setMessageReactionPicker(messageReactionPicker===message.id?null:message.id)}>☺ +</button>
  {messageReactionPicker===message.id&&<div className="reaction-picker">{REACTION_EMOJIS.map(emoji=><button type="button" key={emoji} disabled={sending} onClick={()=>void reactToMessage(message.id,emoji)} aria-label={"Реакция "+emoji}>{emoji}</button>)}</div>}
  </div></div></SwipeReplyMessage></Fragment>)}<div ref={messageEnd}/></div>
-      {showJumpToLatest&&!activeChatLoading&&<button type="button" className="ik-jump-to-latest" aria-label="Перейти к последним сообщениям" title="К последним сообщениям"
+      {showJumpToLatest&&!activeChatLoading&&<button type="button" className={"ik-jump-to-latest"+(replyingTo?.chatId===selected?" with-reply":"")} aria-label="Перейти к последним сообщениям" title="К последним сообщениям"
         onClick={()=>{const history=conversationHistoryRef.current;if(history){chatAutoScrollRef.current=true;history.scrollTop=history.scrollHeight;}setShowJumpToLatest(false);}}>
         <svg viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m5 9 7 7 7-7"/></svg>
       </button>}
