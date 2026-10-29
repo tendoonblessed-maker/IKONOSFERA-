@@ -3394,3 +3394,60 @@ body{position:relative}
   outline-offset:3px;
   border-radius:2px;
 }
+
+
+/* Group history stays scrollable while the composer remains fixed. When reading
+   older messages, provide an explicit and accessible jump to latest updates. */
+.group-view .ik-group-history-wrap{
+  position:relative;
+  flex:1 1 0%;
+  min-height:0;
+  min-width:0;
+  display:flex;
+  flex-direction:column;
+}
+.group-view .ik-group-history-wrap>.conversation-history{
+  flex:1 1 0%;
+  min-height:0;
+  min-width:0;
+}
+.ik-group-jump-latest{
+  position:absolute;
+  bottom:16px;
+  right:max(16px,env(safe-area-inset-right,0px));
+  z-index:6;
+  min-width:44px;
+  min-height:44px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  gap:8px;
+  border:1px solid #dce0e5;
+  border-radius:25px;
+  padding:9px 14px;
+  color:#24262c;
+  background:#fff;
+  box-shadow:0 4px 20px #18222e27;
+  font:inherit;
+  font-size:20px;
+  font-weight:700;
+  cursor:pointer;
+}
+.ik-group-jump-latest:hover{background:#f4f5f8}
+.ik-group-jump-latest:focus-visible{outline:2px solid #545b69;outline-offset:2px}
+.ik-group-jump-count{
+  display:grid;
+  place-items:center;
+  min-width:20px;
+  height:20px;
+  padding:0 5px;
+  border-radius:12px;
+  background:#24282e;
+  color:#fff;
+  font-size:11px;
+  font-weight:800;
+  font-variant-numeric:tabular-nums;
+}
+@media(max-width:800px){
+ .ik-group-jump-latest{bottom:12px;right:14px}
+}
