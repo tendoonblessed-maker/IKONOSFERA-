@@ -23,9 +23,8 @@ export function reconcileRecentChannelUpdates(
  pending:Map<string,RecentChannelUpdate>,
  now=Date.now()
 ):Channel[]{
- const visible=new Set(remote.map(channel=>channel.id));
  for(const [id,edit] of pending){
-   if(edit.expiresAt<=now||!visible.has(id)&&edit.expiresAt<=now)pending.delete(id);
+   if(edit.expiresAt<=now)pending.delete(id);
  }
  return remote.map(channel=>{
    const edit=pending.get(channel.id);
