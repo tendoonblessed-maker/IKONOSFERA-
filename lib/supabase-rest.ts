@@ -7,7 +7,7 @@ export const backendReady = Boolean(apiUrl && anonKey);
 export type Session = { access_token: string; refresh_token: string; expires_at: number };
 export type Profile = { id: string; username: string; display_name: string; avatar_path?: string|null; cover_path?: string|null; bio?: string; status_emoji?:number|null; age_years?:number|null };
 export type DirectChat = { id: string; user_a: string; user_b: string; created_at: string; hidden_for?:string[]; pinned_for?:string[] };
-export type ChatMessage = { id: string; chat_id: string; sender_id: string; body: string; created_at: string; media_path: string|null; media_type: "image"|"video"|"audio"|"file"|null; read_at: string|null; edited_at?:string|null; deleted_for?:string[]; deleted_for_everyone?:boolean };
+export type ChatMessage = { id: string; chat_id: string; sender_id: string; body: string; created_at: string; media_path: string|null; media_type: "image"|"video"|"audio"|"file"|null; read_at: string|null; edited_at?:string|null; deleted_for?:string[]; deleted_for_everyone?:boolean; reply_to_message_id?:string|null };
 const STORAGE = 'ikonosfera-session-v1';
 
 class SupabaseHttpError extends Error {
@@ -155,7 +155,7 @@ export async function listProfiles(token: string, ids: string[]) {
   return http<Profile[]>(`/rest/v1/profiles?select=id,username,display_name,avatar_path,cover_path,bio,status_emoji,age_years&id=in.(${ids.map(encodeURIComponent).join(',')})`,{token});
 }
 export const CHAT_MESSAGE_PAGE_SIZE=100;
-const CHAT_MESSAGE_COLUMNS='id,chat_id,sender_id,body,created_at,media_path,media_type,read_at,edited_at,deleted_for,deleted_for_everyone';
+const CHAT_MESSAGE_COLUMNS='id,chat_id,sender_id,body,created_at,media_path,media_type,read_at,edited_at,deleted_for,deleted_for_everyone,reply_to_message_id';
 /** Newest page first. Sort ties by ID so pagination has a stable boundary. */
 export async function listMessages(token:string,chatId:string):Promise<ChatMessage[]>{
   return http<ChatMessage[]>(`/rest/v1/messages?select=${CHAT_MESSAGE_COLUMNS}&chat_id=eq.${encodeURIComponent(chatId)}&order=created_at.desc,id.desc&limit=${CHAT_MESSAGE_PAGE_SIZE}`,{token});
@@ -166,9 +166,19 @@ export async function listOlderMessages(token:string,chatId:string,before:Pick<C
   const cursor=`or=(created_at.lt.${time},and(created_at.eq.${time},id.lt.${id}))`;
   return http<ChatMessage[]>(`/rest/v1/messages?select=${CHAT_MESSAGE_COLUMNS}&chat_id=eq.${encodeURIComponent(chatId)}&${cursor}&order=created_at.desc,id.desc&limit=${CHAT_MESSAGE_PAGE_SIZE}`,{token});
 }
-export async function postMessage(token: string, chatId: string, userId: string, body: string, clientMessageId: string = crypto.randomUUID()) {
+/** Load original messages referenced by older replies, subject to normal chat RLS. */
+export type ReplyTarget=Pick<ChatMessage,'id'|'sender_id'|'body'|'deleted_for_everyone'|'media_type'>;
+export async function listReplyTargets(token:string,chatId:string,ids:string[]):Promise<ReplyTarget[]>{
+  const unique=[...new Set(ids)].filter(id=>/^[a-f0-9-]{36}$/i.test(id)).slice(0,100);
+  if(!unique.length)return [];
+  return http<ReplyTarget[]>('/rest/v1/messages?select=id,sender_id,body,deleted_for_everyone,media_type&chat_id=eq.'+encodeURIComponent(chatId)+'&id=in.('+unique.map(encodeURIComponent).join(',')+')',{token});
+}
+
+export async function postMessage(token: string, chatId: string, userId: string, body: string, clientMessageId: string = crypto.randomUUID(), replyToMessageId:string|null=null) {
   void userId;
-  const message=await http<ChatMessage>('/rest/v1/rpc/send_direct_message',{token,method:'POST',body:{p_chat_id:chatId,p_body:body,p_client_message_id:clientMessageId}});
+  const endpoint=replyToMessageId?'/rest/v1/rpc/send_direct_reply':'/rest/v1/rpc/send_direct_message';
+  const payload={p_chat_id:chatId,p_body:body,p_client_message_id:clientMessageId};
+  const message=await http<ChatMessage>(endpoint,{token,method:'POST',body:replyToMessageId?{...payload,p_reply_to_message_id:replyToMessageId}:payload});
   if(!message?.id)throw Error('Сообщение не сохранено');
   return message;
 }
@@ -188,7 +198,7 @@ export async function uploadDirectMedia(token:string,chatId:string,userId:string
 export async function sendDirectMedia(token:string,chatId:string,userId:string,file:File,caption=""){
  const {path,type}=await uploadDirectMedia(token,chatId,userId,file);
  try{
-  const messages=await http<ChatMessage[]>('/rest/v1/messages?select=id,chat_id,sender_id,body,created_at,media_path,media_type,read_at',{
+  const messages=await http<ChatMessage[]>('/rest/v1/messages?select=id,chat_id,sender_id,body,created_at,media_path,media_type,read_at,reply_to_message_id',{
    token,method:"POST",body:{chat_id:chatId,sender_id:userId,body:caption.trim().slice(0,4000),media_path:path,media_type:type},
    extraHeaders:{Prefer:"return=representation"}
   });

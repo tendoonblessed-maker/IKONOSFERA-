@@ -814,3 +814,41 @@ test('jump to latest is accessible and remains above the iPhone composer',()=>{
  assert.match(css,/\.ik-jump-to-latest\.with-reply/);
  assert.match(css,/env\(safe-area-inset-bottom/);
 });
+
+
+test('server-backed reply schema preserves chat isolation and existing send RPC',()=>{
+ const sql=load('supabase/migrations/20261029_073000_direct_message_replies.sql');
+ assert.match(sql,/add column if not exists reply_to_message_id uuid/);
+ assert.match(sql,/foreign key \(reply_to_message_id, chat_id\)/);
+ assert.match(sql,/references public\.messages \(id, chat_id\)/);
+ assert.match(sql,/on delete set null \(reply_to_message_id\)/);
+ assert.match(sql,/security invoker/);
+ assert.match(sql,/not deleted_for_everyone/);
+ assert.match(sql,/public\.is_chat_member\(p_chat_id\)/);
+ assert.match(sql,/client_message_id\)/);
+ assert.match(sql,/on conflict\(sender_id,client_message_id\)/);
+ assert.match(sql,/revoke all on function public\.send_direct_reply\(uuid,text,uuid,uuid\) from public, anon/);
+ assert.match(sql,/grant execute on function public\.send_direct_reply\(uuid,text,uuid,uuid\) to authenticated/);
+ assert.doesNotMatch(sql,/drop function public\.send_direct_message/);
+});
+test('reply UX submits plain text with a real target ID and private off-page previews',()=>{
+ const api=load('lib/supabase-rest.ts');
+ const shell=load('components/AppShell.tsx');
+ const quote=load('components/ReplyQuote.tsx');
+ const css=load('app/globals.css');
+ assert.match(api,/reply_to_message_id\?:string\|null/);
+ assert.match(api,/CHAT_MESSAGE_COLUMNS=.*reply_to_message_id/);
+ assert.match(api,/export async function listReplyTargets/);
+ assert.match(api,/chat_id=eq\.'/);
+ assert.match(api,/endpoint=replyToMessageId\?'/);
+ assert.match(api,/send_direct_reply/);
+ assert.match(api,/p_reply_to_message_id:replyToMessageId/);
+ assert.match(shell,/postMessage\(token,chatId,userId,plainText,crypto\.randomUUID\(\),reply\?\.id\?\?null\)/);
+ assert.doesNotMatch(shell,/const body=reply\?'↪ '/);
+ assert.match(shell,/replyTargetsQueriedRef/);
+ assert.match(shell,/ReplyQuote/);
+ assert.match(shell,/jumpToOriginalMessage/);
+ assert.match(quote,/aria-label=\{'Перейти к сообщению: '/);
+ assert.match(css,/\.ik-message-reply-reference/);
+ assert.match(css,/prefers-reduced-motion/);
+});
