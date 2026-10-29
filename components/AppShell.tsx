@@ -334,9 +334,23 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
     catch(e){setActivityVisibility(previous);setError(userFacingError(e));}
   }
   async function copyCleanLink(){
-    try{await navigator.clipboard.writeText(window.location.origin+'/');setNotice('Скопирована чистая ссылка без меток ChatGPT.');}
-    catch{setError('Не удалось скопировать ссылку. Адрес: '+window.location.origin+'/');}
+    try{
+      await navigator.clipboard.writeText(window.location.origin+'/');
+      setError('');
+      setNotice('Ссылка скопирована!');
+    }catch{
+      setError('Не удалось скопировать ссылку. Адрес: '+window.location.origin+'/');
+    }
   }
+  // Only the lightweight share confirmation disappears automatically. Other
+  // notices (including important sign-in instructions) remain dismissible.
+  useEffect(()=>{
+    if(notice!=='Ссылка скопирована!')return;
+    const timer=window.setTimeout(()=>{
+      setNotice(current=>current==='Ссылка скопирована!'?'':current);
+    },2800);
+    return()=>window.clearTimeout(timer);
+  },[notice]);
   // Scroll only the message history. scrollIntoView() was scrolling the page
   // itself on iPhone Safari and pushing the composer below the viewport.
   useEffect(()=>{chatAutoScrollRef.current=true;},[selected]);
@@ -961,7 +975,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
         <button type="button" className="ik-message-menu-cancel" onClick={()=>setMessageMenuId(null)}>Отмена</button>
       </div>
     </div>}
-    {(error||notice)&&<div role="status" className={`toast ${error?'toast-error':''}`}><span>{error||notice}</span><button aria-label="Закрыть уведомление" onClick={()=>{setError('');setNotice('');}}>×</button></div>}
+    {(error||notice)&&<div role="status" className={`toast ${error?'toast-error':notice==='Ссылка скопирована!'?'toast-copy-success':''}`}><span>{error||notice}</span><button aria-label="Закрыть уведомление" onClick={()=>{setError('');setNotice('');}}>×</button></div>}
     {installHelp&&<div className="install-backdrop" role="dialog" aria-modal="true" aria-label="Установка приложения"><div className="install-card"><h2>Установить IKONOSFERA</h2><p>{platform.ios?'Открой страницу в Safari → «Поделиться» → «На экран Домой» → «Добавить».':'В Chrome на Android открой меню ⋮ и выбери «Установить приложение» или «Добавить на главный экран».'}</p><button className="accent-button" onClick={()=>setInstallHelp(false)}>Понятно</button></div></div>}
     {loading&&<div className="initializing"><img src="/branding/ikonosfera.svg" alt="IKONOSFERA © BY TENDO888" width={1266} height={734}/><span>Загружаем переписки…</span></div>}
   </div>;
