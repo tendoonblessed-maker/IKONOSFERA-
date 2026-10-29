@@ -4,5 +4,7 @@ alter table public.profiles add column if not exists age_years smallint;
 alter table public.profiles drop constraint if exists profiles_age_years_check;
 alter table public.profiles add constraint profiles_age_years_check
   check (age_years is null or age_years between 13 and 120);
+-- Other profile columns use per-column UPDATE grants: include the new field.
+grant update (age_years) on public.profiles to authenticated;
 comment on column public.profiles.age_years is
   'Optional self-reported age, shown to authenticated profile viewers. No date of birth stored.';
