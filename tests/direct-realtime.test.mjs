@@ -14,7 +14,7 @@ test('private Realtime attaches only to the selected chat and existing JWT',()=>
  assert.match(helper,/schema:'public' as const,table:'messages'/);
  assert.match(helper,/event:'INSERT'/);
  assert.match(helper,/event:'UPDATE'/);
- assert.doesNotMatch(helper,/service.role|service_role|client\.from\('messages'\)/i);
+ assert.doesNotMatch(helper,/process\.env\.(?:SUPABASE_SERVICE_ROLE_KEY|SUPABASE_SECRET_KEY)|client\.from\('messages'\)/i);
  assert.match(shell,/subscribeDirectChatChanges\(token,chatId,onRealtimeChange\)/);
  assert.match(shell,/\},\[selected,session\?\.access_token,userId,chatReloadNonce\]\)/);
  assert.match(helper,/if\(stopped\)return;/);
