@@ -57,7 +57,7 @@ test('recording never auto-uploads: it passes a real file into existing preview 
  const preview=load('components/ChatAttachmentPreview.tsx');
  assert.match(ui,/recordedRef\.current\(file\)/);
  assert.match(shell,/onRecorded=\{file=>queueAttachment\(file\)\}/);
- assert.match(shell,/key=\{userId\+':\+selected\}/);
+ assert.match(shell,/key=\{userId\+':'\+selected\}/);
  assert.match(shell,/disabled=\{sending\|\|activePartnerBlocked\|\|Boolean\(pendingAttachment\)\}/);
  assert.match(preview,/<audio src=\{src\} controls/);
  assert.match(shell,/onSend=\{\(\)=>\{void sendAttachment\(pendingAttachment\.file,attachmentCaption\);\}\}/);
