@@ -12,6 +12,7 @@ import ChatMessageText from "@/components/ChatMessageText";
 import {subscribeDirectChatChanges} from "@/lib/direct-realtime";
 import {subscribeInboxChanges,type InboxChangeKind} from "@/lib/inbox-realtime";
 import {isLatestAccountSnapshot} from "@/lib/inbox-snapshot";
+import {shouldOpenDirectChatSearch} from "@/lib/chat-shortcuts";
 import {reconcileRecentChannelUpdates,CHANNEL_UPDATE_GRACE_MS,type RecentChannelUpdate} from "@/lib/channel-sync";
 import ChatAttachmentPreview from "@/components/ChatAttachmentPreview";
 import VoiceRecorder from "@/components/VoiceRecorder";
@@ -755,7 +756,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
       // Ctrl/Cmd+F searches the full private conversation only when one is
       // actually visible. Leave native Find untouched on every other screen.
       const directVisible=Boolean(session&&userId&&selected&&!selectedGroup&&!selectedChannel&&!profileTarget&&!selectedBot);
-      if(shortcut&&key==='f'&&directVisible){
+      if(shouldOpenDirectChatSearch(event,directVisible)){
         event.preventDefault();
         if(!searchInConversation)setSearchInConversation(true);
         else{
