@@ -6,8 +6,7 @@
 const PREFIX='ikonosfera-drafts-tab-v1:';
 const MAX_CHATS=48;
 const MAX_TEXT=4000;
-const CHAT_ID=/^[a-f0-9-]{36}$/i;
-const USER_ID=/^[a-f0-9-]{36}$/i;
+const UUID=/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
 
 export type ChatDrafts=Record<string,string>;
 
@@ -16,25 +15,43 @@ function store():Storage|null{
   catch{return null;} // Safari private mode and disabled storage must work.
 }
 function key(userId:string){return PREFIX+userId;}
+/** Keep the most recently edited valid drafts when the storage cap is reached.
+ * Object insertion order records edits: writers move changed IDs to the end.
+ * Invalid/blank entries must not consume one of the 48 slots.
+ */
 export function cleanChatDrafts(input:unknown):ChatDrafts{
   if(!input||typeof input!=='object'||Array.isArray(input))return {};
-  const output:ChatDrafts={};
-  for(const [chatId,text] of Object.entries(input).slice(0,MAX_CHATS)){
-    if(!CHAT_ID.test(chatId)||typeof text!=='string')continue;
-    const trimmed=text.slice(0,MAX_TEXT);
-    if(trimmed.trim())output[chatId]=trimmed;
+  const recent=new Map<string,string>();
+  for(const [chatId,text] of Object.entries(input)){
+    if(!UUID.test(chatId)||typeof text!=='string')continue;
+    const limited=text.slice(0,MAX_TEXT);
+    if(!limited.trim())continue;
+    recent.set(chatId,limited);
+    if(recent.size>MAX_CHATS){
+      const oldest=recent.keys().next().value;
+      if(oldest!==undefined)recent.delete(oldest);
+    }
   }
-  return output;
+  return Object.fromEntries(recent);
+}
+
+/** Update both the draft contents and its recency, bounded in memory as well. */
+export function updateChatDraftEntry(drafts:ChatDrafts,chatId:string,text:string):ChatDrafts{
+  const next=cleanChatDrafts(drafts);
+  if(!UUID.test(chatId))return next;
+  delete next[chatId];
+  if(text.trim())next[chatId]=text.slice(0,MAX_TEXT);
+  return cleanChatDrafts(next);
 }
 export function readChatDrafts(userId:string):ChatDrafts{
-  if(!USER_ID.test(userId))return {};
+  if(!UUID.test(userId))return {};
   try{
     const value=store()?.getItem(key(userId));
     return value?cleanChatDrafts(JSON.parse(value)):{};
   }catch{return {};}
 }
 export function writeChatDrafts(userId:string,drafts:ChatDrafts):void{
-  if(!USER_ID.test(userId))return;
+  if(!UUID.test(userId))return;
   try{
     const storage=store();
     if(!storage)return;
@@ -44,6 +61,6 @@ export function writeChatDrafts(userId:string,drafts:ChatDrafts):void{
   }catch{/* Storage quotas/disabled cookies must never block message typing. */}
 }
 export function clearChatDrafts(userId:string):void{
-  if(!USER_ID.test(userId))return;
+  if(!UUID.test(userId))return;
   try{store()?.removeItem(key(userId));}catch{}
 }

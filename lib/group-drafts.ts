@@ -13,15 +13,21 @@ function store():Storage|null{
  catch{return null;}
 }
 function key(ownerId:string){return PREFIX+ownerId;}
+/** Retain the last 48 edited drafts; invalid entries must not evict real ones. */
 export function cleanGroupDrafts(input:unknown):GroupDrafts{
  if(!input||Array.isArray(input)||typeof input!=='object')return {};
- const clean:GroupDrafts={};
- for(const [groupId,text] of Object.entries(input).slice(0,MAX_GROUPS)){
+ const recent=new Map<string,string>();
+ for(const [groupId,text] of Object.entries(input)){
   if(!UUID.test(groupId)||typeof text!=='string')continue;
   const limited=text.slice(0,MAX_TEXT);
-  if(limited.trim())clean[groupId]=limited;
+  if(!limited.trim())continue;
+  recent.set(groupId,limited);
+  if(recent.size>MAX_GROUPS){
+   const oldest=recent.keys().next().value;
+   if(oldest!==undefined)recent.delete(oldest);
+  }
  }
- return clean;
+ return Object.fromEntries(recent);
 }
 export function readGroupDrafts(ownerId:string):GroupDrafts{
  if(!UUID.test(ownerId))return {};
@@ -31,8 +37,9 @@ export function readGroupDrafts(ownerId:string):GroupDrafts{
 export function writeGroupDraft(ownerId:string,groupId:string,text:string):GroupDrafts{
  if(!UUID.test(ownerId)||!UUID.test(groupId))return {};
  const next=readGroupDrafts(ownerId);
+ // Move edited drafts to the end before enforcing the storage limit.
+ delete next[groupId];
  if(text.trim())next[groupId]=text.slice(0,MAX_TEXT);
- else delete next[groupId];
  const cleaned=cleanGroupDrafts(next);
  try{
   const storage=store();
