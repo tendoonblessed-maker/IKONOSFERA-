@@ -24,7 +24,10 @@ export default function DirectMessageSearchPanel({
   onOpen,userId,partnerName,locatingId
 }:Props){
   const needle=query.trim();
-  return <section className="ik-direct-search" aria-label="Поиск по всей переписке">
+  return <section className="ik-direct-search" aria-label="Поиск по всей переписке"
+    onKeyDown={event=>{
+      if(event.key==='Escape'){event.preventDefault();event.stopPropagation();onClose();}
+    }}>
     <div className="ik-conversation-search">
       <input autoFocus aria-label="Поиск сообщений в текущем чате"
         placeholder="Поиск по всей истории…" maxLength={120} value={query}
