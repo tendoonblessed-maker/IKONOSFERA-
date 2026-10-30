@@ -4,7 +4,7 @@ import { backendReady, createTemporaryAccount, consumeEmailLinkSession, loadSess
 
 import ProfilePanel from "@/components/ProfilePanel";
 import {mergeConfirmedRecentPage,prependEarlierPage,CONFIRMED_MESSAGE_GRACE_MS,type ConfirmedMessage} from "@/lib/chat-history";
-import {readChatDrafts,writeChatDrafts,clearChatDrafts,type ChatDrafts} from "@/lib/chat-drafts";
+import {readChatDrafts,writeChatDrafts,clearChatDrafts,updateChatDraftEntry,type ChatDrafts} from "@/lib/chat-drafts";
 import {readGroupDrafts,writeGroupDraft,clearGroupDrafts,type GroupDrafts} from "@/lib/group-drafts";
 import {clearAllGroupSendAttempts} from "@/lib/group-send-attempts";
 import ChatMedia from "@/components/ChatMedia";
@@ -208,12 +208,13 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
     setGroupDraftPreviews(writeGroupDraft(userId,groupId,text));
   }
   function updateChatDraft(chatId:string,text:string){
-    const next={...draftsRef.current};
-    if(text.trim())next[chatId]=text;
-    else delete next[chatId];
+    // Preserve the most recently edited 48 chats, including newly opened ones.
+    // Never write a previous account's pending draft into the next account.
+    if(!userId||draftsOwnerRef.current!==userId)return;
+    const next=updateChatDraftEntry(draftsRef.current,chatId,text);
     draftsRef.current=next;
     setDraftPreviews(next);
-    if(userId)writeChatDrafts(userId,next);
+    writeChatDrafts(userId,next);
   }
 
   useEffect(()=>{
