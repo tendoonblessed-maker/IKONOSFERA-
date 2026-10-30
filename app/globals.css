@@ -3640,3 +3640,24 @@ body{position:relative}
  .ik-group-older-control{padding-top:10px}
  .ik-group-older-control button{min-height:44px}
 }
+
+/* Direct-chat full-history search: discoverable but visually lightweight. */
+.messenger.is-authenticated .conversation-header .ik-conversation-search-trigger{
+  display:grid;place-items:center;flex:0 0 40px;
+  width:40px;height:40px;min-width:40px;margin-left:auto;padding:0;
+  border:0;border-radius:50%;background:transparent;color:#747983;
+  cursor:pointer;transition:background-color .16s ease,color .16s ease;
+}
+.messenger.is-authenticated .conversation-header .ik-conversation-search-trigger:hover,
+.messenger.is-authenticated .conversation-header .ik-conversation-search-trigger[aria-pressed="true"]{
+  background:#eef0f3;color:#25272c;
+}
+.messenger.is-authenticated .conversation-header .ik-conversation-search-trigger:focus-visible{
+  outline:2px solid #596776;outline-offset:2px;
+}
+.messenger.is-authenticated .conversation-header .ik-conversation-more{margin-left:0}
+@media(max-width:800px){
+  .messenger.is-authenticated .conversation-header .ik-conversation-search-trigger{
+    flex-basis:36px;width:36px;min-width:36px;height:36px;
+  }
+}
