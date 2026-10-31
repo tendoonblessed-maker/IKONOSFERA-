@@ -303,7 +303,12 @@ export async function getDirectMediaUrl(token:string,path:string):Promise<string
    const first=signedMediaCache.keys().next().value;
    if(first)signedMediaCache.delete(first);
  }
- request.catch(()=>signedMediaCache.delete(key));
+ // A previous signing request can fail after a media retry invalidated it.
+ // Only remove the rejected request itself: a late error must not evict a
+ // newer healthy request for the same account and object.
+ void request.catch(()=>{
+  if(signedMediaCache.get(key)?.promise===request)signedMediaCache.delete(key);
+ });
  return request;
 }
 
