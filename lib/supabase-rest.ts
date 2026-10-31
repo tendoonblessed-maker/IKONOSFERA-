@@ -245,30 +245,146 @@ export function validateDirectMediaFile(file:Pick<File,'type'|'size'>):string|nu
  return null;
 }
 
-export async function uploadDirectMedia(token:string,chatId:string,userId:string,file:File):Promise<{path:string;type:"image"|"video"|"audio"|"file"}>{
- const problem=validateDirectMediaFile(file);
- if(problem)throw Error(problem);
- const ext=DIRECT_MEDIA_FORMATS[file.type];
- const path=chatId+"/"+userId+"/"+crypto.randomUUID()+"."+ext;
- const res=await fetch(apiUrl+"/storage/v1/object/ikonosfera-direct-media/"+path,{
-  method:"POST",headers:{apikey:anonKey,Authorization:"Bearer "+token,"Content-Type":file.type,"x-upsert":"false"},body:file
- });
- if(!res.ok){const err=await res.json().catch(()=>null);throw Error(err?.message||err?.error||"Не удалось загрузить файл");}
- return {path,type:file.type.startsWith("image/")?"image":file.type.startsWith("video/")?"video":file.type.startsWith("audio/")?"audio":"file"};
+/** An upload is a single logical attachment while the same File stays in
+ * the preview. Keep the UUID and storage path stable across manual retries,
+ * but never reuse them for a different user, chat, caption or File object.
+ * We do not persist File bytes or bearer tokens in web storage.
+ */
+type DirectMediaKind="image"|"video"|"audio"|"file";
+type DirectMediaAttempt={
+  chatId:string;userId:string;caption:string;path:string;kind:DirectMediaKind;
+  clientMessageId:string;uploaded:boolean;insertAttempted:boolean;
+};
+const mediaSendAttempts=new WeakMap<File,DirectMediaAttempt>();
+function mediaKind(file:File):DirectMediaKind{
+  return file.type.startsWith("image/")?"image":file.type.startsWith("video/")?"video":file.type.startsWith("audio/")?"audio":"file";
+}
+function mediaAttempt(file:File,chatId:string,userId:string,caption:string):DirectMediaAttempt{
+  const old=mediaSendAttempts.get(file);
+  if(old&&old.chatId===chatId&&old.userId===userId&&old.caption===caption)return old;
+  const attempt:DirectMediaAttempt={
+    chatId,userId,caption,kind:mediaKind(file),
+    path:chatId+"/"+userId+"/"+crypto.randomUUID()+"."+DIRECT_MEDIA_FORMATS[file.type],
+    clientMessageId:crypto.randomUUID(),uploaded:false,insertAttempted:false
+  };
+  mediaSendAttempts.set(file,attempt);
+  return attempt;
+}
+function assertMediaMessage(row:ChatMessage & {client_message_id?:string|null},
+  attempt:DirectMediaAttempt):ChatMessage{
+  if(!row?.id||row.chat_id!==attempt.chatId||row.sender_id!==attempt.userId
+     ||row.body!==attempt.caption||row.media_path!==attempt.path
+     ||row.media_type!==attempt.kind||row.client_message_id!==attempt.clientMessageId){
+    throw Error("Не удалось подтвердить отправку именно этого вложения.");
+  }
+  return row;
+}
+async function findDirectMediaMessage(token:string,attempt:DirectMediaAttempt):Promise<ChatMessage|null>{
+  const query="/rest/v1/messages?select=id,chat_id,sender_id,body,created_at,media_path,media_type,read_at,client_message_id"
+    +"&chat_id=eq."+encodeURIComponent(attempt.chatId)
+    +"&sender_id=eq."+encodeURIComponent(attempt.userId)
+    +"&client_message_id=eq."+encodeURIComponent(attempt.clientMessageId)+"&limit=1";
+  const rows=await http<(ChatMessage & {client_message_id?:string|null})[]>(query,{token});
+  return rows[0]?assertMediaMessage(rows[0],attempt):null;
+}
+async function confirmStoredMedia(token:string,path:string,file:File):Promise<boolean>{
+  // Storage object info returns metadata only: never download private files
+  // to discover whether a timed-out upload already committed.
+  const res=await fetch(apiUrl+"/storage/v1/object/info/authenticated/ikonosfera-direct-media/"+path,{
+    method:"GET",headers:{apikey:anonKey,Authorization:"Bearer "+token},
+    cache:"no-store",signal:AbortSignal.timeout(18000)
+  });
+  if(!res.ok)return false;
+  const info=await res.json() as {name?:string;bucket_id?:string;metadata?:{size?:number;mimetype?:string}};
+  if(info?.name!==path||info.bucket_id!=="ikonosfera-direct-media"
+     ||Number(info.metadata?.size)!==file.size||info.metadata?.mimetype!==file.type){
+    throw Error("Загруженный файл не совпадает с предпросмотром. Выбери файл заново.");
+  }
+  return true;
+}
+export async function uploadDirectMedia(token:string,chatId:string,userId:string,file:File,pathOverride?:string):Promise<{path:string;type:DirectMediaKind}>{
+  const problem=validateDirectMediaFile(file);
+  if(problem)throw Error(problem);
+  const ext=DIRECT_MEDIA_FORMATS[file.type];
+  const path=pathOverride??chatId+"/"+userId+"/"+crypto.randomUUID()+"."+ext;
+  // Never allow a supplied retry path to point into another user's folder.
+  if(pathOverride&&!new RegExp("^"+chatId+"/"+userId+"/[a-f0-9-]{36}\\."+ext+"$","i").test(pathOverride))
+    throw Error("Некорректный путь вложения.");
+  let error:unknown=null;
+  try{
+    const res=await fetch(apiUrl+"/storage/v1/object/ikonosfera-direct-media/"+path,{
+      method:"POST",headers:{apikey:anonKey,Authorization:"Bearer "+token,"Content-Type":file.type,"x-upsert":"false"},
+      body:file,signal:AbortSignal.timeout(120000)
+    });
+    if(res.ok)return {path,type:mediaKind(file)};
+    const err=await res.json().catch(()=>null);
+    const message=err?.message||err?.error||"Не удалось загрузить файл";
+    error=new Error(message);
+    const duplicate=res.status===409||(res.status===400&&/already exists|already_exists|keyalreadyexists/i.test(String(message)));
+    if(!duplicate&&res.status<500&&res.status!==408&&res.status!==429)throw error;
+  }catch(e){
+    // A lost response after Storage committed must not create a second object.
+    error=e;
+    if(e instanceof Error&&(/Некорректный путь/.test(e.message)))throw e;
+  }
+  try{
+    if(await confirmStoredMedia(token,path,file))return {path,type:mediaKind(file)};
+  }catch(e){
+    // Do not mask a metadata mismatch; an unknown storage result is retriable.
+    if(e instanceof Error&&e.message.includes("не совпадает с предпросмотром"))throw e;
+  }
+  throw error instanceof Error?error:Error("Не удалось подтвердить загрузку файла. Повтори отправку вручную.");
 }
 export async function sendDirectMedia(token:string,chatId:string,userId:string,file:File,caption=""){
- const {path,type}=await uploadDirectMedia(token,chatId,userId,file);
- try{
-  const messages=await http<ChatMessage[]>('/rest/v1/messages?select=id,chat_id,sender_id,body,created_at,media_path,media_type,read_at,reply_to_message_id',{
-   token,method:"POST",body:{chat_id:chatId,sender_id:userId,body:caption.trim().slice(0,4000),media_path:path,media_type:type},
-   extraHeaders:{Prefer:"return=representation"}
-  });
-  if(!messages[0])throw Error("Медиа не отправлено");
-  return messages[0];
- }catch(e){
-  await fetch(apiUrl+"/storage/v1/object/ikonosfera-direct-media/"+path,{method:"DELETE",headers:{apikey:anonKey,Authorization:"Bearer "+token}}).catch(()=>{});
-  throw e;
- }
+  const problem=validateDirectMediaFile(file);
+  if(problem)throw Error(problem);
+  const normalizedCaption=caption.trim().slice(0,4000);
+  const attempt=mediaAttempt(file,chatId,userId,normalizedCaption);
+  const complete=(row:ChatMessage & {client_message_id?:string|null})=>{
+    const sent=assertMediaMessage(row,attempt);
+    if(mediaSendAttempts.get(file)===attempt)mediaSendAttempts.delete(file);
+    return sent;
+  };
+  // A previous POST may already have committed. Read back first when retrying
+  // rather than uploading or INSERTing anything a second time.
+  if(attempt.insertAttempted){
+    try{
+      const prior=await findDirectMediaMessage(token,attempt);
+      if(prior)return complete(prior);
+    }catch(e){
+      if(e instanceof Error&&e.message.includes("именно этого вложения"))throw e;
+      // Temporary read failure: the manual retry is still idempotent.
+    }
+  }
+  if(!attempt.uploaded){
+    const uploaded=await uploadDirectMedia(token,chatId,userId,file,attempt.path);
+    if(uploaded.path!==attempt.path||uploaded.type!==attempt.kind)throw Error("Вложение не подтверждено.");
+    attempt.uploaded=true;
+  }
+  // Do not delete storage objects when the POST result is unknown: another
+  // request may already have created a message referencing this exact path.
+  attempt.insertAttempted=true;
+  let postError:unknown=null;
+  try{
+    const messages=await http<(ChatMessage & {client_message_id?:string|null})[]>('/rest/v1/messages?select=id,chat_id,sender_id,body,created_at,media_path,media_type,read_at,client_message_id',{
+      token,method:"POST",body:{
+        chat_id:chatId,sender_id:userId,body:caption.trim().slice(0,4000),
+        media_path:attempt.path,media_type:attempt.kind,client_message_id:attempt.clientMessageId
+      },
+      extraHeaders:{Prefer:"return=representation"}
+    });
+    if(messages[0])return complete(messages[0]);
+  }catch(e){postError=e;}
+  try{
+    const existing=await findDirectMediaMessage(token,attempt);
+    if(existing)return complete(existing);
+  }catch(e){
+    if(e instanceof Error&&e.message.includes("именно этого вложения"))throw e;
+  }
+  if(postError instanceof Error&&postError.message.includes("именно этого вложения"))throw postError;
+  if(postError instanceof SupabaseHttpError&&postError.status>=400&&postError.status<500
+     &&postError.status!==408&&postError.status!==429)throw postError;
+  throw Error("Отправка вложения не подтверждена. Файл остался в предпросмотре — повтори вручную.");
 }
 // Signed URLs remain private, short-lived and in memory only. Sharing one
 // in-flight signing request prevents dozens of requests for the same image.
