@@ -11,9 +11,10 @@ export type PostComment = { id:string; post_id:string; author_id:string; body:st
 function requestHeaders(token:string, extras:Record<string,string>={}) {
   return { apikey:publicKey, Authorization:"Bearer "+token, "Content-Type":"application/json", ...extras };
 }
-async function api<T>(path:string,token:string,method="GET",body?:unknown) : Promise<T> {
+async function api<T>(path:string,token:string,method="GET",body?:unknown,timeoutMs=0) : Promise<T> {
   const res=await fetch(apiUrl+path,{method,headers:requestHeaders(token,method==="POST"||method==="PATCH"||method==="DELETE"?{Prefer:"return=representation"}:{}),
-    body:body===undefined?undefined:JSON.stringify(body),cache:"no-store"});
+    body:body===undefined?undefined:JSON.stringify(body),cache:"no-store",
+    signal:timeoutMs>0?AbortSignal.timeout(timeoutMs):undefined});
   const value=await res.json().catch(()=>null);
   if(!res.ok)throw Error(value?.message||value?.error||value?.msg||"Ошибка сервера ("+res.status+")");
   return value as T;
@@ -22,6 +23,32 @@ export function imageUrl(path:string|null|undefined):string|null {
   if(!path||!apiUrl||!/^[a-z0-9-]+\/[a-z0-9.-]+\.(jpg|png|webp)$/i.test(path))return null;
   return apiUrl+"/storage/v1/object/public/ikonosfera-media/"+path.split("/").map(encodeURIComponent).join("/");
 }
+/**
+ * The legacy imageUrl helper deliberately accepts *images only*.
+ * Channel posts can also contain a video, audio clip or document. Never feed
+ * those objects through imageUrl (it returns null for their extensions).
+ *
+ * Only allow filenames emitted by uploadChannelAttachment, and require the
+ * stored type to agree with the extension to avoid producing arbitrary URLs
+ * from untrusted database rows.
+ */
+type ChannelMediaKind=NonNullable<ChannelPost['attachment_type']>;
+const CHANNEL_EXTENSIONS:Record<ChannelMediaKind,readonly string[]>={
+ image:['jpg','png','webp'],
+ video:['mp4','webm','mov'],
+ audio:['mp3','m4a','wav','ogg'],
+ file:['pdf','txt','zip','doc','docx','xls','xlsx']
+};
+const CHANNEL_FILE_PATH=/^([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})\/([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})\.([a-z0-9]+)$/i;
+export function channelAttachmentUrl(
+ path:string|null|undefined,type:ChannelPost['attachment_type']
+):string|null{
+ if(!apiUrl||!path||!type||!Object.prototype.hasOwnProperty.call(CHANNEL_EXTENSIONS,type))return null;
+ const match=CHANNEL_FILE_PATH.exec(path);
+ if(!match||!CHANNEL_EXTENSIONS[type as ChannelMediaKind].includes(match[3].toLowerCase()))return null;
+ return apiUrl+"/storage/v1/object/public/ikonosfera-media/"+path.split('/').map(encodeURIComponent).join('/');
+}
+
 export async function uploadPhoto(token:string,userId:string,file:File):Promise<string>{
   if(!["image/png","image/jpeg","image/webp"].includes(file.type))throw Error("Поддерживаются JPG, PNG и WebP.");
   if(file.size>3*1024*1024)throw Error("Фото должно быть меньше 3 МБ.");
@@ -84,9 +111,9 @@ export async function listChannels(token:string):Promise<Channel[]>{
   return api<Channel[]>("/rest/v1/channels?select=*&order=created_at.desc&limit=100",token);
 }
 /** Fetch one selected channel even if it is outside the first page of discovery. */
-export async function getChannelById(token:string,channelId:string):Promise<Channel|null>{
+export async function getChannelById(token:string,channelId:string,timeoutMs=0):Promise<Channel|null>{
  if(!/^[a-f0-9-]{36}$/i.test(channelId))return null;
- const channels=await api<Channel[]>("/rest/v1/channels?select=*&id=eq."+encodeURIComponent(channelId)+"&limit=1",token);
+ const channels=await api<Channel[]>("/rest/v1/channels?select=*&id=eq."+encodeURIComponent(channelId)+"&limit=1",token,"GET",undefined,timeoutMs);
  return channels[0]??null;
 }
 export async function createChannel(token:string,owner_id:string,title:string,slug:string,description:string):Promise<Channel>{
@@ -101,9 +128,27 @@ export async function updateChannel(token:string,channelId:string,ownerId:string
  return rows[0];
 }
 export async function updateChannelAvatar(token:string,channelId:string,ownerId:string,avatarPath:string|null):Promise<Channel>{
- const rows=await api<Channel[]>("/rest/v1/channels?id=eq."+encodeURIComponent(channelId)+"&owner_id=eq."+encodeURIComponent(ownerId)+"&select=*",token,"PATCH",{avatar_path:avatarPath});
- if(!rows[0])throw Error("Не удалось изменить аватарку канала. Проверь права владельца.");
- return rows[0];
+ const UUID=/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
+ if(!UUID.test(channelId)||!UUID.test(ownerId)
+    ||(avatarPath!==null&&(!avatarPath.startsWith(ownerId+"/")||!imageUrl(avatarPath))))
+   throw Error("Некорректные параметры аватарки канала.");
+ const matches=(row:Channel|null|undefined):row is Channel=>Boolean(row
+   &&row.id===channelId&&row.owner_id===ownerId&&row.avatar_path===avatarPath);
+ let patchFailure:unknown=null;
+ try{
+   const rows=await api<Channel[]>("/rest/v1/channels?id=eq."+encodeURIComponent(channelId)+"&owner_id=eq."+encodeURIComponent(ownerId)+"&select=*",token,"PATCH",{avatar_path:avatarPath},18000);
+   if(matches(rows[0]))return rows[0];
+   patchFailure=Error("Сервер вернул другую аватарку канала.");
+ }catch(error){patchFailure=error;}
+ try{
+   // Exactly one read-only request: never issue a second PATCH automatically.
+   const remote=await getChannelById(token,channelId,18000);
+   if(matches(remote))return remote;
+ }catch{/* A failed verification must not overwrite the original error. */}
+ // Preserve the original network/permission failure, including errors from
+ // another JavaScript realm; do not turn a rejected PATCH into a false success.
+ if(patchFailure!==null)throw patchFailure;
+ throw Error("Не удалось подтвердить сохранение аватарки.");
 }
 export async function deleteChannel(token:string,channelId:string,ownerId:string):Promise<void>{
  const rows=await api<Channel[]>("/rest/v1/channels?id=eq."+encodeURIComponent(channelId)+"&owner_id=eq."+encodeURIComponent(ownerId)+"&select=id",token,"DELETE");
@@ -128,8 +173,87 @@ export async function listChannelPosts(token:string,channelId:string):Promise<Ch
   return api<ChannelPost[]>("/rest/v1/channel_posts?select=*&channel_id=eq."+encodeURIComponent(channelId)+"&order=created_at.desc&limit=100",token);
 }
 export async function publishPost(token:string,author_id:string,channel_id:string,body:string,image_path:string|null,attachment?:{path:string;type:"image"|"video"|"audio"|"file"}|null):Promise<ChannelPost>{
-  const rows=await api<ChannelPost[]>("/rest/v1/channel_posts?select=*",token,"POST",{author_id,channel_id,body:body.trim(),image_path,attachment_path:attachment?.path??null,attachment_type:attachment?.type??null});
+  const rows=await api<ChannelPost[]>("/rest/v1/channel_posts?select=*",token,"POST",{author_id,channel_id,body:body.trim(),image_path,attachment_path:attachment?.path??null,attachment_type:attachment?.type??null},18000);
   if(!rows[0])throw Error("Пост не опубликован");return rows[0];
+}
+
+type ChannelPostAttempt={
+ authorId:string;channelId:string;body:string;
+ attachment:{path:string;type:"image"|"video"|"audio"|"file"};
+ insertAttempted:boolean;
+};
+/** A File stays identical while a failed post is still in the same preview.
+ * This state intentionally never stores JWTs, bytes or a persistent browser key.
+ */
+const channelPostAttempts=new WeakMap<File,ChannelPostAttempt>();
+function matchesChannelPost(row:ChannelPost,attempt:ChannelPostAttempt):boolean{
+ return Boolean(row?.id&&row.channel_id===attempt.channelId
+   &&row.author_id===attempt.authorId&&row.body===attempt.body
+   &&row.image_path===null&&row.attachment_path===attempt.attachment.path
+   &&row.attachment_type===attempt.attachment.type);
+}
+/** Read back by the unpredictable exact Storage object path; public channel
+ * rows are still queried with the caller JWT and normal PostgREST RLS.
+ */
+async function confirmChannelPost(token:string,attempt:ChannelPostAttempt):Promise<ChannelPost|null>{
+ const rows=await api<ChannelPost[]>(
+  "/rest/v1/channel_posts?select=id,channel_id,author_id,body,image_path,attachment_path,attachment_type,created_at"
+  +"&channel_id=eq."+encodeURIComponent(attempt.channelId)
+  +"&author_id=eq."+encodeURIComponent(attempt.authorId)
+  +"&attachment_path=eq."+encodeURIComponent(attempt.attachment.path)
+  +"&limit=3",token,"GET",undefined,18000);
+ const verified=rows.filter(row=>matchesChannelPost(row,attempt));
+ // Without a DB uniqueness constraint, multiple rows using one object cannot
+ // safely be treated as one successful write.
+ if(verified.length>1)throw Error("В канале найдено несколько публикаций с этим вложением. Проверь список перед повтором.");
+ if(verified.length===1)return verified[0];
+ if(rows.length>0)throw Error("Сервер сохранил вложение с другими данными. Проверь канал перед повтором.");
+ return null;
+}
+/**
+ * Upload once, insert at most once for the same file+caption+channel+author.
+ * A dropped DB response is reconciled through a read-only exact-path lookup.
+ * Never delete a possibly referenced public object. No SQL migration needed.
+ */
+export async function publishChannelPostSafely(
+ token:string,authorId:string,channelId:string,body:string,file:File|null
+):Promise<ChannelPost>{
+ const text=body.trim();
+ if(!text)throw Error("Добавь текст к публикации: сервер пока не поддерживает пост только с вложением.");
+ if(!file)return publishPost(token,authorId,channelId,text,null,null);
+ let attempt=channelPostAttempts.get(file);
+ if(!attempt||attempt.authorId!==authorId||attempt.channelId!==channelId||attempt.body!==text){
+   const attachment=await uploadChannelAttachment(token,authorId,file);
+   attempt={authorId,channelId,body:text,attachment,insertAttempted:false};
+   channelPostAttempts.set(file,attempt);
+ }
+ const finish=(post:ChannelPost):ChannelPost=>{
+   if(!matchesChannelPost(post,attempt))throw Error("Сервер вернул другую публикацию. Проверь канал перед повтором.");
+   if(channelPostAttempts.get(file)===attempt)channelPostAttempts.delete(file);
+   return post;
+ };
+ if(attempt.insertAttempted){
+   // A previous POST may have committed. Another INSERT with no uniqueness
+   // key could create a duplicate; a manual retry therefore only checks.
+   const previous=await confirmChannelPost(token,attempt);
+   if(previous)return finish(previous);
+   throw Error("Не удалось подтвердить предыдущую публикацию. Обнови канал перед повтором, чтобы не создать дубликат.");
+ }
+ attempt.insertAttempted=true;
+ let failure:unknown=null;
+ try{
+   return finish(await publishPost(token,authorId,channelId,text,null,attempt.attachment));
+ }catch(error){failure=error;}
+ try{
+   const verified=await confirmChannelPost(token,attempt);
+   if(verified)return finish(verified);
+ }catch(error){
+   // A mismatching canonical row is a hard stop; network/permissions failures
+   // keep the original send error and the in-memory attempt for manual check.
+   if(error instanceof Error&&/несколько публикаций|с другими данными/.test(error.message))throw error;
+ }
+ const detail=failure instanceof Error?failure.message:"Не удалось получить подтверждение сервера.";
+ throw Error("Публикация не подтверждена ("+detail+"). Вложение сохранено; повторная отправка автоматически не выполнялась.");
 }
 export async function deletePost(token:string,id:string):Promise<void>{await api("/rest/v1/channel_posts?id=eq."+encodeURIComponent(id),token,"DELETE");}
 export async function listPostComments(token:string,postId:string):Promise<PostComment[]>{
