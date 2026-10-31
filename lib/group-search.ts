@@ -1,8 +1,10 @@
 import {apiUrl} from './supabase-rest';
 import type {GroupMessage} from './groups';
+import {compareGroupMessages} from './group-pagination';
 
 const anonKey=process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY??'';
 const UUID=/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
+const TIMESTAMP=/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?(?:Z|[+-]\d{2}:\d{2})$/;
 export const GROUP_SEARCH_PAGE_SIZE=24;
 export const GROUP_SEARCH_MAX_OFFSET=480;
 const MESSAGE_FIELDS='id,group_id,sender_id,body,created_at';
@@ -77,13 +79,22 @@ export async function getGroupMessageContext(
  const target=(await getRows(token,exact))[0];
  if(!target||target.id!==targetId||target.group_id!==groupId)
   throw Error('Сообщение удалено или больше недоступно.');
- const older=new URLSearchParams({...base,created_at:'lte.'+target.created_at,order:'created_at.desc,id.desc',limit:'70'});
- const newer=new URLSearchParams({...base,created_at:'gte.'+target.created_at,order:'created_at.asc,id.asc',limit:'70'});
+ // The canonical timestamp comes from the RLS-checked row, never from
+ // the caller. Validate before interpolating it into PostgREST filters.
+ if(!TIMESTAMP.test(target.created_at)||!Number.isFinite(Date.parse(target.created_at)))
+  throw Error('Некорректная дата сообщения.');
+ // Timestamp-only lte/gte pages skip the target's nearest neighbours when
+ // 70+ messages share one timestamp. Use the UUID as a stable tie-breaker.
+ const olderCursor='(created_at.lt.'+target.created_at
+  +',and(created_at.eq.'+target.created_at+',id.lte.'+target.id+'))';
+ const newerCursor='(created_at.gt.'+target.created_at
+  +',and(created_at.eq.'+target.created_at+',id.gte.'+target.id+'))';
+ const older=new URLSearchParams({...base,or:olderCursor,order:'created_at.desc,id.desc',limit:'70'});
+ const newer=new URLSearchParams({...base,or:newerCursor,order:'created_at.asc,id.asc',limit:'70'});
  const [before,after]=await Promise.all([getRows(token,older),getRows(token,newer)]);
  const map=new Map<string,GroupMessage>();
  for(const message of [...before,...after,target]){
   if(message.group_id===groupId)map.set(message.id,message);
  }
- return Array.from(map.values()).sort((a,b)=>
-  Date.parse(a.created_at)-Date.parse(b.created_at)||a.id.localeCompare(b.id));
+ return Array.from(map.values()).sort(compareGroupMessages);
 }
