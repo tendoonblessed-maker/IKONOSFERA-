@@ -4,9 +4,11 @@ import { backendReady, createTemporaryAccount, consumeEmailLinkSession, loadSess
 
 import ProfilePanel from "@/components/ProfilePanel";
 import {mergeConfirmedRecentPage,prependEarlierPage,CONFIRMED_MESSAGE_GRACE_MS,type ConfirmedMessage} from "@/lib/chat-history";
+import {shouldAcknowledgeDirectRead,countNewDirectMessagesBelow} from "@/lib/direct-read-position";
 import {readChatDrafts,writeChatDrafts,clearChatDrafts,updateChatDraftEntry,type ChatDrafts} from "@/lib/chat-drafts";
 import {readGroupDrafts,writeGroupDraft,clearGroupDrafts,type GroupDrafts} from "@/lib/group-drafts";
 import {clearAllGroupSendAttempts} from "@/lib/group-send-attempts";
+import {readDirectSendAttempt,getOrCreateDirectSendAttempt,clearDirectSendAttempt,clearAllDirectSendAttempts} from "@/lib/direct-send-attempts";
 import ChatMedia from "@/components/ChatMedia";
 import ChatMessageText from "@/components/ChatMessageText";
 import {subscribeDirectChatChanges} from "@/lib/direct-realtime";
@@ -119,6 +121,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
   const [draftPreviews,setDraftPreviews]=useState<ChatDrafts>({});
   const [groupDraftPreviews,setGroupDraftPreviews]=useState<GroupDrafts>({});
   const [showJumpToLatest,setShowJumpToLatest]=useState(false);
+  const [newDirectMessagesBelow,setNewDirectMessagesBelow]=useState(0);
   const [replyingTo,setReplyingTo]=useState<{chatId:string;id:string;text:string;name:string}|null>(null);
   const [replyTargets,setReplyTargets]=useState<Record<string,ReplyTarget>>({});
   const [locatingReply,setLocatingReply]=useState<string|null>(null);
@@ -127,6 +130,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
   const [emailSent,setEmailSent]=useState(false);
   const [busy,setBusy]=useState(false);
   const [sending,setSending]=useState(false);
+  const [directSendRetry,setDirectSendRetry]=useState<{owner:string;chat:string;body:string;replyId:string|null}|null>(null);
   const [networkOnline,setNetworkOnline]=useState(true);
   const [bootstrapRetryNonce,setBootstrapRetryNonce]=useState(0);
   const [loading,setLoading]=useState(true);
@@ -137,6 +141,8 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
   const messageEnd=useRef<HTMLDivElement|null>(null);
   const conversationHistoryRef=useRef<HTMLDivElement|null>(null);
   const chatAutoScrollRef=useRef(true);
+  const recentDirectWindowRef=useRef<{key:string;ids:Set<string>}>({key:'',ids:new Set()});
+  const directReadRef=useRef<{key:string;lastId:string|null;pendingId:string|null}>({key:'',lastId:null,pendingId:null});
   const loadingOlderRef=useRef(false);
   const prependScrollRef=useRef<{chatId:string;height:number;top:number}|null>(null);
   const selectedRef=useRef<string|null>(null);
@@ -223,7 +229,9 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
     chatContextGenerationRef.current+=1;
     replyJumpRequestRef.current+=1;
     setLocatingReply(null);setPendingReplyJump(null);
-    setReplyingTo(null);setShowJumpToLatest(false);
+    setReplyingTo(null);setShowJumpToLatest(false);setNewDirectMessagesBelow(0);setDirectSendRetry(null);
+    recentDirectWindowRef.current={key:'',ids:new Set()};
+    directReadRef.current={key:'',lastId:null,pendingId:null};
     setEditingMessageId(null);setEditingMessageBody('');
     setPendingAttachment(null);setAttachmentCaption('');
     attachmentDragDepthRef.current=0;setAttachmentDragActive(false);
@@ -539,6 +547,12 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
       try{
         const messages=(await listMessages(token,chatId)).reverse();
         if(cancelled)return;
+        const recentKey=userId+':'+chatId;
+        const previous=recentDirectWindowRef.current;
+        const newBelow=previous.key===recentKey
+          ?countNewDirectMessagesBelow(messages,previous.ids,userId,chatId,chatAutoScrollRef.current):0;
+        recentDirectWindowRef.current={key:recentKey,ids:new Set(messages.map(message=>message.id))};
+        if(newBelow>0)setNewDirectMessagesBelow(count=>Math.min(100,count+newBelow));
         setChatMessages(current=>mergeConfirmedRecentPage(
           current,messages,CHAT_MESSAGE_PAGE_SIZE,confirmedMessagesRef.current,chatId,userId
         ));
@@ -551,9 +565,6 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
             return [...current.filter(reaction=>!recentIds.has(reaction.message_id)),...reactions];
           });})
           .catch(()=>{});
-        if(messages.some(message=>message.sender_id!==userId&&!message.read_at)){
-          void markChatRead(token,chatId).catch(()=>{});
-        }
       }catch(e){
         if(!cancelled&&first){
           setChatLoad({id:chatId,status:'error'});
@@ -721,6 +732,30 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
     },2800);
     return()=>window.clearTimeout(timer);
   },[notice]);
+  // A server poll is not evidence of reading. Only mark a committed newest
+  // page as read once it is actually visible at the bottom of the viewport.
+  const acknowledgeDirectIfVisible=useCallback(()=>{
+    const chatId=selected,token=session?.access_token;
+    const history=conversationHistoryRef.current;
+    if(!chatId||!token||!userId||chatLoad?.id!==chatId||chatLoad.status!=='ready'
+       ||!history||!navigator.onLine)return;
+    const atBottom=history.scrollHeight-history.scrollTop-history.clientHeight<120;
+    if(!shouldAcknowledgeDirectRead(chatMessages,chatId,userId,
+      chatAutoScrollRef.current,atBottom,document.visibilityState==='visible'))return;
+    const last=chatMessages[chatMessages.length-1];
+    const key=userId+':'+chatId+':'+token;
+    if(directReadRef.current.key!==key)
+      directReadRef.current={key,lastId:null,pendingId:null};
+    const state=directReadRef.current;
+    if(state.lastId===last.id||state.pendingId)return;
+    state.pendingId=last.id;
+    void markChatRead(token,chatId).then(()=>{
+      if(directReadRef.current===state)state.lastId=last.id;
+    }).catch(()=>{/* A future visible poll or scroll can retry safely. */}).finally(()=>{
+      if(directReadRef.current===state)state.pendingId=null;
+    });
+  },[chatMessages,chatLoad?.id,chatLoad?.status,selected,session?.access_token,userId]);
+
   // Scroll only the message history. scrollIntoView() was scrolling the page
   // itself on iPhone Safari and pushing the composer below the viewport.
   useEffect(()=>{chatAutoScrollRef.current=true;},[selected]);
@@ -743,7 +778,18 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
     // Never pull the reader away from older messages during incoming polls.
     history.scrollTop=history.scrollHeight;
   },[chatMessages.length,selected]);
+  useEffect(()=>{acknowledgeDirectIfVisible();},[acknowledgeDirectIfVisible]);
   useEffect(()=>{if(selected)setDraft(draftsRef.current[selected]||'');},[selected,userId]);
+  // Restore the exact outgoing reply identity after tab reload.
+  useEffect(()=>{
+    if(!selected||!userId||draftsOwnerRef.current!==userId)return;
+    const attempt=readDirectSendAttempt(userId,selected);
+    if(!attempt||(draftsRef.current[selected]||'').trim()!==attempt.body)return;
+    setDirectSendRetry({owner:userId,chat:selected,body:attempt.body,replyId:attempt.replyId});
+    if(attempt.replyId)setReplyingTo({
+      chatId:selected,id:attempt.replyId,name:'Собеседник',text:'Ответ на сообщение'
+    });
+  },[selected,userId]);
   useEffect(()=>{const field=composerRef.current;if(!field)return;field.style.height='auto';field.style.height=Math.min(field.scrollHeight,136)+'px';},[draft,selected]);
   useEffect(()=>{
     const keyboard=(event:KeyboardEvent)=>{
@@ -1003,7 +1049,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
       name:message.sender_id===userId?'Вы':partner?.display_name||partner?.username||'Собеседник',
       text:(message.body||'Вложение').replace(/\s+/g,' ').trim().slice(0,110)
     });
-    setMessageMenuId(null);
+    setMessageMenuId(null);setDirectSendRetry(null);
     window.requestAnimationFrame(()=>composerRef.current?.focus());
   }
 
@@ -1020,7 +1066,12 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
     if(!plainText||plainText.length>4000)return;
     setSending(true);setError('');
     try{
-      const sent=await postMessage(token,chatId,userId,plainText,crypto.randomUUID(),reply?.id??null);
+      // Keep one UUID for this exact draft (and its reply target) across
+      // timeouts, tab reloads and explicit retries. Never auto-send on reconnect.
+      const attempt=getOrCreateDirectSendAttempt(userId,chatId,plainText,reply?.id??null);
+      const sent=await postMessage(token,chatId,userId,plainText,attempt.id,reply?.id??null);
+      clearDirectSendAttempt(userId,chatId,attempt.id);
+      if(selectedRef.current===chatId&&draftsOwnerRef.current===userId)setDirectSendRetry(null);
       // Display the DB-confirmed row immediately. Do not manufacture a pending
       // bubble, and never write into a different chat or signed-in account.
       if(selectedRef.current===chatId&&draftsOwnerRef.current===userId){
@@ -1031,14 +1082,19 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
       }
       // Users may type their next message while the previous send is in flight.
       // Only clear the exact draft that was submitted, not their new text.
-      if((draftsRef.current[chatId]||'').trim()===plainText){
+      if(draftsOwnerRef.current===userId&&(draftsRef.current[chatId]||'').trim()===plainText){
         updateChatDraft(chatId,'');
         if(selectedRef.current===chatId)setDraft(current=>current.trim()===plainText?'':current);
       }
       if(reply)setReplyingTo(current=>current?.id===reply.id&&current.chatId===chatId?null:current);
       // Polling will reconcile read receipts and any concurrent edits; the
       // send is already visible and never waits for a second network request.
-    }catch(e){setError(userFacingError(e));}
+    }catch(e){
+      if(selectedRef.current===chatId&&draftsOwnerRef.current===userId){
+        setDirectSendRetry({owner:userId,chat:chatId,body:plainText,replyId:reply?.id??null});
+        setError(userFacingError(e));
+      }
+    }
     finally{setSending(false);}
   }
   async function toggleSavedContact(person:Profile){
@@ -1190,7 +1246,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
     const revokeOnServer=signOut(session.access_token);
     inboxOwnerRef.current='';inboxRequestRef.current++;
     previewRequestRef.current++;groupOverviewRequestRef.current++;
-    clearChatDrafts(userId);clearGroupDrafts(userId);clearAllGroupSendAttempts(userId);
+    clearChatDrafts(userId);clearGroupDrafts(userId);clearAllGroupSendAttempts(userId);clearAllDirectSendAttempts(userId);
     groupDraftsOwnerRef.current='';setGroupDraftPreviews({});
     draftsOwnerRef.current='';draftsRef.current={};setDraftPreviews({});setDraft('');
     previewCacheRef.current={ownerId:'',previews:new Map()};
@@ -1531,6 +1587,10 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
         const area=event.currentTarget;
         const distance=area.scrollHeight-area.scrollTop-area.clientHeight;
         chatAutoScrollRef.current=distance<120;
+        if(chatAutoScrollRef.current){
+          setNewDirectMessagesBelow(0);
+          acknowledgeDirectIfVisible();
+        }
         setShowJumpToLatest(distance>220&&!activeChatLoading);
       }}>
       {!activeChatLoading&&!activeChatLoadError&&hasOlderMessages&&<div className="ik-chat-older-controls">
@@ -1563,20 +1623,29 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
  <button type="button" className="reaction-add" aria-label="Добавить реакцию" onClick={()=>setMessageReactionPicker(messageReactionPicker===message.id?null:message.id)}>☺ +</button>
  {messageReactionPicker===message.id&&<div className="reaction-picker">{REACTION_EMOJIS.map(emoji=><button type="button" key={emoji} disabled={sending} onClick={()=>void reactToMessage(message.id,emoji)} aria-label={"Реакция "+emoji}>{emoji}</button>)}</div>}
  </div></div></SwipeReplyMessage></Fragment>)}<div ref={messageEnd}/></div>
-      {showJumpToLatest&&!activeChatLoading&&<button type="button" className={"ik-jump-to-latest"+(replyingTo?.chatId===selected?" with-reply":"")} aria-label="Перейти к последним сообщениям" title="К последним сообщениям"
-        onClick={()=>{const history=conversationHistoryRef.current;if(history){chatAutoScrollRef.current=true;history.scrollTop=history.scrollHeight;}setShowJumpToLatest(false);}}>
+      {showJumpToLatest&&!activeChatLoading&&<button type="button" className={"ik-jump-to-latest"+(replyingTo?.chatId===selected?" with-reply":"")} aria-label="Перейти к последним сообщениям" aria-describedby={newDirectMessagesBelow>0?'ik-direct-unseen-count':undefined} title="К последним сообщениям"
+        onClick={()=>{const history=conversationHistoryRef.current;if(history){chatAutoScrollRef.current=true;history.scrollTop=history.scrollHeight;acknowledgeDirectIfVisible();}setNewDirectMessagesBelow(0);setShowJumpToLatest(false);}}>
         <svg viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m5 9 7 7 7-7"/></svg>
+        {newDirectMessagesBelow>0&&<span id="ik-direct-unseen-count" className="ik-direct-unseen-badge" aria-label={'Новых сообщений: '+(newDirectMessagesBelow>99?'99+':newDirectMessagesBelow)}>{newDirectMessagesBelow>99?'99+':newDirectMessagesBelow}</span>}
       </button>}
       {replyingTo?.chatId===selected&&<div className="ik-inline-reply" role="status">
         <div className="ik-inline-reply-mark" aria-hidden="true"/>
         <div className="ik-inline-reply-copy"><strong>Ответ для {replyingTo.name}</strong><span>{replyingTo.text}</span></div>
-        <button type="button" onClick={()=>setReplyingTo(null)} aria-label="Отменить ответ">✕</button>
+        <button type="button" onClick={()=>{setReplyingTo(null);setDirectSendRetry(null);}} aria-label="Отменить ответ">✕</button>
       </div>}
+      {directSendRetry?.owner===userId&&directSendRetry.chat===selected
+       &&directSendRetry.body===draft.trim()
+       &&directSendRetry.replyId===(replyingTo?.chatId===selected?replyingTo.id:null)&&
+        <div className="ik-direct-send-alert" role="alert">
+          <span>Отправка не подтверждена. Черновик сохранён — повтор можно сделать без дубликата.</span>
+          <button type="button" disabled={sending||!networkOnline||activePartnerBlocked}
+            onClick={()=>composerRef.current?.form?.requestSubmit()}>Повторить отправку</button>
+        </div>}
       <form className="composer" onSubmit={sendMessage}><label className="chat-attach-button" title="Прикрепить фото, видео, музыку или файл" aria-label="Прикрепить файл"><svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M20.5 11.5 12.3 19.7a5.4 5.4 0 0 1-7.7-7.7L13 3.6a3.6 3.6 0 0 1 5.1 5.1l-8.7 8.7a1.8 1.8 0 0 1-2.6-2.6l7.7-7.7"/></svg><input type="file" accept="image/*,video/mp4,video/webm,video/quicktime,audio/mpeg,audio/mp4,audio/wav,audio/ogg,audio/webm,.pdf,.txt,.zip,.doc,.docx,.xls,.xlsx" disabled={sending||activePartnerBlocked||!networkOnline} onChange={e=>{queueAttachment(e.target.files?.[0]);e.target.value="";}}/></label>
       <VoiceRecorder key={userId+':'+selected} disabled={sending||activePartnerBlocked||Boolean(pendingAttachment)}
        onRecorded={file=>queueAttachment(file)}
        onError={message=>setError(message)}/>
-      <textarea ref={composerRef} aria-label="Написать сообщение" enterKeyHint="enter" placeholder={activePartnerBlocked?"Вы заблокировали пользователя":"Сообщение…"} rows={1} disabled={activePartnerBlocked} value={draft} onChange={e=>{setDraft(e.target.value);if(selected)updateChatDraft(selected,e.target.value);}} onInput={e=>{const element=e.currentTarget;element.style.height='auto';element.style.height=Math.min(element.scrollHeight,136)+'px';}} onKeyDown={e=>{
+      <textarea ref={composerRef} aria-label="Написать сообщение" enterKeyHint="enter" placeholder={activePartnerBlocked?"Вы заблокировали пользователя":"Сообщение…"} rows={1} disabled={activePartnerBlocked} value={draft} onChange={e=>{setDraft(e.target.value);setDirectSendRetry(null);if(selected)updateChatDraft(selected,e.target.value);}} onInput={e=>{const element=e.currentTarget;element.style.height='auto';element.style.height=Math.min(element.scrollHeight,136)+'px';}} onKeyDown={e=>{
         // On iOS/Android the Return key must create a newline, not send the
         // message unexpectedly. Hardware-keyboard users retain Enter-to-send.
         const softKeyboard=/iPhone|iPad|iPod|Android/i.test(navigator.userAgent)
