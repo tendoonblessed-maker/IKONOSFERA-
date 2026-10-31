@@ -22,6 +22,32 @@ export function imageUrl(path:string|null|undefined):string|null {
   if(!path||!apiUrl||!/^[a-z0-9-]+\/[a-z0-9.-]+\.(jpg|png|webp)$/i.test(path))return null;
   return apiUrl+"/storage/v1/object/public/ikonosfera-media/"+path.split("/").map(encodeURIComponent).join("/");
 }
+/**
+ * The legacy imageUrl helper deliberately accepts *images only*.
+ * Channel posts can also contain a video, audio clip or document. Never feed
+ * those objects through imageUrl (it returns null for their extensions).
+ *
+ * Only allow filenames emitted by uploadChannelAttachment, and require the
+ * stored type to agree with the extension to avoid producing arbitrary URLs
+ * from untrusted database rows.
+ */
+type ChannelMediaKind=NonNullable<ChannelPost['attachment_type']>;
+const CHANNEL_EXTENSIONS:Record<ChannelMediaKind,readonly string[]>={
+ image:['jpg','png','webp'],
+ video:['mp4','webm','mov'],
+ audio:['mp3','m4a','wav','ogg'],
+ file:['pdf','txt','zip','doc','docx','xls','xlsx']
+};
+const CHANNEL_FILE_PATH=/^([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})\/([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})\.([a-z0-9]+)$/i;
+export function channelAttachmentUrl(
+ path:string|null|undefined,type:ChannelPost['attachment_type']
+):string|null{
+ if(!apiUrl||!path||!type||!Object.prototype.hasOwnProperty.call(CHANNEL_EXTENSIONS,type))return null;
+ const match=CHANNEL_FILE_PATH.exec(path);
+ if(!match||!CHANNEL_EXTENSIONS[type as ChannelMediaKind].includes(match[3].toLowerCase()))return null;
+ return apiUrl+"/storage/v1/object/public/ikonosfera-media/"+path.split('/').map(encodeURIComponent).join('/');
+}
+
 export async function uploadPhoto(token:string,userId:string,file:File):Promise<string>{
   if(!["image/png","image/jpeg","image/webp"].includes(file.type))throw Error("Поддерживаются JPG, PNG и WebP.");
   if(file.size>3*1024*1024)throw Error("Фото должно быть меньше 3 МБ.");
