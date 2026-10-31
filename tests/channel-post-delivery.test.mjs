@@ -202,7 +202,7 @@ test('channel composer never deletes uncertain attachments or reports a failed r
  const action=panel.slice(start,end);
  assert.match(action,/publishChannelPostSafely\(token,userId,channel\.id,body,file\)/);
  assert.doesNotMatch(action,/removeUpload\(/);
- assert.match(action,/setBody\("");setFile\(null\);/);
+ assert.ok(action.includes('setBody("");setFile(null);'));
  assert.match(action,/setPosts\(current=>\[published/);
  assert.match(action,/try\{await reload\(\);\}[\s\S]*?catch\{setNotice/);
  assert.match(action,/!body\.trim\(\)/);
