@@ -3,7 +3,7 @@ import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { listProfiles, type Profile } from "@/lib/supabase-rest";
 import StatusEmoji from "@/components/StatusEmoji";
 import {
- addPostComment, deletePost, editChannelPost, manageChannelComment, imageUrl, listChannelPosts, listPostComments, listPostReactions, setPostReaction, REACTION_EMOJIS, publishPost,
+ addPostComment, deletePost, editChannelPost, manageChannelComment, imageUrl, listChannelPosts, listPostComments, listPostReactions, setPostReaction, REACTION_EMOJIS, publishChannelPostSafely,
  removeUpload, uploadChannelAttachment, updateChannel, updateChannelAvatar, deleteChannel, getChannelSubscriberCounts, listDiscussionMessages, sendDiscussionMessage, deleteDiscussionMessage, listDiscussionComments,
  type Channel, type ChannelPost, type PostComment, type PostReaction, type ReactionEmoji, type DiscussionMessage
 } from "@/lib/social";
@@ -107,14 +107,21 @@ export default function ChannelsPanel({token,userId,channel,onBack,onShowProfile
  }
  async function post(e:FormEvent){
   e.preventDefault();if(!mine||busy||(!body.trim()&&!file))return;
+  // The active channel_post_content constraint requires nonblank text when
+  // image_path is null; attachment_path alone does not satisfy it.
+  if(!body.trim()){
+   setError("Добавь текст к публикации: пост только с файлом пока не поддерживается.");
+   return;
+  }
   setBusy(true);setError("");setNotice("");
-  let path:string|null=null;
   try{
-   const attachment=file?await uploadChannelAttachment(token,userId,file):null;
-   path=attachment?.path??null;
-   try{await publishPost(token,userId,channel.id,body,null,attachment);}
-   catch(e){if(path)await removeUpload(token,path).catch(()=>{});throw e;}
-   setBody("");setFile(null);await reload();setNotice("Пост опубликован.");
+   const published=await publishChannelPostSafely(token,userId,channel.id,body,file);
+   // A failed feed refresh must not be presented as a failed publication.
+   setBody("");setFile(null);
+   setPosts(current=>[published,...current.filter(item=>item.id!==published.id)]);
+   setNotice("Пост опубликован.");
+   try{await reload();}
+   catch{setNotice("Пост опубликован, но список временно не обновился. Открой канал снова.");}
   }catch(e){setError(readable(e));}finally{setBusy(false);}
  }
  async function writeComment(e:FormEvent){

@@ -37,7 +37,8 @@ test('profile editor uses real signed-in upload API',()=>{
 });
 test('channel posts and comments persist through Supabase',()=>{
  const ui=load('components/ChannelsPanel.tsx'),backend=load('lib/social.ts');
- for(const word of ['publishPost','addPostComment','listPostComments'])assert.ok(ui.includes(word)&&backend.includes(word));
+ for(const word of ['publishChannelPostSafely','addPostComment','listPostComments'])assert.ok(ui.includes(word)&&backend.includes(word));
+ assert.match(backend,/export async function publishPost\(/);
 });
 test('channels require explicit opt-in and separate discovery from subscriptions',()=>{
  const sql=load('supabase/migrations/20261028_140000_subscriptions_and_short_usernames.sql');
