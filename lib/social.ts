@@ -23,6 +23,32 @@ export function imageUrl(path:string|null|undefined):string|null {
   if(!path||!apiUrl||!/^[a-z0-9-]+\/[a-z0-9.-]+\.(jpg|png|webp)$/i.test(path))return null;
   return apiUrl+"/storage/v1/object/public/ikonosfera-media/"+path.split("/").map(encodeURIComponent).join("/");
 }
+/**
+ * The legacy imageUrl helper deliberately accepts *images only*.
+ * Channel posts can also contain a video, audio clip or document. Never feed
+ * those objects through imageUrl (it returns null for their extensions).
+ *
+ * Only allow filenames emitted by uploadChannelAttachment, and require the
+ * stored type to agree with the extension to avoid producing arbitrary URLs
+ * from untrusted database rows.
+ */
+type ChannelMediaKind=NonNullable<ChannelPost['attachment_type']>;
+const CHANNEL_EXTENSIONS:Record<ChannelMediaKind,readonly string[]>={
+ image:['jpg','png','webp'],
+ video:['mp4','webm','mov'],
+ audio:['mp3','m4a','wav','ogg'],
+ file:['pdf','txt','zip','doc','docx','xls','xlsx']
+};
+const CHANNEL_FILE_PATH=/^([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})\/([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})\.([a-z0-9]+)$/i;
+export function channelAttachmentUrl(
+ path:string|null|undefined,type:ChannelPost['attachment_type']
+):string|null{
+ if(!apiUrl||!path||!type||!Object.prototype.hasOwnProperty.call(CHANNEL_EXTENSIONS,type))return null;
+ const match=CHANNEL_FILE_PATH.exec(path);
+ if(!match||!CHANNEL_EXTENSIONS[type as ChannelMediaKind].includes(match[3].toLowerCase()))return null;
+ return apiUrl+"/storage/v1/object/public/ikonosfera-media/"+path.split('/').map(encodeURIComponent).join('/');
+}
+
 export async function uploadPhoto(token:string,userId:string,file:File):Promise<string>{
   if(!["image/png","image/jpeg","image/webp"].includes(file.type))throw Error("Поддерживаются JPG, PNG и WebP.");
   if(file.size>3*1024*1024)throw Error("Фото должно быть меньше 3 МБ.");
@@ -85,9 +111,9 @@ export async function listChannels(token:string):Promise<Channel[]>{
   return api<Channel[]>("/rest/v1/channels?select=*&order=created_at.desc&limit=100",token);
 }
 /** Fetch one selected channel even if it is outside the first page of discovery. */
-export async function getChannelById(token:string,channelId:string):Promise<Channel|null>{
+export async function getChannelById(token:string,channelId:string,timeoutMs=0):Promise<Channel|null>{
  if(!/^[a-f0-9-]{36}$/i.test(channelId))return null;
- const channels=await api<Channel[]>("/rest/v1/channels?select=*&id=eq."+encodeURIComponent(channelId)+"&limit=1",token);
+ const channels=await api<Channel[]>("/rest/v1/channels?select=*&id=eq."+encodeURIComponent(channelId)+"&limit=1",token,"GET",undefined,timeoutMs);
  return channels[0]??null;
 }
 export async function createChannel(token:string,owner_id:string,title:string,slug:string,description:string):Promise<Channel>{
@@ -102,9 +128,27 @@ export async function updateChannel(token:string,channelId:string,ownerId:string
  return rows[0];
 }
 export async function updateChannelAvatar(token:string,channelId:string,ownerId:string,avatarPath:string|null):Promise<Channel>{
- const rows=await api<Channel[]>("/rest/v1/channels?id=eq."+encodeURIComponent(channelId)+"&owner_id=eq."+encodeURIComponent(ownerId)+"&select=*",token,"PATCH",{avatar_path:avatarPath});
- if(!rows[0])throw Error("Не удалось изменить аватарку канала. Проверь права владельца.");
- return rows[0];
+ const UUID=/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
+ if(!UUID.test(channelId)||!UUID.test(ownerId)
+    ||(avatarPath!==null&&(!avatarPath.startsWith(ownerId+"/")||!imageUrl(avatarPath))))
+   throw Error("Некорректные параметры аватарки канала.");
+ const matches=(row:Channel|null|undefined):row is Channel=>Boolean(row
+   &&row.id===channelId&&row.owner_id===ownerId&&row.avatar_path===avatarPath);
+ let patchFailure:unknown=null;
+ try{
+   const rows=await api<Channel[]>("/rest/v1/channels?id=eq."+encodeURIComponent(channelId)+"&owner_id=eq."+encodeURIComponent(ownerId)+"&select=*",token,"PATCH",{avatar_path:avatarPath},18000);
+   if(matches(rows[0]))return rows[0];
+   patchFailure=Error("Сервер вернул другую аватарку канала.");
+ }catch(error){patchFailure=error;}
+ try{
+   // Exactly one read-only request: never issue a second PATCH automatically.
+   const remote=await getChannelById(token,channelId,18000);
+   if(matches(remote))return remote;
+ }catch{/* A failed verification must not overwrite the original error. */}
+ // Preserve the original network/permission failure, including errors from
+ // another JavaScript realm; do not turn a rejected PATCH into a false success.
+ if(patchFailure!==null)throw patchFailure;
+ throw Error("Не удалось подтвердить сохранение аватарки.");
 }
 export async function deleteChannel(token:string,channelId:string,ownerId:string):Promise<void>{
  const rows=await api<Channel[]>("/rest/v1/channels?id=eq."+encodeURIComponent(channelId)+"&owner_id=eq."+encodeURIComponent(ownerId)+"&select=id",token,"DELETE");
