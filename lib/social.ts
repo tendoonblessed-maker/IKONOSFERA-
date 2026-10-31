@@ -42,7 +42,7 @@ const CHANNEL_FILE_PATH=/^([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0
 export function channelAttachmentUrl(
  path:string|null|undefined,type:ChannelPost['attachment_type']
 ):string|null{
- if(!apiUrl||!path||!type||!(type in CHANNEL_EXTENSIONS))return null;
+ if(!apiUrl||!path||!type||!Object.prototype.hasOwnProperty.call(CHANNEL_EXTENSIONS,type))return null;
  const match=CHANNEL_FILE_PATH.exec(path);
  if(!match||!CHANNEL_EXTENSIONS[type as ChannelMediaKind].includes(match[3].toLowerCase()))return null;
  return apiUrl+"/storage/v1/object/public/ikonosfera-media/"+path.split('/').map(encodeURIComponent).join('/');
