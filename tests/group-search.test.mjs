@@ -20,8 +20,24 @@ function setup(handler=()=>({ok:true,json:async()=>[]})){
   process:{env:{NEXT_PUBLIC_SUPABASE_ANON_KEY:'test-anon'}},
   fetch:async(url,options)=>{calls.push({url,options});return handler(url,options,calls.length);},
   require(name){
-   assert.equal(name,'./supabase-rest');
-   return {apiUrl:'https://test.invalid'};
+   if(name==='./supabase-rest')return {apiUrl:'https://test.invalid'};
+   if(name==='./group-pagination'){
+    // Exercise the real microsecond-aware comparator rather than a mock.
+    const pagination={};
+    const code=ts.transpileModule(read('lib/group-pagination.ts'),{
+     compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}
+    }).outputText;
+    vm.runInNewContext(code,{
+     exports:pagination,URLSearchParams,URL,AbortSignal,
+     process:{env:{NEXT_PUBLIC_SUPABASE_ANON_KEY:'test-anon'}},
+     require(dep){
+      assert.equal(dep,'@/lib/supabase-rest');
+      return {apiUrl:'https://test.invalid'};
+     }
+    },{filename:'group-pagination.cjs',timeout:2500});
+    return pagination;
+   }
+   throw Error('Unexpected dependency: '+name);
   }
  };
  vm.runInNewContext(compiled,ctx,{filename:'group-search.cjs',timeout:2500});
@@ -144,4 +160,52 @@ test('sending a new post from an archival result restores the current group time
  assert.match(panel,/if\(browsingOlderRef\.current\)\{\n     \/\/ Sending from an archived search result/);
  assert.match(panel,/browsingOlderRef\.current=false;\n     followNewestRef\.current=true;\n     latestGroupMessageRef\.current=null;/);
  assert.match(panel,/void refresh\(\)\.catch\(e=>setError/);
+});
+
+test('group context uses exact timestamp + UUID cursors for crowded timestamp buckets',async()=>{
+ const target={...ROW,created_at:'2026-10-29T08:00:00.000123Z'};
+ const older={...target,id:'33333333-3333-4333-8333-333333333334'};
+ const newer={...target,id:'55555555-5555-4555-8555-555555555555'};
+ const {api,calls}=setup(url=>{
+  const p=params(url);
+  if(p.has('id'))return result([target]);
+  if(p.get('order')==='created_at.desc,id.desc')return result([target,older]);
+  return result([target,newer]);
+ });
+ const rows=await api.getGroupMessageContext('jwt',GROUP,target.id,'2026-10-28T08:00:00Z');
+ assert.deepEqual(Array.from(rows,x=>x.id),[older.id,target.id,newer.id]);
+ assert.equal(calls.length,3);
+ const before=params(calls[1].url);
+ const after=params(calls[2].url);
+ assert.equal(before.get('or'),
+  '(created_at.lt.'+target.created_at+',and(created_at.eq.'+target.created_at+',id.lte.'+target.id+'))');
+ assert.equal(after.get('or'),
+  '(created_at.gt.'+target.created_at+',and(created_at.eq.'+target.created_at+',id.gte.'+target.id+'))');
+ for(const p of [before,after]){
+  assert.equal(p.get('group_id'),'eq.'+GROUP);
+  assert.equal(p.get('limit'),'70');
+  assert.equal(p.has('created_at'),false,'timestamp-only filtering would miss neighbours');
+ }
+ assert.equal(before.get('order'),'created_at.desc,id.desc');
+ assert.equal(after.get('order'),'created_at.asc,id.asc');
+});
+
+test('context orders sub-millisecond timestamps chronologically, not by UUID',async()=>{
+ const older={...ROW,id:'99999999-9999-4999-8999-999999999999',created_at:'2026-10-29T08:00:00.000122Z'};
+ const target={...ROW,created_at:'2026-10-29T08:00:00.000123Z'};
+ const newer={...ROW,id:'11111111-1111-4111-8111-111111111111',created_at:'2026-10-29T08:00:00.000124Z'};
+ const {api}=setup(url=>{
+  const p=params(url);
+  if(p.has('id'))return result([target]);
+  if(p.get('order')==='created_at.desc,id.desc')return result([target,older]);
+  return result([target,newer]);
+ });
+ const rows=await api.getGroupMessageContext('jwt',GROUP,target.id,target.created_at);
+ assert.deepEqual(Array.from(rows,x=>x.id),[older.id,target.id,newer.id]);
+});
+
+test('invalid canonical timestamp cannot become an unsafe PostgREST filter',async()=>{
+ const {api,calls}=setup(()=>result([{...ROW,created_at:'2026-10-29T08:00:00Z,group_id.eq.'+OTHER}]));
+ await assert.rejects(api.getGroupMessageContext('jwt',GROUP,ROW.id,ROW.created_at),/Некорректная дата/);
+ assert.equal(calls.length,1,'no adjacent history fetch on malformed server timestamp');
 });
