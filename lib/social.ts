@@ -11,9 +11,10 @@ export type PostComment = { id:string; post_id:string; author_id:string; body:st
 function requestHeaders(token:string, extras:Record<string,string>={}) {
   return { apikey:publicKey, Authorization:"Bearer "+token, "Content-Type":"application/json", ...extras };
 }
-async function api<T>(path:string,token:string,method="GET",body?:unknown) : Promise<T> {
+async function api<T>(path:string,token:string,method="GET",body?:unknown,timeoutMs=0) : Promise<T> {
   const res=await fetch(apiUrl+path,{method,headers:requestHeaders(token,method==="POST"||method==="PATCH"||method==="DELETE"?{Prefer:"return=representation"}:{}),
-    body:body===undefined?undefined:JSON.stringify(body),cache:"no-store"});
+    body:body===undefined?undefined:JSON.stringify(body),cache:"no-store",
+    signal:timeoutMs>0?AbortSignal.timeout(timeoutMs):undefined});
   const value=await res.json().catch(()=>null);
   if(!res.ok)throw Error(value?.message||value?.error||value?.msg||"Ошибка сервера ("+res.status+")");
   return value as T;
@@ -84,9 +85,9 @@ export async function listChannels(token:string):Promise<Channel[]>{
   return api<Channel[]>("/rest/v1/channels?select=*&order=created_at.desc&limit=100",token);
 }
 /** Fetch one selected channel even if it is outside the first page of discovery. */
-export async function getChannelById(token:string,channelId:string):Promise<Channel|null>{
+export async function getChannelById(token:string,channelId:string,timeoutMs=0):Promise<Channel|null>{
  if(!/^[a-f0-9-]{36}$/i.test(channelId))return null;
- const channels=await api<Channel[]>("/rest/v1/channels?select=*&id=eq."+encodeURIComponent(channelId)+"&limit=1",token);
+ const channels=await api<Channel[]>("/rest/v1/channels?select=*&id=eq."+encodeURIComponent(channelId)+"&limit=1",token,"GET",undefined,timeoutMs);
  return channels[0]??null;
 }
 export async function createChannel(token:string,owner_id:string,title:string,slug:string,description:string):Promise<Channel>{
@@ -100,10 +101,29 @@ export async function updateChannel(token:string,channelId:string,ownerId:string
  if(!rows[0])throw Error("Не удалось изменить канал. Проверь права владельца.");
  return rows[0];
 }
+/** A PATCH may have committed even when the browser lost its HTTP reply.
+ * Never delete a public image on that ambiguous outcome: the saved channel
+ * could already be pointing to it. Verify the canonical server row under RLS.
+ */
 export async function updateChannelAvatar(token:string,channelId:string,ownerId:string,avatarPath:string|null):Promise<Channel>{
- const rows=await api<Channel[]>("/rest/v1/channels?id=eq."+encodeURIComponent(channelId)+"&owner_id=eq."+encodeURIComponent(ownerId)+"&select=*",token,"PATCH",{avatar_path:avatarPath});
- if(!rows[0])throw Error("Не удалось изменить аватарку канала. Проверь права владельца.");
- return rows[0];
+ const UUID=/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
+ if(!UUID.test(channelId)||!UUID.test(ownerId)
+    ||(avatarPath!==null&&(!avatarPath.startsWith(ownerId+"/")||!imageUrl(avatarPath))))
+   throw Error("Некорректные параметры аватарки канала.");
+ const matches=(row:Channel|null|undefined):row is Channel=>Boolean(row
+   &&row.id===channelId&&row.owner_id===ownerId&&row.avatar_path===avatarPath);
+ let patchFailure:unknown=null;
+ try{
+   const rows=await api<Channel[]>("/rest/v1/channels?id=eq."+encodeURIComponent(channelId)+"&owner_id=eq."+encodeURIComponent(ownerId)+"&select=*",token,"PATCH",{avatar_path:avatarPath},18000);
+   if(matches(rows[0]))return rows[0];
+   patchFailure=Error("Сервер вернул другую аватарку канала.");
+ }catch(error){patchFailure=error;}
+ try{
+   // Exactly one read-only request: never issue a second PATCH automatically.
+   const remote=await getChannelById(token,channelId,18000);
+   if(matches(remote))return remote;
+ }catch{/* A failed verification must not overwrite the original error. */}
+ throw patchFailure instanceof Error?patchFailure:Error("Не удалось подтвердить сохранение аватарки.");
 }
 export async function deleteChannel(token:string,channelId:string,ownerId:string):Promise<void>{
  const rows=await api<Channel[]>("/rest/v1/channels?id=eq."+encodeURIComponent(channelId)+"&owner_id=eq."+encodeURIComponent(ownerId)+"&select=id",token,"DELETE");
