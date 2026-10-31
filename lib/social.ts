@@ -123,7 +123,10 @@ export async function updateChannelAvatar(token:string,channelId:string,ownerId:
    const remote=await getChannelById(token,channelId,18000);
    if(matches(remote))return remote;
  }catch{/* A failed verification must not overwrite the original error. */}
- throw patchFailure instanceof Error?patchFailure:Error("Не удалось подтвердить сохранение аватарки.");
+ // Preserve the original network/permission failure, including errors from
+ // another JavaScript realm; do not turn a rejected PATCH into a false success.
+ if(patchFailure!==null)throw patchFailure;
+ throw Error("Не удалось подтвердить сохранение аватарки.");
 }
 export async function deleteChannel(token:string,channelId:string,ownerId:string):Promise<void>{
  const rows=await api<Channel[]>("/rest/v1/channels?id=eq."+encodeURIComponent(channelId)+"&owner_id=eq."+encodeURIComponent(ownerId)+"&select=id",token,"DELETE");
