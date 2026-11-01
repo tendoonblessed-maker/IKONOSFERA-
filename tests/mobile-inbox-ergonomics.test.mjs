@@ -5,7 +5,7 @@ const read=path=>readFileSync(new URL('../'+path,import.meta.url),'utf8');
 
 test('touch inbox rows have a comfortable minimum height',()=>{
  const css=read('app/mobile-inbox-ergonomics.css');
- assert.match(css,/@media \(pointer: coarse\)/);
+ assert.match(css,/@media \(any-pointer: coarse\)/);
  assert.match(css,/\.telegram-chat-row/);
  assert.match(css,/\.ik-group-inbox/);
  assert.match(css,/min-height:\s*68px/);
@@ -27,4 +27,13 @@ test('reduced motion disables chat-row transitions',()=>{
 test('mobile polish loads after touch action target rules',()=>{
  const layout=read('app/layout.tsx');
  assert.ok(layout.indexOf('import "./mobile-inbox-ergonomics.css"')>layout.indexOf('import "./mobile-inbox-actions.css"'));
+});
+
+test('touch ergonomics cover hybrid devices with a mouse as primary pointer',()=>{
+ const actions=read('app/mobile-inbox-actions.css');
+ const rows=read('app/mobile-inbox-ergonomics.css');
+ for(const css of [actions,rows]){
+  assert.ok(css.includes('@media (any-pointer: coarse)'));
+  assert.ok(!css.includes('@media (pointer: coarse)'));
+ }
 });

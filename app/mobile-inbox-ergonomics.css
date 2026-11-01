@@ -1,5 +1,5 @@
-/* Compact Telegram-inspired inbox with accessible touch rows and safe text clipping. */
-@media (pointer: coarse) {
+/* Telegram-inspired inbox on phones and hybrid touch laptops; safe preview clipping. */
+@media (any-pointer: coarse) {
  .messenger.is-authenticated .chat-list .telegram-chat-row,
  .messenger.is-authenticated .chat-list .ik-group-inbox {
    box-sizing: border-box;
