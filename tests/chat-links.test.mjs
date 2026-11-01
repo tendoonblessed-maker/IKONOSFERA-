@@ -64,6 +64,28 @@ test('embedded domain fragments, email addresses, credentials and malformed URLs
  }
 });
 
+
+test('invisible formatting and bidi controls never create deceptive clickable URLs',()=>{
+ for(const input of [
+  'https://example.com/\\u202Ecom.evil',
+  'https://exa\\u200Bmple.com/path',
+  'www.example.com/\\u2066hidden\\u2069',
+  'https://example.com/\\u00ADdownload',
+  'https://example.com/\\u200Dfile',
+  'https://example.com/\\u061Cpath'
+ ]){
+  const text=input.replace(/\\\\u([0-9a-f]{4})/gi,(_,hex)=>String.fromCharCode(parseInt(hex,16)));
+  assert.equal(links(text).length,0,'formatting controls must not produce clickable links');
+  assert.equal(reconstructed(text),text,'original chat text must remain unchanged');
+ }
+});
+
+test('normal Unicode chat links remain clickable',()=>{
+ const text='https://example.com/привет';
+ assert.deepEqual(links(text),[{text,href:'https://example.com/%D0%BF%D1%80%D0%B8%D0%B2%D0%B5%D1%82'}]);
+ assert.equal(reconstructed(text),text);
+});
+
 test('URLs in multiple lines are independent with no global-regex state leak',()=>{
  const a='https://first.example';
  const b='https://second.example';
