@@ -6,6 +6,9 @@
 export type ChatTextPart={text:string;href?:string};
 const LINK_CANDIDATE=/(?:https?:\/\/|www\.)[^\s<>"'\u0060]+/gi;
 const TRAILING_PUNCTUATION=/[.,!?;:…。，！？；：»”’›]$/u;
+// Invisible and bidirectional formatting controls can disguise a link's visible destination.
+// Leave those candidates as literal chat text instead of making them clickable.
+const UNSAFE_LINK_FORMATTING=/[\u00ad\u061c\u200b-\u200f\u202a-\u202e\u2060\u2066-\u2069\ufeff]/u;
 const MAX_URL_LENGTH=2048;
 const MAX_LINKS=40;
 
@@ -33,7 +36,7 @@ function splitEnding(candidate:string):{url:string;ending:string}{
 }
 
 function externalHref(candidate:string):string|null{
- if(candidate.length>MAX_URL_LENGTH)return null;
+ if(candidate.length>MAX_URL_LENGTH||UNSAFE_LINK_FORMATTING.test(candidate))return null;
  const prefixed=/^www\./i.test(candidate)?'https://'+candidate:candidate;
  try{
   const parsed=new URL(prefixed);
