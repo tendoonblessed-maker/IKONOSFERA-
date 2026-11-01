@@ -4,6 +4,7 @@ import {imageUrl} from '@/lib/social';
 import FloatingActionMenu from '@/components/FloatingActionMenu';
 import StatusEmoji from '@/components/StatusEmoji';
 import {inboxRowLabel,inboxUnreadBadge,inboxUnreadCount} from '@/lib/inbox-row-presentation';
+import {inboxTimestamp} from '@/lib/inbox-timestamp';
 import type {ChatPreview,DirectChat,Profile} from '@/lib/supabase-rest';
 
 type Row={chat:DirectChat;other:Profile|null;preview:ChatPreview|null;previewUnavailable?:boolean};
@@ -22,18 +23,6 @@ type Props={
  onAction:(action:'hide'|'pin'|'unpin'|'delete_self'|'delete_everyone')=>void;
 };
 
-function timeLabel(input:string|null){
- if(!input)return '';
- const date=new Date(input);
- if(!Number.isFinite(date.getTime()))return '';
- const today=new Date();
- if(date.toDateString()===today.toDateString())
-   return date.toLocaleTimeString('ru-RU',{hour:'2-digit',minute:'2-digit'});
- const yesterday=new Date(today.getFullYear(),today.getMonth(),today.getDate()-1);
- if(date.toDateString()===yesterday.toDateString())return 'вчера';
- return date.toLocaleDateString('ru-RU',{day:'2-digit',month:'2-digit'});
-}
-
 export default function ChatInboxRow({row,currentUserId,active,selectionMode=false,selectedForBulk=false,isSavedContact=false,isBlocked=false,draft='',onOpen,onContactAction,onBlockAction,onAction}:Props){
  const {chat,other,preview}=row;
  const pinned=Boolean(chat.pinned_for?.includes(currentUserId));
@@ -43,7 +32,7 @@ export default function ChatInboxRow({row,currentUserId,active,selectionMode=fal
  const outgoing=preview?.last_sender_id===currentUserId;
  const lastText=outgoing?'Вы: '+previewText:previewText;
  const name=other?.display_name||other?.username||'Собеседник';
- const stamp=timeLabel(preview?.last_created_at||null);
+ const stamp=inboxTimestamp(preview?.last_created_at);
  return <div className={'chat-row-wrap ik-inbox-row'+(active?' active':'')+(selectionMode?' ik-chat-selecting':'')+(unread?' ik-inbox-unread':'')+(draftText?' ik-inbox-has-draft':'')}>
    {selectionMode&&<span className={'ik-chat-checkbox'+(selectedForBulk?' checked':'')} aria-hidden="true">{selectedForBulk?'✓':''}</span>}
    <button type="button" className={'chat-item telegram-chat-row'+(active?' active':'')} onClick={onOpen} aria-label={inboxRowLabel(name,unread,selectionMode,selectedForBulk)} aria-pressed={selectionMode?selectedForBulk:undefined}>
@@ -53,7 +42,7 @@ export default function ChatInboxRow({row,currentUserId,active,selectionMode=fal
        <span className="ik-chat-preview">{draftText?<><span className="ik-chat-draft-label">Черновик:</span> {draftText}</>:lastText}</span>
      </span>
      <span className="ik-chat-meta">
-       {stamp&&<time dateTime={preview?.last_created_at||undefined}>{stamp}</time>}
+       {stamp&&<time dateTime={stamp.iso} title={stamp.full}>{stamp.short}</time>}
        {unread>0&&<span className="ik-unread-count" aria-label={'Непрочитанных: '+unread}>{inboxUnreadBadge(unread)}</span>}
      </span>
    </button>
