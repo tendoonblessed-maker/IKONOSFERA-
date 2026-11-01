@@ -29,3 +29,12 @@
    transition: none !important;
  }
 }
+
+/* iOS/Android may keep :hover after a tap. Do not leave a read row highlighted.
+   Preserve the selected conversation's active background. */
+@media (hover: none) {
+ .messenger.is-authenticated .chat-list .chat-row-wrap:hover:not(.active),
+ .messenger.is-authenticated .chat-list .ik-group-inbox:hover:not(.active) {
+   background: #fff !important;
+ }
+}
