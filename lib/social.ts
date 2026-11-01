@@ -61,9 +61,12 @@ export async function deleteProfilePhoto(token:string,id:string):Promise<void>{
 export async function getStories(token:string,userId:string):Promise<Story[]>{
   return api<Story[]>("/rest/v1/stories?select=*&user_id=eq."+encodeURIComponent(userId)+"&expires_at=gt."+encodeURIComponent(new Date().toISOString())+"&order=created_at.desc&limit=40",token);
 }
+const CONTACT_STORY_UUID=/^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i;
 export async function getContactsStories(token:string,userIds:string[]):Promise<Story[]>{
  if(!userIds.length)return [];
- const ids=Array.from(new Set(userIds)).filter(id=>/^[0-9a-f-]{36}$/i.test(id)).slice(0,100);
+ // A single malformed ID makes PostgREST reject the whole UUID IN filter.
+ // Normalize case before deduplication so one contact is queried only once.
+ const ids=Array.from(new Set(userIds.filter(id=>CONTACT_STORY_UUID.test(id)).map(id=>id.toLowerCase()))).slice(0,100);
  if(!ids.length)return [];
  return api<Story[]>("/rest/v1/stories?select=*&user_id=in.("+ids.map(encodeURIComponent).join(",")+")&expires_at=gt."+encodeURIComponent(new Date().toISOString())+"&order=created_at.desc&limit=200",token);
 }
