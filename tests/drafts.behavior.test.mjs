@@ -53,6 +53,6 @@ test('storage failures cannot break typing or reading drafts',()=>{
  const broken={getItem(){throw Error('disabled');},setItem(){throw Error('quota');},removeItem(){throw Error('disabled');}};
  const api=library(broken);
  assert.doesNotThrow(()=>api.writeChatDrafts(alice,{[chat]:'draft'}));
- assert.deepEqual(Object.keys(api.readChatDrafts(alice)),[]);
+ assert.equal(api.readChatDrafts(alice)[chat],'draft','failed writes remain readable in this tab');
  assert.doesNotThrow(()=>api.clearChatDrafts(alice));
 });
