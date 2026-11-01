@@ -44,8 +44,8 @@ test('malformed contact UUIDs do not break valid contacts story query',async()=>
 
 test('invalid-only and empty contact lists never issue a request',async()=>{
  const {api,calls}=setup();
- assert.deepEqual(await api.getContactsStories('jwt',[]),[]);
- assert.deepEqual(await api.getContactsStories('jwt',INVALID),[]);
+ assert.equal((await api.getContactsStories('jwt',[])).length,0);
+ assert.equal((await api.getContactsStories('jwt',INVALID)).length,0);
  assert.equal(calls.length,0);
 });
 
