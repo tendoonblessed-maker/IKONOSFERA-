@@ -67,14 +67,14 @@ test('embedded domain fragments, email addresses, credentials and malformed URLs
 
 test('invisible formatting and bidi controls never create deceptive clickable URLs',()=>{
  for(const input of [
-  'https://example.com/\\u202Ecom.evil',
-  'https://exa\\u200Bmple.com/path',
-  'www.example.com/\\u2066hidden\\u2069',
-  'https://example.com/\\u00ADdownload',
-  'https://example.com/\\u200Dfile',
-  'https://example.com/\\u061Cpath'
+  'https://example.com/\u202Ecom.evil',
+  'https://exa\u200Bmple.com/path',
+  'www.example.com/\u2066hidden\u2069',
+  'https://example.com/\u00ADdownload',
+  'https://example.com/\u200Dfile',
+  'https://example.com/\u061Cpath'
  ]){
-  const text=input.replace(/\\\\u([0-9a-f]{4})/gi,(_,hex)=>String.fromCharCode(parseInt(hex,16)));
+  const text=input;
   assert.equal(links(text).length,0,'formatting controls must not produce clickable links');
   assert.equal(reconstructed(text),text,'original chat text must remain unchanged');
  }
