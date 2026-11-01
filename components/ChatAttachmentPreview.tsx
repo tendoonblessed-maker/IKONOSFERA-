@@ -2,6 +2,7 @@
 
 import {useEffect,useRef,useState} from 'react';
 import {createPortal} from 'react-dom';
+import {preferNonTextFocusForAttachment} from '@/lib/attachment-preview-focus';
 
 type Props={
  file:File;
@@ -17,6 +18,7 @@ export default function ChatAttachmentPreview({file,caption,sending,online,onCap
  const [preview,setPreview]=useState<{file:File;url:string}|null>(null);
  const dialogRef=useRef<HTMLElement|null>(null);
  const captionRef=useRef<HTMLTextAreaElement|null>(null);
+ const dismissRef=useRef<HTMLButtonElement|null>(null);
  const sendRef=useRef<HTMLButtonElement|null>(null);
  const closeRef=useRef(onCancel);
  closeRef.current=onCancel;
@@ -37,7 +39,15 @@ export default function ChatAttachmentPreview({file,caption,sending,online,onCap
   const previouslyFocused=document.activeElement instanceof HTMLElement?document.activeElement:null;
   const previousOverflow=document.body.style.overflow;
   document.body.style.overflow='hidden';
-  captionRef.current?.focus();
+  // Focusing a textarea on iPhone/Android opens the software keyboard before
+  // the user has seen the photo/video. Keep focus inside the dialog without
+  // activating the keyboard; desktop keyboard users still land on the caption.
+  const touchFirst=preferNonTextFocusForAttachment(
+   window.matchMedia?.('(pointer: coarse)').matches??false,
+   navigator.maxTouchPoints
+  );
+  if(touchFirst)dismissRef.current?.focus({preventScroll:true});
+  else captionRef.current?.focus({preventScroll:true});
   const onKeyDown=(event:KeyboardEvent)=>{
    if(event.key==='Escape'&&!busyRef.current){
     event.preventDefault();
@@ -70,7 +80,7 @@ export default function ChatAttachmentPreview({file,caption,sending,online,onCap
      aria-modal="true" aria-label="Подготовка вложения">
     <header className="ik-attachment-preview-header">
      <div><strong>Отправить вложение</strong><span>Проверь файл перед отправкой</span></div>
-     <button type="button" onClick={onCancel} disabled={sending}
+     <button ref={dismissRef} type="button" onClick={onCancel} disabled={sending}
        aria-label="Отменить вложение" title="Закрыть">✕</button>
     </header>
     <div className="ik-attachment-preview-stage">
