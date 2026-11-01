@@ -4,9 +4,9 @@ import {readFileSync} from 'node:fs';
 
 const source=path=>readFileSync(new URL('../'+path,import.meta.url),'utf8');
 
-test('larger inbox actions are restricted to coarse-pointer devices',()=>{
+test('larger inbox actions support phones and hybrid touch laptops',()=>{
  const css=source('app/mobile-inbox-actions.css');
- assert.match(css,/^@media \(pointer: coarse\)\s*\{/m);
+ assert.match(css,/^@media \(any-pointer: coarse\)\s*\{/m);
  assert.match(css,/\.messenger\.is-authenticated \.chat-list \.ik-chat-row-trigger/);
  assert.doesNotMatch(css,/\.group-chat-row|\.conversation-header|\.chat-message-tools/);
 });

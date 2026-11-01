@@ -1,0 +1,31 @@
+/* Telegram-inspired inbox on phones and hybrid touch laptops; safe preview clipping. */
+@media (any-pointer: coarse) {
+ .messenger.is-authenticated .chat-list .telegram-chat-row,
+ .messenger.is-authenticated .chat-list .ik-group-inbox {
+   box-sizing: border-box;
+   min-height: 68px;
+   touch-action: manipulation;
+   -webkit-tap-highlight-color: transparent;
+ }
+ .messenger.is-authenticated .chat-list .ik-chat-row-wrap,
+ .messenger.is-authenticated .chat-list .chat-row-wrap {
+   min-width: 0;
+ }
+ .messenger.is-authenticated .chat-list .contact-info,
+ .messenger.is-authenticated .chat-list .ik-group-inbox-text {
+   min-width: 0;
+ }
+ .messenger.is-authenticated .chat-list .ik-chat-preview,
+ .messenger.is-authenticated .chat-list .ik-group-inbox-text small {
+   display: block;
+   overflow: hidden;
+   text-overflow: ellipsis;
+   white-space: nowrap;
+ }
+}
+@media (prefers-reduced-motion: reduce) {
+ .messenger.is-authenticated .chat-list .telegram-chat-row,
+ .messenger.is-authenticated .chat-list .ik-group-inbox {
+   transition: none !important;
+ }
+}

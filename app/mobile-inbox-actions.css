@@ -1,6 +1,6 @@
-/* Touch-first inbox actions: make the existing three-dot menu reliably tappable.
+/* Touch-first inbox actions on phones and hybrid touch laptops.
    Desktop mouse/keyboard density is intentionally unchanged. */
-@media (pointer: coarse) {
+@media (any-pointer: coarse) {
   .messenger.is-authenticated .chat-list .ik-chat-row-menu {
     flex: 0 0 44px !important;
     min-width: 44px;
