@@ -8,7 +8,12 @@ const local=(day,hour,minute)=>new Date(2026,10,day,hour,minute).toISOString();
 
 test('today and yesterday have compact Telegram-like labels',()=>{
  assert.equal(inboxTimestamp(local(1,12,4),now)?.short,'12:04');
- assert.equal(inboxTimestamp(local(31,23,59),now)?.short,'31.10');
+ assert.equal(inboxTimestamp(new Date(2026,9,31,23,59).toISOString(),now)?.short,'вчера');
+});
+
+test('month rollover uses valid October dates rather than normalized November 31',()=>{
+ assert.equal(inboxTimestamp(new Date(2026,9,30,23,59).toISOString(),now)?.short,'30.10');
+ assert.equal(inboxTimestamp(new Date(2026,9,31,0,0).toISOString(),now)?.short,'вчера');
  assert.equal(inboxTimestamp(new Date(2026,9,31,23,59).toISOString(),now)?.short,'вчера');
 });
 
