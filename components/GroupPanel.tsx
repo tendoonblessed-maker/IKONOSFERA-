@@ -55,6 +55,7 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
  const searchJumpRequestRef=useRef(0);
  const lastReadRef=useRef<string|null>(null);
  const latestGroupMessageRef=useRef<string|null>(null);
+ const previousNewestRef=useRef<Pick<GroupMessage,'id'|'created_at'>|null>(null);
  const previousMessageIdsRef=useRef<{groupId:string;ownerId:string;ids:Set<string>}>({
   groupId:group.id,ownerId:userId,ids:new Set()
  });
@@ -81,6 +82,7 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
   setSearchResults([]);setSearchLoading(false);setSearchError('');setSearchHasMore(false);
   setSearchLocating(null);setPendingSearchJump(null);
   previousMessageIdsRef.current={groupId:group.id,ownerId:userId,ids:new Set()};
+  previousNewestRef.current=null;
   setShowJumpToLatest(false);
   setNewMessagesBelow(0);
  },[group.id,userId]);
@@ -244,6 +246,7 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
    // This is a historical window, so older pages are available on demand.
    if(!current)setHasOlder(true);
    previousMessageIdsRef.current={groupId,ownerId,ids:new Set(around.map(row=>row.id))};
+   previousNewestRef.current=around.at(-1)??null;
    if(!current)setMessages(around);
    setPendingSearchJump(message.id);
    closeSearch();
@@ -341,11 +344,15 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
   const previous=previousMessageIdsRef.current;
   if(previous.groupId!==group.id||previous.ownerId!==userId){
     previousMessageIdsRef.current={groupId:group.id,ownerId:userId,ids:new Set(messages.map(m=>m.id))};
+    previousNewestRef.current=messages.at(-1)??null;
     setNewMessagesBelow(0);
     return;
   }
-  const newBelow=countNewIncomingBelow(messages,previous.ids,userId,followNewestRef.current);
+  const newBelow=countNewIncomingBelow(
+   messages,previous.ids,userId,followNewestRef.current,previousNewestRef.current
+  );
   previous.ids=new Set(messages.map(m=>m.id));
+  previousNewestRef.current=messages.at(-1)??null;
   if(newBelow>0)setNewMessagesBelow(n=>Math.min(99,n+newBelow));
  },[messages,group.id,userId]);
  useEffect(()=>{if(!membersOpen)return;const onKey=(event:KeyboardEvent)=>{if(event.key==='Escape')setMembersOpen(false);};window.addEventListener('keydown',onKey);return()=>window.removeEventListener('keydown',onKey);},[membersOpen]);

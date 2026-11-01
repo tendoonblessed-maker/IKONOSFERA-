@@ -21,16 +21,16 @@ test('only mark group messages read while the latest row is visible',()=>{
 test('new incoming messages are counted only while reading older group history',()=>{
  const prev=new Set(['1','2']);
  const next=[message('1'),message('2'),message('3'),message('4',A)];
- assert.equal(countNewIncomingBelow(next,prev,A,false),1);
- assert.equal(countNewIncomingBelow(next,prev,A,true),0);
- assert.equal(countNewIncomingBelow(next,new Set(),A,false),0,'first page is not all new');
- assert.equal(countNewIncomingBelow(next,prev,B,false),1,'a different owner only counts other participants');
+ assert.equal(countNewIncomingBelow(next,prev,A,false,message('2')),1);
+ assert.equal(countNewIncomingBelow(next,prev,A,true,message('2')),0);
+ assert.equal(countNewIncomingBelow(next,new Set(),A,false,message('2')),0,'first page is not all new');
+ assert.equal(countNewIncomingBelow(next,prev,B,false,message('2')),1,'a different owner only counts other participants');
 });
 
 test('message count handles simultaneous new replies, deletions and background merges',()=>{
  const ids=new Set(['one','two','three']);
  const next=[message('one'),message('four'),message('five'),message('six',A)];
- assert.equal(countNewIncomingBelow(next,ids,A,false),2);
+ assert.equal(countNewIncomingBelow(next,ids,A,false,{id:'three',created_at:'2026-10-29T07:59:59Z'}),2);
 });
 
 test('group read RPC is called from visibility-safe and bottom-safe action, not unconditional HTTP polling',()=>{
@@ -57,7 +57,7 @@ test('group jumping to latest does not scroll entire iPhone page and retains old
  assert.match(panel,/setShowJumpToLatest\(!nearBottom\)/);
  assert.match(panel,/history\.scrollTop=history\.scrollHeight/);
  assert.match(panel,/setNewMessagesBelow\(0\)/);
- assert.match(panel,/countNewIncomingBelow\(messages,previous\.ids,userId,followNewestRef\.current\)/);
+ assert.match(panel,/messages,previous\.ids,userId,followNewestRef\.current,previousNewestRef\.current/);
  assert.doesNotMatch(panel,/scrollIntoView/);
  assert.match(css,/\.group-view \.ik-group-history-wrap/);
  assert.match(css,/min-height:0/);
@@ -71,4 +71,43 @@ test('group jump is scoped to group/account and new message badge saturates at 9
  assert.match(panel,/setNewMessagesBelow\(n=>Math\.min\(99,n\+newBelow\)\)/);
  assert.match(panel,/newMessagesBelow<99\?newMessagesBelow:'99\+'/);
  assert.match(panel,/aria-label=\{newMessagesBelow>0/);
+});
+
+test('loading an older page does not inflate the new-message badge',()=>{
+ const previous=[message('b'),message('c')];
+ const older=[
+  {...message('a'),created_at:'2026-10-29T07:58:00Z'},
+  {...message('z'),created_at:'2026-10-29T07:59:00Z'}
+ ];
+ const latest=[...older,...previous];
+ assert.equal(countNewIncomingBelow(latest,new Set(previous.map(m=>m.id)),A,false,previous.at(-1)),0,
+  'unseen older history is not an incoming notification');
+});
+
+test('new arrivals are counted while older messages are prepended concurrently',()=>{
+ const before={...message('f'),created_at:'2026-10-29T08:00:00.123400Z'};
+ const earlier={...message('a'),created_at:'2026-10-29T07:59:00Z'};
+ const incoming={...message('b'),created_at:'2026-10-29T08:00:00.123401Z'};
+ const mine={...message('c',A),created_at:'2026-10-29T08:00:00.123402Z'};
+ assert.equal(countNewIncomingBelow([earlier,before,incoming,mine],new Set([before.id]),A,false,before),1,
+  'one genuinely newer message from another user, not the older page or own send');
+});
+
+test('new badge respects PostgreSQL microseconds, UUID ties and timezone offsets',()=>{
+ const cursor={...message('f'),created_at:'2026-10-29T08:00:00.000120Z'};
+ const earlier={...message('z'),created_at:'2026-10-29T10:00:00.000119+02:00'};
+ const equalEarlier={...message('a'),created_at:'2026-10-29T08:00:00.000120Z'};
+ const equalLater={...message('z'),created_at:'2026-10-29T08:00:00.000120Z'};
+ const later={...message('b'),created_at:'2026-10-29T10:00:00.000121+02:00'};
+ assert.equal(countNewIncomingBelow([earlier,equalEarlier,cursor,equalLater,later],new Set([cursor.id]),A,false,cursor),2);
+ assert.equal(countNewIncomingBelow([later],new Set([cursor.id]),A,false,null),0,
+  'without an observed newest cursor do not treat the initial page as incoming');
+});
+
+test('historical search jumps and account changes reset the observed newest cursor',()=>{
+ const panel=file('components/GroupPanel.tsx');
+ assert.match(panel,/previousNewestRef\.current=null;/);
+ assert.match(panel,/previousNewestRef\.current=around\.at\(-1\)\?\?null;/);
+ assert.match(panel,/previousNewestRef\.current=messages\.at\(-1\)\?\?null;/);
+ assert.match(panel,/previous\.ids=new Set\(messages\.map\(m=>m\.id\)\);/);
 });
