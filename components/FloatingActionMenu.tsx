@@ -32,7 +32,10 @@ export default function FloatingActionMenu({
   });
   const click=useClick(context);
   const dismiss=useDismiss(context,{outsidePress:true,escapeKey:true});
-  const role=useRole(context,{role:'menu'});
+  // These popovers contain ordinary Tab-navigable buttons, not a roving-focus
+  // ARIA menu. Expose a labelled non-modal dialog so keyboard and screen-reader
+  // users get the interaction model that the component actually implements.
+  const role=useRole(context,{role:'dialog'});
   const {getReferenceProps,getFloatingProps}=useInteractions([click,dismiss,role]);
 
   return <span className={'ik-floating-menu-anchor '+wrapperClassName}>
@@ -46,6 +49,8 @@ export default function FloatingActionMenu({
         <div ref={refs.setFloating} style={floatingStyles}
           {...getFloatingProps({
             className:'ik-floating-menu-panel '+popupClassName,
+            'aria-label':label,
+            'aria-modal':false,
             onClick:(event)=>{
               const target=event.target;
               if(target instanceof Element&&target.closest('button'))setOpen(false);
