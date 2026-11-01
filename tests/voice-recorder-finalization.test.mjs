@@ -111,9 +111,10 @@ function harness({deliverStop=false}={}){
   const trigger=find(render(),node=>node.props?.['aria-label']==='Записать голосовое сообщение');
   assert.ok(trigger);
   trigger.props.onClick();
-  await Promise.resolve();
-  await Promise.resolve();
-  assert.equal(recorders.length,1);
+  // getUserMedia() is asynchronous; flush its full promise chain before
+  // asserting recorder construction, rather than assuming two microtasks.
+  await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(recorders.length,1,'recorder startup: '+errors.join(' | '));
   assert.equal(recorders[0].state,'recording');
  };
  return {render,button,pending,start,errors,recorded,tracks,recorders,timers,intervals};
