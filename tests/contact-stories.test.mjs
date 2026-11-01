@@ -4,7 +4,7 @@ import {readFileSync} from 'node:fs';
 import vm from 'node:vm';
 import ts from 'typescript';
 
-const VALID='11111111-2222-4333-8444-555555555555';
+const VALID='abcdefab-cdef-4abc-8def-abcdefabcdef';
 const INVALID=['a'.repeat(36),'11111111-2222-4333-8444-55555555555g','111111112222-4333-8444-555555555555'];
 const source=readFileSync(new URL('../lib/social.ts',import.meta.url),'utf8');
 
@@ -52,7 +52,7 @@ test('invalid-only and empty contact lists never issue a request',async()=>{
 test('contact story filter is deduplicated and bounded to 100 valid UUIDs',async()=>{
  const {api,calls}=setup();
  const ids=Array.from({length:120},(_,i)=>
-  '11111111-2222-4333-8444-'+i.toString(16).padStart(12,'0'));
+  'abcdefab-cdef-4abc-8def-'+i.toString(16).padStart(12,'0'));
  await api.getContactsStories('jwt',[ids[0].toUpperCase(),...ids,ids[0]]);
  assert.equal(calls.length,1);
  const filter=new URL(calls[0].url).searchParams.get('user_id');
