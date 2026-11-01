@@ -1,0 +1,22 @@
+/* Touch-first inbox actions: make the existing three-dot menu reliably tappable.
+   Desktop mouse/keyboard density is intentionally unchanged. */
+@media (pointer: coarse) {
+  .messenger.is-authenticated .chat-list .ik-chat-row-menu {
+    flex: 0 0 44px !important;
+    min-width: 44px;
+    margin-right: 2px !important;
+    opacity: 1 !important;
+  }
+
+  .messenger.is-authenticated .chat-list .ik-chat-row-trigger {
+    display: grid;
+    place-items: center;
+    box-sizing: border-box;
+    width: 44px !important;
+    min-width: 44px !important;
+    height: 44px !important;
+    min-height: 44px !important;
+    padding: 10px !important;
+    touch-action: manipulation;
+  }
+}
