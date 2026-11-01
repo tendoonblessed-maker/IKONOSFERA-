@@ -94,3 +94,37 @@ test('migration only adds group messages to existing publication, retaining memb
  assert.match(sql,/pg_publication_tables/);
  assert.doesNotMatch(sql,/drop publication|replica identity full|disable row level security|grant all/i);
 });
+
+test('confirmed group send sorts by microseconds before UUID in one millisecond',()=>{
+ const early=message('z',{created_at:'2026-10-29T07:00:00.000100Z'});
+ const confirmed=message('a',{created_at:'2026-10-29T07:00:00.000200Z'});
+ const latest=message('b',{created_at:'2026-10-29T07:00:00.000300Z'});
+ const confirmations=new Map([[confirmed.id,{
+  message:confirmed,expiresAt:1000+CONFIRMED_GROUP_MESSAGE_GRACE_MS
+ }]]);
+ const result=mergeConfirmedGroupMessages([latest,early],confirmations,GROUP,USER,1010);
+ assert.deepEqual(result.map(row=>row.id),['z','a','b']);
+ assert.equal(confirmations.size,1,'confirmation stays until its canonical row is seen');
+});
+
+test('group confirmation uses server version and microsecond ordering after read-back',()=>{
+ const earlier=message('z',{created_at:'2026-10-29T07:00:00.000101Z'});
+ const confirmed=message('a',{created_at:'2026-10-29T07:00:00.000201Z',body:'original'});
+ const server=message('a',{created_at:confirmed.created_at,body:'updated on server'});
+ const later=message('b',{created_at:'2026-10-29T07:00:00.000301Z'});
+ const confirmations=new Map([[confirmed.id,{message:confirmed,expiresAt:99999}]]);
+ const rows=mergeConfirmedGroupMessages([later,server,earlier],confirmations,GROUP,USER,1000);
+ assert.deepEqual(rows.map(row=>row.id),['z','a','b']);
+ assert.equal(rows[1].body,'updated on server');
+ assert.equal(confirmations.size,0);
+});
+
+test('group confirmation compares variable precision and equivalent timezone offsets',()=>{
+ const earlier=message('z',{created_at:'2026-10-29T07:00:00.1234Z'});
+ const later=message('a',{created_at:'2026-10-29T09:00:00.123401+02:00'});
+ const sameFraction=message('b',{created_at:'2026-10-29T07:00:00.123401Z'});
+ const confirmations=new Map([[earlier.id,{message:earlier,expiresAt:99999}]]);
+ const rows=mergeConfirmedGroupMessages([sameFraction,later],confirmations,GROUP,USER,1000);
+ assert.deepEqual(rows.map(row=>row.id),['z','a','b'],
+  'equal microseconds still break ties by ID regardless of UTC offset');
+});
