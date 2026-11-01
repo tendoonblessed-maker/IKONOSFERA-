@@ -9,6 +9,7 @@ import {searchGroupMessages,getGroupMessageContext,normalizeGroupSearch,GROUP_SE
 import {getUserActivities,activityLabel,type UserActivity} from '@/lib/activity';
 import {imageUrl} from '@/lib/social';
 import {readGroupDrafts} from '@/lib/group-drafts';
+import {focusWrapTarget} from '@/lib/modal-focus';
 import {getOrCreateGroupSendAttempt,clearGroupSendAttempt} from '@/lib/group-send-attempts';
 import {subscribeGroupChanges} from '@/lib/group-realtime';
 import {mergeConfirmedGroupMessages,CONFIRMED_GROUP_MESSAGE_GRACE_MS,type ConfirmedGroupMessage} from '@/lib/group-history';
@@ -49,6 +50,9 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
  const olderRequestRef=useRef(0);
  const initialPageLoadedRef=useRef(false);
  const composerFormRef=useRef<HTMLFormElement|null>(null);
+ const membersDialogRef=useRef<HTMLDivElement|null>(null);
+ const membersCloseRef=useRef<HTMLButtonElement|null>(null);
+ const membersTriggerRef=useRef<HTMLButtonElement|null>(null);
  const followNewestRef=useRef(true);
  const browsingOlderRef=useRef(false);
  const searchRequestRef=useRef(0);
@@ -348,7 +352,41 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
   previous.ids=new Set(messages.map(m=>m.id));
   if(newBelow>0)setNewMessagesBelow(n=>Math.min(99,n+newBelow));
  },[messages,group.id,userId]);
- useEffect(()=>{if(!membersOpen)return;const onKey=(event:KeyboardEvent)=>{if(event.key==='Escape')setMembersOpen(false);};window.addEventListener('keydown',onKey);return()=>window.removeEventListener('keydown',onKey);},[membersOpen]);
+ // A group member list is a real modal: keep keyboard focus inside it,
+ // prevent background scrolling on small screens, and restore focus on close.
+ useEffect(()=>{
+  if(!membersOpen)return;
+  const previouslyFocused=document.activeElement instanceof HTMLElement
+   ?document.activeElement:null;
+  const previousOverflow=document.body.style.overflow;
+  document.body.style.overflow='hidden';
+  // Focus the close button, not search, so opening on iPhone does not
+  // unexpectedly raise the software keyboard.
+  membersCloseRef.current?.focus();
+  const onKey=(event:KeyboardEvent)=>{
+   if(event.key==='Escape'){
+    event.preventDefault();
+    event.stopPropagation();
+    setMembersOpen(false);
+    return;
+   }
+   if(event.key!=='Tab')return;
+   const dialog=membersDialogRef.current;
+   if(!dialog)return;
+   const controls=Array.from(dialog.querySelectorAll<HTMLElement>(
+    'button:not([disabled]),input:not([disabled])'
+   )).filter(element=>element.getClientRects().length>0);
+   const next=focusWrapTarget(controls,document.activeElement as HTMLElement|null,event.shiftKey);
+   if(next){event.preventDefault();next.focus();}
+  };
+  document.addEventListener('keydown',onKey);
+  return()=>{
+   document.removeEventListener('keydown',onKey);
+   document.body.style.overflow=previousOverflow;
+   if(previouslyFocused?.isConnected)previouslyFocused.focus();
+   else membersTriggerRef.current?.focus();
+  };
+ },[membersOpen]);
   useEffect(()=>{if(!membersOpen||!members.length)return;let gone=false;const load=()=>{if(document.visibilityState==='visible')void getUserActivities(token,members.map(m=>m.id)).then(value=>{if(!gone)setPresence(value);}).catch(()=>{});};load();const t=setInterval(load,40000);return()=>{gone=true;clearInterval(t);};},[token,membersOpen,members]);
  async function send(e:FormEvent){
  e.preventDefault();
@@ -412,7 +450,7 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
  const filtered=members.filter(p=>(p.display_name+' '+p.username).toLowerCase().includes(memberSearch.toLowerCase()));
  return <section className="group-view">
  <header className="conversation-header"><button type="button" className="back-button" onClick={onBack} aria-label="Назад">‹</button>
- <button type="button" className="conversation-heading group-member-trigger" onClick={()=>setMembersOpen(true)} aria-label="Показать участников группы"><strong>{group.title}</strong><small>{members.length} участников · нажми, чтобы посмотреть</small></button>
+ <button ref={membersTriggerRef} type="button" className="conversation-heading group-member-trigger" onClick={()=>setMembersOpen(true)} aria-label="Показать участников группы"><strong>{group.title}</strong><small>{members.length} участников · нажми, чтобы посмотреть</small></button>
  <button type="button" className="ik-group-search-trigger" aria-label="Поиск сообщений в группе"
   aria-expanded={searchOpen} onClick={()=>searchOpen?closeSearch():setSearchOpen(true)}>
   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
@@ -504,8 +542,9 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
  <span>{error}</span>
  {retryAvailable&&online&&draft.trim()&&<button type="button" onClick={()=>composerFormRef.current?.requestSubmit()} disabled={busy}>Повторить отправку</button>}
  </div>}
- {membersOpen&&<div className="ik-members-backdrop" role="dialog" aria-modal="true" aria-label="Участники группы">
- <div className="ik-members-modal"><div className="ik-members-header"><div><strong>{group.title}</strong><small>{members.length} участников</small></div><button type="button" onClick={()=>setMembersOpen(false)} aria-label="Закрыть список участников">✕</button></div>
+ {membersOpen&&<div className="ik-members-backdrop" role="dialog" aria-modal="true" aria-label="Участники группы"
+  onClick={event=>{if(event.target===event.currentTarget)setMembersOpen(false);}}>
+ <div ref={membersDialogRef} className="ik-members-modal"><div className="ik-members-header"><div><strong>{group.title}</strong><small>{members.length} участников</small></div><button ref={membersCloseRef} type="button" onClick={()=>setMembersOpen(false)} aria-label="Закрыть список участников">✕</button></div>
  <input className="ik-members-search" aria-label="Найти участника" placeholder="Поиск участников" value={memberSearch} onChange={e=>setMemberSearch(e.target.value)}/>
  <div className="ik-members-list">{filtered.map(p=><button type="button" key={p.id} className="ik-member-row" onClick={()=>{setMembersOpen(false);onShowProfile(p.id);}}>
  <span className="ik-member-avatar">{imageUrl(p.avatar_path)?<img src={imageUrl(p.avatar_path)||''} alt=""/>:(p.display_name||p.username).slice(0,1).toUpperCase()}</span>
