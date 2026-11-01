@@ -25,15 +25,21 @@ self.addEventListener("fetch", (event) => {
   if (url.pathname === "/status-emojis.webp") {
     // The single 144KB corrected atlas loads from the local cache after installation.
     // This cache contains only public artwork, never user/profile/chat data.
-    event.respondWith(caches.match(request).then(cached =>
-      cached ?? fetch(request).then(async response => {
-        if (response.ok) {
+    // Cache Storage is optional: quota/private-mode failures must not hide a
+    // successfully downloaded public image from the messenger UI.
+    event.respondWith(caches.match(request).catch(() => undefined).then(async cached => {
+      if (cached) return cached;
+      const response = await fetch(request);
+      if (response.ok) {
+        try {
           const cache = await caches.open(CACHE_NAME);
           await cache.put(request, response.clone());
+        } catch {
+          // The network response remains usable even when caching is denied.
         }
-        return response;
-      })
-    ));
+      }
+      return response;
+    }));
     return;
   }
   if (request.mode !== "navigate") return;
