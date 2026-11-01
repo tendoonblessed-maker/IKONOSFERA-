@@ -12,7 +12,7 @@ import ChatMessageText from "@/components/ChatMessageText";
 import {subscribeDirectChatChanges} from "@/lib/direct-realtime";
 import {subscribeInboxChanges,type InboxChangeKind} from "@/lib/inbox-realtime";
 import {isLatestAccountSnapshot} from "@/lib/inbox-snapshot";
-import {shouldOpenDirectChatSearch} from "@/lib/chat-shortcuts";
+import {shouldOpenDirectChatSearch,focusDirectSearchTrigger} from "@/lib/chat-shortcuts";
 import {reconcileRecentChannelUpdates,CHANNEL_UPDATE_GRACE_MS,type RecentChannelUpdate} from "@/lib/channel-sync";
 import ChatAttachmentPreview from "@/components/ChatAttachmentPreview";
 import VoiceRecorder from "@/components/VoiceRecorder";
@@ -141,6 +141,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
   const prependScrollRef=useRef<{chatId:string;height:number;top:number}|null>(null);
   const selectedRef=useRef<string|null>(null);
   const searchInputRef=useRef<HTMLInputElement|null>(null);
+  const directSearchTriggerRef=useRef<HTMLButtonElement|null>(null);
   const previewCacheRef=useRef<{ownerId:string;previews:Map<string,ChatPreview>}>({ownerId:'',previews:new Map()});
   const inboxRequestRef=useRef(0);
   const previewRequestRef=useRef(0);
@@ -307,6 +308,12 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
     setMessageSearchError(false);
     setMessageSearchHasMore(false);
     setMessageSearchLoading(false);
+  }
+  // Only explicit close actions restore keyboard focus. Chat/account switches
+  // still call resetMessageSearch without moving focus to an old conversation.
+  function closeMessageSearch(){
+    resetMessageSearch();
+    focusDirectSearchTrigger(directSearchTriggerRef.current);
   }
   function updateMessageSearch(value:string){
     setMessageSearch(value);
@@ -1501,9 +1508,9 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
   }} onChannelDeleted={()=>{setSelectedChannel(null);setChannels(old=>old.filter(ch=>ch.id!==selectedChannel.id));setTab("channels");}}/>:
       
       active&&loggedIn?<><header className="conversation-header"><button type="button" className="back-button" onClick={()=>setSelected(null)} aria-label="Назад к чатам"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m14 5-7 7 7 7"/><path d="M7 12h14"/></svg></button><button type="button" className="contact-avatar small contact-avatar-button" onClick={()=>active.other&&goToProfile(active.other.id)} title="Открыть профиль">{imageUrl(active.other?.avatar_path)?<img className="avatar-image" src={imageUrl(active.other?.avatar_path)||""} alt=""/>:(active.other?.display_name||'?').slice(0,1).toUpperCase()}</button><button type="button" className="conversation-heading conversation-heading-link" onClick={()=>active.other&&goToProfile(active.other.id)}><strong className="ik-name-with-status"><span>{active.other?.display_name??'Собеседник'}</span><StatusEmoji index={active.other?.status_emoji} decorative/></strong><small className={userActivities[activePartnerId||'']?.status==='в сети'?'ik-online-label':undefined}>{activityLabel(userActivities[activePartnerId||''])}</small></button><button type="button"
-  className="ik-conversation-search-trigger" aria-label="Поиск сообщений в переписке"
+  ref={directSearchTriggerRef} className="ik-conversation-search-trigger" aria-label="Поиск сообщений в переписке"
   title="Поиск в переписке (Ctrl+F)" aria-pressed={searchInConversation}
-  onClick={()=>{if(searchInConversation)resetMessageSearch();else setSearchInConversation(true);}}>
+  onClick={()=>{if(searchInConversation)closeMessageSearch();else setSearchInConversation(true);}}>
   <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="10.7" cy="10.7" r="6.4"/><path d="m15.5 15.5 5 5"/></svg>
 </button><FloatingActionMenu label="Действия с чатом"
   wrapperClassName="ik-conversation-more"
@@ -1518,7 +1525,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
   <button type="button" disabled={busy} onClick={()=>void chatAction(active.chat.id,'delete_self')}>Удалить только у себя</button>
   <button type="button" disabled={busy} onClick={()=>void chatAction(active.chat.id,'delete_everyone')}>Удалить у обоих</button>
 </FloatingActionMenu></header>{activePartnerBlocked&&<div className="ik-chat-blocked-banner" role="status"><span>Собеседник заблокирован. Отправка сообщений отключена.</span><button type="button" onClick={()=>active.other&&void toggleBlockedUser(active.other)}>Разблокировать</button></div>}{searchInConversation&&<DirectMessageSearchPanel
-        query={messageSearch} onQueryChange={updateMessageSearch} onClose={resetMessageSearch}
+        query={messageSearch} onQueryChange={updateMessageSearch} onClose={closeMessageSearch}
         results={messageSearchOwner?.chatId===selected&&messageSearchOwner.userId===userId&&messageSearchOwner.query===messageSearch.trim()?messageSearchResults:[]} loading={messageSearchLoading} failed={messageSearchError}
         hasMore={messageSearchHasMore} onMore={()=>{
           if(messageSearchError){setMessageSearchError(false);setMessageSearchRetry(retry=>retry+1);}

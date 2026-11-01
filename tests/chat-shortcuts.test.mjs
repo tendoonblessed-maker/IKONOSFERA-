@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
 import {readFileSync} from 'node:fs';
-import {shouldOpenDirectChatSearch} from '../lib/chat-shortcuts.ts';
+import {shouldOpenDirectChatSearch,focusDirectSearchTrigger} from '../lib/chat-shortcuts.ts';
 
 const key=(overrides={})=>({
   key:'f',ctrlKey:true,metaKey:false,altKey:false,shiftKey:false,...overrides
@@ -39,4 +39,28 @@ test('opened message search focuses its field and closes on Escape',()=>{
   assert.match(panel,/<input autoFocus aria-label="Поиск сообщений в текущем чате"/);
   assert.match(panel,/if\(event.key==='Escape'\)\{event.preventDefault\(\);event.stopPropagation\(\);onClose\(\);\}/);
   assert.match(shell,/input\?\.focus\(\);input\?\.select\(\)/);
+});
+
+test('explicit search close restores focus without scrolling the chat',()=>{
+  const calls=[];
+  const trigger={isConnected:true,focus:options=>calls.push(options)};
+  assert.equal(focusDirectSearchTrigger(trigger),true);
+  assert.deepEqual(calls,[{preventScroll:true}]);
+});
+
+test('disconnected or absent search triggers never receive focus',()=>{
+  let focused=false;
+  assert.equal(focusDirectSearchTrigger(null),false);
+  assert.equal(focusDirectSearchTrigger({isConnected:false,focus:()=>{focused=true;}}),false);
+  assert.equal(focused,false);
+});
+
+test('only explicit close paths restore focus; chat switches simply reset search',()=>{
+  const shell=source('components/AppShell.tsx');
+  assert.ok(shell.includes('const directSearchTriggerRef=useRef<HTMLButtonElement|null>(null);'));
+  assert.ok(shell.includes('ref={directSearchTriggerRef} className="ik-conversation-search-trigger"'));
+  assert.match(shell,/function closeMessageSearch\(\)\{\s*resetMessageSearch\(\);\s*focusDirectSearchTrigger\(directSearchTriggerRef\.current\);/);
+  assert.ok(shell.includes('onClose={closeMessageSearch}'));
+  assert.ok(shell.includes('if(searchInConversation)closeMessageSearch()'));
+  assert.ok(shell.includes('resetMessageSearch();setSelectedMessages([])'));
 });

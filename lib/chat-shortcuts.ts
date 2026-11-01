@@ -15,3 +15,11 @@ export function shouldOpenDirectChatSearch(event:FindKey,directChatVisible:boole
     && !event.shiftKey
     && event.key.toLowerCase()==='f';
 }
+
+/** Return focus to the still-mounted chat search action after an explicit close.
+ * Never focus a stale trigger after the user switches chats or signs out. */
+export function focusDirectSearchTrigger(trigger:Pick<HTMLButtonElement,'isConnected'|'focus'>|null):boolean{
+  if(!trigger?.isConnected)return false;
+  trigger.focus({preventScroll:true});
+  return true;
+}
