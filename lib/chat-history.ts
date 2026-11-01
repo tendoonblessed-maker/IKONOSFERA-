@@ -5,7 +5,7 @@ import type {ChatMessage} from './supabase-rest';
  * The fraction is UTC-independent because timezone offsets have minute precision.
  */
 function microsecondFraction(timestamp:string):number{
-  const fraction=/\\.(\\d{1,6})(?:Z|[+-]\\d{2}:\\d{2})$/i.exec(timestamp)?.[1]??'';
+  const fraction=/\.(\d{1,6})(?:Z|[+-]\d{2}:\d{2})$/i.exec(timestamp)?.[1]??'';
   return Number(fraction.padEnd(6,'0'));
 }
 
