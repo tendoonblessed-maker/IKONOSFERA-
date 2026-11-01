@@ -30,16 +30,22 @@ function valid(value:unknown,now:number):value is GroupSendAttempt{
 export function readGroupSendAttempt(owner:string,group:string,now=Date.now()):GroupSendAttempt|null{
  if(!UUID.test(owner)||!UUID.test(group))return null;
  const k=key(owner,group);
+ // The latest attempt in this tab is authoritative. A failed setItem may
+ // leave an older (still valid) ID in sessionStorage: preferring it would
+ // assign a fresh ID on every retry and could duplicate a delivered message.
+ const live=inMemory.get(k);
+ if(live&&valid(live,now))return live;
+ inMemory.delete(k);
  let candidate:unknown;
  try{
   const raw=storage()?.getItem(k);
-  candidate=raw?JSON.parse(raw):inMemory.get(k);
- }catch{candidate=inMemory.get(k);}
+  candidate=raw?JSON.parse(raw):null;
+ }catch{candidate=null;}
  if(!valid(candidate,now)){
-  inMemory.delete(k);
   try{storage()?.removeItem(k);}catch{}
   return null;
  }
+ inMemory.set(k,candidate);
  return candidate;
 }
 export function getOrCreateGroupSendAttempt(
