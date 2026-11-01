@@ -8,6 +8,9 @@ const UUID=/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
 const MAX_GROUPS=48;
 const MAX_TEXT=4000;
 export type GroupDrafts=Record<string,string>;
+// Keep the latest edits in this tab if sessionStorage throws or reaches quota.
+const volatileDrafts=new Map<string,GroupDrafts>();
+const unsavedOwners=new Set<string>();
 function store():Storage|null{
  try{return typeof window==='undefined'?null:window.sessionStorage;}
  catch{return null;}
@@ -31,8 +34,14 @@ export function cleanGroupDrafts(input:unknown):GroupDrafts{
 }
 export function readGroupDrafts(ownerId:string):GroupDrafts{
  if(!UUID.test(ownerId))return {};
- try{const item=store()?.getItem(key(ownerId));return item?cleanGroupDrafts(JSON.parse(item)):{};}
- catch{return {};}
+ // A failed write or sign-out must not resurrect stale data from storage.
+ if(unsavedOwners.has(ownerId))return {...(volatileDrafts.get(ownerId)??{})};
+ try{
+  const storage=store();
+  if(!storage)return {...(volatileDrafts.get(ownerId)??{})};
+  const item=storage.getItem(key(ownerId));
+  return item?cleanGroupDrafts(JSON.parse(item)):{};
+ }catch{return {...(volatileDrafts.get(ownerId)??{})};}
 }
 export function writeGroupDraft(ownerId:string,groupId:string,text:string):GroupDrafts{
  if(!UUID.test(ownerId)||!UUID.test(groupId))return {};
@@ -41,16 +50,25 @@ export function writeGroupDraft(ownerId:string,groupId:string,text:string):Group
  delete next[groupId];
  if(text.trim())next[groupId]=text.slice(0,MAX_TEXT);
  const cleaned=cleanGroupDrafts(next);
+ volatileDrafts.set(ownerId,cleaned);
+ unsavedOwners.add(ownerId);
  try{
   const storage=store();
   if(storage){
    if(Object.keys(cleaned).length)storage.setItem(key(ownerId),JSON.stringify(cleaned));
    else storage.removeItem(key(ownerId));
+   unsavedOwners.delete(ownerId);
   }
- }catch{/* Storage disabled/full: keep typing working in memory. */}
+ }catch{/* Retain the latest drafts in memory until storage recovers. */}
  return cleaned;
 }
 export function clearGroupDrafts(ownerId:string):void{
  if(!UUID.test(ownerId))return;
- try{store()?.removeItem(key(ownerId));}catch{}
+ volatileDrafts.delete(ownerId);
+ // A failed removal must not revive the signed-out account's old drafts.
+ unsavedOwners.add(ownerId);
+ try{
+  const storage=store();
+  if(storage){storage.removeItem(key(ownerId));unsavedOwners.delete(ownerId);}
+ }catch{}
 }
