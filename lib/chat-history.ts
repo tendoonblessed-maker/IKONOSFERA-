@@ -1,9 +1,20 @@
 import type {ChatMessage} from './supabase-rest';
 
+/** PostgreSQL stores microseconds, while Date.parse truncates to milliseconds.
+ * Match PostgREST's created_at,id ordering even for messages sent within 1 ms.
+ * The fraction is UTC-independent because timezone offsets have minute precision.
+ */
+function microsecondFraction(timestamp:string):number{
+  const fraction=/\.(\d{1,6})(?:Z|[+-]\d{2}:\d{2})$/i.exec(timestamp)?.[1]??'';
+  return Number(fraction.padEnd(6,'0'));
+}
+
 /** Server orders pages by created_at.desc,id.desc; UI displays ascending. */
 export function compareMessages(a:ChatMessage,b:ChatMessage):number{
   const timestampDiff=Date.parse(a.created_at)-Date.parse(b.created_at);
-  return timestampDiff||a.id.localeCompare(b.id);
+  if(timestampDiff!==0)return timestampDiff;
+  const microsecondDiff=microsecondFraction(a.created_at)-microsecondFraction(b.created_at);
+  return microsecondDiff||a.id.localeCompare(b.id);
 }
 
 /** A recent poll is authoritative for its page, but must not erase older pages. */

@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
 import {
+ compareMessages,
+ mergeRecentPage,
  mergeConfirmedRecentPage,
  prependEarlierPage,
  CONFIRMED_MESSAGE_GRACE_MS
@@ -73,4 +75,42 @@ test('older paginated history remains intact after receiving a confirmed message
  const result=mergeConfirmedRecentPage([early,first,second,sent],[first,second],2,pending,CHAT,OWNER,NOW+10);
  assert.deepEqual(result.map(m=>m.id),['early','first','second','now']);
  assert.equal(result.length,4);
+});
+
+test('direct chat orders messages by PostgreSQL microseconds before UUID',()=>{
+ const first=message('z',{created_at:'2026-10-29T07:00:00.000100Z'});
+ const second=message('a',{created_at:'2026-10-29T07:00:00.000900Z'});
+ const exact=message('b',{created_at:'2026-10-29T07:00:00.000900Z'});
+ const rows=prependEarlierPage([second,exact],[first]);
+ assert.deepEqual(rows.map(row=>row.id),['z','a','b']);
+ assert.ok(compareMessages(first,second)<0,'microseconds must beat lexicographically opposite IDs');
+ assert.ok(compareMessages(second,exact)<0,'exact timestamps use stable ID order');
+});
+
+test('full direct-chat recent page preserves an older row inside the same millisecond',()=>{
+ const earlier=message('z',{created_at:'2026-10-29T07:00:00.000101Z'});
+ const first=message('a',{created_at:'2026-10-29T07:00:00.000201Z'});
+ const latest=message('b',{created_at:'2026-10-29T07:00:00.000301Z'});
+ const rows=mergeRecentPage([earlier,first],[first,latest],2);
+ assert.deepEqual(rows.map(row=>row.id),['z','a','b'],
+  'a full newest page must not silently erase older messages sharing its millisecond');
+});
+
+test('confirmed direct send merges between same-millisecond rows without misordering',()=>{
+ const first=message('z',{created_at:'2026-10-29T07:00:00.000120Z'});
+ const confirmed=message('a',{created_at:'2026-10-29T07:00:00.000220Z'});
+ const last=message('b',{created_at:'2026-10-29T07:00:00.000320Z'});
+ const pending=new Map([[confirmed.id,{
+  message:confirmed,expiresAt:NOW+CONFIRMED_MESSAGE_GRACE_MS
+ }]]);
+ const result=mergeConfirmedRecentPage([first,last],[first,last],100,pending,CHAT,OWNER,NOW+10);
+ assert.deepEqual(result.map(row=>row.id),['z','a','b']);
+ assert.equal(pending.size,1);
+});
+
+test('microsecond comparison handles variable precision and equivalent UTC offsets',()=>{
+ const earlier=message('z',{created_at:'2026-10-29T07:00:00.1234Z'});
+ const later=message('a',{created_at:'2026-10-29T09:00:00.123401+02:00'});
+ assert.ok(compareMessages(earlier,later)<0);
+ assert.ok(compareMessages(later,earlier)>0);
 });
