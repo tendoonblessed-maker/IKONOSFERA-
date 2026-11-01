@@ -1,7 +1,7 @@
 'use client';
 
 import {useEffect,useRef,useState} from 'react';
-import {chooseVoiceMimeType,createVoiceFile,formatVoiceTime,VOICE_RECORD_MAX_MS,VOICE_RECORD_MAX_BYTES} from '@/lib/voice-notes';
+import {chooseVoiceMimeType,createVoiceFile,formatVoiceTime,VOICE_RECORD_MAX_MS,VOICE_RECORD_MAX_BYTES,VOICE_FINALIZE_TIMEOUT_MS} from '@/lib/voice-notes';
 
 type Props={
  disabled:boolean;
@@ -17,6 +17,7 @@ type Capture={
  discard:boolean;
  clock:number|null;
  limit:number|null;
+ finalize:number|null;
 };
 type Phase='idle'|'requesting'|'recording'|'finalizing';
 
@@ -26,7 +27,8 @@ function stopTracks(stream:MediaStream){
 function clearCaptureTimers(capture:Capture){
  if(capture.clock!==null)window.clearInterval(capture.clock);
  if(capture.limit!==null)window.clearTimeout(capture.limit);
- capture.clock=null;capture.limit=null;
+ if(capture.finalize!==null)window.clearTimeout(capture.finalize);
+ capture.clock=null;capture.limit=null;capture.finalize=null;
 }
 
 export default function VoiceRecorder({disabled,onRecorded,onError}:Props){
@@ -81,6 +83,15 @@ export default function VoiceRecorder({disabled,onRecorded,onError}:Props){
   const capture=captureRef.current;
   if(!capture||capture.discard||capture.recorder.state!=='recording')return;
   setPhase('finalizing');
+  // Safari and some Android browsers can leave a MediaRecorder in a pending
+  // stop state without delivering onstop. Keep cancellation available and
+  // release the microphone if finalization does not complete.
+  // Arm before stop(): a synchronous onstop must clear this timer too.
+  capture.finalize=window.setTimeout(()=>{
+   if(captureRef.current!==capture||capture.discard)return;
+   cancel();
+   errorRef.current('Браузер не завершил запись. Попробуй ещё раз.');
+  },VOICE_FINALIZE_TIMEOUT_MS);
   try{capture.recorder.stop();}
   catch{cancel();errorRef.current('Не удалось завершить запись. Попробуй ещё раз.');}
  };
@@ -113,7 +124,7 @@ export default function VoiceRecorder({disabled,onRecorded,onError}:Props){
    const recorder=new MediaRecorder(stream,{mimeType:mime,audioBitsPerSecond:64000});
    const capture:Capture={
     recorder,stream,chunks:[],bytes:0,startedAt:Date.now(),
-    discard:false,clock:null,limit:null
+    discard:false,clock:null,limit:null,finalize:null
    };
    captureRef.current=capture;
    recorder.ondataavailable=event=>{
@@ -150,10 +161,7 @@ export default function VoiceRecorder({disabled,onRecorded,onError}:Props){
     if(captureRef.current===capture)setElapsed(Math.min(120,Math.floor((Date.now()-capture.startedAt)/1000)));
    },250);
    capture.limit=window.setTimeout(()=>{
-    if(captureRef.current===capture&&capture.recorder.state==='recording'){
-     setPhase('finalizing');
-     capture.recorder.stop();
-    }
+    if(captureRef.current===capture)finish();
    },VOICE_RECORD_MAX_MS);
    setPhase('recording');
   }catch(error){
@@ -186,8 +194,7 @@ export default function VoiceRecorder({disabled,onRecorded,onError}:Props){
    </div>
    <span className="ik-voice-help">Не более 2 минут · перед отправкой можно прослушать</span>
    <div className="ik-voice-actions">
-    <button type="button" className="ik-voice-cancel" onClick={cancel}
-     disabled={phase==='finalizing'}>Отменить</button>
+    <button type="button" className="ik-voice-cancel" onClick={cancel}>Отменить</button>
     <button type="button" className="ik-voice-stop" onClick={finish}
      disabled={phase!=='recording'}>Готово</button>
    </div>
