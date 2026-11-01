@@ -44,6 +44,7 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
  const [searchLocating,setSearchLocating]=useState<string|null>(null);
  const [pendingSearchJump,setPendingSearchJump]=useState<string|null>(null);
  const historyRef=useRef<HTMLDivElement|null>(null);
+ const searchTriggerRef=useRef<HTMLButtonElement|null>(null);
  const prependScrollRef=useRef<{groupId:string;userId:string;height:number;top:number}|null>(null);
  const olderLoadingRef=useRef(false);
  const olderRequestRef=useRef(0);
@@ -213,8 +214,10 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
   },searchPage===0?320:0);
   return()=>{cancelled=true;searchRequestRef.current++;window.clearTimeout(timeout);};
  },[searchOpen,searchQuery,searchPage,searchRetry,group.id,userId,token]);
- function closeSearch(){searchRequestRef.current++;setSearchOpen(false);setSearchQuery('');
+ function closeSearch(restoreFocus=true){searchRequestRef.current++;setSearchOpen(false);setSearchQuery('');
   setSearchResults([]);setSearchPage(0);setSearchError('');setSearchHasMore(false);
+  // Keep keyboard focus in the group header when the search field unmounts.
+  if(restoreFocus)searchTriggerRef.current?.focus({preventScroll:true});
  }
  function changeSearch(query:string){setSearchQuery(query);setSearchPage(0);setSearchRetry(0);
   setSearchResults([]);setSearchError('');setSearchHasMore(false);
@@ -246,7 +249,8 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
    previousMessageIdsRef.current={groupId,ownerId,ids:new Set(around.map(row=>row.id))};
    if(!current)setMessages(around);
    setPendingSearchJump(message.id);
-   closeSearch();
+   // The result itself will receive focus after it is positioned in history.
+   closeSearch(false);
   }catch(e){
    if(requestId===searchJumpRequestRef.current){
     browsingOlderRef.current=false;
@@ -266,6 +270,9 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
   target.classList.remove('ik-group-search-target');
   void target.offsetWidth; // Restart highlight on repeated jumps.
   target.classList.add('ik-group-search-target');
+  // A search-result button is removed when the panel closes. Move focus to
+  // the actual message so keyboard and screen-reader users keep their place.
+  target.focus({preventScroll:true});
   setPendingSearchJump(null);
  },[pendingSearchJump,messages]);
 
@@ -413,7 +420,7 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
  return <section className="group-view">
  <header className="conversation-header"><button type="button" className="back-button" onClick={onBack} aria-label="Назад">‹</button>
  <button type="button" className="conversation-heading group-member-trigger" onClick={()=>setMembersOpen(true)} aria-label="Показать участников группы"><strong>{group.title}</strong><small>{members.length} участников · нажми, чтобы посмотреть</small></button>
- <button type="button" className="ik-group-search-trigger" aria-label="Поиск сообщений в группе"
+ <button ref={searchTriggerRef} type="button" className="ik-group-search-trigger" aria-label="Поиск сообщений в группе"
   aria-expanded={searchOpen} onClick={()=>searchOpen?closeSearch():setSearchOpen(true)}>
   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
    <circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 5 5"/>
@@ -456,7 +463,7 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
   <p>Проверь подключение. Сообщения не удалены.</p>
   <button type="button" onClick={()=>{setError('');setInitialLoading(true);void refresh().catch(e=>{setInitialLoading(false);setError(e instanceof Error?e.message:'Ошибка загрузки');});}}>Попробовать снова</button>
  </div>}
- {messages.map(m=><article key={m.id} data-group-message-id={m.id} className={'bubble '+(m.sender_id===userId?'mine':'theirs')}><strong className="group-author ik-name-with-status"><span>{m.sender_id===userId?'Вы':names[m.sender_id]||'Участник'}</span><StatusEmoji index={memberById.get(m.sender_id)?.status_emoji} decorative/></strong><div><ChatMessageText text={m.body}/></div><time>{new Date(m.created_at).toLocaleTimeString('ru-RU',{hour:'2-digit',minute:'2-digit'})}</time></article>)}</div>
+ {messages.map(m=><article key={m.id} data-group-message-id={m.id} tabIndex={-1} className={'bubble '+(m.sender_id===userId?'mine':'theirs')}><strong className="group-author ik-name-with-status"><span>{m.sender_id===userId?'Вы':names[m.sender_id]||'Участник'}</span><StatusEmoji index={memberById.get(m.sender_id)?.status_emoji} decorative/></strong><div><ChatMessageText text={m.body}/></div><time>{new Date(m.created_at).toLocaleTimeString('ru-RU',{hour:'2-digit',minute:'2-digit'})}</time></article>)}</div>
  {showJumpToLatest&&<button type="button" className="ik-group-jump-latest"
   aria-label={newMessagesBelow>0?`К последним сообщениям, новых: ${newMessagesBelow}`:'К последним сообщениям'}
   onClick={()=>{
