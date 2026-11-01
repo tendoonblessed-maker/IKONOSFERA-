@@ -1,5 +1,7 @@
 import {apiUrl} from '@/lib/supabase-rest';
 const key=process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY||'';
+// PostgREST UUID[] rejects the entire activity batch if even one ID is malformed.
+const UUID=/^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i;
 export type ActivityVisibility='exact'|'approximate';
 export type UserActivity={user_id:string;status:string;last_seen_at:string|null};
 async function activityApi<T>(token:string,path:string,method='GET',body?:unknown):Promise<T>{
@@ -16,7 +18,7 @@ export async function myActivityVisibility(token:string,userId:string):Promise<A
  return rows[0]?.visibility==='exact'?'exact':'approximate';
 }
 export async function getUserActivities(token:string,ids:string[]):Promise<Record<string,UserActivity>>{
- const clean=Array.from(new Set(ids.filter(id=>/^[0-9a-f-]{36}$/i.test(id)))).slice(0,100);
+ const clean=Array.from(new Set(ids.filter(id=>UUID.test(id)))).slice(0,100);
  if(!clean.length)return {};
  const rows=await activityApi<UserActivity[]>(token,'/rest/v1/rpc/get_user_activity','POST',{p_user_ids:clean});
  return Object.fromEntries(rows.map(x=>[x.user_id,x]));
