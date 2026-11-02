@@ -176,9 +176,20 @@ export async function deleteContact(token:string,ownerId:string,contactId:string
  await http('/rest/v1/user_contacts?owner_id=eq.'+encodeURIComponent(ownerId)+'&contact_id=eq.'+encodeURIComponent(contactId),{token,method:'DELETE'});
 }
 
-export async function listProfiles(token: string, ids: string[]) {
-  if (!ids.length) return [];
-  return http<Profile[]>(`/rest/v1/profiles?select=id,username,display_name,avatar_path,cover_path,bio,status_emoji,age_years&id=in.(${ids.map(encodeURIComponent).join(',')})`,{token});
+const PROFILE_ID_UUID=/^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i;
+const PROFILE_LOOKUP_BATCH_SIZE=100;
+/** Invalid contact IDs must not fail an entire inbox refresh; bound URL length. */
+export async function listProfiles(token: string, ids: string[]):Promise<Profile[]> {
+  const unique=Array.from(new Set(ids
+    .filter(id=>typeof id==='string'&&PROFILE_ID_UUID.test(id))
+    .map(id=>id.toLowerCase())));
+  if (!unique.length) return [];
+  const batches:Promise<Profile[]>[]=[];
+  for(let start=0;start<unique.length;start+=PROFILE_LOOKUP_BATCH_SIZE){
+    const batch=unique.slice(start,start+PROFILE_LOOKUP_BATCH_SIZE);
+    batches.push(http<Profile[]>(`/rest/v1/profiles?select=id,username,display_name,avatar_path,cover_path,bio,status_emoji,age_years&id=in.(${batch.map(encodeURIComponent).join(',')})`,{token}));
+  }
+  return (await Promise.all(batches)).flat();
 }
 export const CHAT_MESSAGE_PAGE_SIZE=100;
 const CHAT_MESSAGE_COLUMNS='id,chat_id,sender_id,body,created_at,media_path,media_type,read_at,edited_at,deleted_for,deleted_for_everyone,reply_to_message_id';
