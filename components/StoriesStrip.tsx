@@ -3,16 +3,20 @@ import {useCallback,useEffect,useRef,useState} from 'react';
 import {addStory,getContactsStories,imageUrl,uploadPhoto,type Story} from '@/lib/social';
 import type {Profile} from '@/lib/supabase-rest';
 import {useStoryProgress} from '@/lib/use-story-progress';
+import {getStoryTabTarget} from '@/lib/story-focus';
 
 type Person={id:string;name:string;avatar:string|null;stories:Story[]};
 type Props={token:string;userId:string;contacts:Profile[];ownProfile:Profile|null};
 export default function StoriesStrip({token,userId,contacts,ownProfile}:Props){
  const [people,setPeople]=useState<Person[]>([]);
  const [active,setActive]=useState<{person:number;story:number}|null>(null);
+ const viewerOpen=active!==null;
  const [busy,setBusy]=useState(false);
  const [error,setError]=useState('');
  const [paused,setPaused]=useState(false);
  const inputRef=useRef<HTMLInputElement>(null);
+ const viewerRef=useRef<HTMLDivElement>(null);
+ const viewerCloseRef=useRef<HTMLButtonElement>(null);
  const contactsRef=useRef(contacts);
  const storyRequestRef=useRef(0);
  contactsRef.current=contacts;
@@ -40,8 +44,35 @@ export default function StoriesStrip({token,userId,contacts,ownProfile}:Props){
  },[token,userId,contactIdsKey,avatarPath]);
  useEffect(()=>{void load().catch(()=>{});},[load]);
 
- useEffect(()=>{if(!active)return;const onKey=(e:KeyboardEvent)=>{if(e.key==='Escape')setActive(null);if(e.key==='ArrowRight')next();if(e.key==='ArrowLeft')prev();};window.addEventListener('keydown',onKey);return()=>window.removeEventListener('keydown',onKey);},[active,people]);
+ useEffect(()=>{if(!active)return;const onKey=(e:KeyboardEvent)=>{
+  if(e.isComposing||e.keyCode===229)return;
+  if(e.key==='Escape'){e.preventDefault();setActive(null);}
+  if(e.key==='ArrowRight'){e.preventDefault();next();}
+  if(e.key==='ArrowLeft'){e.preventDefault();prev();}
+ };window.addEventListener('keydown',onKey);return()=>window.removeEventListener('keydown',onKey);},[active,people]);
  useEffect(()=>{if(!active)return;const old=document.body.style.overflow;document.body.style.overflow='hidden';return()=>{document.body.style.overflow=old;};},[active]);
+ // Keep keyboard navigation inside the story dialog and return focus to its
+ // opener after closing. Story-to-story navigation must not reset focus.
+ useEffect(()=>{
+  if(!viewerOpen)return;
+  const previousFocus=document.activeElement instanceof HTMLElement?document.activeElement:null;
+  viewerCloseRef.current?.focus();
+  const keepFocus=(event:KeyboardEvent)=>{
+   if(event.key!=='Tab')return;
+   const dialog=viewerRef.current;
+   if(!dialog)return;
+   const controls=Array.from(dialog.querySelectorAll<HTMLButtonElement>('button:not([disabled])'));
+   if(!controls.length){event.preventDefault();dialog.focus();return;}
+   const activeIndex=controls.findIndex(control=>control===document.activeElement);
+   const target=getStoryTabTarget(activeIndex,controls.length,event.shiftKey);
+   if(target!==null){event.preventDefault();controls[target].focus();}
+  };
+  document.addEventListener('keydown',keepFocus);
+  return()=>{
+   document.removeEventListener('keydown',keepFocus);
+   if(previousFocus?.isConnected)previousFocus.focus();
+  };
+ },[viewerOpen]);
  function next(){setActive(prev=>{if(!prev)return null;const group=people[prev.person];if(prev.story+1<group.stories.length)return {...prev,story:prev.story+1};const i=people.findIndex((p,j)=>j>prev.person&&p.stories.length);return i<0?null:{person:i,story:0};});}
  function prev(){setActive(current=>{if(!current)return null;if(current.story>0)return {...current,story:current.story-1};for(let j=current.person-1;j>=0;j--)if(people[j].stories.length)return {person:j,story:people[j].stories.length-1};return {...current,story:0};});}
  async function create(file?:File){if(!file||busy)return;setBusy(true);setError('');try{
@@ -62,11 +93,11 @@ export default function StoriesStrip({token,userId,contacts,ownProfile}:Props){
   <input ref={inputRef} type="file" accept="image/png,image/jpeg,image/webp" hidden aria-label="Загрузить свою историю" disabled={busy} onChange={e=>{void create(e.target.files?.[0]);e.target.value='';}}/>
   {people[0]?.stories.length>0&&<button className="home-story-add" type="button" disabled={busy} onClick={()=>inputRef.current?.click()}>+ Добавить историю</button>}
   {error&&<p role="alert" className="profile-error">{error}</p>}
-  {story&&person&&<div className="story-viewer story-viewer-telegram" role="dialog" aria-modal="true" aria-label={'Истории: '+person.name} onPointerDown={()=>setPaused(true)} onPointerUp={()=>setPaused(false)} onPointerCancel={()=>setPaused(false)}>
+  {story&&person&&<div ref={viewerRef} tabIndex={-1} className="story-viewer story-viewer-telegram" role="dialog" aria-modal="true" aria-label={'Истории: '+person.name} onPointerDown={()=>setPaused(true)} onPointerUp={()=>setPaused(false)} onPointerCancel={()=>setPaused(false)}>
    <div className="story-viewer-stage">
     <img className="story-viewer-image" src={imageUrl(story.image_path)||''} alt={story.caption||'История'}/>
     <div className="story-progress">{person.stories.map((s,i)=><span className="story-progress-track" key={s.id}><span className={i<active!.story?'done':i===active!.story?'playing story-progress-fill':''} ref={i===active!.story?progressRef:undefined}/></span>)}</div>
-    <header className="story-viewer-header"><span className="story-viewer-avatar">{imageUrl(person.avatar)?<img src={imageUrl(person.avatar)||''} alt=""/>:person.name.slice(0,1)}</span><span className="story-viewer-author"><strong>{person.name}</strong><small>{new Date(story.created_at).toLocaleString('ru-RU',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'})}</small></span><button type="button" className="story-viewer-close" onClick={()=>setActive(null)} aria-label="Закрыть"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button></header>
+    <header className="story-viewer-header"><span className="story-viewer-avatar">{imageUrl(person.avatar)?<img src={imageUrl(person.avatar)||''} alt=""/>:person.name.slice(0,1)}</span><span className="story-viewer-author"><strong>{person.name}</strong><small>{new Date(story.created_at).toLocaleString('ru-RU',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'})}</small></span><button ref={viewerCloseRef} type="button" className="story-viewer-close" onClick={()=>setActive(null)} aria-label="Закрыть"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button></header>
     <button type="button" className="story-viewer-prev" aria-label="Предыдущая" onClick={prev}/><button type="button" className="story-viewer-next" aria-label="Следующая" onClick={next}/>
     {story.caption&&<div className="story-viewer-caption">{story.caption}</div>}
    </div>
