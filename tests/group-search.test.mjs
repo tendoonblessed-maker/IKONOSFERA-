@@ -20,8 +20,22 @@ function setup(handler=()=>({ok:true,json:async()=>[]})){
   process:{env:{NEXT_PUBLIC_SUPABASE_ANON_KEY:'test-anon'}},
   fetch:async(url,options)=>{calls.push({url,options});return handler(url,options,calls.length);},
   require(name){
-   assert.equal(name,'./supabase-rest');
-   return {apiUrl:'https://test.invalid'};
+   if(name==='./supabase-rest')return {apiUrl:'https://test.invalid'};
+   assert.equal(name,'./group-pagination');
+   // Load the real comparator, not a test-only approximation.
+   const paginationExports={};
+   const pagination=ts.transpileModule(read('lib/group-pagination.ts'),{
+    compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}
+   }).outputText;
+   vm.runInNewContext(pagination,{
+    exports:paginationExports,URLSearchParams,
+    process:{env:{NEXT_PUBLIC_SUPABASE_ANON_KEY:'test-anon'}},
+    require(path){
+     assert.equal(path,'@/lib/supabase-rest');
+     return {apiUrl:'https://test.invalid'};
+    }
+   },{filename:'group-pagination.cjs',timeout:2500});
+   return paginationExports;
   }
  };
  vm.runInNewContext(compiled,ctx,{filename:'group-search.cjs',timeout:2500});
@@ -98,6 +112,22 @@ test('context navigation refetches exact target with membership RLS and bounded 
   assert.equal(call.options.headers.Authorization,'Bearer jwt');
   assert.ok(Number(p.get('limit'))<=70);
  }
+});
+
+test('context navigation preserves microsecond ordering before UUID ties',async()=>{
+ const first={...ROW,id:'ffffffff-ffff-4fff-8fff-ffffffffffff',created_at:'2026-10-29T08:00:00.000123Z'};
+ const second={...ROW,id:'00000000-0000-4000-8000-000000000001',created_at:'2026-10-29T08:00:00.000124Z'};
+ const tie={...ROW,id:'00000000-0000-4000-8000-000000000002',created_at:'2026-10-29T08:00:00.000124Z'};
+ const target={...ROW,created_at:'2026-10-29T08:00:00.000125Z'};
+ const {api,calls}=setup(url=>{
+  const p=params(url);
+  if(p.get('id'))return result([target]);
+  if(p.get('order')==='created_at.desc,id.desc')return result([target,tie,second,first]);
+  return result([target]);
+ });
+ const rows=await api.getGroupMessageContext('jwt',GROUP,target.id,target.created_at);
+ assert.deepEqual(Array.from(rows,x=>x.id),[first.id,second.id,tie.id,target.id]);
+ assert.equal(calls.length,3);
 });
 
 test('context navigation rejects deleted or foreign message before fetching any timeline',async()=>{
