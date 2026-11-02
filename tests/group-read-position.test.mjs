@@ -33,6 +33,33 @@ test('message count handles simultaneous new replies, deletions and background m
  assert.equal(countNewIncomingBelow(next,ids,A,false),2);
 });
 
+
+test('loading earlier history does not create a false new-messages badge',()=>{
+ const known=new Set(['middle','latest']);
+ const prepended=[
+  message('old-1'),message('old-2'),message('middle'),message('latest')
+ ];
+ assert.equal(countNewIncomingBelow(prepended,known,A,false),0,
+  'older pages appear above the newest known message, not below');
+ assert.equal(countNewIncomingBelow([...prepended,message('new-1')],known,A,false),1,
+  'a genuinely newer incoming message still increments the badge');
+ assert.equal(countNewIncomingBelow([...prepended,message('own-new',A)],known,A,false),0,
+  'own outgoing messages are never counted');
+});
+
+test('history replacement without an overlapping message does not show a phantom unread count',()=>{
+ const previous=new Set(['old-1','old-2']);
+ const replaced=[message('new-1'),message('new-2')];
+ assert.equal(countNewIncomingBelow(replaced,previous,A,false),0,
+  'no overlap means there is no reliable previous newest boundary');
+});
+
+test('messages inserted above the previous newest row are not counted as below',()=>{
+ const previous=new Set(['middle','latest']);
+ const next=[message('middle'),message('delayed'),message('latest'),message('fresh')];
+ assert.equal(countNewIncomingBelow(next,previous,A,false),1);
+});
+
 test('group read RPC is called from visibility-safe and bottom-safe action, not unconditional HTTP polling',()=>{
  const panel=file('components/GroupPanel.tsx');
  const refresh=panel.slice(panel.indexOf('const refresh=useCallback('),panel.indexOf(' useEffect(()=>{\n  let cancelled=false'));
