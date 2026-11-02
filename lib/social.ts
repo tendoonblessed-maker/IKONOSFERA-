@@ -75,7 +75,10 @@ export async function deleteStory(token:string,id:string):Promise<void>{
   await api("/rest/v1/stories?id=eq."+encodeURIComponent(id),token,"DELETE");
 }
 export async function getChannelSubscriberCounts(token:string,ids:string[]):Promise<Record<string,number>>{
- const unique=Array.from(new Set(ids)).filter(id=>/^[0-9a-f-]{36}$/i.test(id)).slice(0,100);
+ // A malformed UUID can make the entire PostgreSQL RPC fail. Validate each
+ // ID before batching, and deduplicate case-insensitively like PostgreSQL UUID.
+ const validUuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+ const unique=Array.from(new Set(ids.filter(id=>validUuid.test(id)).map(id=>id.toLowerCase()))).slice(0,100);
  if(!unique.length)return {};
  const counts=await api<{channel_id:string;subscribers:number}[]>('/rest/v1/rpc/channel_subscriber_counts',token,'POST',{p_ids:unique});
  return Object.fromEntries(counts.map(row=>[row.channel_id,Number(row.subscribers)]));
