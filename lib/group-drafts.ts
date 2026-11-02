@@ -7,6 +7,13 @@ const PREFIX='ikonosfera-group-drafts-tab-v1:';
 const UUID=/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
 const MAX_GROUPS=48;
 const MAX_TEXT=4000;
+/** Avoid persisting half of an emoji when a draft reaches the UTF-16 cap. */
+function limitDraftText(text:string):string{
+ if(text.length<=MAX_TEXT)return text;
+ const clipped=text.slice(0,MAX_TEXT);
+ const last=clipped.charCodeAt(clipped.length-1);
+ return last>=0xD800&&last<=0xDBFF?clipped.slice(0,-1):clipped;
+}
 export type GroupDrafts=Record<string,string>;
 function store():Storage|null{
  try{return typeof window==='undefined'?null:window.sessionStorage;}
@@ -19,7 +26,7 @@ export function cleanGroupDrafts(input:unknown):GroupDrafts{
  const recent=new Map<string,string>();
  for(const [groupId,text] of Object.entries(input)){
   if(!UUID.test(groupId)||typeof text!=='string')continue;
-  const limited=text.slice(0,MAX_TEXT);
+  const limited=limitDraftText(text);
   if(!limited.trim())continue;
   recent.set(groupId,limited);
   if(recent.size>MAX_GROUPS){
@@ -39,7 +46,7 @@ export function writeGroupDraft(ownerId:string,groupId:string,text:string):Group
  const next=readGroupDrafts(ownerId);
  // Move edited drafts to the end before enforcing the storage limit.
  delete next[groupId];
- if(text.trim())next[groupId]=text.slice(0,MAX_TEXT);
+ if(text.trim())next[groupId]=limitDraftText(text);
  const cleaned=cleanGroupDrafts(next);
  try{
   const storage=store();

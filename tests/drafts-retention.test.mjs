@@ -66,3 +66,28 @@ test('group draft normalization ignores malformed records ahead of valid drafts'
   input[id(3)]='valid';
   assert.deepEqual(cleanGroupDrafts(input),{[id(1)]:'  Nice\n  ',[id(3)]:'valid'});
 });
+
+
+test('long direct and group drafts do not store a broken half-emoji',()=>{
+ const overflow='a'.repeat(3999)+'😀';
+ const safe='a'.repeat(3999);
+ assert.equal(cleanChatDrafts({[id(1)]:overflow})[id(1)],safe);
+ assert.equal(cleanGroupDrafts({[id(1)]:overflow})[id(1)],safe);
+ assert.equal(cleanChatDrafts({[id(1)]:overflow})[id(1)].includes('\uFFFD'),false);
+});
+
+test('direct draft edits preserve full emoji at the exact limit',()=>{
+ const exact='a'.repeat(3998)+'😀';
+ const overflow='a'.repeat(3999)+'😀';
+ assert.equal(updateChatDraftEntry({},id(1),exact)[id(1)],exact);
+ assert.equal(updateChatDraftEntry({},id(1),overflow)[id(1)],'a'.repeat(3999));
+});
+
+test('group draft writes preserve emoji boundaries after storage round trip',()=>{
+ data.clear();
+ const exact='a'.repeat(3998)+'😀';
+ writeGroupDraft(USER,id(1),exact);
+ assert.equal(readGroupDrafts(USER)[id(1)],exact);
+ writeGroupDraft(USER,id(1),'a'.repeat(3999)+'😀');
+ assert.equal(readGroupDrafts(USER)[id(1)],'a'.repeat(3999));
+});
