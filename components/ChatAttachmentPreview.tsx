@@ -3,6 +3,7 @@
 import {useEffect,useRef,useState} from 'react';
 import {createPortal} from 'react-dom';
 import {preferNonTextFocusForAttachment} from '@/lib/attachment-preview-focus';
+import {isAttachmentImeEvent} from '@/lib/attachment-shortcuts';
 
 type Props={
  file:File;
@@ -50,6 +51,7 @@ export default function ChatAttachmentPreview({file,caption,sending,online,onCap
   else captionRef.current?.focus({preventScroll:true});
   const onKeyDown=(event:KeyboardEvent)=>{
    if(event.key==='Escape'&&!busyRef.current){
+    if(isAttachmentImeEvent(event))return; // Escape confirms IME composition, not the dialog.
     event.preventDefault();
     closeRef.current();
    }
@@ -103,6 +105,7 @@ export default function ChatAttachmentPreview({file,caption,sending,online,onCap
        placeholder="Добавить подпись…"
        onKeyDown={event=>{
         if(event.key==='Enter'&&(event.ctrlKey||event.metaKey)&&!event.nativeEvent.isComposing){
+         if(event.repeat||isAttachmentImeEvent(event.nativeEvent))return;
          event.preventDefault();
          sendRef.current?.click();
         }
