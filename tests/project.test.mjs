@@ -1027,9 +1027,10 @@ test('editing a direct message supports multiline text with safe iPhone actions'
  assert.match(editor,/maxLength=\{4000\}/);
  assert.match(editor,/fontSize|onInput=\{event=>/);
  assert.match(editor,/event\.key==='Enter'&&\(event\.ctrlKey\|\|event\.metaKey\)/);
- assert.match(editor,/event\.key==='Escape'/);
+ assert.match(editor,/messageEditShortcut\(\{/);
+ assert.match(editor,/if\(shortcut==='cancel'\)/);
  assert.match(editor,/event\.currentTarget\.form\?\.requestSubmit\(\)/);
- assert.match(editor,/if\(saving\|\|!value\.trim\(\)\|\|value\.length>4000\)return/);
+ assert.match(editor,/if\(savingRef\.current\|\|!value\.trim\(\)\|\|value\.length>4000\)return/);
  assert.match(editor,/disabled=\{saving\|\|!value\.trim\(\)\}/);
  assert.match(css,/\.ik-message-edit-form textarea/);
  assert.match(css,/font-family:inherit;font-size:16px;line-height:1\.45/);
