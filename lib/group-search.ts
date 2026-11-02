@@ -77,8 +77,17 @@ export async function getGroupMessageContext(
  const target=(await getRows(token,exact))[0];
  if(!target||target.id!==targetId||target.group_id!==groupId)
   throw Error('Сообщение удалено или больше недоступно.');
- const older=new URLSearchParams({...base,created_at:'lte.'+target.created_at,order:'created_at.desc,id.desc',limit:'70'});
- const newer=new URLSearchParams({...base,created_at:'gte.'+target.created_at,order:'created_at.asc,id.asc',limit:'70'});
+ // Timestamp-only bounds can skip the actual neighbours when 70+ posts
+ // share one PostgreSQL timestamp. Match the server's (created_at, id) order.
+ const cursor=target.created_at;
+ const older=new URLSearchParams({...base,
+  or:'(created_at.lt.'+cursor+',and(created_at.eq.'+cursor+',id.lte.'+targetId+'))',
+  order:'created_at.desc,id.desc',limit:'70'
+ });
+ const newer=new URLSearchParams({...base,
+  or:'(created_at.gt.'+cursor+',and(created_at.eq.'+cursor+',id.gte.'+targetId+'))',
+  order:'created_at.asc,id.asc',limit:'70'
+ });
  const [before,after]=await Promise.all([getRows(token,older),getRows(token,newer)]);
  const map=new Map<string,GroupMessage>();
  for(const message of [...before,...after,target]){
