@@ -1,0 +1,10 @@
+/* Telegram-like unread hierarchy without changing read state or chat ordering.
+   Imported after the main theme so the existing light palette remains intact. */
+.messenger.is-authenticated .chat-list .chat-row-wrap.ik-inbox-unread:not(.ik-inbox-has-draft) .ik-chat-preview,
+.messenger.is-authenticated .chat-list .ik-group-inbox.ik-inbox-unread:not(.ik-inbox-has-draft) .ik-group-inbox-text small {
+  color:#343b4b!important;
+  font-weight:650!important;
+}
+.messenger.is-authenticated .chat-list .ik-inbox-unread .ik-unread-count {
+  font-variant-numeric:tabular-nums;
+}
