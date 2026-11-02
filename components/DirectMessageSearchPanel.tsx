@@ -1,6 +1,7 @@
 'use client';
 
 import type {DirectMessageSearchResult} from '@/lib/supabase-rest';
+import {shouldCloseDirectChatSearch} from '@/lib/chat-shortcuts';
 
 type Props={
   query:string;
@@ -26,7 +27,7 @@ export default function DirectMessageSearchPanel({
   const needle=query.trim();
   return <section className="ik-direct-search" aria-label="Поиск по всей переписке"
     onKeyDown={event=>{
-      if(event.key==='Escape'){event.preventDefault();event.stopPropagation();onClose();}
+      if(shouldCloseDirectChatSearch(event.nativeEvent)){event.preventDefault();event.stopPropagation();onClose();}
     }}>
     <div className="ik-conversation-search">
       <input autoFocus aria-label="Поиск сообщений в текущем чате"
