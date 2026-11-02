@@ -2,6 +2,7 @@
 
 import {useEffect,useRef,useState,type ReactNode,type TouchEvent} from 'react';
 import {useSwipeable} from 'react-swipeable';
+import {MESSAGE_INTERACTIVE_SELECTOR,shouldBlockMessageSwipe} from '@/lib/message-gesture-guard';
 
 type Props={
   children:ReactNode;
@@ -20,6 +21,9 @@ export default function SwipeReplyMessage({children,className,disabled=false,onR
   const holdTimer=useRef<number|null>(null);
   const touchOrigin=useRef<{x:number;y:number}|null>(null);
   const wasHeld=useRef(false);
+  // Keep the decision through touch-end capture: react-swipeable processes
+  // onSwiped later in the bubble phase. Reset only on the next touch start.
+  const swipeBlocked=useRef(false);
 
   const cancelHold=()=>{
     if(holdTimer.current!==null){
@@ -33,9 +37,11 @@ export default function SwipeReplyMessage({children,className,disabled=false,onR
   const onTouchStart=(event:TouchEvent<HTMLDivElement>)=>{
     cancelHold();
     wasHeld.current=false;
-    if(disabled||!onOpenMenu||event.touches.length!==1)return;
-    // Never hijack play/pause, opening an attachment, or tapping a quote.
-    if(event.target instanceof Element&&event.target.closest('button,a,input,textarea,select,video,audio,[role="button"],[contenteditable="true"]'))return;
+    // Media controls, links and buttons must own their horizontal gestures.
+    // The long-press exclusion alone does not stop react-swipeable onSwiped.
+    const interactive=Boolean(event.target instanceof Element&&event.target.closest(MESSAGE_INTERACTIVE_SELECTOR));
+    swipeBlocked.current=shouldBlockMessageSwipe(disabled,event.touches.length,interactive);
+    if(swipeBlocked.current||!onOpenMenu)return;
     const finger=event.touches[0];
     touchOrigin.current={x:finger.clientX,y:finger.clientY};
     holdTimer.current=window.setTimeout(()=>{
@@ -47,8 +53,14 @@ export default function SwipeReplyMessage({children,className,disabled=false,onR
     },HOLD_DURATION_MS);
   };
   const onTouchMove=(event:TouchEvent<HTMLDivElement>)=>{
+    if(event.touches.length!==1){
+      swipeBlocked.current=true; // A second finger cancels this entire gesture.
+      setMovement(0);
+      cancelHold();
+      return;
+    }
     const origin=touchOrigin.current;
-    if(!origin||event.touches.length!==1){cancelHold();return;}
+    if(!origin){cancelHold();return;}
     const finger=event.touches[0];
     if(Math.hypot(finger.clientX-origin.x,finger.clientY-origin.y)>HOLD_MOVE_TOLERANCE_PX)cancelHold();
   };
@@ -61,14 +73,14 @@ export default function SwipeReplyMessage({children,className,disabled=false,onR
     swipeDuration:700,
     onSwiping:({dir,deltaX})=>{
       cancelHold(); // A swipe must never also open the long-press menu.
-      if(disabled||wasHeld.current)return;
+      if(disabled||swipeBlocked.current||wasHeld.current)return;
       if(dir==='Right')setMovement(Math.min(72,Math.max(0,deltaX)));
       else if(dir==='Left')setMovement(Math.max(-72,Math.min(0,deltaX)));
     },
     onSwiped:({dir,absX})=>{
       cancelHold();
       setMovement(0);
-      if(!disabled&&!wasHeld.current&&(dir==='Right'||dir==='Left')&&absX>=54)onReply();
+      if(!disabled&&!swipeBlocked.current&&!wasHeld.current&&(dir==='Right'||dir==='Left')&&absX>=54)onReply();
     },
     onTouchEndOrOnMouseUp:()=>{
       cancelHold();
@@ -87,7 +99,7 @@ export default function SwipeReplyMessage({children,className,disabled=false,onR
     onContextMenu={event=>{
       if(disabled||!onOpenMenu)return;
       const target=event.target;
-      if(target instanceof Element&&target.closest('button,a,input,textarea,select,video,audio,[role="button"],[contenteditable="true"]'))return;
+      if(target instanceof Element&&target.closest(MESSAGE_INTERACTIVE_SELECTOR))return;
       event.preventDefault();
       cancelHold();
       setMovement(0);
