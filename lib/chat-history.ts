@@ -3,7 +3,10 @@ import type {ChatMessage} from './supabase-rest';
 /** Server orders pages by created_at.desc,id.desc; UI displays ascending. */
 export function compareMessages(a:ChatMessage,b:ChatMessage):number{
   const timestampDiff=Date.parse(a.created_at)-Date.parse(b.created_at);
-  return timestampDiff||a.id.localeCompare(b.id);
+  if(timestampDiff!==0)return timestampDiff;
+  // Preserve PostgreSQL microseconds that Date.parse truncates.
+  const micros=(timestamp:string)=>Number((/\.(\d{1,6})/.exec(timestamp)?.[1]??'').padEnd(6,'0'));
+  return micros(a.created_at)-micros(b.created_at)||a.id.localeCompare(b.id);
 }
 
 /** A recent poll is authoritative for its page, but must not erase older pages. */
