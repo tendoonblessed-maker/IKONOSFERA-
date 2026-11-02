@@ -47,5 +47,5 @@ test('channel UI ignores stale comments, profile results and errors',()=>{
  assert.match(panel,/if\(gate\.isCurrent\(requestId\)\)setError\(readable\(e\)\)/);
  assert.match(panel,/finally\{gate\.finish\(requestId\);\}/);
  assert.match(panel,/return\(\)=>commentsGateRef\.current\.cancel\(\)/);
- assert.match(panel,/setOpenComments\(null\);setComments\(\[\]\);setAuthors\(\{\}\);setCommentDraft\("")/);
+ assert.ok(panel.includes('setOpenComments(null);setComments([]);setAuthors({});setCommentDraft("");'));
 });
