@@ -14,6 +14,9 @@ export async function pingActivity(token:string,visibility:ActivityVisibility|nu
  await activityApi(token,'/rest/v1/rpc/set_my_activity','POST',{p_visibility:visibility});
 }
 export async function myActivityVisibility(token:string,userId:string):Promise<ActivityVisibility>{
+ // A malformed account ID must never reach a UUID-typed PostgREST filter.
+ // Keep visibility conservative if the session identity is not valid.
+ if(!UUID.test(userId))return 'approximate';
  const rows=await activityApi<{visibility:ActivityVisibility}[]>(token,'/rest/v1/user_activity?select=visibility&user_id=eq.'+encodeURIComponent(userId)+'&limit=1');
  return rows[0]?.visibility==='exact'?'exact':'approximate';
 }
