@@ -12,3 +12,29 @@ export function inboxRowLabel(name:string,unread:number,selectionMode=false,sele
  const action=selectionMode?(selected?'Снять выбор чата с':'Выбрать чат с'):'Открыть чат с';
  return action+' '+name+(unread>0?'. Непрочитанных сообщений: '+unread:'');
 }
+
+/** The preview RPC returns the caption alone for media with captions. Keep the
+ * attachment type visible in the inbox, and do not mistake an empty caption
+ * for an empty conversation. Deleted-message text must remain authoritative.
+ */
+export type DirectInboxPreview={
+ last_body:string|null;
+ last_media_type:'image'|'video'|'audio'|'file'|null;
+ last_created_at:string|null;
+};
+const MEDIA_LABELS={
+ image:{icon:'📷',label:'Фото'},
+ video:{icon:'🎬',label:'Видео'},
+ audio:{icon:'🎤',label:'Аудио'},
+ file:{icon:'📎',label:'Файл'}
+} as const;
+export function directInboxPreviewText(preview:DirectInboxPreview|null,unavailable=false):string {
+ if(!preview)return unavailable?'Не удалось обновить сообщения':'Начало переписки';
+ const body=preview.last_body?.trim()??'';
+ if(body==='Сообщение удалено')return body;
+ const media=preview.last_media_type?MEDIA_LABELS[preview.last_media_type]:null;
+ if(media)return media.icon+' '+media.label+(body&&body!==media.label?': '+body:'');
+ if(body)return body;
+ if(unavailable)return 'Не удалось обновить сообщения';
+ return preview.last_created_at?'Сообщение':'Начало переписки';
+}

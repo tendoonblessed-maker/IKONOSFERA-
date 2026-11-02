@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
 import {readFileSync} from 'node:fs';
-import {inboxUnreadCount,inboxUnreadBadge,inboxRowLabel} from '../lib/inbox-row-presentation.ts';
+import {inboxUnreadCount,inboxUnreadBadge,inboxRowLabel,directInboxPreviewText} from '../lib/inbox-row-presentation.ts';
 
 const source=path=>readFileSync(new URL('../'+path,import.meta.url),'utf8');
 
@@ -52,4 +52,32 @@ test('unread previews gain emphasis without overriding draft previews or read ch
  assert.match(css,/\.ik-group-inbox\.ik-inbox-unread:not\(\.ik-inbox-has-draft\)/);
  assert.match(css,/font-weight:650!important/);
  assert.ok(layout.indexOf('import "./inbox-unread-polish.css"')>layout.indexOf('import "./light-telegram-theme.css"'));
+});
+
+test('direct inbox previews distinguish attachments from plain text, including captions',()=>{
+ const base={last_body:null,last_media_type:null,last_created_at:'2026-11-02T13:00:00Z'};
+ assert.equal(directInboxPreviewText({...base,last_body:'  Привет  '}),'Привет');
+ for(const [type,label] of [
+  ['image','📷 Фото'],['video','🎬 Видео'],['audio','🎤 Аудио'],['file','📎 Файл']
+ ]){
+  assert.equal(directInboxPreviewText({...base,last_media_type:type}),label);
+  assert.equal(directInboxPreviewText({...base,last_media_type:type,last_body:label.slice(3)}),label);
+  assert.equal(directInboxPreviewText({...base,last_media_type:type,last_body:'Подпись'}),label+': Подпись');
+ }
+});
+
+test('deleted messages and unavailable/empty previews never claim a media caption',()=>{
+ const base={last_body:null,last_media_type:null,last_created_at:'2026-11-02T13:00:00Z'};
+ assert.equal(directInboxPreviewText({...base,last_body:'Сообщение удалено',last_media_type:'image'}),'Сообщение удалено');
+ assert.equal(directInboxPreviewText(null),'Начало переписки');
+ assert.equal(directInboxPreviewText(null,true),'Не удалось обновить сообщения');
+ assert.equal(directInboxPreviewText(base),'Сообщение');
+ assert.equal(directInboxPreviewText({...base,last_created_at:null}),'Начало переписки');
+});
+
+test('direct chat row uses media-aware previews while keeping draft and outgoing priority',()=>{
+ const ui=source('components/ChatInboxRow.tsx');
+ assert.match(ui,/directInboxPreviewText\(preview,row\.previewUnavailable\)/);
+ assert.match(ui,/outgoing\?'Вы: '\+previewText:previewText/);
+ assert.match(ui,/draftText\?<><span className="ik-chat-draft-label">Черновик:<\/span>/);
 });
