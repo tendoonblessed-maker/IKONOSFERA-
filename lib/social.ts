@@ -160,9 +160,21 @@ export async function listOwnedChannels(token:string,ownerId:string):Promise<Cha
 export const REACTION_EMOJIS=['👍🏻','👎🏻','✌🏻','👌🏻','🖕🏻','🫶🏻','🕊️'] as const;
 export type ReactionEmoji=typeof REACTION_EMOJIS[number];
 export type PostReaction={post_id:string;user_id:string;emoji:ReactionEmoji};
+const POST_REACTION_BATCH_SIZE=100;
+const REACTION_POST_UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+/** Keep PostgREST filters bounded and never interpolate malformed post IDs. */
 export async function listPostReactions(token:string,postIds:string[]):Promise<PostReaction[]>{
- if(!postIds.length)return [];
- return api<PostReaction[]>("/rest/v1/channel_post_reactions?select=post_id,user_id,emoji&post_id=in.("+postIds.map(encodeURIComponent).join(",")+")&limit=3000",token);
+ const ids=Array.from(new Set(postIds
+  .filter(id=>typeof id==="string"&&REACTION_POST_UUID.test(id))
+  .map(id=>id.toLowerCase())));
+ if(!ids.length)return [];
+ const reactions:PostReaction[]=[];
+ for(let start=0;start<ids.length;start+=POST_REACTION_BATCH_SIZE){
+  const batch=ids.slice(start,start+POST_REACTION_BATCH_SIZE);
+  const rows=await api<PostReaction[]>("/rest/v1/channel_post_reactions?select=post_id,user_id,emoji&post_id=in.("+batch.map(encodeURIComponent).join(",")+")&limit=3000",token);
+  reactions.push(...rows);
+ }
+ return reactions;
 }
 export async function setPostReaction(token:string,userId:string,postId:string,emoji:ReactionEmoji|null):Promise<void>{
  await api("/rest/v1/channel_post_reactions?post_id=eq."+encodeURIComponent(postId)+"&user_id=eq."+encodeURIComponent(userId),token,"DELETE");
