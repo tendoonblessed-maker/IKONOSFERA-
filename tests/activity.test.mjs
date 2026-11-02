@@ -70,3 +70,24 @@ test('activity batches remain deduplicated and limited to 100 valid IDs',async()
  assert.equal(sent[99],ids[98]);
  assert.equal(new Set(sent).size,100);
 });
+
+
+test('invalid account UUID never triggers activity visibility lookup',async()=>{
+ const {api,calls}=setup([{visibility:'exact'}]);
+ for(const bad of ['', '-'.repeat(36), '11111111-1111-1111-1111-11111111111g']){
+  assert.equal(await api.myActivityVisibility('jwt',bad),'approximate');
+ }
+ assert.equal(calls.length,0,'malformed UUIDs must not reach PostgREST');
+});
+
+test('valid account UUID retains exact and approximate visibility behavior',async()=>{
+ const exact=setup([{visibility:'exact'}]);
+ assert.equal(await exact.api.myActivityVisibility('jwt',OWNER),'exact');
+ assert.equal(exact.calls.length,1);
+ assert.equal(exact.calls[0].url,
+  'https://unit.test/rest/v1/user_activity?select=visibility&user_id=eq.'+OWNER+'&limit=1');
+ assert.equal(exact.calls[0].options.method,'GET');
+ const fallback=setup([]);
+ assert.equal(await fallback.api.myActivityVisibility('jwt',upper),'approximate');
+ assert.equal(fallback.calls.length,1);
+});
