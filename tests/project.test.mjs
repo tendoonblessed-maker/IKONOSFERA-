@@ -934,7 +934,9 @@ test('reply fetching never leaks old-account previews or unbounded PostgREST ID 
  assert.match(shell,/for\(let start=0;start<missing\.length;start\+=100\)/);
  assert.match(shell,/Promise\.all\(batches\.map\(ids=>listReplyTargets/);
  assert.match(shell,/for\(let offset=0;offset<loaded\.length;offset\+=CHAT_MESSAGE_PAGE_SIZE\)/);
- assert.match(api,/const unique=\[\.\.\.new Set\(ids\)\]/);
+ assert.match(api,/const unique=\[\.\.\.new Set\(ids/);
+ assert.match(api,/UUID\.test\(id\)/);
+ assert.match(api,/\.map\(id=>id\.toLowerCase\(\)\)/);
  assert.match(shell,/if\(stillInChat\(\)\)/);
 });
 
