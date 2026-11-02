@@ -24,6 +24,7 @@ export function subscribeGroupChanges(token:string,groupId:string,onChanged:()=>
   if(disposed)return;
   channel
    .on('postgres_changes',{...scope,event:'INSERT'},changed)
+   .on('postgres_changes',{...scope,event:'UPDATE'},changed)
    .subscribe(status=>{
     if(status==='SUBSCRIBED')changed(); // reconcile events missed during join
    });
