@@ -2,6 +2,7 @@
 
 import {useEffect,useRef} from 'react';
 import {createPortal} from 'react-dom';
+import {restorePhotoViewerFocus,shouldClosePhotoViewerOnKeydown} from '@/lib/photo-viewer-a11y';
 
 type Props={
   src:string;
@@ -25,7 +26,7 @@ export default function ChatPhotoViewer({src,onClose,onImageError}:Props){
     closeButtonRef.current?.focus();
 
     const handleKeyboard=(event:KeyboardEvent)=>{
-      if(event.key==='Escape'){
+      if(shouldClosePhotoViewerOnKeydown(event)){
         event.preventDefault();
         onCloseRef.current();
         return;
@@ -45,7 +46,7 @@ export default function ChatPhotoViewer({src,onClose,onImageError}:Props){
     return()=>{
       document.removeEventListener('keydown',handleKeyboard);
       document.body.style.overflow=previousOverflow;
-      if(previousFocus?.isConnected)previousFocus.focus();
+      restorePhotoViewerFocus(previousFocus);
     };
   },[]);
 
