@@ -195,7 +195,13 @@ export async function listOlderMessages(token:string,chatId:string,before:Pick<C
 /** Load original messages referenced by older replies, subject to normal chat RLS. */
 export type ReplyTarget=Pick<ChatMessage,'id'|'sender_id'|'body'|'deleted_for_everyone'|'media_type'>;
 export async function listReplyTargets(token:string,chatId:string,ids:string[]):Promise<ReplyTarget[]>{
-  const unique=[...new Set(ids)].filter(id=>/^[a-f0-9-]{36}$/i.test(id)).slice(0,100);
+  // A malformed legacy reply ID must not make every reply preview fail with a
+  // PostgreSQL UUID cast error. Normalize case before deduplicating and cap
+  // the number of IDs sent to PostgREST.
+  const UUID=/^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/i;
+  const unique=[...new Set(ids
+    .filter((id):id is string=>typeof id==='string'&&UUID.test(id))
+    .map(id=>id.toLowerCase()))].slice(0,100);
   if(!unique.length)return [];
   return http<ReplyTarget[]>('/rest/v1/messages?select=id,sender_id,body,deleted_for_everyone,media_type&chat_id=eq.'+encodeURIComponent(chatId)+'&id=in.('+unique.map(encodeURIComponent).join(',')+')',{token});
 }
