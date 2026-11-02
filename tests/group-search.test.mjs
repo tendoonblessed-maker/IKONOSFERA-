@@ -100,6 +100,56 @@ test('context navigation refetches exact target with membership RLS and bounded 
  }
 });
 
+
+test('context navigation uses a server-verified timestamp and UUID tie-breakers',async()=>{
+ const actual={...ROW,created_at:'2026-10-29T08:00:00.123456+00:00'};
+ const {api,calls}=setup(url=>{
+  if(params(url).get('id'))return result([actual]);
+  return result([actual]);
+ });
+ const rows=await api.getGroupMessageContext('jwt',GROUP,ROW.id,ROW.created_at);
+ assert.equal(rows.length,1);
+ assert.equal(calls.length,3);
+ const older=params(calls[1].url);
+ const newer=params(calls[2].url);
+ assert.equal(older.get('or'),
+  '(created_at.lt.'+actual.created_at+',and(created_at.eq.'+actual.created_at+',id.lte.'+ROW.id+'))');
+ assert.equal(newer.get('or'),
+  '(created_at.gt.'+actual.created_at+',and(created_at.eq.'+actual.created_at+',id.gte.'+ROW.id+'))');
+ assert.equal(older.get('created_at'),null);
+ assert.equal(newer.get('created_at'),null);
+ assert.equal(older.get('order'),'created_at.desc,id.desc');
+ assert.equal(newer.get('order'),'created_at.asc,id.asc');
+});
+
+test('context window stays adjacent to target even with 200 identical timestamps',async()=>{
+ const stamp='2026-10-29T08:00:00.123456Z';
+ const id=n=>n.toString(16).padStart(8,'0')+'-4444-4444-8444-444444444444';
+ const all=Array.from({length:200},(_,i)=>({...ROW,id:id(i+1),created_at:stamp}));
+ const target=all[99];
+ const {api,calls}=setup(url=>{
+  const p=params(url);
+  if(p.get('id'))return result([target]);
+  const descending=p.get('order')==='created_at.desc,id.desc';
+  const or=p.get('or');
+  // Simulate PostgREST keyset filtering and its 70-row bound.
+  const filtered=all.filter(m=>{
+   if(!or)return true; // old timestamp-only code includes every tied row
+   return descending?m.id<=target.id:m.id>=target.id;
+  });
+  filtered.sort((a,b)=>descending?b.id.localeCompare(a.id):a.id.localeCompare(b.id));
+  return result(filtered.slice(0,70));
+ });
+ const rows=await api.getGroupMessageContext('jwt',GROUP,target.id,stamp);
+ assert.equal(calls.length,3);
+ assert.ok(params(calls[1].url).get('or')?.includes('id.lte.'+target.id));
+ assert.ok(params(calls[2].url).get('or')?.includes('id.gte.'+target.id));
+ assert.equal(rows.length,139);
+ assert.equal(rows[0].id,id(31));
+ assert.equal(rows.at(-1).id,id(169));
+ assert.equal(rows.filter(m=>m.id===target.id).length,1);
+});
+
 test('context navigation rejects deleted or foreign message before fetching any timeline',async()=>{
  const {api,calls}=setup(()=>result([]));
  await assert.rejects(api.getGroupMessageContext('jwt',GROUP,ROW.id,ROW.created_at),/недоступно/);
