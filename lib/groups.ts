@@ -19,7 +19,7 @@ export async function groupMessages(token:string,id:string){
  const latest=await request<GroupMessage[]>(token,'/rest/v1/group_messages?select=*&group_id=eq.'+encodeURIComponent(id)+'&order=created_at.desc,id.desc&limit=150');
  return latest.reverse();
 }
-const UUID=/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
+const UUID=/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
 /** Reject corrupted group identifiers before PostgREST UUID filters or RPCs. */
 function assertGroupId(id:string):void{
  if(!UUID.test(id))throw Error('Некорректный идентификатор группы.');
