@@ -119,16 +119,43 @@ test('prepend new page deduplicates concurrent overlap and keeps updated current
  assert.equal(merged[1].body,'test','latest page has priority over stale earlier fetch');
 });
 
-test('realtime latest page retains paged earlier messages but removes deleted latest rows',()=>{
+test('a complete newest page drops deleted and no-longer-visible older rows',()=>{
  const {api}=setup();
  const earlier=row(id(1),'2026-10-29T09:00:00Z');
- const old=row(id(2),'2026-10-29T09:50:00Z',{body:'deleted on server'});
- const changed=row(id(3),'2026-10-29T09:51:00Z',{body:'edited'});
+ const deleted=row(id(2),'2026-10-29T09:50:00Z',{body:'deleted on server'});
+ const changed=row(id(3),'2026-10-29T09:51:00Z',{body:'old version'});
  const current=row(id(4),'2026-10-29T09:52:00Z');
- const merged=api.preserveOlderGroupMessages([earlier,old,changed], [row(id(3),changed.created_at,{body:'new edit'}),current]);
- assert.deepEqual(Array.from(merged,x=>x.id),[id(1),id(2),id(3),id(4)]);
- assert.equal(merged[2].body,'new edit');
+ const latest=[row(id(3),changed.created_at,{body:'new edit'}),current];
+ const merged=api.preserveOlderGroupMessages([earlier,deleted,changed],latest);
+ assert.deepEqual(Array.from(merged,x=>x.id),[id(3),id(4)]);
+ assert.equal(merged[0].body,'new edit');
  assert.deepEqual(Array.from(api.preserveOlderGroupMessages([earlier],[])),[]);
+});
+
+test('a full 150-message newest page retains paged history but not stale rows inside its window',()=>{
+ const {api}=setup();
+ const earlier=row(id(1),'2026-10-29T09:00:00Z');
+ const latest=Array.from({length:api.GROUP_RECENT_PAGE_SIZE},(_,i)=>
+  row(id(10+i),'2026-10-29T10:'+String(Math.floor(i/60)).padStart(2,'0')
+   +':'+String(i%60).padStart(2,'0')+'Z'));
+ const edited=row(id(11),latest[1].created_at,{body:'stale edit'});
+ const deleted=row(id(999),'2026-10-29T10:00:30Z',{body:'deleted on server'});
+ const merged=api.preserveOlderGroupMessages([earlier,edited,deleted],latest);
+ assert.equal(merged.length,api.GROUP_RECENT_PAGE_SIZE+1);
+ assert.equal(merged[0].id,earlier.id);
+ assert.equal(merged.some(x=>x.id===deleted.id),false);
+ assert.equal(merged.find(x=>x.id===edited.id).body,'test');
+});
+
+test('an underfull 149-message page is authoritative even after previous pagination',()=>{
+ const {api}=setup();
+ const earlier=row(id(1),'2026-10-29T09:00:00Z');
+ const latest=Array.from({length:api.GROUP_RECENT_PAGE_SIZE-1},(_,i)=>
+  row(id(10+i),'2026-10-29T10:'+String(Math.floor(i/60)).padStart(2,'0')
+   +':'+String(i%60).padStart(2,'0')+'Z'));
+ const merged=api.preserveOlderGroupMessages([earlier,...latest],latest);
+ assert.equal(merged.length,149);
+ assert.equal(merged.some(x=>x.id===earlier.id),false);
 });
 
 test('group pagination UI restores the history scroll anchor and avoids account crossover',()=>{

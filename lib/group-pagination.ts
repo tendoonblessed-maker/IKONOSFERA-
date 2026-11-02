@@ -5,6 +5,8 @@ const anonKey=process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY||'';
 const UUID=/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
 const TIMESTAMP=/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?(?:Z|[+-]\d{2}:\d{2})$/;
 export const GROUP_OLDER_PAGE_SIZE=70;
+/** Must match the limit=150 newest-page query in groupMessages(). */
+export const GROUP_RECENT_PAGE_SIZE=150;
 export const GROUP_HISTORY_MAX_LOADED=1500;
 
 function subMillisecondFraction(timestamp:string):number{
@@ -52,11 +54,13 @@ export async function fetchOlderGroupMessages(
  return {messages:page,hasMore:rows.length>GROUP_OLDER_PAGE_SIZE};
 }
 /** Server's newest window wins on edits/deletions; retain separately loaded
- * older pages. Never resurrect rows from the server's newest window. */
+ * older pages ONLY when the newest page is full. An underfull page is the
+ * entire server-visible history, so keeping older local rows would resurrect
+ * messages deleted on the server (or no longer visible under RLS). */
 export function preserveOlderGroupMessages(
  previous:GroupMessage[],latest:GroupMessage[]
 ):GroupMessage[]{
- if(latest.length===0)return [];
+ if(latest.length<GROUP_RECENT_PAGE_SIZE)return latest;
  const boundary=latest[0];
  const rows=new Map<string,GroupMessage>();
  for(const message of previous){
