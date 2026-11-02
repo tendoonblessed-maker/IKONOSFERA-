@@ -1,5 +1,6 @@
 'use client';
-import { useCallback, useEffect, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
+import {createChannelCommentsGate} from "@/lib/channel-comments-gate";
 import { listProfiles, type Profile } from "@/lib/supabase-rest";
 import StatusEmoji from "@/components/StatusEmoji";
 import {
@@ -35,6 +36,7 @@ export default function ChannelsPanel({token,userId,channel,onBack,onShowProfile
  const [comments,setComments]=useState<PostComment[]>([]);
  const [authors,setAuthors]=useState<Record<string,Profile>>({});
  const [commentDraft,setCommentDraft]=useState("");
+ const commentsGateRef=useRef(createChannelCommentsGate());
  const [editingPostId,setEditingPostId]=useState<string|null>(null);
  const [editingCommentId,setEditingCommentId]=useState<string|null>(null);
  const [editingBody,setEditingBody]=useState("");
@@ -94,16 +96,37 @@ export default function ChannelsPanel({token,userId,channel,onBack,onShowProfile
    setReactions(await listPostReactions(token,posts.map(p=>p.id)));setReactionPicker(null);
   }catch(e){setError(readable(e));}finally{setBusy(false);}
  }
- useEffect(()=>{void reload().catch(e=>setError(readable(e)));setOpenComments(null);setComments([]);setBody("");setFile(null);},[reload]);
+ useEffect(()=>{
+  // Switching channels/accounts invalidates pending comment requests.
+  commentsGateRef.current.cancel();
+  void reload().catch(e=>setError(readable(e)));
+  setOpenComments(null);setComments([]);setAuthors({});setCommentDraft("");
+  setBody("");setFile(null);
+  return()=>commentsGateRef.current.cancel();
+ },[reload]);
  async function showComments(postId:string){
-  if(openComments===postId){setOpenComments(null);return;}
+  const gate=commentsGateRef.current;
+  // A second tap closes even if the first request is still loading.
+  if(openComments===postId||gate.isLoading(postId)){
+   gate.cancel();
+   setOpenComments(null);setComments([]);setAuthors({});
+   return;
+  }
+  const requestId=gate.begin(postId);
+  setOpenComments(null);setComments([]);setAuthors({});setCommentDraft("");
   setError("");
   try{
-   const list=await listPostComments(token,postId);setComments(list);setOpenComments(postId);
+   const list=await listPostComments(token,postId);
+   if(!gate.isCurrent(requestId))return;
+   setComments(list);setOpenComments(postId);
    const ids=Array.from(new Set(list.map(c=>c.author_id)));
+   if(!ids.length)return;
    const people=await listProfiles(token,ids);
+   if(!gate.isCurrent(requestId))return;
    setAuthors(Object.fromEntries(people.map(p=>[p.id,p])));
-  }catch(e){setError(readable(e));}
+  }catch(e){
+   if(gate.isCurrent(requestId))setError(readable(e));
+  }finally{gate.finish(requestId);}
  }
  async function post(e:FormEvent){
   e.preventDefault();if(!mine||busy||(!body.trim()&&!file))return;
