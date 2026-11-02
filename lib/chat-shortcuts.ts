@@ -8,6 +8,11 @@ type FindKey={
   altKey:boolean;
   shiftKey:boolean;
 };
+/** Ignore Escape used to finish IME composition (including Safari keyCode 229). */
+export function shouldCloseSearchOnEscape(event:Pick<KeyboardEvent,'key'|'isComposing'|'keyCode'>):boolean{
+  return event.key==='Escape'&&!event.isComposing&&event.keyCode!==229;
+}
+
 export function shouldOpenDirectChatSearch(event:FindKey,directChatVisible:boolean):boolean{
   return directChatVisible
     && (event.ctrlKey||event.metaKey)
