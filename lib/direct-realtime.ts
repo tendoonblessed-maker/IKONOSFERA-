@@ -36,6 +36,10 @@ export function subscribeDirectChatChanges(
   channel
    .on('postgres_changes',{...scope,event:'INSERT'},changed)
    .on('postgres_changes',{...scope,event:'UPDATE'},changed)
+   // A deletion should also wake the authoritative HTTP read when delivered.
+   // Realtime DELETE visibility depends on publication and replica settings;
+   // the existing six-second polling fallback still covers missed events.
+   .on('postgres_changes',{...scope,event:'DELETE'},changed)
    .subscribe(status=>{
     if(status==='SUBSCRIBED')changed(); // close join/read race and resubscribe gaps
    });
