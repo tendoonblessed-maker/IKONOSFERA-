@@ -14,6 +14,8 @@ test('private Realtime attaches only to the selected chat and existing JWT',()=>
  assert.match(helper,/schema:'public' as const,table:'messages'/);
  assert.match(helper,/event:'INSERT'/);
  assert.match(helper,/event:'UPDATE'/);
+ assert.match(helper,/event:'DELETE'/);
+ assert.match(helper,/\.on\('postgres_changes',\{\.\.\.scope,event:'DELETE'\},changed\)/);
  assert.doesNotMatch(helper,/process\.env\.(?:SUPABASE_SERVICE_ROLE_KEY|SUPABASE_SECRET_KEY)|client\.from\('messages'\)/i);
  assert.match(shell,/subscribeDirectChatChanges\(token,chatId,onRealtimeChange\)/);
  assert.match(shell,/\},\[selected,session\?\.access_token,userId,chatReloadNonce\]\)/);
@@ -40,6 +42,8 @@ test('Realtime wakes server-authoritative read, preserves offline fallback and c
  assert.match(section,/window\.addEventListener\('online',onConnected\)/);
  assert.match(section,/document\.addEventListener\('visibilitychange',onVisible\)/);
  assert.match(helper,/status==='SUBSCRIBED'\)changed\(\)/);
+ assert.match(helper,/event:'DELETE'/);
+ assert.match(section,/window\.setInterval\(\(\)=>void sync\(\),6000\)/);
  assert.doesNotMatch(helper,/setChatMessages|JSON\.parse\(payload/);
 });
 
