@@ -6,7 +6,7 @@ export const CONFIRMED_GROUP_MESSAGE_GRACE_MS=60_000;
 function compareConfirmedGroupMessages(a:GroupMessage,b:GroupMessage):number{
  const millis=Date.parse(a.created_at)-Date.parse(b.created_at);
  if(millis!==0)return millis;
- const fraction=(value:string)=>Number((/\\.(\\d{1,6})/.exec(value)?.[1]??'').padEnd(6,'0'));
+ const fraction=(value:string)=>Number((/\.(\d{1,6})/.exec(value)?.[1]??'').padEnd(6,'0'));
  return fraction(a.created_at)-fraction(b.created_at)||a.id.localeCompare(b.id);
 }
 export type ConfirmedGroupMessage={message:GroupMessage;expiresAt:number};
