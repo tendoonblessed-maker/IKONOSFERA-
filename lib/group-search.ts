@@ -1,5 +1,6 @@
 import {apiUrl} from './supabase-rest';
 import type {GroupMessage} from './groups';
+import {compareGroupMessages} from './group-pagination';
 
 const anonKey=process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY??'';
 const UUID=/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
@@ -84,6 +85,6 @@ export async function getGroupMessageContext(
  for(const message of [...before,...after,target]){
   if(message.group_id===groupId)map.set(message.id,message);
  }
- return Array.from(map.values()).sort((a,b)=>
-  Date.parse(a.created_at)-Date.parse(b.created_at)||a.id.localeCompare(b.id));
+ // Preserve PostgreSQL microseconds: Date.parse truncates to milliseconds.
+ return Array.from(map.values()).sort(compareGroupMessages);
 }
