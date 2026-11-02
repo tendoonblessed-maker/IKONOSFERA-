@@ -19,7 +19,7 @@ export function inboxRowLabel(name:string,unread:number,selectionMode=false,sele
  */
 export type DirectInboxPreview={
  last_body:string|null;
- last_media_type:'image'|'video'|'audio'|'file'|null;
+ last_media_type:string|null;
  last_created_at:string|null;
 };
 const MEDIA_LABELS={
@@ -32,7 +32,9 @@ export function directInboxPreviewText(preview:DirectInboxPreview|null,unavailab
  if(!preview)return unavailable?'Не удалось обновить сообщения':'Начало переписки';
  const body=preview.last_body?.trim()??'';
  if(body==='Сообщение удалено')return body;
- const media=preview.last_media_type?MEDIA_LABELS[preview.last_media_type]:null;
+ const kind=preview.last_media_type;
+ const media=kind&&Object.prototype.hasOwnProperty.call(MEDIA_LABELS,kind)
+  ?MEDIA_LABELS[kind as keyof typeof MEDIA_LABELS]:null;
  if(media)return media.icon+' '+media.label+(body&&body!==media.label?': '+body:'');
  if(body)return body;
  if(unavailable)return 'Не удалось обновить сообщения';
