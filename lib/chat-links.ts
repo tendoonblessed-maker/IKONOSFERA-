@@ -9,6 +9,10 @@ const TRAILING_PUNCTUATION=/[.,!?;:…。，！？；：»”’›]$/u;
 // Invisible and bidirectional formatting controls can disguise a link's visible destination.
 // Leave those candidates as literal chat text instead of making them clickable.
 const UNSAFE_LINK_FORMATTING=/[\u00ad\u061c\u200b-\u200f\u202a-\u202e\u2060\u2066-\u2069\ufeff]/u;
+// WHATWG URL normalizes raw backslashes into path separators and silently
+// percent-encodes invisible C0/DEL controls. Never make those ambiguous
+// strings clickable; percent-encoded characters remain supported.
+const UNSAFE_LINK_SYNTAX=/[\\\u0000-\u001f\u007f]/u;
 const MAX_URL_LENGTH=2048;
 const MAX_LINKS=40;
 
@@ -36,7 +40,7 @@ function splitEnding(candidate:string):{url:string;ending:string}{
 }
 
 function externalHref(candidate:string):string|null{
- if(candidate.length>MAX_URL_LENGTH||UNSAFE_LINK_FORMATTING.test(candidate))return null;
+ if(candidate.length>MAX_URL_LENGTH||UNSAFE_LINK_FORMATTING.test(candidate)||UNSAFE_LINK_SYNTAX.test(candidate))return null;
  const prefixed=/^www\./i.test(candidate)?'https://'+candidate:candidate;
  try{
   const parsed=new URL(prefixed);
