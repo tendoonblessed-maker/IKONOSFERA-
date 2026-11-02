@@ -52,6 +52,7 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
  const followNewestRef=useRef(true);
  const browsingOlderRef=useRef(false);
  const searchRequestRef=useRef(0);
+ const searchTriggerRef=useRef<HTMLButtonElement|null>(null);
  const searchJumpRequestRef=useRef(0);
  const lastReadRef=useRef<string|null>(null);
  const latestGroupMessageRef=useRef<string|null>(null);
@@ -213,8 +214,10 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
   },searchPage===0?320:0);
   return()=>{cancelled=true;searchRequestRef.current++;window.clearTimeout(timeout);};
  },[searchOpen,searchQuery,searchPage,searchRetry,group.id,userId,token]);
- function closeSearch(){searchRequestRef.current++;setSearchOpen(false);setSearchQuery('');
+ function closeSearch(restoreFocus=false){searchRequestRef.current++;setSearchOpen(false);setSearchQuery('');
   setSearchResults([]);setSearchPage(0);setSearchError('');setSearchHasMore(false);
+  // Navigating to a search result should not move focus back to the search button.
+  if(restoreFocus)searchTriggerRef.current?.focus({preventScroll:true});
  }
  function changeSearch(query:string){setSearchQuery(query);setSearchPage(0);setSearchRetry(0);
   setSearchResults([]);setSearchError('');setSearchHasMore(false);
@@ -413,15 +416,15 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
  return <section className="group-view">
  <header className="conversation-header"><button type="button" className="back-button" onClick={onBack} aria-label="Назад">‹</button>
  <button type="button" className="conversation-heading group-member-trigger" onClick={()=>setMembersOpen(true)} aria-label="Показать участников группы"><strong>{group.title}</strong><small>{members.length} участников · нажми, чтобы посмотреть</small></button>
- <button type="button" className="ik-group-search-trigger" aria-label="Поиск сообщений в группе"
-  aria-expanded={searchOpen} onClick={()=>searchOpen?closeSearch():setSearchOpen(true)}>
+ <button ref={searchTriggerRef} type="button" className="ik-group-search-trigger" aria-label="Поиск сообщений в группе"
+  aria-expanded={searchOpen} onClick={()=>searchOpen?closeSearch(true):setSearchOpen(true)}>
   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
    <circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 5 5"/>
   </svg>
  </button>
  </header>
  {searchOpen&&<GroupSearchPanel query={searchQuery} onQueryChange={changeSearch}
-  onClose={closeSearch} results={searchResults} loading={searchLoading}
+  onClose={()=>closeSearch(true)} results={searchResults} loading={searchLoading}
   error={searchError} hasMore={searchHasMore} locatingId={searchLocating}
   ownerId={userId} names={names}
   onMore={()=>{

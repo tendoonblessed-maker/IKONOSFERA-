@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
 import {readFileSync} from 'node:fs';
-import {shouldOpenDirectChatSearch} from '../lib/chat-shortcuts.ts';
+import {shouldOpenDirectChatSearch,shouldCloseSearchOnEscape} from '../lib/chat-shortcuts.ts';
 
 const key=(overrides={})=>({
   key:'f',ctrlKey:true,metaKey:false,altKey:false,shiftKey:false,...overrides
@@ -20,6 +20,26 @@ test('native browser shortcuts and modified keys stay available',()=>{
   assert.equal(shouldOpenDirectChatSearch(key({altKey:true}),true),false);
   assert.equal(shouldOpenDirectChatSearch(key({shiftKey:true}),true),false);
   assert.equal(shouldOpenDirectChatSearch(key({key:'k'}),true),false);
+});
+
+test('group search Escape closes only outside IME composition',()=>{
+  const keyEvent=(overrides={})=>({key:'Escape',isComposing:false,keyCode:27,...overrides});
+  assert.equal(shouldCloseSearchOnEscape(keyEvent()),true);
+  assert.equal(shouldCloseSearchOnEscape(keyEvent({isComposing:true})),false);
+  assert.equal(shouldCloseSearchOnEscape(keyEvent({keyCode:229})),false);
+  assert.equal(shouldCloseSearchOnEscape(keyEvent({key:'Enter'})),false);
+  assert.equal(shouldCloseSearchOnEscape(keyEvent({key:'Tab'})),false);
+});
+
+test('group search closes from keyboard and restores focus only on explicit close',()=>{
+  const panel=source('components/GroupSearchPanel.tsx');
+  const group=source('components/GroupPanel.tsx');
+  assert.match(panel,/shouldCloseSearchOnEscape\(event\.nativeEvent\)/);
+  assert.match(panel,/event\.preventDefault\(\);event\.stopPropagation\(\);onClose\(\)/);
+  assert.match(group,/ref=\{searchTriggerRef\}/);
+  assert.match(group,/onClose=\{\(\)=>closeSearch\(true\)\}/);
+  assert.match(group,/if\(restoreFocus\)searchTriggerRef\.current\?\.focus\(\{preventScroll:true\}\)/);
+  assert.match(group,/setPendingSearchJump\(message\.id\);\s*closeSearch\(\);/);
 });
 
 test('private chat header exposes an accessible search action with active state',()=>{
