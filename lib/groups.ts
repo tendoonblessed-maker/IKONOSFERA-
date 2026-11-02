@@ -12,13 +12,18 @@ async function request<T>(
 }
 export async function createGroup(token:string,title:string,ids:string[]){return request<string>(token,'/rest/v1/rpc/create_group_chat','POST',{p_title:title,p_members:ids});}
 export async function listGroups(token:string){return request<Group[]>(token,'/rest/v1/group_chats?select=*&order=created_at.desc&limit=100');}
-export async function groupMembers(token:string,id:string){return request<{group_id:string;user_id:string}[]>(token,'/rest/v1/group_members?select=group_id,user_id&group_id=eq.'+encodeURIComponent(id));}
+export async function groupMembers(token:string,id:string){assertGroupId(id);return request<{group_id:string;user_id:string}[]>(token,'/rest/v1/group_members?select=group_id,user_id&group_id=eq.'+encodeURIComponent(id));}
 export async function groupMessages(token:string,id:string){
+ assertGroupId(id);
  // Fetch the newest page, then display it chronologically.
  const latest=await request<GroupMessage[]>(token,'/rest/v1/group_messages?select=*&group_id=eq.'+encodeURIComponent(id)+'&order=created_at.desc,id.desc&limit=150');
  return latest.reverse();
 }
 const UUID=/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
+/** Reject corrupted group identifiers before PostgREST UUID filters or RPCs. */
+function assertGroupId(id:string):void{
+ if(!UUID.test(id))throw Error('Некорректный идентификатор группы.');
+}
 function assertGroupMessage(row:GroupMessage|undefined,groupId:string,userId:string,body:string,messageId:string):GroupMessage{
  if(!row||row.id!==messageId||row.group_id!==groupId||row.sender_id!==userId||row.body!==body)
   throw Error('Не удалось подтвердить отправку именно этого сообщения.');
@@ -70,5 +75,6 @@ export async function listGroupOverviews(token:string):Promise<GroupOverview[]>{
  return request<GroupOverview[]>(token,'/rest/v1/rpc/list_group_overviews','POST',{});
 }
 export async function markGroupRead(token:string,id:string):Promise<void>{
+ assertGroupId(id);
  await request(token,'/rest/v1/rpc/mark_group_read','POST',{p_group_id:id});
 }
