@@ -80,6 +80,27 @@ test('invisible formatting and bidi controls never create deceptive clickable UR
  }
 });
 
+test('raw backslashes and invisible ASCII controls cannot silently rewrite clickable URLs',()=>{
+ for(const text of [
+  'https://trusted.example\\@evil.example/path',
+  'www.trusted.example\\admin',
+  'https://trusted.example/\u0000hidden',
+  'https://trusted.example/\u001fhidden',
+  'https://trusted.example/\u007fhidden'
+ ]){
+  assert.equal(links(text).length,0,'ambiguous URL must not be clickable');
+  assert.equal(reconstructed(text),text,'preserve original message characters');
+ }
+});
+
+test('ambiguous URLs do not block nearby valid links or encoded path characters',()=>{
+ const input='https://trusted.example\\@evil.example и https://trusted.example/ok';
+ assert.deepEqual(links(input),[{text:'https://trusted.example/ok',href:'https://trusted.example/ok'}]);
+ assert.equal(reconstructed(input),input);
+ const encoded='https://trusted.example/path%5Cname';
+ assert.deepEqual(links(encoded),[{text:encoded,href:encoded}]);
+});
+
 test('normal Unicode chat links remain clickable',()=>{
  const text='https://example.com/привет';
  assert.deepEqual(links(text),[{text,href:'https://example.com/%D0%BF%D1%80%D0%B8%D0%B2%D0%B5%D1%82'}]);
