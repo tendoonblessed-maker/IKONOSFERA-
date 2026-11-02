@@ -2,7 +2,7 @@
 const UUID=/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
 
 export function assertValidUserId(id:string):void{
- if(!UUID.test(id))throw Error('Некорректный идентификатор пользователя.');
+ if(id.length!==36||!UUID.test(id))throw Error('Некорректный идентификатор пользователя.');
 }
 
 /** PostgreSQL UUIDs are case-insensitive; self-actions must be too. */

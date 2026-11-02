@@ -7,7 +7,7 @@ const A='aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa';
 const B='bbbbbbbb-2222-4222-8222-bbbbbbbbbbbb';
 
 test('contact actions reject invalid owner and target IDs before making a request',()=>{
- for(const invalid of ['','not-a-uuid','a'.repeat(36),'12345678-1234-1234-1234-1234567890zz',' '+A,A+'%2C']) {
+ for(const invalid of ['','not-a-uuid','a'.repeat(36),'12345678-1234-1234-1234-1234567890zz',' '+A,A+'%2C',A+'\n',A+'\u2028']) {
   assert.throws(()=>assertValidUserId(invalid),/Некорректный идентификатор/);
   assert.throws(()=>assertDifferentUser(A,invalid,'contact'),/Некорректный идентификатор/);
   assert.throws(()=>assertDifferentUser(invalid,B,'block'),/Некорректный идентификатор/);
