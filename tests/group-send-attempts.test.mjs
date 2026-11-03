@@ -151,3 +151,22 @@ test('corrupted persisted data does not override a valid live send attempt',()=>
  assert.equal(readGroupSendAttempt(OWNER,GROUP)?.id,attempt.id);
  clearAllGroupSendAttempts(OWNER);
 });
+
+test('acknowledged group send cannot reappear when sessionStorage deletion fails',()=>{
+ clearAllGroupSendAttempts(OWNER);
+ const k='ikonosfera-group-send-v1:'+OWNER+':'+GROUP;
+ const sent=getOrCreateGroupSendAttempt(OWNER,GROUP,'Повторяемый текст');
+ const originalRemoveItem=storage.removeItem;
+ try{
+  storage.removeItem=()=>{throw Error('Storage removal denied');};
+  clearGroupSendAttempt(OWNER,GROUP,sent.id);
+  assert.equal(JSON.parse(memory.get(k)).id,sent.id,'old persisted ID remains');
+  assert.equal(readGroupSendAttempt(OWNER,GROUP),null,'acknowledged send must stay cleared');
+  const later=getOrCreateGroupSendAttempt(OWNER,GROUP,'Повторяемый текст');
+  assert.notEqual(later.id,sent.id,'a deliberate later send needs a new UUID');
+  assert.equal(readGroupSendAttempt(OWNER,GROUP)?.id,later.id);
+ }finally{
+  storage.removeItem=originalRemoveItem;
+  clearAllGroupSendAttempts(OWNER);
+ }
+});
