@@ -35,6 +35,9 @@ export function reconcileRecentChannelUpdates(
    if(!edit||!edit.channel||!validSettings(edit.channel)||id!==edit.channel.id||!Number.isFinite(edit.expiresAt)||edit.expiresAt<=now||edit.expiresAt>now+CHANNEL_UPDATE_GRACE_MS)pending.delete(id);
  }
  return remote.map(channel=>{
+   // A malformed list entry must not crash rendering or receive cached edits.
+   // Preserve the response unchanged and let the caller handle invalid data.
+   if(!channel||typeof channel.id!=='string'||!channel.id.trim())return channel;
    const edit=pending.get(channel.id);
    if(!edit)return channel;
    // Never overlay a pending edit when the server's ownership identity is

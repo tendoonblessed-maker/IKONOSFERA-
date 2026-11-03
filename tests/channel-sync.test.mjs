@@ -225,3 +225,14 @@ test('malformed server ownership never receives a cached channel edit',()=>{
   assert.equal(pending.size,0,'discard pending edit rather than replaying it');
  }
 });
+
+
+test('malformed server channel entries do not crash reconciliation or receive cached edits',()=>{
+ const valid=channel({title:'Server title'});
+ const pending=new Map([[valid.id,{channel:channel({title:'Confirmed edit'}),expiresAt:2000}]]);
+ const malformed=[null,undefined,{}, {id:null}, {id:42}, {id:'  '}];
+ const result=reconcileRecentChannelUpdates([...malformed,valid],pending,1000);
+ for(let i=0;i<malformed.length;i++)assert.equal(result[i],malformed[i],'preserve malformed response entry without mutation');
+ assert.equal(result.at(-1).title,'Confirmed edit','valid entries still reconcile');
+ assert.equal(pending.size,1);
+});
