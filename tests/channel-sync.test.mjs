@@ -157,3 +157,14 @@ test('invalid reconciliation clock cannot keep optimistic channel edits alive',(
   assert.equal(pending.size,0,'clear pending edits when expiration cannot be evaluated');
  }
 });
+
+
+test('malformed pending records cannot crash channel list reconciliation',()=>{
+ const remote=channel({title:'Authoritative title'});
+ for(const malformed of [null,undefined,{expiresAt:2000},{channel:null,expiresAt:2000}]){
+  const pending=new Map([[remote.id,malformed]]);
+  const result=reconcileRecentChannelUpdates([remote],pending,1000);
+  assert.equal(result[0],remote,'server channel remains visible');
+  assert.equal(pending.size,0,'discard malformed cache entry');
+ }
+});
