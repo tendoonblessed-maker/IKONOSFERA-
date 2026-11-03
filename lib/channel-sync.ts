@@ -3,7 +3,12 @@ import type {Channel} from './social';
 export type RecentChannelUpdate={channel:Channel;expiresAt:number};
 export const CHANNEL_UPDATE_GRACE_MS=120_000;
 
-function validSettings(c:Channel):boolean{ return typeof c.id==='string'&&c.id.trim().length>0&&typeof c.owner_id==='string'&&c.owner_id.trim().length>0&&typeof c.title==='string'&&typeof c.slug==='string'&&typeof c.description==='string'&&typeof c.discussion_enabled==='boolean'&&(c.avatar_path==null||typeof c.avatar_path==='string'); }
+// Channel identities are UUIDs. A merely non-empty identifier can still be
+// malformed and must never be used to project cached settings onto a row.
+const CHANNEL_UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+function validIdentity(id:unknown):id is string{return typeof id==='string'&&CHANNEL_UUID.test(id);}
+
+function validSettings(c:Channel):boolean{ return validIdentity(c.id)&&validIdentity(c.owner_id)&&typeof c.title==='string'&&typeof c.slug==='string'&&typeof c.description==='string'&&typeof c.discussion_enabled==='boolean'&&(c.avatar_path==null||typeof c.avatar_path==='string'); }
 
 function matchesServer(record:Channel,expected:Channel):boolean{
  return record.avatar_path===expected.avatar_path
@@ -34,7 +39,7 @@ export function reconcileRecentChannelUpdates(
  // Duplicate server identities are ambiguous: never project a cached edit onto either entry.
  const counts=new Map<string,number>();
  for(const channel of remote){
-   if(channel&&typeof channel.id==='string'&&channel.id.trim())counts.set(channel.id,(counts.get(channel.id)||0)+1);
+   if(channel&&validIdentity(channel.id))counts.set(channel.id,(counts.get(channel.id)||0)+1);
  }
  for(const [id,count] of counts){if(count>1)pending.delete(id);}
  for(const [id,edit] of pending){
@@ -43,7 +48,7 @@ export function reconcileRecentChannelUpdates(
  return remote.map(channel=>{
    // A malformed list entry must not crash rendering or receive cached edits.
    // Preserve the response unchanged and let the caller handle invalid data.
-   if(!channel||typeof channel.id!=='string'||!channel.id.trim())return channel;
+   if(!channel||!validIdentity(channel.id))return channel;
    // A corrupt server settings record must not be disguised by cached edits.
    // Keep it unchanged for the caller's validation and drop the local override.
    if(!validSettings(channel)){
