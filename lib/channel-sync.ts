@@ -32,7 +32,7 @@ export function reconcileRecentChannelUpdates(
    return remote;
  }
  for(const [id,edit] of pending){
-   if(!edit||!edit.channel||!validSettings(edit.channel)||id!==edit.channel.id||!Number.isFinite(edit.expiresAt)||edit.expiresAt<=now)pending.delete(id);
+   if(!edit||!edit.channel||!validSettings(edit.channel)||id!==edit.channel.id||!Number.isFinite(edit.expiresAt)||edit.expiresAt<=now||edit.expiresAt>now+CHANNEL_UPDATE_GRACE_MS)pending.delete(id);
  }
  return remote.map(channel=>{
    const edit=pending.get(channel.id);

@@ -201,3 +201,15 @@ test('whitespace-only channel or owner identities cannot override server setting
   assert.equal(pending.size,0,'discard whitespace-only identities');
  }
 });
+
+
+test('unreasonably distant pending expiration cannot pin obsolete settings',()=>{
+ const now=1000;
+ const remote=channel({title:'Server title'});
+ const pending=new Map([[remote.id,{channel:channel({title:'Stale title'}),expiresAt:now+CHANNEL_UPDATE_GRACE_MS+1}]]);
+ const [result]=reconcileRecentChannelUpdates([remote],pending,now);
+ assert.equal(result,remote,'prefer server data over an implausibly long-lived override');
+ assert.equal(pending.size,0,'discard future-dated pending edit');
+ const legitimate=new Map([[remote.id,{channel:channel({title:'Confirmed title'}),expiresAt:now+CHANNEL_UPDATE_GRACE_MS}]]);
+ assert.equal(reconcileRecentChannelUpdates([remote],legitimate,now)[0].title,'Confirmed title','normal grace window still works');
+});
