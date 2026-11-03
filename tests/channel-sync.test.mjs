@@ -64,3 +64,34 @@ test('unrelated user channels are not synthesized into an unrelated server list'
  const pending=new Map([[old.id,{channel:channel({avatar_path:'new.jpg'}),expiresAt:now+1000}]]);
  assert.deepEqual(reconcileRecentChannelUpdates([],pending,now+2),[]);
 });
+
+
+test('pending channel settings preserve newer server-owned metadata',()=>{
+ const now=1000;
+ const old=channel();
+ const edited=channel({title:'Новое название',avatar_path:'new-user/avatar.jpg'});
+ const pending=new Map([[old.id,{channel:edited,expiresAt:now+1000}]]);
+ // The server list is newer for metadata, but older for the edited settings.
+ const remote=channel({
+  owner_id:'44444444-4444-4444-8444-444444444444',
+  created_at:'2026-11-03T00:00:00Z'
+ });
+ const [result]=reconcileRecentChannelUpdates([remote],pending,now+10);
+ assert.equal(result.id,remote.id);
+ assert.equal(result.owner_id,remote.owner_id);
+ assert.equal(result.created_at,remote.created_at);
+ assert.equal(result.title,edited.title);
+ assert.equal(result.avatar_path,edited.avatar_path);
+ assert.equal(pending.size,1,'wait for confirmation of editable settings');
+ assert.equal(remote.title,old.title,'do not mutate the server response');
+});
+
+test('a matching server snapshot releases pending settings without replacing its metadata',()=>{
+ const now=1000;
+ const edited=channel({title:'Новое название'});
+ const remote={...edited,created_at:'2026-11-03T00:00:00Z'};
+ const pending=new Map([[edited.id,{channel:edited,expiresAt:now+1000}]]);
+ const result=reconcileRecentChannelUpdates([remote],pending,now+10);
+ assert.equal(result[0],remote);
+ assert.equal(pending.size,0);
+});
