@@ -64,3 +64,211 @@ test('unrelated user channels are not synthesized into an unrelated server list'
  const pending=new Map([[old.id,{channel:channel({avatar_path:'new.jpg'}),expiresAt:now+1000}]]);
  assert.deepEqual(reconcileRecentChannelUpdates([],pending,now+2),[]);
 });
+
+
+test('pending channel settings preserve newer server-owned metadata',()=>{
+ const now=1000;
+ const old=channel();
+ const edited=channel({title:'Новое название',avatar_path:'new-user/avatar.jpg'});
+ const pending=new Map([[old.id,{channel:edited,expiresAt:now+1000}]]);
+ // The server list is newer for metadata, but older for the edited settings.
+ const remote=channel({
+  created_at:'2026-11-03T00:00:00Z'
+ });
+ const [result]=reconcileRecentChannelUpdates([remote],pending,now+10);
+ assert.equal(result.id,remote.id);
+ assert.equal(result.owner_id,remote.owner_id);
+ assert.equal(result.created_at,remote.created_at);
+ assert.equal(result.title,edited.title);
+ assert.equal(result.avatar_path,edited.avatar_path);
+ assert.equal(pending.size,1,'wait for confirmation of editable settings');
+ assert.equal(remote.title,old.title,'do not mutate the server response');
+});
+
+test('a matching server snapshot releases pending settings without replacing its metadata',()=>{
+ const now=1000;
+ const edited=channel({title:'Новое название'});
+ const remote={...edited,created_at:'2026-11-03T00:00:00Z'};
+ const pending=new Map([[edited.id,{channel:edited,expiresAt:now+1000}]]);
+ const result=reconcileRecentChannelUpdates([remote],pending,now+10);
+ assert.equal(result[0],remote);
+ assert.equal(pending.size,0);
+});
+
+
+test('ownership change discards old owner pending edits instead of leaking them to a new owner',()=>{
+ const now=1000;
+ const old=channel();
+ const pending=new Map([[old.id,{channel:channel({title:'Old owner pending edit',avatar_path:'old-owner/private.jpg'}),expiresAt:now+1000}]]);
+ const transferred=channel({owner_id:'44444444-4444-4444-8444-444444444444',title:'New owner title',avatar_path:'new-owner/avatar.jpg'});
+ const result=reconcileRecentChannelUpdates([transferred],pending,now+10);
+ assert.equal(result[0],transferred,'new owner server snapshot is authoritative');
+ assert.equal(result[0].avatar_path,'new-owner/avatar.jpg');
+ assert.equal(pending.size,0,'do not replay old edits on future refreshes');
+});
+
+
+test('mismatched pending channel identity cannot overwrite another channel',()=>{
+ const now=1000;
+ const remote=channel({title:'Authoritative channel',avatar_path:'right/avatar.jpg'});
+ const foreign=channel({id:'55555555-5555-4555-8555-555555555555',title:'Other channel',avatar_path:'wrong/avatar.jpg'});
+ const pending=new Map([[remote.id,{channel:foreign,expiresAt:now+1000}]]);
+ const [result]=reconcileRecentChannelUpdates([remote],pending,now+10);
+ assert.equal(result,remote,'preserve the authoritative channel record');
+ assert.equal(result.avatar_path,'right/avatar.jpg');
+ assert.equal(pending.size,0,'discard the invalid pending entry');
+});
+
+
+test('invalid pending expiration cannot pin stale channel settings indefinitely',()=>{
+ const now=1000;
+ const remote=channel({title:'Server title',avatar_path:'server/avatar.jpg'});
+ for(const expiresAt of [Number.NaN,Number.POSITIVE_INFINITY,Number.NEGATIVE_INFINITY]){
+  const pending=new Map([[remote.id,{channel:channel({title:'Stale title',avatar_path:'stale/avatar.jpg'}),expiresAt}]]);
+  const [result]=reconcileRecentChannelUpdates([remote],pending,now);
+  assert.equal(result,remote,'invalid expiration must not override the server');
+  assert.equal(pending.size,0,'invalid pending entry must be discarded');
+ }
+});
+
+
+test('miskeyed pending updates are purged even when their channel is absent from the list',()=>{
+ const now=1000;
+ const remote=channel();
+ const foreign=channel({id:'55555555-5555-4555-8555-555555555555',title:'Foreign edit'});
+ const valid=channel({title:'Confirmed title'});
+ const pending=new Map([
+  ['33333333-3333-4333-8333-333333333333',{channel:foreign,expiresAt:now+1000}],
+  [remote.id,{channel:valid,expiresAt:now+1000}]
+ ]);
+ const [result]=reconcileRecentChannelUpdates([remote],pending,now+10);
+ assert.equal(result.title,'Confirmed title','valid pending updates still apply');
+ assert.equal(pending.size,1,'remove an invalid record even without a matching remote channel');
+ assert.equal(pending.has(remote.id),true);
+});
+
+
+test('invalid reconciliation clock cannot keep optimistic channel edits alive',()=>{
+ const remote=channel({title:'Authoritative title'});
+ for(const now of [Number.NaN,Number.POSITIVE_INFINITY,Number.NEGATIVE_INFINITY]){
+  const pending=new Map([[remote.id,{channel:channel({title:'Stale optimistic title'}),expiresAt:5000}]]);
+  const result=reconcileRecentChannelUpdates([remote],pending,now);
+  assert.equal(result[0],remote,'invalid clock must yield to server data');
+  assert.equal(pending.size,0,'clear pending edits when expiration cannot be evaluated');
+ }
+});
+
+
+test('malformed pending records cannot crash channel list reconciliation',()=>{
+ const remote=channel({title:'Authoritative title'});
+ for(const malformed of [null,undefined,{expiresAt:2000},{channel:null,expiresAt:2000}]){
+  const pending=new Map([[remote.id,malformed]]);
+  const result=reconcileRecentChannelUpdates([remote],pending,1000);
+  assert.equal(result[0],remote,'server channel remains visible');
+  assert.equal(pending.size,0,'discard malformed cache entry');
+ }
+});
+
+
+test('malformed cached settings do not overwrite authoritative channel data',()=>{
+ const remote=channel({title:'Server title'});
+ for(const patch of [{title:null},{slug:42},{description:null},{discussion_enabled:'yes'},{avatar_path:123}]){
+  const pending=new Map([[remote.id,{channel:channel({title:'Stale title',...patch}),expiresAt:2000}]]);
+  const result=reconcileRecentChannelUpdates([remote],pending,1000);
+  assert.equal(result[0],remote);
+  assert.equal(pending.size,0);
+ }
+});
+
+
+test('pending edits without valid channel ownership metadata cannot override server data',()=>{
+ const remote=channel({title:'Server title'});
+ for(const patch of [{owner_id:null},{owner_id:''},{owner_id:42},{id:null},{id:''}]){
+  const pending=new Map([[remote.id,{channel:channel({title:'Stale title',...patch}),expiresAt:2000}]]);
+  const [result]=reconcileRecentChannelUpdates([remote],pending,1000);
+  assert.equal(result,remote,'authoritative server data must win');
+  assert.equal(pending.size,0,'discard malformed identity metadata');
+ }
+});
+
+
+test('whitespace-only channel or owner identities cannot override server settings',()=>{
+ const remote=channel({title:'Server title'});
+ for(const patch of [{id:'   '},{owner_id:'   '},{owner_id:'\t\n'}]){
+  const pending=new Map([[remote.id,{channel:channel({title:'Stale title',...patch}),expiresAt:2000}]]);
+  const result=reconcileRecentChannelUpdates([remote],pending,1000);
+  assert.equal(result[0],remote,'server settings must remain authoritative');
+  assert.equal(pending.size,0,'discard whitespace-only identities');
+ }
+});
+
+
+test('unreasonably distant pending expiration cannot pin obsolete settings',()=>{
+ const now=1000;
+ const remote=channel({title:'Server title'});
+ const pending=new Map([[remote.id,{channel:channel({title:'Stale title'}),expiresAt:now+CHANNEL_UPDATE_GRACE_MS+1}]]);
+ const [result]=reconcileRecentChannelUpdates([remote],pending,now);
+ assert.equal(result,remote,'prefer server data over an implausibly long-lived override');
+ assert.equal(pending.size,0,'discard future-dated pending edit');
+ const legitimate=new Map([[remote.id,{channel:channel({title:'Confirmed title'}),expiresAt:now+CHANNEL_UPDATE_GRACE_MS}]]);
+ assert.equal(reconcileRecentChannelUpdates([remote],legitimate,now)[0].title,'Confirmed title','normal grace window still works');
+});
+
+
+test('malformed server ownership never receives a cached channel edit',()=>{
+ const now=1000;
+ for(const owner_id of [null,undefined,'','  ',42]){
+  const remote=channel({owner_id,title:'Server title'});
+  const pending=new Map([[remote.id,{channel:channel({title:'Cached title'}),expiresAt:now+1000}]]);
+  const [result]=reconcileRecentChannelUpdates([remote],pending,now);
+  assert.equal(result,remote,'keep server record unchanged when owner identity is invalid');
+  assert.equal(pending.size,0,'discard pending edit rather than replaying it');
+ }
+});
+
+
+test('malformed server channel entries do not crash reconciliation or receive cached edits',()=>{
+ const valid=channel({title:'Server title'});
+ const pending=new Map([[valid.id,{channel:channel({title:'Confirmed edit'}),expiresAt:2000}]]);
+ const malformed=[null,undefined,{}, {id:null}, {id:42}, {id:'  '}];
+ const result=reconcileRecentChannelUpdates([...malformed,valid],pending,1000);
+ for(let i=0;i<malformed.length;i++)assert.equal(result[i],malformed[i],'preserve malformed response entry without mutation');
+ assert.equal(result.at(-1).title,'Confirmed edit','valid entries still reconcile');
+ assert.equal(pending.size,1);
+});
+
+test('malformed server settings are not hidden by a valid cached channel edit',()=>{
+ const now=1000;
+ const patches=[
+  {title:null},{slug:42},{description:undefined},
+  {discussion_enabled:'true'},{avatar_path:42}
+ ];
+ for(const patch of patches){
+  const remote=channel({title:'Server title',...patch});
+  const pending=new Map([[remote.id,{channel:channel({title:'Confirmed title'}),expiresAt:now+1000}]]);
+  const [result]=reconcileRecentChannelUpdates([remote],pending,now);
+  assert.equal(result,remote,'preserve malformed server snapshot for upstream validation');
+  assert.equal(pending.size,0,'discard override rather than conceal invalid server settings');
+ }
+ const valid=channel({title:'Server title'});
+ const pending=new Map([[valid.id,{channel:channel({title:'Confirmed title'}),expiresAt:now+1000}]]);
+ assert.equal(reconcileRecentChannelUpdates([valid],pending,now)[0].title,'Confirmed title');
+ assert.equal(pending.size,1,'valid server settings still receive the confirmed edit');
+});
+
+test('duplicate server channel identities never receive ambiguous cached edits',()=>{
+ const now=1000;
+ const first=channel({title:'First server row'});
+ const second=channel({title:'Second server row',avatar_path:'other/avatar.jpg'});
+ const independent=channel({id:'33333333-3333-4333-8333-333333333333',title:'Independent server row'});
+ const pending=new Map([
+  [first.id,{channel:channel({title:'Cached title'}),expiresAt:now+1000}],
+  [independent.id,{channel:{...independent,title:'Independent confirmed edit'},expiresAt:now+1000}]
+ ]);
+ const result=reconcileRecentChannelUpdates([first,second,independent],pending,now);
+ assert.equal(result[0],first,'first duplicate must remain authoritative');
+ assert.equal(result[1],second,'second duplicate must remain authoritative');
+ assert.equal(result[2].title,'Independent confirmed edit','unrelated valid edits still reconcile');
+ assert.equal(pending.has(first.id),false,'ambiguous cached edit must be discarded');
+ assert.equal(pending.has(independent.id),true);
+});
