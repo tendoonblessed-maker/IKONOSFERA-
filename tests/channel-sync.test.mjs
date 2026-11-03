@@ -179,3 +179,14 @@ test('malformed cached settings do not overwrite authoritative channel data',()=
   assert.equal(pending.size,0);
  }
 });
+
+
+test('pending edits without valid channel ownership metadata cannot override server data',()=>{
+ const remote=channel({title:'Server title'});
+ for(const patch of [{owner_id:null},{owner_id:''},{owner_id:42},{id:null},{id:''}]){
+  const pending=new Map([[remote.id,{channel:channel({title:'Stale title',...patch}),expiresAt:2000}]]);
+  const [result]=reconcileRecentChannelUpdates([remote],pending,1000);
+  assert.equal(result,remote,'authoritative server data must win');
+  assert.equal(pending.size,0,'discard malformed identity metadata');
+ }
+});
