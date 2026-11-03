@@ -24,7 +24,7 @@ export function reconcileRecentChannelUpdates(
  now=Date.now()
 ):Channel[]{
  for(const [id,edit] of pending){
-   if(!Number.isFinite(edit.expiresAt)||edit.expiresAt<=now)pending.delete(id);
+   if(id!==edit.channel.id||!Number.isFinite(edit.expiresAt)||edit.expiresAt<=now)pending.delete(id);
  }
  return remote.map(channel=>{
    const edit=pending.get(channel.id);
