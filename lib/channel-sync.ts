@@ -38,6 +38,12 @@ export function reconcileRecentChannelUpdates(
    // A malformed list entry must not crash rendering or receive cached edits.
    // Preserve the response unchanged and let the caller handle invalid data.
    if(!channel||typeof channel.id!=='string'||!channel.id.trim())return channel;
+   // A corrupt server settings record must not be disguised by cached edits.
+   // Keep it unchanged for the caller's validation and drop the local override.
+   if(!validSettings(channel)){
+     pending.delete(channel.id);
+     return channel;
+   }
    const edit=pending.get(channel.id);
    if(!edit)return channel;
    // Never overlay a pending edit when the server's ownership identity is
