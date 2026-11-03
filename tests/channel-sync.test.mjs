@@ -236,3 +236,22 @@ test('malformed server channel entries do not crash reconciliation or receive ca
  assert.equal(result.at(-1).title,'Confirmed edit','valid entries still reconcile');
  assert.equal(pending.size,1);
 });
+
+test('malformed server settings are not hidden by a valid cached channel edit',()=>{
+ const now=1000;
+ const patches=[
+  {title:null},{slug:42},{description:undefined},
+  {discussion_enabled:'true'},{avatar_path:42}
+ ];
+ for(const patch of patches){
+  const remote=channel({title:'Server title',...patch});
+  const pending=new Map([[remote.id,{channel:channel({title:'Confirmed title'}),expiresAt:now+1000}]]);
+  const [result]=reconcileRecentChannelUpdates([remote],pending,now);
+  assert.equal(result,remote,'preserve malformed server snapshot for upstream validation');
+  assert.equal(pending.size,0,'discard override rather than conceal invalid server settings');
+ }
+ const valid=channel({title:'Server title'});
+ const pending=new Map([[valid.id,{channel:channel({title:'Confirmed title'}),expiresAt:now+1000}]]);
+ assert.equal(reconcileRecentChannelUpdates([valid],pending,now)[0].title,'Confirmed title');
+ assert.equal(pending.size,1,'valid server settings still receive the confirmed edit');
+});
