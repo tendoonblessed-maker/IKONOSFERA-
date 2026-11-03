@@ -106,3 +106,15 @@ test('ownership change discards old owner pending edits instead of leaking them 
  assert.equal(result[0].avatar_path,'new-owner/avatar.jpg');
  assert.equal(pending.size,0,'do not replay old edits on future refreshes');
 });
+
+
+test('mismatched pending channel identity cannot overwrite another channel',()=>{
+ const now=1000;
+ const remote=channel({title:'Authoritative channel',avatar_path:'right/avatar.jpg'});
+ const foreign=channel({id:'55555555-5555-4555-8555-555555555555',title:'Other channel',avatar_path:'wrong/avatar.jpg'});
+ const pending=new Map([[remote.id,{channel:foreign,expiresAt:now+1000}]]);
+ const [result]=reconcileRecentChannelUpdates([remote],pending,now+10);
+ assert.equal(result,remote,'preserve the authoritative channel record');
+ assert.equal(result.avatar_path,'right/avatar.jpg');
+ assert.equal(pending.size,0,'discard the invalid pending entry');
+});
