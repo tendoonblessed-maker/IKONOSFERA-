@@ -213,3 +213,15 @@ test('unreasonably distant pending expiration cannot pin obsolete settings',()=>
  const legitimate=new Map([[remote.id,{channel:channel({title:'Confirmed title'}),expiresAt:now+CHANNEL_UPDATE_GRACE_MS}]]);
  assert.equal(reconcileRecentChannelUpdates([remote],legitimate,now)[0].title,'Confirmed title','normal grace window still works');
 });
+
+
+test('malformed server ownership never receives a cached channel edit',()=>{
+ const now=1000;
+ for(const owner_id of [null,undefined,'','  ',42]){
+  const remote=channel({owner_id,title:'Server title'});
+  const pending=new Map([[remote.id,{channel:channel({title:'Cached title'}),expiresAt:now+1000}]]);
+  const [result]=reconcileRecentChannelUpdates([remote],pending,now);
+  assert.equal(result,remote,'keep server record unchanged when owner identity is invalid');
+  assert.equal(pending.size,0,'discard pending edit rather than replaying it');
+ }
+});

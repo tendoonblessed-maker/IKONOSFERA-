@@ -37,6 +37,12 @@ export function reconcileRecentChannelUpdates(
  return remote.map(channel=>{
    const edit=pending.get(channel.id);
    if(!edit)return channel;
+   // Never overlay a pending edit when the server's ownership identity is
+   // missing or malformed. The authoritative record must remain untouched.
+   if(typeof channel.owner_id!=='string'||!channel.owner_id.trim()){
+     pending.delete(channel.id);
+     return channel;
+   }
    // A stale or incorrectly keyed pending record must never decorate another channel.
    if(edit.channel.id!==channel.id){
      pending.delete(channel.id);
