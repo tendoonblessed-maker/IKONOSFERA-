@@ -11,7 +11,8 @@ const PREFIX='ikonosfera-group-send-v1:';
 const UUID=/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
 export const GROUP_SEND_ATTEMPT_TTL_MS=48*60*60*1000;
 export type GroupSendAttempt={id:string;body:string;createdAt:number};
-const inMemory=new Map<string,GroupSendAttempt>();
+// null is an acknowledged attempt whose storage deletion may have failed.
+const inMemory=new Map<string,GroupSendAttempt|null>();
 
 function storage():Storage|null{
  try{return typeof window==='undefined'?null:window.sessionStorage;}
@@ -34,6 +35,7 @@ export function readGroupSendAttempt(owner:string,group:string,now=Date.now()):G
  // leave an older (still valid) ID in sessionStorage: preferring it would
  // assign a fresh ID on every retry and could duplicate a delivered message.
  const live=inMemory.get(k);
+ if(live===null&&inMemory.has(k))return null; // Do not revive an acknowledged ID.
  if(live&&valid(live,now))return live;
  inMemory.delete(k);
  let candidate:unknown;
@@ -69,7 +71,9 @@ export function clearGroupSendAttempt(owner:string,group:string,attemptId:string
  const current=readGroupSendAttempt(owner,group);
  if(current?.id!==attemptId)return;
  const k=key(owner,group);
- inMemory.delete(k);
+ // Keep a tombstone until the next intentional send: removeItem can throw,
+ // leaving a valid old UUID that must not be reused for a later message.
+ inMemory.set(k,null);
  try{storage()?.removeItem(k);}catch{}
 }
 export function clearAllGroupSendAttempts(owner:string):void{
