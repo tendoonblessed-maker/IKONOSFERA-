@@ -29,6 +29,12 @@ export function reconcileRecentChannelUpdates(
  return remote.map(channel=>{
    const edit=pending.get(channel.id);
    if(!edit)return channel;
+   // A channel may have changed owners while an older settings request was in flight.
+   // Never project that owner's pending edits onto the newly owned channel.
+   if(channel.owner_id!==edit.channel.owner_id){
+     pending.delete(channel.id);
+     return channel;
+   }
    if(matchesServer(channel,edit.channel)){
      pending.delete(channel.id);
      return channel;
