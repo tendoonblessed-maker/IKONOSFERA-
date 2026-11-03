@@ -190,3 +190,14 @@ test('pending edits without valid channel ownership metadata cannot override ser
   assert.equal(pending.size,0,'discard malformed identity metadata');
  }
 });
+
+
+test('whitespace-only channel or owner identities cannot override server settings',()=>{
+ const remote=channel({title:'Server title'});
+ for(const patch of [{id:'   '},{owner_id:'   '},{owner_id:'\t\n'}]){
+  const pending=new Map([[remote.id,{channel:channel({title:'Stale title',...patch}),expiresAt:2000}]]);
+  const result=reconcileRecentChannelUpdates([remote],pending,1000);
+  assert.equal(result[0],remote,'server settings must remain authoritative');
+  assert.equal(pending.size,0,'discard whitespace-only identities');
+ }
+});

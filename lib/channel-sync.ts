@@ -3,7 +3,7 @@ import type {Channel} from './social';
 export type RecentChannelUpdate={channel:Channel;expiresAt:number};
 export const CHANNEL_UPDATE_GRACE_MS=120_000;
 
-function validSettings(c:Channel):boolean{ return typeof c.id==='string'&&c.id.length>0&&typeof c.owner_id==='string'&&c.owner_id.length>0&&typeof c.title==='string'&&typeof c.slug==='string'&&typeof c.description==='string'&&typeof c.discussion_enabled==='boolean'&&(c.avatar_path==null||typeof c.avatar_path==='string'); }
+function validSettings(c:Channel):boolean{ return typeof c.id==='string'&&c.id.trim().length>0&&typeof c.owner_id==='string'&&c.owner_id.trim().length>0&&typeof c.title==='string'&&typeof c.slug==='string'&&typeof c.description==='string'&&typeof c.discussion_enabled==='boolean'&&(c.avatar_path==null||typeof c.avatar_path==='string'); }
 
 function matchesServer(record:Channel,expected:Channel):boolean{
  return record.avatar_path===expected.avatar_path
