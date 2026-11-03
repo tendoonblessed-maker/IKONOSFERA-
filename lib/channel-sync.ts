@@ -33,6 +33,16 @@ export function reconcileRecentChannelUpdates(
      pending.delete(channel.id);
      return channel;
    }
-   return {...channel,...edit.channel};
+   // The PATCH confirms editable settings only. A delayed list response may
+   // contain newer server-owned metadata (owner, creation date, identity);
+   // never replace those fields with an older PATCH snapshot.
+   return {
+     ...channel,
+     title:edit.channel.title,
+     slug:edit.channel.slug,
+     description:edit.channel.description,
+     discussion_enabled:edit.channel.discussion_enabled,
+     avatar_path:edit.channel.avatar_path
+   };
  });
 }
