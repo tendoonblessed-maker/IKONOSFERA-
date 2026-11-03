@@ -130,3 +130,19 @@ test('invalid pending expiration cannot pin stale channel settings indefinitely'
   assert.equal(pending.size,0,'invalid pending entry must be discarded');
  }
 });
+
+
+test('miskeyed pending updates are purged even when their channel is absent from the list',()=>{
+ const now=1000;
+ const remote=channel();
+ const foreign=channel({id:'55555555-5555-4555-8555-555555555555',title:'Foreign edit'});
+ const valid=channel({title:'Confirmed title'});
+ const pending=new Map([
+  ['33333333-3333-4333-8333-333333333333',{channel:foreign,expiresAt:now+1000}],
+  [remote.id,{channel:valid,expiresAt:now+1000}]
+ ]);
+ const [result]=reconcileRecentChannelUpdates([remote],pending,now+10);
+ assert.equal(result.title,'Confirmed title','valid pending updates still apply');
+ assert.equal(pending.size,1,'remove an invalid record even without a matching remote channel');
+ assert.equal(pending.has(remote.id),true);
+});
