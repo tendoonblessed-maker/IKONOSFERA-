@@ -255,3 +255,20 @@ test('malformed server settings are not hidden by a valid cached channel edit',(
  assert.equal(reconcileRecentChannelUpdates([valid],pending,now)[0].title,'Confirmed title');
  assert.equal(pending.size,1,'valid server settings still receive the confirmed edit');
 });
+
+test('duplicate server channel identities never receive ambiguous cached edits',()=>{
+ const now=1000;
+ const first=channel({title:'First server row'});
+ const second=channel({title:'Second server row',avatar_path:'other/avatar.jpg'});
+ const independent=channel({id:'33333333-3333-4333-8333-333333333333',title:'Independent server row'});
+ const pending=new Map([
+  [first.id,{channel:channel({title:'Cached title'}),expiresAt:now+1000}],
+  [independent.id,{channel:{...independent,title:'Independent confirmed edit'},expiresAt:now+1000}]
+ ]);
+ const result=reconcileRecentChannelUpdates([first,second,independent],pending,now);
+ assert.equal(result[0],first,'first duplicate must remain authoritative');
+ assert.equal(result[1],second,'second duplicate must remain authoritative');
+ assert.equal(result[2].title,'Independent confirmed edit','unrelated valid edits still reconcile');
+ assert.equal(pending.has(first.id),false,'ambiguous cached edit must be discarded');
+ assert.equal(pending.has(independent.id),true);
+});
