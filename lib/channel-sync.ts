@@ -29,6 +29,11 @@ export function reconcileRecentChannelUpdates(
  return remote.map(channel=>{
    const edit=pending.get(channel.id);
    if(!edit)return channel;
+   // A stale or incorrectly keyed pending record must never decorate another channel.
+   if(edit.channel.id!==channel.id){
+     pending.delete(channel.id);
+     return channel;
+   }
    // A channel may have changed owners while an older settings request was in flight.
    // Never project that owner's pending edits onto the newly owned channel.
    if(channel.owner_id!==edit.channel.owner_id){
