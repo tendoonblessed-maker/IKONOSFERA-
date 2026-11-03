@@ -23,6 +23,12 @@ export function reconcileRecentChannelUpdates(
  pending:Map<string,RecentChannelUpdate>,
  now=Date.now()
 ):Channel[]{
+ // Treat an invalid injected clock as a failed cache guard, not as permission
+ // to keep stale optimistic edits visible indefinitely.
+ if(!Number.isFinite(now)){
+   pending.clear();
+   return remote;
+ }
  for(const [id,edit] of pending){
    if(id!==edit.channel.id||!Number.isFinite(edit.expiresAt)||edit.expiresAt<=now)pending.delete(id);
  }

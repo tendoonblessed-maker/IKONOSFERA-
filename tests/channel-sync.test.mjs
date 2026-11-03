@@ -146,3 +146,14 @@ test('miskeyed pending updates are purged even when their channel is absent from
  assert.equal(pending.size,1,'remove an invalid record even without a matching remote channel');
  assert.equal(pending.has(remote.id),true);
 });
+
+
+test('invalid reconciliation clock cannot keep optimistic channel edits alive',()=>{
+ const remote=channel({title:'Authoritative title'});
+ for(const now of [Number.NaN,Number.POSITIVE_INFINITY,Number.NEGATIVE_INFINITY]){
+  const pending=new Map([[remote.id,{channel:channel({title:'Stale optimistic title'}),expiresAt:5000}]]);
+  const result=reconcileRecentChannelUpdates([remote],pending,now);
+  assert.equal(result[0],remote,'invalid clock must yield to server data');
+  assert.equal(pending.size,0,'clear pending edits when expiration cannot be evaluated');
+ }
+});
