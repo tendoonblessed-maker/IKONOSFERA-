@@ -118,3 +118,15 @@ test('mismatched pending channel identity cannot overwrite another channel',()=>
  assert.equal(result.avatar_path,'right/avatar.jpg');
  assert.equal(pending.size,0,'discard the invalid pending entry');
 });
+
+
+test('invalid pending expiration cannot pin stale channel settings indefinitely',()=>{
+ const now=1000;
+ const remote=channel({title:'Server title',avatar_path:'server/avatar.jpg'});
+ for(const expiresAt of [Number.NaN,Number.POSITIVE_INFINITY,Number.NEGATIVE_INFINITY]){
+  const pending=new Map([[remote.id,{channel:channel({title:'Stale title',avatar_path:'stale/avatar.jpg'}),expiresAt}]]);
+  const [result]=reconcileRecentChannelUpdates([remote],pending,now);
+  assert.equal(result,remote,'invalid expiration must not override the server');
+  assert.equal(pending.size,0,'invalid pending entry must be discarded');
+ }
+});
