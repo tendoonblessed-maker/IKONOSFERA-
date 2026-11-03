@@ -73,7 +73,6 @@ test('pending channel settings preserve newer server-owned metadata',()=>{
  const pending=new Map([[old.id,{channel:edited,expiresAt:now+1000}]]);
  // The server list is newer for metadata, but older for the edited settings.
  const remote=channel({
-  owner_id:'44444444-4444-4444-8444-444444444444',
   created_at:'2026-11-03T00:00:00Z'
  });
  const [result]=reconcileRecentChannelUpdates([remote],pending,now+10);
@@ -94,4 +93,16 @@ test('a matching server snapshot releases pending settings without replacing its
  const result=reconcileRecentChannelUpdates([remote],pending,now+10);
  assert.equal(result[0],remote);
  assert.equal(pending.size,0);
+});
+
+
+test('ownership change discards old owner pending edits instead of leaking them to a new owner',()=>{
+ const now=1000;
+ const old=channel();
+ const pending=new Map([[old.id,{channel:channel({title:'Old owner pending edit',avatar_path:'old-owner/private.jpg'}),expiresAt:now+1000}]]);
+ const transferred=channel({owner_id:'44444444-4444-4444-8444-444444444444',title:'New owner title',avatar_path:'new-owner/avatar.jpg'});
+ const result=reconcileRecentChannelUpdates([transferred],pending,now+10);
+ assert.equal(result[0],transferred,'new owner server snapshot is authoritative');
+ assert.equal(result[0].avatar_path,'new-owner/avatar.jpg');
+ assert.equal(pending.size,0,'do not replay old edits on future refreshes');
 });
