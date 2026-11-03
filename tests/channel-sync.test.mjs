@@ -168,3 +168,14 @@ test('malformed pending records cannot crash channel list reconciliation',()=>{
   assert.equal(pending.size,0,'discard malformed cache entry');
  }
 });
+
+
+test('malformed cached settings do not overwrite authoritative channel data',()=>{
+ const remote=channel({title:'Server title'});
+ for(const patch of [{title:null},{slug:42},{description:null},{discussion_enabled:'yes'},{avatar_path:123}]){
+  const pending=new Map([[remote.id,{channel:channel({title:'Stale title',...patch}),expiresAt:2000}]]);
+  const result=reconcileRecentChannelUpdates([remote],pending,1000);
+  assert.equal(result[0],remote);
+  assert.equal(pending.size,0);
+ }
+});

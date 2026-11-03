@@ -3,6 +3,8 @@ import type {Channel} from './social';
 export type RecentChannelUpdate={channel:Channel;expiresAt:number};
 export const CHANNEL_UPDATE_GRACE_MS=120_000;
 
+function validSettings(c:Channel):boolean{ return typeof c.title==='string'&&typeof c.slug==='string'&&typeof c.description==='string'&&typeof c.discussion_enabled==='boolean'&&(c.avatar_path==null||typeof c.avatar_path==='string'); }
+
 function matchesServer(record:Channel,expected:Channel):boolean{
  return record.avatar_path===expected.avatar_path
    &&record.title===expected.title
@@ -30,7 +32,7 @@ export function reconcileRecentChannelUpdates(
    return remote;
  }
  for(const [id,edit] of pending){
-   if(!edit||!edit.channel||id!==edit.channel.id||!Number.isFinite(edit.expiresAt)||edit.expiresAt<=now)pending.delete(id);
+   if(!edit||!edit.channel||!validSettings(edit.channel)||id!==edit.channel.id||!Number.isFinite(edit.expiresAt)||edit.expiresAt<=now)pending.delete(id);
  }
  return remote.map(channel=>{
    const edit=pending.get(channel.id);
