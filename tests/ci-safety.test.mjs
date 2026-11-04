@@ -31,3 +31,7 @@ test('CI jobs cannot override read-only token permissions', () => {
   assert.equal((workflow.match(/^permissions:\s*$/gm) ?? []).length, 1);
   assert.doesNotMatch(workflow, /^\s+permissions\s*:/m);
 });
+
+test('CI continues to run on pushes and pull requests targeting main or dev', () => {
+  assert.match(workflow, /^on:\s*\n\s{2}push:\s*\n\s{2}pull_request:\s*\n\s{4}branches:\s*\[main, dev\]\s*$/m);
+});
