@@ -45,3 +45,7 @@ test('CI installs dependencies before running all verification commands', () => 
     assert.ok(index > install, `${command} must run after dependency installation`);
   }
 });
+
+test('CI checkout does not persist GitHub credentials in the working tree', () => {
+  assert.match(workflow, /^\s{6}- uses: actions\/checkout@v4\s*\n\s{8}with:\s*\n\s{10}persist-credentials:\s*false\s*$/m);
+});
