@@ -61,3 +61,12 @@ test('CI configures the supported Node runtime before installing dependencies', 
   assert.ok(setup >= 0 && setup < install, 'setup-node must run before npm install');
   assert.match(workflow, /^\s{6}- uses: actions\/setup-node@v4\s*\n\s{8}with:\s*\n\s{10}node-version:\s*['"]?24['"]?\s*$/m);
 });
+
+test('CI verification steps cannot silently ignore failures', () => {
+  assert.doesNotMatch(workflow, /^\s+continue-on-error:\s*true\s*$/m);
+  for (const line of workflow.split('\n')) {
+    if (/^\s+- run:\s+/.test(line)) {
+      assert.doesNotMatch(line, /(?:\|\|\s*true|;\s*exit\s+0)\s*$/, 'CI commands must propagate failures');
+    }
+  }
+});
