@@ -21,3 +21,13 @@ test('CI retains typecheck, lint, tests and production build', () => {
     assert.ok(workflow.split('\n').some((line) => line.trim() === `- run: ${command}`), `missing CI step: ${command}`);
   }
 });
+
+test('CI does not run privileged pull_request_target or workflow_run triggers', () => {
+  assert.doesNotMatch(workflow, /^\s*(?:pull_request_target|workflow_run):/m);
+});
+
+test('CI jobs cannot override read-only token permissions', () => {
+  // The workflow grants permissions at the root; job-level overrides could undo that policy.
+  assert.equal((workflow.match(/^permissions:\s*$/gm) ?? []).length, 1);
+  assert.doesNotMatch(workflow, /^\s+permissions\s*:/m);
+});
