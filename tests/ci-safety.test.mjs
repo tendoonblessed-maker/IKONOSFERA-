@@ -35,3 +35,13 @@ test('CI jobs cannot override read-only token permissions', () => {
 test('CI continues to run on pushes and pull requests targeting main or dev', () => {
   assert.match(workflow, /^on:\s*\n\s{2}push:\s*\n\s{2}pull_request:\s*\n\s{4}branches:\s*\[main, dev\]\s*$/m);
 });
+
+test('CI installs dependencies before running all verification commands', () => {
+  const steps = workflow.split('\n').map((line) => line.trim());
+  const install = steps.indexOf('- run: npm install --no-audit --no-fund');
+  assert.ok(install >= 0, 'CI must install dependencies');
+  for (const command of ['npm run typecheck', 'npm run lint', 'npm test', 'npm run build']) {
+    const index = steps.indexOf(`- run: ${command}`);
+    assert.ok(index > install, `${command} must run after dependency installation`);
+  }
+});
