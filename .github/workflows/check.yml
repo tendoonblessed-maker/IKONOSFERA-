@@ -3,9 +3,16 @@ on:
   push:
   pull_request:
     branches: [main, dev]
+
+# CI only reads repository contents; it never needs a write-capable token.
+permissions:
+  contents: read
+
 jobs:
   verify:
     runs-on: ubuntu-latest
+    # Prevent stalled dependency installs or builds from consuming runners indefinitely.
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
