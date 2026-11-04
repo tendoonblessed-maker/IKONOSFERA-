@@ -4,6 +4,11 @@ on:
   pull_request:
     branches: [main, dev]
 
+# Cancel superseded checks on the same ref, but never cancel a different event type.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: true
+
 # CI only reads repository contents; it never needs a write-capable token.
 permissions:
   contents: read
