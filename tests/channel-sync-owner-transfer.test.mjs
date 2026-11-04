@@ -47,3 +47,22 @@ test('an owner transfer does not suppress unrelated confirmed channel settings',
   assert.equal(pending.has(id),false);
   assert.equal(pending.has(otherId),true);
 });
+
+test('owner UUID casing alone does not discard confirmed settings',()=>{
+  const confirmed=channel({title:'Confirmed edit'});
+  const server=channel({owner_id:originalOwner.toUpperCase()});
+  const pending=new Map([[id,{channel:confirmed,expiresAt:2000}]]);
+  const result=reconcileRecentChannelUpdates([server],pending,1000);
+  assert.equal(result[0].title,'Confirmed edit');
+  assert.equal(result[0].owner_id,server.owner_id);
+  assert.equal(pending.size,1);
+});
+
+test('a genuinely different owner UUID still invalidates pending settings after normalization',()=>{
+  const confirmed=channel({title:'Old edit',owner_id:originalOwner.toUpperCase()});
+  const server=channel({owner_id:newOwner,title:'New owner title'});
+  const pending=new Map([[id,{channel:confirmed,expiresAt:2000}]]);
+  const result=reconcileRecentChannelUpdates([server],pending,1000);
+  assert.equal(result[0],server);
+  assert.equal(pending.size,0);
+});

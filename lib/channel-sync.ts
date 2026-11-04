@@ -79,7 +79,8 @@ export function reconcileRecentChannelUpdates(
    }
    // A channel may have changed owners while an older settings request was in flight.
    // Never project that owner's pending edits onto the newly owned channel.
-   if(channel.owner_id!==edit.channel.owner_id){
+   // UUID spelling is case-insensitive; a casing-only API change is not an ownership transfer.
+   if(channel.owner_id.toLowerCase()!==edit.channel.owner_id.toLowerCase()){
      pending.delete(channel.id);
      return channel;
    }
