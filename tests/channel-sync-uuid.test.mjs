@@ -33,3 +33,34 @@ test('valid UUID channel identities retain normal pending settings behavior',()=
  assert.equal(reconcileRecentChannelUpdates([remote],pending,1000)[0].title,'Confirmed title');
  assert.equal(pending.size,1);
 });
+
+test('mixed-case duplicate UUIDs cannot receive cached settings',()=>{
+ const id='abcdef12-3456-4abc-8def-123456789abc';
+ const upper=id.toUpperCase();
+ const remote=[makeChannel({id}),makeChannel({id:upper})];
+ const pending=new Map([
+  [id,{channel:makeChannel({id,title:'Cached lower'}),expiresAt:2000}],
+  [upper,{channel:makeChannel({id:upper,title:'Cached upper'}),expiresAt:2000}]
+ ]);
+ const result=reconcileRecentChannelUpdates(remote,pending,1000);
+ assert.equal(result[0],remote[0]);
+ assert.equal(result[1],remote[1]);
+ assert.equal(pending.size,0);
+});
+
+// An ambiguous identity must not block independent, well-formed channels.
+test('mixed-case duplicate IDs clear one-sided pending edits without affecting other channels',()=>{
+ const id='abcdef12-3456-4abc-8def-123456789abc';
+ const independent=makeChannel({id:'33333333-3333-4333-8333-333333333333'});
+ const remote=[makeChannel({id}),makeChannel({id:id.toUpperCase()}),independent];
+ const pending=new Map([
+  [id,{channel:makeChannel({id,title:'Ambiguous cached edit'}),expiresAt:2000}],
+  [independent.id,{channel:makeChannel({id:independent.id,title:'Independent confirmed edit'}),expiresAt:2000}]
+ ]);
+ const result=reconcileRecentChannelUpdates(remote,pending,1000);
+ assert.equal(result[0],remote[0]);
+ assert.equal(result[1],remote[1]);
+ assert.equal(result[2].title,'Independent confirmed edit');
+ assert.equal(pending.has(id),false);
+ assert.equal(pending.has(independent.id),true);
+});

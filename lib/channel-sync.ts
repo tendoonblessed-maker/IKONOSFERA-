@@ -39,9 +39,18 @@ export function reconcileRecentChannelUpdates(
  // Duplicate server identities are ambiguous: never project a cached edit onto either entry.
  const counts=new Map<string,number>();
  for(const channel of remote){
-   if(channel&&validIdentity(channel.id))counts.set(channel.id,(counts.get(channel.id)||0)+1);
+   if(channel&&validIdentity(channel.id)){
+     const identity=channel.id.toLowerCase();
+     counts.set(identity,(counts.get(identity)||0)+1);
+   }
  }
- for(const [id,count] of counts){if(count>1)pending.delete(id);}
+ // UUIDs are case-insensitive even if the API returns mixed-case strings.
+ // Remove every pending spelling of an ambiguous identity.
+ for(const [id,count] of counts){
+   if(count>1)for(const key of pending.keys()){
+     if(validIdentity(key)&&key.toLowerCase()===id)pending.delete(key);
+   }
+ }
  for(const [id,edit] of pending){
    if(!edit||!edit.channel||!validSettings(edit.channel)||id!==edit.channel.id||!Number.isFinite(edit.expiresAt)||edit.expiresAt<=now||edit.expiresAt>now+CHANNEL_UPDATE_GRACE_MS)pending.delete(id);
  }
