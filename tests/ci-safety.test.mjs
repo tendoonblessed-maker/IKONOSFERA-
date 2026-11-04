@@ -86,3 +86,8 @@ test('CI failure masking guard catches multiline run blocks', () => {
   }
   assert.equal(hasFailureMasking('      - run: |\n          npm test\n          npm run build'), false);
 });
+
+test('CI pins the Ubuntu runner image to avoid unexpected OS upgrades', () => {
+  assert.match(workflow, /^\s{4}runs-on:\s*ubuntu-24\.04\s*$/m);
+  assert.doesNotMatch(workflow, /^\s+runs-on:\s*ubuntu-latest\s*$/m);
+});
