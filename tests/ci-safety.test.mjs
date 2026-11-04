@@ -49,3 +49,7 @@ test('CI installs dependencies before running all verification commands', () => 
 test('CI checkout does not persist GitHub credentials in the working tree', () => {
   assert.match(workflow, /^\s{6}- uses: actions\/checkout@v4\s*\n\s{8}with:\s*\n\s{10}persist-credentials:\s*false\s*$/m);
 });
+
+test('CI cancels only superseded runs for the same event and ref', () => {
+  assert.match(workflow, /^concurrency:\s*\n\s{2}group:\s*\$\{\{ github\.workflow \}\}-\$\{\{ github\.event_name \}\}-\$\{\{ github\.ref \}\}\s*\n\s{2}cancel-in-progress:\s*true\s*$/m);
+});
