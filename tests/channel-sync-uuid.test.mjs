@@ -33,3 +33,17 @@ test('valid UUID channel identities retain normal pending settings behavior',()=
  assert.equal(reconcileRecentChannelUpdates([remote],pending,1000)[0].title,'Confirmed title');
  assert.equal(pending.size,1);
 });
+
+test('mixed-case duplicate UUIDs cannot receive cached settings',()=>{
+ const id='abcdef12-3456-4abc-8def-123456789abc';
+ const upper=id.toUpperCase();
+ const remote=[makeChannel({id}),makeChannel({id:upper})];
+ const pending=new Map([
+  [id,{channel:makeChannel({id,title:'Cached lower'}),expiresAt:2000}],
+  [upper,{channel:makeChannel({id:upper,title:'Cached upper'}),expiresAt:2000}]
+ ]);
+ const result=reconcileRecentChannelUpdates(remote,pending,1000);
+ assert.equal(result[0],remote[0]);
+ assert.equal(result[1],remote[1]);
+ assert.equal(pending.size,0);
+});
