@@ -15,7 +15,8 @@ permissions:
 
 jobs:
   verify:
-    runs-on: ubuntu-latest
+    # Pin the runner image to avoid unexpected OS upgrades changing CI behavior.
+    runs-on: ubuntu-24.04
     # Prevent stalled dependency installs or builds from consuming runners indefinitely.
     timeout-minutes: 30
     steps:
