@@ -53,3 +53,11 @@ test('CI checkout does not persist GitHub credentials in the working tree', () =
 test('CI cancels only superseded runs for the same event and ref', () => {
   assert.match(workflow, /^concurrency:\s*\n\s{2}group:\s*\$\{\{ github\.workflow \}\}-\$\{\{ github\.event_name \}\}-\$\{\{ github\.ref \}\}\s*\n\s{2}cancel-in-progress:\s*true\s*$/m);
 });
+
+test('CI configures the supported Node runtime before installing dependencies', () => {
+  const steps = workflow.split('\n').map((line) => line.trim());
+  const setup = steps.indexOf('- uses: actions/setup-node@v4');
+  const install = steps.indexOf('- run: npm install --no-audit --no-fund');
+  assert.ok(setup >= 0 && setup < install, 'setup-node must run before npm install');
+  assert.match(workflow, /^\s{6}- uses: actions\/setup-node@v4\s*\n\s{8}with:\s*\n\s{10}node-version:\s*['"]?24['"]?\s*$/m);
+});
