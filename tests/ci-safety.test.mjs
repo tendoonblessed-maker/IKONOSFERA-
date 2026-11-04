@@ -62,11 +62,24 @@ test('CI configures the supported Node runtime before installing dependencies', 
   assert.match(workflow, /^\s{6}- uses: actions\/setup-node@v4\s*\n\s{8}with:\s*\n\s{10}node-version:\s*['"]?24['"]?\s*$/m);
 });
 
+function hasFailureMasking(source) {
+  // Check the entire workflow so YAML block scalars (run: |) are covered too.
+  return /^\s*continue-on-error:\s*true\s*(?:#.*)?$/m.test(source)
+    || /(?:\|\|\s*true|;\s*exit\s+0)(?:\s|$)/m.test(source);
+}
+
 test('CI verification steps cannot silently ignore failures', () => {
-  assert.doesNotMatch(workflow, /^\s+continue-on-error:\s*true\s*$/m);
-  for (const line of workflow.split('\n')) {
-    if (/^\s+- run:\s+/.test(line)) {
-      assert.doesNotMatch(line, /(?:\|\|\s*true|;\s*exit\s+0)\s*$/, 'CI commands must propagate failures');
-    }
+  assert.equal(hasFailureMasking(workflow), false, 'CI commands must propagate failures');
+});
+
+test('CI failure masking guard catches multiline run blocks', () => {
+  for (const unsafe of [
+    '      - run: npm test || true',
+    '      - run: |\n          npm test || true',
+    '      - run: |\n          npm test; exit 0',
+    '      - run: npm test\n        continue-on-error: true',
+  ]) {
+    assert.equal(hasFailureMasking(unsafe), true, `missed failure masking: ${unsafe}`);
   }
+  assert.equal(hasFailureMasking('      - run: |\n          npm test\n          npm run build'), false);
 });
