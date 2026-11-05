@@ -47,7 +47,7 @@ test('CI installs dependencies before running all verification commands', () => 
 });
 
 test('CI checkout does not persist GitHub credentials in the working tree', () => {
-  assert.match(workflow, /^\s{6}- uses: actions\/checkout@v4\s*\n\s{8}with:\s*\n\s{10}persist-credentials:\s*false\s*$/m);
+  assert.match(workflow, /^\s{6}- uses: actions\/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7\.0\.1\s*\n\s{8}with:\s*\n\s{10}persist-credentials:\s*false\s*$/m);
 });
 
 test('CI cancels only superseded runs for the same event and ref', () => {
@@ -59,7 +59,7 @@ test('CI configures the supported Node runtime before installing dependencies', 
   const setup = steps.indexOf('- uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0');
   const install = steps.indexOf('- run: npm install --no-audit --no-fund');
   assert.ok(setup >= 0 && setup < install, 'setup-node must run before npm install');
-  assert.match(workflow, /^\\s{6}- uses: actions\\/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7\\.1\\.0\\s*\\n\\s{8}with:\\s*\\n\\s{10}node-version:\\s*['\"]?24['\"]?\\s*$/m);
+  assert.match(workflow, /^\s{6}- uses: actions\/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7\.1\.0\s*\n\s{8}with:\s*\n\s{10}node-version:\s*['"]?24['"]?\s*$/m);
 });
 
 function hasFailureMasking(source) {
@@ -143,9 +143,9 @@ test('CI verification steps are not disabled by constant-false conditions', () =
 });
 
 test('CI pins third-party actions to immutable official release commits', () => {
-  assert.match(workflow, /^\\s{6}- uses: actions\\/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7\\.0\\.1$/m);
-  assert.match(workflow, /^\\s{6}- uses: actions\\/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7\\.1\\.0$/m);
-  assert.doesNotMatch(workflow, /^\\s{6}- uses: [^@\\s]+@v\\d+/m);
+  assert.match(workflow, /^\s{6}- uses: actions\/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7\.0\.1$/m);
+  assert.match(workflow, /^\s{6}- uses: actions\/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7\.1\.0$/m);
+  assert.doesNotMatch(workflow, /^\s{6}- uses: [^@\s]+@v\d+/m);
 });
 
 test('CI pins the Ubuntu runner image to avoid unexpected OS upgrades', () => {
