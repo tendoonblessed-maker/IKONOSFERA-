@@ -4,15 +4,14 @@
  * escaping: strings like "a < b", code, and literal tags stay literal text.
  */
 export type ChatTextPart={text:string;href?:string};
-const LINK_CANDIDATE=/(?:https?:\/\/|www\.)[^\s<>"'\u0060]+/gi;
+const LINK_CANDIDATE=/(?:https?:\\/\\/|www\\.)[^\\s<>"'\\u0060]+/gi;
 const TRAILING_PUNCTUATION=/[.,!?;:…。，！？；：»”’›]$/u;
-// Invisible and bidirectional formatting controls can disguise a link's visible destination.
-// Leave those candidates as literal chat text instead of making them clickable.
-const UNSAFE_LINK_FORMATTING=/[\u00ad\u061c\u200b-\u200f\u202a-\u202e\u2060\u2066-\u2069\ufeff]/u;
-// WHATWG URL normalizes raw backslashes into path separators and silently
-// percent-encodes invisible C0/DEL controls. Never make those ambiguous
-// strings clickable; percent-encoded characters remain supported.
-const UNSAFE_LINK_SYNTAX=/[\\\u0000-\u001f\u007f]/u;
+// Unicode format and default-ignorable code points can change visual order or
+// disappear during rendering. Keep such candidates literal, not clickable.
+const UNSAFE_LINK_FORMATTING=/[\\p{Cf}\\p{Default_Ignorable_Code_Point}]/u;
+// WHATWG URL normalizes raw backslashes and can percent-encode control bytes.
+// Percent-encoded text remains visible and is intentionally still supported.
+const UNSAFE_LINK_SYNTAX=/[\\\\\\p{Cc}]/u;
 const MAX_URL_LENGTH=2048;
 const MAX_LINKS=40;
 
@@ -41,7 +40,7 @@ function splitEnding(candidate:string):{url:string;ending:string}{
 
 function externalHref(candidate:string):string|null{
  if(candidate.length>MAX_URL_LENGTH||UNSAFE_LINK_FORMATTING.test(candidate)||UNSAFE_LINK_SYNTAX.test(candidate))return null;
- const prefixed=/^www\./i.test(candidate)?'https://'+candidate:candidate;
+ const prefixed=/^www\\./i.test(candidate)?'https://'+candidate:candidate;
  try{
   const parsed=new URL(prefixed);
   if(parsed.protocol!=='http:'&&parsed.protocol!=='https:')return null;
@@ -49,7 +48,7 @@ function externalHref(candidate:string):string|null{
   if(parsed.username||parsed.password)return null;
   if(!parsed.hostname||parsed.hostname.startsWith('.')||parsed.hostname.endsWith('.'))return null;
   if(parsed.hostname.includes('%'))return null;
-  if(/^www\./i.test(candidate)&&!parsed.hostname.includes('.'))return null;
+  if(/^www\\./i.test(candidate)&&!parsed.hostname.includes('.'))return null;
   return parsed.href;
  }catch{return null;}
 }
@@ -57,7 +56,7 @@ function externalHref(candidate:string):string|null{
 function canBeginLink(text:string,index:number):boolean{
  if(index===0)return true;
  // Don't link inside emails, identifiers or already-open URI schemes.
- return !/[\p{L}\p{N}_@/.-]/u.test(text[index-1]);
+ return !/[\\p{L}\\p{N}_@/.-]/u.test(text[index-1]);
 }
 
 /**
