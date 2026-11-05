@@ -58,8 +58,9 @@ test('storage errors and unexpected input never prevent group typing',()=>{
    value:{get sessionStorage(){throw Error('private-mode storage disabled');}}
   });
   assert.doesNotThrow(()=>writeGroupDraft(OWNER,A,'Keep typing'));
-  assert.deepEqual(readGroupDrafts(OWNER),{});
+  assert.equal(readGroupDrafts(OWNER)[A],'Keep typing');
   assert.doesNotThrow(()=>clearGroupDrafts(OWNER));
+  assert.deepEqual(readGroupDrafts(OWNER),{});
  }finally{
   Object.defineProperty(globalThis,'window',{configurable:true,value:original});
  }
