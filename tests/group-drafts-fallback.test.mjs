@@ -15,6 +15,7 @@ const storage={
  removeItem:key=>{if(!removable)throw Error('storage denied');memory.delete(key);}
 };
 globalThis.window={sessionStorage:storage};
+const storageKey='ikonosfera-group-drafts-tab-v1:'+OWNER;
 function reset(){
  writable=true;removable=true;
  clearGroupDrafts(OWNER);clearGroupDrafts(OTHER);
@@ -36,9 +37,19 @@ test('after storage recovers, the next edit persists all pending group drafts',(
  writeGroupDraft(OWNER,A,'Не потерять');
  writable=true;
  writeGroupDraft(OWNER,B,'После восстановления');
- const persisted=JSON.parse(memory.get('ikonosfera-group-drafts-tab-v1:'+OWNER));
+ const persisted=JSON.parse(memory.get(storageKey));
  assert.deepEqual(persisted,{[A]:'Не потерять',[B]:'После восстановления'});
  assert.deepEqual(readGroupDrafts(OWNER),persisted);
+ reset();
+});
+
+test('a read after storage recovery flushes pending drafts without another edit',()=>{
+ reset();writable=false;
+ writeGroupDraft(OWNER,A,'Первый черновик');
+ writeGroupDraft(OWNER,B,'Второй черновик');
+ writable=true;
+ assert.deepEqual(readGroupDrafts(OWNER),{[A]:'Первый черновик',[B]:'Второй черновик'});
+ assert.deepEqual(JSON.parse(memory.get(storageKey)),{[A]:'Первый черновик',[B]:'Второй черновик'});
  reset();
 });
 
@@ -47,8 +58,10 @@ test('failed sign-out removal cannot revive a previous account draft',()=>{
  removable=false;
  clearGroupDrafts(OWNER);
  assert.deepEqual(readGroupDrafts(OWNER),{});
+ assert.ok(memory.has(storageKey),'the old value is still physically stored while removal is blocked');
  removable=true;
- assert.deepEqual(readGroupDrafts(OWNER),{},'old storage must not revive draft after recovery');
+ assert.deepEqual(readGroupDrafts(OWNER),{},'the in-tab tombstone still hides the old draft');
+ assert.equal(memory.has(storageKey),false,'a read after recovery must flush the pending deletion');
  writeGroupDraft(OWNER,B,'Новый черновик');
  assert.deepEqual(readGroupDrafts(OWNER),{[B]:'Новый черновик'});
  reset();
