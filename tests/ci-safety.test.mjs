@@ -66,7 +66,7 @@ function hasFailureMasking(source) {
   // Check the entire workflow so YAML block scalars (run: |) are covered too.
   return /(?:^|\n|;|&&|\(|\brun:\s*)\s*(?:set\s+\+e|set\s+\+o\s+errexit)(?=\s|[;#]|$)/im.test(source)
     || /^\s*continue-on-error:\s*(?:true|[\x27"]true[\x27"]|\$\{\{\s*true\s*\}\})\s*(?:#.*)?$/im.test(source)
-    || /(?:\|\|\s*(?:true|:|exit\s+0|\(\s*(?:true|:|exit\s+0)\s*\))|;\s*exit\s+0)(?=\s|[;#)&|]|$)/im.test(source);
+    || /(?:\|\|\s*(?:true|:|exit\s+0|return\s+0|\(\s*(?:true|:|exit\s+0|return\s+0)\s*\))|;\s*exit\s+0)(?=\s|[;#)&|]|$)/im.test(source);
 }
 
 test('CI verification steps cannot silently ignore failures', () => {
@@ -100,6 +100,9 @@ test('CI failure masking guard catches multiline run blocks', () => {
     '      - run: npm test && set +e; npm run build',
     '      - run: (set +e; npm test)',
     '      - run: npm test && (set +o errexit; npm run build)',
+    '      - run: npm test || return 0',
+    '      - run: npm test || RETURN 0',
+    '      - run: npm test || (return 0)',
     '      - run: npm test || (exit 0)',
     '      - run: npm test || (true)',
     '      - run: npm test || (:)',
