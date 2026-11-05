@@ -124,6 +124,16 @@ test('CI failure masking guard catches multiline run blocks', () => {
   assert.equal(hasFailureMasking('      - run: npm test || { false; }'), false);
 });
 
+test('CI verification steps are not disabled by constant-false conditions', () => {
+  // A present but skipped verification command is not a successful CI gate.
+  const disabled = /^\\s*if:\\s*(?:false|['"]false['"]|\\$\\{\\{\\s*false\\s*\\}\\})\\s*(?:#.*)?$/im;
+  assert.doesNotMatch(workflow, disabled);
+  for (const condition of ['if: false', 'if: FALSE', 'if: "false"', 'if: ${{ false }}']) {
+    assert.match('      ' + condition, disabled, `missed disabled CI step: ${condition}`);
+  }
+  assert.doesNotMatch('      if: ${{ success() }}', disabled);
+});
+
 test('CI pins the Ubuntu runner image to avoid unexpected OS upgrades', () => {
   assert.match(workflow, /^\s{4}runs-on:\s*ubuntu-24\.04\s*$/m);
   assert.doesNotMatch(workflow, /^\s+runs-on:\s*ubuntu-latest\s*$/m);
