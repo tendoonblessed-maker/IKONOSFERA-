@@ -65,7 +65,7 @@ test('CI configures the supported Node runtime before installing dependencies', 
 function hasFailureMasking(source) {
   // Check the entire workflow so YAML block scalars (run: |) are covered too.
   return /^\s*continue-on-error:\s*true\s*(?:#.*)?$/im.test(source)
-    || /(?:\|\|\s*(?:true|:|exit\s+0)|;\s*exit\s+0)(?=\s|$)/m.test(source);
+    || /(?:\|\|\s*(?:true|:|exit\s+0)|;\s*exit\s+0)(?=\s|;|#|$)/m.test(source);
 }
 
 test('CI verification steps cannot silently ignore failures', () => {
@@ -80,6 +80,9 @@ test('CI failure masking guard catches multiline run blocks', () => {
     '      - run: npm test\n        continue-on-error: true',
     '      - run: npm test\n        continue-on-error: True',
     '      - run: npm test || :',
+    '      - run: npm test || true; echo done',
+    '      - run: |\n          npm test || exit 0; echo ignored',
+    '      - run: npm test || true # ignored',
     '      - run: |\n          npm test || exit 0',
   ]) {
     assert.equal(hasFailureMasking(unsafe), true, `missed failure masking: ${unsafe}`);
