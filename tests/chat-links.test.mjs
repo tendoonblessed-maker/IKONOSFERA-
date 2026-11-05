@@ -101,6 +101,25 @@ test('ambiguous URLs do not block nearby valid links or encoded path characters'
  assert.deepEqual(links(encoded),[{text:encoded,href:encoded}]);
 });
 
+test('all Unicode format, default-ignorable and control characters stay non-clickable',()=>{
+ for(const text of [
+  'https://example.com/\u206Ahidden',
+  'https://example.com/\u206Fhidden',
+  'https://example.com/\u{E0001}\u{E0061}hidden',
+  'https://example.com/\u034Fhidden',
+  'https://example.com/\uFE0Fhidden',
+  'https://example.com/\u0085hidden',
+  'https://example.com/\uFFF9hidden'
+ ]){
+  assert.equal(links(text).length,0,'invisible or control code point must not create a link');
+  assert.equal(reconstructed(text),text,'the original message must remain byte-for-byte equivalent');
+ }
+ const encoded='https://example.com/path%E2%80%8Bname';
+ assert.deepEqual(links(encoded),[{text:encoded,href:encoded}],
+  'visible percent-encoded characters remain supported');
+ assert.equal(reconstructed(encoded),encoded);
+});
+
 test('normal Unicode chat links remain clickable',()=>{
  const text='https://example.com/привет';
  assert.deepEqual(links(text),[{text,href:'https://example.com/%D0%BF%D1%80%D0%B8%D0%B2%D0%B5%D1%82'}]);
