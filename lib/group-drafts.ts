@@ -16,6 +16,20 @@ function store():Storage|null{
  catch{return null;}
 }
 function key(ownerId:string){return PREFIX+ownerId;}
+
+/** Retry a pending write or sign-out tombstone as soon as storage is usable. */
+function flushPendingGroupDrafts(ownerId:string):void{
+ if(!unsavedOwners.has(ownerId))return;
+ try{
+  const storage=store();
+  if(!storage)return;
+  const drafts=volatileDrafts.get(ownerId)??{};
+  if(Object.keys(drafts).length)storage.setItem(key(ownerId),JSON.stringify(drafts));
+  else storage.removeItem(key(ownerId));
+  unsavedOwners.delete(ownerId);
+ }catch{/* Keep the latest draft/tombstone until storage recovers. */}
+}
+
 /** Retain the last 48 edited drafts; invalid entries must not evict real ones. */
 export function cleanGroupDrafts(input:unknown):GroupDrafts{
  if(!input||Array.isArray(input)||typeof input!=='object')return {};
@@ -34,7 +48,9 @@ export function cleanGroupDrafts(input:unknown):GroupDrafts{
 }
 export function readGroupDrafts(ownerId:string):GroupDrafts{
  if(!UUID.test(ownerId))return {};
- // A failed write or sign-out must not resurrect stale data from storage.
+ // Flush before reading so recovered storage cannot later resurrect stale text.
+ flushPendingGroupDrafts(ownerId);
+ // If storage is still unavailable, the current tab's snapshot/tombstone wins.
  if(unsavedOwners.has(ownerId))return {...(volatileDrafts.get(ownerId)??{})};
  try{
   const storage=store();
@@ -52,14 +68,7 @@ export function writeGroupDraft(ownerId:string,groupId:string,text:string):Group
  const cleaned=cleanGroupDrafts(next);
  volatileDrafts.set(ownerId,cleaned);
  unsavedOwners.add(ownerId);
- try{
-  const storage=store();
-  if(storage){
-   if(Object.keys(cleaned).length)storage.setItem(key(ownerId),JSON.stringify(cleaned));
-   else storage.removeItem(key(ownerId));
-   unsavedOwners.delete(ownerId);
-  }
- }catch{/* Retain the latest drafts in memory until storage recovers. */}
+ flushPendingGroupDrafts(ownerId);
  return cleaned;
 }
 export function clearGroupDrafts(ownerId:string):void{
@@ -67,8 +76,5 @@ export function clearGroupDrafts(ownerId:string):void{
  volatileDrafts.delete(ownerId);
  // A failed removal must not revive the signed-out account's old drafts.
  unsavedOwners.add(ownerId);
- try{
-  const storage=store();
-  if(storage){storage.removeItem(key(ownerId));unsavedOwners.delete(ownerId);}
- }catch{}
+ flushPendingGroupDrafts(ownerId);
 }
