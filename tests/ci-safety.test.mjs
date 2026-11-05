@@ -152,3 +152,28 @@ test('CI pins the Ubuntu runner image to avoid unexpected OS upgrades', () => {
   assert.match(workflow, /^\s{4}runs-on:\s*ubuntu-24\.04\s*$/m);
   assert.doesNotMatch(workflow, /^\s+runs-on:\s*ubuntu-latest\s*$/m);
 });
+
+function hasConditionalVerificationOverride(source) {
+  // Job-level keys use four spaces; step-level keys use eight. Restrict the
+  // guard to YAML mapping keys so shell "if" statements inside run blocks stay valid.
+  return /^ {4}(?:if|continue-on-error):|^ {8}(?:if|continue-on-error):/m.test(source);
+}
+
+test('CI verification cannot be skipped by dynamic conditions or allowed to fail', () => {
+  assert.equal(hasConditionalVerificationOverride(workflow), false,
+    'required verification must run unconditionally and fail the job on errors');
+
+  for (const unsafe of [
+    "    if: ${{ github.event_name == 'push' }}",
+    "        if: ${{ github.event_name != 'pull_request' }}",
+    "        if: ${{ fromJSON('false') }}",
+    "        continue-on-error: ${{ fromJSON('true') }}",
+    "        continue-on-error: ${{ github.event_name == 'pull_request' }}",
+  ]) {
+    assert.equal(hasConditionalVerificationOverride(unsafe), true,
+      `missed dynamic CI override: ${unsafe}`);
+  }
+
+  assert.equal(hasConditionalVerificationOverride('          if [ -f package.json ]; then npm test; fi'), false,
+    'shell conditionals inside a run block are not YAML step conditions');
+});
