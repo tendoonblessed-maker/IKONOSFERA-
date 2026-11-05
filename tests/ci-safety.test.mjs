@@ -128,9 +128,9 @@ test('CI failure masking guard catches multiline run blocks', () => {
 
 test('CI verification steps are not disabled by constant-false conditions', () => {
   // A present but skipped verification command is not a successful CI gate.
-  const disabled = /^\s*if:\s*(?:false|['"]false['"]|\$\{\{\s*(?:false|!\s*true|true\s*==\s*false)\s*\}\})\s*(?:#.*)?$/im;
+  const disabled = /^\s*if:\s*(?:false|['"]false['"]|\$\{\{\s*(?:false|0|!\s*true|true\s*==\s*false|false\s*==\s*true)\s*\}\})\s*(?:#.*)?$/im;
   assert.doesNotMatch(workflow, disabled);
-  for (const condition of ['if: false', 'if: FALSE', 'if: "false"', 'if: ${{ false }}', 'if: ${{ !true }}', 'if: ${{ true == false }}']) {
+  for (const condition of ['if: false', 'if: FALSE', 'if: "false"', 'if: ${{ false }}', 'if: ${{ !true }}', 'if: ${{ true == false }}', 'if: ${{ 0 }}', 'if: ${{ false == true }}']) {
     assert.match('      ' + condition, disabled, `missed disabled CI step: ${condition}`);
   }
   assert.match('      if: false # intentionally skipped', disabled);
