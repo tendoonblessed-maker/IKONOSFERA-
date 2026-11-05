@@ -64,7 +64,8 @@ test('CI configures the supported Node runtime before installing dependencies', 
 
 function hasFailureMasking(source) {
   // Check the entire workflow so YAML block scalars (run: |) are covered too.
-  return /^\s*continue-on-error:\s*true\s*(?:#.*)?$/im.test(source)
+  return /(?:^|\n)\s*(?:set\s+\+e|set\s+\+o\s+errexit)(?=\s|[;#]|$)/im.test(source)
+    || /^\s*continue-on-error:\s*true\s*(?:#.*)?$/im.test(source)
     || /(?:\|\|\s*(?:true|:|exit\s+0|\(\s*(?:true|:|exit\s+0)\s*\))|;\s*exit\s+0)(?=\s|[;#)&|]|$)/im.test(source);
 }
 
@@ -89,6 +90,8 @@ test('CI failure masking guard catches multiline run blocks', () => {
     '      - run: (npm test || true)',
     '      - run: (npm test || exit 0)',
     '      - run: (npm test || :)',
+    '      - run: |\n          set +e\n          npm test',
+    '      - run: |\n          set +o errexit; npm test',
     '      - run: npm test || (exit 0)',
     '      - run: npm test || (true)',
     '      - run: npm test || (:)',
