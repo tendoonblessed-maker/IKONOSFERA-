@@ -64,6 +64,68 @@ test('embedded domain fragments, email addresses, credentials and malformed URLs
  }
 });
 
+
+test('invisible formatting and bidi controls never create deceptive clickable URLs',()=>{
+ for(const input of [
+  'https://example.com/\u202Ecom.evil',
+  'https://exa\u200Bmple.com/path',
+  'www.example.com/\u2066hidden\u2069',
+  'https://example.com/\u00ADdownload',
+  'https://example.com/\u200Dfile',
+  'https://example.com/\u061Cpath'
+ ]){
+  const text=input;
+  assert.equal(links(text).length,0,'formatting controls must not produce clickable links');
+  assert.equal(reconstructed(text),text,'original chat text must remain unchanged');
+ }
+});
+
+test('raw backslashes and invisible ASCII controls cannot silently rewrite clickable URLs',()=>{
+ for(const text of [
+  'https://trusted.example\\@evil.example/path',
+  'www.trusted.example\\admin',
+  'https://trusted.example/\u0000hidden',
+  'https://trusted.example/\u001fhidden',
+  'https://trusted.example/\u007fhidden'
+ ]){
+  assert.equal(links(text).length,0,'ambiguous URL must not be clickable');
+  assert.equal(reconstructed(text),text,'preserve original message characters');
+ }
+});
+
+test('ambiguous URLs do not block nearby valid links or encoded path characters',()=>{
+ const input='https://trusted.example\\@evil.example и https://trusted.example/ok';
+ assert.deepEqual(links(input),[{text:'https://trusted.example/ok',href:'https://trusted.example/ok'}]);
+ assert.equal(reconstructed(input),input);
+ const encoded='https://trusted.example/path%5Cname';
+ assert.deepEqual(links(encoded),[{text:encoded,href:encoded}]);
+});
+
+test('all Unicode format, default-ignorable and control characters stay non-clickable',()=>{
+ for(const text of [
+  'https://example.com/\u206Ahidden',
+  'https://example.com/\u206Fhidden',
+  'https://example.com/\u{E0001}\u{E0061}hidden',
+  'https://example.com/\u034Fhidden',
+  'https://example.com/\uFE0Fhidden',
+  'https://example.com/\u0085hidden',
+  'https://example.com/\uFFF9hidden'
+ ]){
+  assert.equal(links(text).length,0,'invisible or control code point must not create a link');
+  assert.equal(reconstructed(text),text,'the original message must remain byte-for-byte equivalent');
+ }
+ const encoded='https://example.com/path%E2%80%8Bname';
+ assert.deepEqual(links(encoded),[{text:encoded,href:encoded}],
+  'visible percent-encoded characters remain supported');
+ assert.equal(reconstructed(encoded),encoded);
+});
+
+test('normal Unicode chat links remain clickable',()=>{
+ const text='https://example.com/привет';
+ assert.deepEqual(links(text),[{text,href:'https://example.com/%D0%BF%D1%80%D0%B8%D0%B2%D0%B5%D1%82'}]);
+ assert.equal(reconstructed(text),text);
+});
+
 test('URLs in multiple lines are independent with no global-regex state leak',()=>{
  const a='https://first.example';
  const b='https://second.example';

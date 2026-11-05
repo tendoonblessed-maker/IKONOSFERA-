@@ -6,6 +6,12 @@
 export type ChatTextPart={text:string;href?:string};
 const LINK_CANDIDATE=/(?:https?:\/\/|www\.)[^\s<>"'\u0060]+/gi;
 const TRAILING_PUNCTUATION=/[.,!?;:…。，！？；：»”’›]$/u;
+// Unicode format and default-ignorable code points can change visual order or
+// disappear during rendering. Keep such candidates literal, not clickable.
+const UNSAFE_LINK_FORMATTING=/[\p{Cf}\p{Default_Ignorable_Code_Point}]/u;
+// WHATWG URL normalizes raw backslashes and can percent-encode control bytes.
+// Percent-encoded text remains visible and is intentionally still supported.
+const UNSAFE_LINK_SYNTAX=/[\\\p{Cc}]/u;
 const MAX_URL_LENGTH=2048;
 const MAX_LINKS=40;
 
@@ -33,7 +39,7 @@ function splitEnding(candidate:string):{url:string;ending:string}{
 }
 
 function externalHref(candidate:string):string|null{
- if(candidate.length>MAX_URL_LENGTH)return null;
+ if(candidate.length>MAX_URL_LENGTH||UNSAFE_LINK_FORMATTING.test(candidate)||UNSAFE_LINK_SYNTAX.test(candidate))return null;
  const prefixed=/^www\./i.test(candidate)?'https://'+candidate:candidate;
  try{
   const parsed=new URL(prefixed);
