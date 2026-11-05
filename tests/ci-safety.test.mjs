@@ -66,6 +66,7 @@ function hasFailureMasking(source) {
   // Check the entire workflow so YAML block scalars (run: |) are covered too.
   return /(?:^|\n|;|&&|\(|\brun:\s*)\s*(?:set\s+\+e|set\s+\+o\s+errexit)(?=\s|[;#]|$)/im.test(source)
     || /^\s*continue-on-error:\s*(?:true|[\x27"]true[\x27"]|\$\{\{\s*true\s*\}\})\s*(?:#.*)?$/im.test(source)
+    || /\|\|\s*\{\s*(?:true|:|exit\s+0|return\s+0)\s*;?\s*\}(?=\s|[;#)&|]|$)/im.test(source)
     || /(?:\|\|\s*(?:true|:|exit\s+0|return\s+0|\(\s*(?:true|:|exit\s+0|return\s+0)\s*\))|;\s*exit\s+0)(?=\s|[;#)&|]|$)/im.test(source);
 }
 
@@ -104,6 +105,9 @@ test('CI failure masking guard catches multiline run blocks', () => {
     '      - run: npm test || RETURN 0',
     '      - run: npm test || (return 0)',
     '      - run: npm test || (exit 0)',
+    '      - run: npm test || { true; }',
+    '      - run: npm test || { exit 0; }',
+    '      - run: npm test || { return 0; }',
     '      - run: npm test || (true)',
     '      - run: npm test || (:)',
     '      - run: |\n          npm test || exit 0',
@@ -111,6 +115,7 @@ test('CI failure masking guard catches multiline run blocks', () => {
     assert.equal(hasFailureMasking(unsafe), true, `missed failure masking: ${unsafe}`);
   }
   assert.equal(hasFailureMasking('      - run: |\n          npm test\n          npm run build'), false);
+  assert.equal(hasFailureMasking('      - run: npm test || { false; }'), false);
 });
 
 test('CI pins the Ubuntu runner image to avoid unexpected OS upgrades', () => {
