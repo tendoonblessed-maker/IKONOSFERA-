@@ -21,12 +21,12 @@ function compile(sourceFile,bindings={}){
 const key='ikonosfera-session-v1';
 function sessionEnvironment(fetch){
  const records=new Map([[key,JSON.stringify({
-   access_token:'expired-access-token',refresh_token:'saved-refresh-token',expires_at:Math.floor(Date.now()/1000)-60
+  access_token:'expired-access-token',refresh_token:'saved-refresh-token',expires_at:Math.floor(Date.now()/1000)-60
  })]]);
  const localStorage={
-   getItem(name){return records.get(name)??null;},
-   setItem(name,value){records.set(name,String(value));},
-   removeItem(name){records.delete(name);}
+  getItem(name){return records.get(name)??null;},
+  setItem(name,value){records.set(name,String(value));},
+  removeItem(name){records.delete(name);}
  };
  const client=compile('lib/supabase-rest.ts',{window:{},localStorage,fetch});
  return {client,records};
@@ -35,11 +35,11 @@ function sessionEnvironment(fetch){
 test('expired session is retained when the network is down, then refreshes successfully',async()=>{
  let online=false,requests=0;
  const fetch=async()=>{
-   requests++;
-   if(!online)throw new Error('offline');
-   return {ok:true,status:200,text:async()=>JSON.stringify({
-     access_token:'new-access-token',refresh_token:'new-refresh-token',expires_in:3600
-   })};
+  requests++;
+  if(!online)throw new Error('offline');
+  return {ok:true,status:200,text:async()=>JSON.stringify({
+   access_token:'new-access-token',refresh_token:'new-refresh-token',expires_in:3600
+  })};
  };
  const {client,records}=sessionEnvironment(fetch);
  await assert.rejects(client.validSession(),/offline/);
@@ -54,11 +54,11 @@ test('expired session is retained when the network is down, then refreshes succe
 test('concurrent authentication checks exchange the refresh token only once',async()=>{
  let requests=0;
  const {client}=sessionEnvironment(async()=>{
-   requests++;
-   await Promise.resolve();
-   return {ok:true,status:200,text:async()=>JSON.stringify({
-     access_token:'refreshed',refresh_token:'rotated',expires_in:3600
-   })};
+  requests++;
+  await Promise.resolve();
+  return {ok:true,status:200,text:async()=>JSON.stringify({
+   access_token:'refreshed',refresh_token:'rotated',expires_in:3600
+  })};
  });
  const [a,b,c]=await Promise.all([client.validSession(),client.validSession(),client.validSession()]);
  assert.equal(requests,1);
@@ -69,7 +69,7 @@ test('concurrent authentication checks exchange the refresh token only once',asy
 
 test('explicit invalid refresh token removes the revoked session',async()=>{
  const {client,records}=sessionEnvironment(async()=>({
-   ok:false,status:400,text:async()=>JSON.stringify({message:'Invalid Refresh Token'})
+  ok:false,status:400,text:async()=>JSON.stringify({message:'Invalid Refresh Token'})
  }));
  const value=await client.validSession();
  assert.equal(value,null);
@@ -89,4 +89,32 @@ test('direct chat history merges recent pages and avoids duplicates',()=>{
  assert.deepEqual(Array.from(extended,m=>m.id),['0000','0001','0002','0003']);
  assert.equal(extended[1].body,'one');
  assert.deepEqual(Array.from(mergeRecentPage(extended,[third],2),m=>m.id),['0003']);
+});
+
+test('direct chat history keeps PostgreSQL microsecond order ahead of UUID ties',()=>{
+ const {compareMessages,prependEarlierPage}=compile('lib/chat-history.ts');
+ const early={id:'z',created_at:'2026-10-29T07:00:00.000100Z'};
+ const late={id:'a',created_at:'2026-10-29T07:00:00.000200Z'};
+ assert.ok(compareMessages(early,late)<0,'real time wins even when the UUID sorts the other way');
+ assert.deepEqual(Array.from(prependEarlierPage([late],[early]),row=>row.id),['z','a']);
+});
+
+test('direct chat page merge retains earlier messages inside the same millisecond',()=>{
+ const {mergeRecentPage}=compile('lib/chat-history.ts');
+ const old={id:'z',created_at:'2026-10-29T07:00:00.000100Z'};
+ const middle={id:'y',created_at:'2026-10-29T07:00:00.000150Z'};
+ const firstLatest={id:'a',created_at:'2026-10-29T07:00:00.000200Z'};
+ const newest={id:'b',created_at:'2026-10-29T07:00:00.000300Z'};
+ const merged=mergeRecentPage([old,middle,newest],[firstLatest,newest],2);
+ assert.deepEqual(Array.from(merged,row=>row.id),['z','y','a','b']);
+});
+
+test('direct chat ordering handles variable precision and equivalent timezone offsets',()=>{
+ const {compareMessages}=compile('lib/chat-history.ts');
+ const early={id:'z',created_at:'2026-10-29T07:00:00.1234Z'};
+ const later={id:'a',created_at:'2026-10-29T09:00:00.123401+02:00'};
+ const sameInstant={id:'b',created_at:'2026-10-29T07:00:00.123401Z'};
+ assert.ok(compareMessages(early,later)<0);
+ assert.equal(compareMessages(later,sameInstant),later.id.localeCompare(sameInstant.id),
+  'equal microseconds use the deterministic ID tie breaker across offsets');
 });
