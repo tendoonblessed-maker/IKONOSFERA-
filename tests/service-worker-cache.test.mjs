@@ -17,7 +17,12 @@ function fetchHandler({match=async()=>undefined,open=async()=>({put:async()=>{}}
  };
 }
 
-function lifecycleHandler({open=async()=>({add:async()=>{}}),keys=async()=>[]}={}){
+function lifecycleHandler({
+ open=async()=>({add:async()=>{}}),
+ keys=async()=>[],
+ scheduleTimeout=(callback,delay)=>setTimeout(callback,delay),
+ cancelTimeout=id=>clearTimeout(id)
+}={}){
  const handlers=new Map();
  let skipped=0,claimed=0;
  const self={
@@ -26,7 +31,10 @@ function lifecycleHandler({open=async()=>({add:async()=>{}}),keys=async()=>[]}={
   addEventListener:(name,handler)=>handlers.set(name,handler),
   skipWaiting:()=>{skipped++;}
  };
- vm.runInNewContext(source,{self,caches:{open,keys,delete:async()=>true},URL,Response},{timeout:1000});
+ vm.runInNewContext(source,{
+  self,caches:{open,keys,delete:async()=>true},URL,Response,
+  setTimeout:scheduleTimeout,clearTimeout:cancelTimeout
+ },{timeout:1000});
  return {
   async install(){
    let completion;
@@ -93,6 +101,21 @@ test('one failed precache asset does not reject installation or skip other publi
    attempted.push(asset);
    if(asset==='/icon-192.png')throw Error('optional icon unavailable');
   }})
+ });
+ await assert.doesNotReject(worker.install());
+ assert.deepEqual(attempted,['/offline.html','/icon-192.png','/status-emojis.webp?v=2']);
+ assert.equal(worker.skipped(),1);
+});
+
+test('a stalled precache request is bounded and cannot hold installation open',async()=>{
+ const attempted=[];
+ const worker=lifecycleHandler({
+  open:async()=>({add:async asset=>{
+   attempted.push(asset);
+   if(asset==='/offline.html')return new Promise(()=>{});
+  }}),
+  // Keep the production 8-second bound but shorten it in this deterministic test.
+  scheduleTimeout:callback=>setTimeout(callback,1)
  });
  await assert.doesNotReject(worker.install());
  assert.deepEqual(attempted,['/offline.html','/icon-192.png','/status-emojis.webp?v=2']);
