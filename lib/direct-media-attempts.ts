@@ -9,7 +9,7 @@ const PREFIX='ikonosfera-direct-media-attempt-v1:';
 const UUID=/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
 const FINGERPRINT=/^[a-f0-9]{64}$/i;
 export const DIRECT_MEDIA_ATTEMPT_TTL_MS=48*60*60*1000;
-const MAX_ATTEMPTS_PER_CHAT=8;
+const MAX_ATTEMPTS_PER_CHAT=128;
 const MAX_MEDIA_BYTES=25*1024*1024;
 
 export type DirectMediaAttempt={fingerprint:string;id:string;createdAt:number};
@@ -51,7 +51,7 @@ export function readDirectMediaAttempts(
     const raw=storage()?.getItem(k);
     value=raw?JSON.parse(raw):inMemory.get(k);
   }catch{value=inMemory.get(k);}
-  const records=Array.isArray(value)?value.filter((item):item is DirectMediaAttempt=>valid(item,now)).slice(0,MAX_ATTEMPTS_PER_CHAT):[];
+  const records=Array.isArray(value)?value.filter((item):item is DirectMediaAttempt=>valid(item,now)):[];
   if(!Array.isArray(value)||records.length!==value.length)write(ownerId,chatId,records);
   return records;
 }
@@ -85,8 +85,10 @@ export async function getOrCreateDirectMediaAttempt(
   const records=readDirectMediaAttempts(ownerId,chatId,now);
   const existing=records.find(item=>item.fingerprint===fingerprint);
   if(existing)return existing.id;
+  if(records.length>=MAX_ATTEMPTS_PER_CHAT)
+    throw Error('Слишком много неподтверждённых вложений. Сначала повтори отправку прежних файлов.');
   const attempt={fingerprint,id:crypto.randomUUID(),createdAt:now};
-  write(ownerId,chatId,[attempt,...records].slice(0,MAX_ATTEMPTS_PER_CHAT));
+  write(ownerId,chatId,[attempt,...records]);
   return attempt.id;
 }
 /** Acknowledging an older attempt cannot erase another pending attachment. */
