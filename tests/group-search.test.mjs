@@ -156,6 +156,9 @@ test('search panel is account scoped, shows complete history results and never e
  assert.match(panel,/contextRef\.current\.token!==requestToken/);
  assert.match(panel,/getGroupMessageContext\(token,groupId,message\.id,message\.created_at,controller\.signal\)/);
  assert.match(panel,/browsingOlderRef\.current=true/);
+ const jump=panel.slice(panel.indexOf('async function openSearchResult'),panel.indexOf('useLayoutEffect(()=>{',panel.indexOf('async function openSearchResult')));
+ assert.ok(jump.indexOf('getGroupMessageContext')<jump.indexOf('browsingOlderRef.current=true'));
+ assert.doesNotMatch(jump,/catch\(e\)\{\s*browsingOlderRef\.current=false/);
  assert.match(panel,/if\(cancelled\|\|document\.visibilityState==='hidden'\|\|!navigator\.onLine\|\|browsingOlderRef\.current\)return/);
  assert.match(panel,/data-group-message-id=\{m\.id\}/);
  assert.match(panel,/target\.getBoundingClientRect\(\)/);

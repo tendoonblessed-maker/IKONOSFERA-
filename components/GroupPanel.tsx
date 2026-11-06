@@ -244,7 +244,6 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
    searchJumpRequestRef.current++;
    searchJumpAbortRef.current.abort();
    searchJumpAbortRef.current=null;
-   browsingOlderRef.current=false;
    setSearchLocating(null);
   }
   setSearchOpen(false);setSearchQuery('');
@@ -261,11 +260,6 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
   const controller=new AbortController();
   searchJumpAbortRef.current=controller;
   setSearchLocating(message.id);
-  // Pause recent-page polling so it cannot overwrite a historical jump.
-  browsingOlderRef.current=true;
-  followNewestRef.current=false;
-  setShowJumpToLatest(true);
-  setNewMessagesBelow(0);
   try{
    const current=messages.some(row=>row.id===message.id);
    const around=current?messages:await getGroupMessageContext(token,groupId,message.id,message.created_at,controller.signal);
@@ -274,6 +268,12 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
       ||contextRef.current.userId!==ownerId
       ||contextRef.current.token!==requestToken)return;
    if(!around.some(row=>row.id===message.id))throw Error('Сообщение больше недоступно.');
+   // Only enter archive mode after the context is ready. Canceling a pending
+   // jump must leave an existing latest/archive view exactly as it was.
+   browsingOlderRef.current=true;
+   followNewestRef.current=false;
+   setShowJumpToLatest(true);
+   setNewMessagesBelow(0);
    olderRequestRef.current++;
    olderLoadingRef.current=false;
    prependScrollRef.current=null;
@@ -286,8 +286,7 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
    closeSearch(false);
   }catch(e){
    if(requestId===searchJumpRequestRef.current){
-    browsingOlderRef.current=false;
-    if(!controller.signal.aborted)setSearchError(e instanceof Error?e.message:'Не удалось открыть сообщение');
+     if(!controller.signal.aborted)setSearchError(e instanceof Error?e.message:'Не удалось открыть сообщение');
    }
   }finally{
    if(requestId===searchJumpRequestRef.current)setSearchLocating(null);
