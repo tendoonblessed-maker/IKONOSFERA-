@@ -1274,7 +1274,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
         </button>
       </div>
       {tab==='chats'&&<div className="pane-search"><span aria-hidden="true" className="ik-search-glyph"><svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="10.7" cy="10.7" r="6.4"/><path d="m15.5 15.5 5 5"/></svg></span><input ref={searchInputRef} aria-label="Поиск по чатам" placeholder="Поиск по чатам и сообщениям" value={search} onChange={e=>setSearch(e.target.value)} disabled={!loggedIn}/></div>}
-      {tab==='chats'&&loggedIn&&session&&<StoriesStrip token={session.access_token} userId={userId} contacts={storyContacts} ownProfile={profile}/>}
+      {tab==='chats'&&loggedIn&&session&&<StoriesStrip key={userId} token={session.access_token} userId={userId} contacts={storyContacts} ownProfile={profile}/>}
       {tab==='chats'&&loggedIn&&<div className="ik-chat-actions">
         {createMenuOpen&&<div className="ik-create-menu" role="group" aria-label="Новая беседа">
           <button type="button" onClick={()=>{setCreateMenuOpen(false);switchTab('contacts');}}>✉ <span>Личное сообщение</span></button>
