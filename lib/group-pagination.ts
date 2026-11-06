@@ -1,6 +1,6 @@
 import {apiUrl} from '@/lib/supabase-rest';
 import type {GroupMessage} from '@/lib/groups';
-import {compareMessageTimestampAndId} from './message-order';
+import {compareMessageTimestampAndId} from './message-order.js';
 
 const anonKey=process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY||'';
 const UUID=/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
