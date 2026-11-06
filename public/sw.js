@@ -2,6 +2,26 @@
 const CACHE_NAME = "ikonosfera-shell-v6";
 const OFFLINE_URL = "/offline.html";
 const PRECACHE_URLS = [OFFLINE_URL, "/icon-192.png", "/status-emojis.webp?v=2"];
+const PRECACHE_TIMEOUT_MS = 8000;
+
+async function addPrecacheAsset(cache, asset) {
+  let timeoutId;
+  try {
+    // Cache.add() has no AbortSignal option. Bound its wait so a stalled
+    // mobile network cannot keep the entire Service Worker install pending.
+    await Promise.race([
+      cache.add(asset),
+      new Promise((_, reject) => {
+        timeoutId = setTimeout(() => reject(new Error("Precache timed out")), PRECACHE_TIMEOUT_MS);
+      })
+    ]);
+  } catch {
+    // Precache entries are independent and optional; online navigation works.
+    // The offline fallback is available only when OFFLINE_URL was cached.
+  } finally {
+    if (timeoutId !== undefined) clearTimeout(timeoutId);
+  }
+}
 
 self.addEventListener("install", (event) => {
   event.waitUntil((async () => {
@@ -13,14 +33,7 @@ self.addEventListener("install", (event) => {
     } catch {
       return;
     }
-    await Promise.all(PRECACHE_URLS.map(async (asset) => {
-      try {
-        await cache.add(asset);
-      } catch {
-        // Precache entries are independent; online navigation still works.
-        // The offline fallback is available only when OFFLINE_URL was cached.
-      }
-    }));
+    await Promise.all(PRECACHE_URLS.map(asset => addPrecacheAsset(cache, asset)));
   })());
   self.skipWaiting();
 });
