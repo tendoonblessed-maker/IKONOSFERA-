@@ -279,6 +279,32 @@ const SIGNED_URL_CACHE_LIMIT=120;
 export function invalidateDirectMediaUrl(token:string,path:string):void{
  signedMediaCache.delete(token+':'+path);
 }
+/** Resolve only the signed URL for the exact private object requested from this Supabase project. */
+export function resolveDirectMediaSignedUrl(signedURL:string,path:string,baseUrl=apiUrl):string{
+ if(!/^[a-f0-9-]{36}\\/[a-f0-9-]{36}\\/[a-f0-9-]{36}\\.[a-z0-9]+$/i.test(path))
+  throw Error('Недопустимый путь вложения');
+ const candidate=typeof signedURL==='string'?signedURL.trim():'';
+ if(!candidate||candidate.length>4096)throw Error('Недопустимый URL вложения');
+ let base:URL,parsed:URL;
+ try{
+  base=new URL(baseUrl);
+  if((base.protocol!=='https:'&&base.protocol!=='http:')||base.username||base.password)throw Error();
+  let input=candidate;
+  if(input.startsWith('/object/sign/'))input='/storage/v1'+input;
+  else if(input.startsWith('object/sign/'))input='/storage/v1/'+input;
+  else if(input.startsWith('storage/v1/object/sign/'))input='/'+input;
+  parsed=new URL(input,base.origin);
+ }catch{
+  throw Error('Недопустимый URL вложения');
+ }
+ if(parsed.origin!==base.origin||parsed.protocol!==base.protocol||parsed.username||parsed.password||parsed.hash)
+  throw Error('Недопустимый URL вложения');
+ if(parsed.pathname.startsWith('/object/sign/'))parsed.pathname='/storage/v1'+parsed.pathname;
+ const expectedPath='/storage/v1/object/sign/ikonosfera-direct-media/'+path;
+ if(parsed.pathname!==expectedPath||!parsed.searchParams.get('token'))
+  throw Error('Недопустимый URL вложения');
+ return parsed.href;
+}
 export async function getDirectMediaUrl(token:string,path:string):Promise<string>{
  if(!/^[a-f0-9-]{36}\/[a-f0-9-]{36}\/[a-f0-9-]{36}\.[a-z0-9]+$/i.test(path)){
    throw Error('Недопустимый путь вложения');
@@ -296,7 +322,7 @@ export async function getDirectMediaUrl(token:string,path:string):Promise<string
    const value=await res.json().catch(()=>null);
    if(!res.ok||!value?.signedURL)throw Error("Не удалось открыть вложение");
    const signed=value.signedURL as string;
-   return signed.startsWith("http")?signed:apiUrl+"/storage/v1"+(signed.startsWith("/")?signed:"/"+signed);
+   return resolveDirectMediaSignedUrl(signed,path);
  })();
  signedMediaCache.set(key,{promise:request,validUntil:Date.now()+SIGNED_URL_CACHE_MS});
  if(signedMediaCache.size>SIGNED_URL_CACHE_LIMIT){

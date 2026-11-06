@@ -14,6 +14,7 @@ const MEDIA='cccccccc-cccc-4ccc-8ccc-cccccccccccc';
 const PATH=CHAT+'/'+USER+'/'+MEDIA+'.jpg';
 const OTHER=CHAT+'/'+USER+'/'+MEDIA+'.png';
 const reply=signedURL=>({ok:true,json:async()=>({signedURL})});
+const signedURL=(path,token)=>'/object/sign/ikonosfera-direct-media/'+path+'?token='+token;
 function deferred(){
  let resolve,reject;
  const promise=new Promise((yes,no)=>{resolve=yes;reject=no;});
@@ -43,9 +44,9 @@ test('parallel private media previews share a signing request and reuse its resu
  const second=api.getDirectMediaUrl('account-one-jwt',PATH);
  assert.equal(calls.length,1,'a list of identical previews must not create duplicate signing calls');
  assert.equal(calls[0].options.headers.Authorization,'Bearer account-one-jwt');
- pending.resolve(reply('/object/sign/ikonosfera-direct-media/file?token=abc'));
+ pending.resolve(reply(signedURL(PATH,'abc')));
  const [a,b]=await Promise.all([first,second]);
- assert.equal(a,'https://example.supabase.invalid/storage/v1/object/sign/ikonosfera-direct-media/file?token=abc');
+ assert.equal(a,'https://example.supabase.invalid/storage/v1/object/sign/ikonosfera-direct-media/'+PATH+'?token=abc');
  assert.equal(b,a);
  assert.equal(await api.getDirectMediaUrl('account-one-jwt',PATH),a);
  assert.equal(calls.length,1);
@@ -64,7 +65,7 @@ test('late failure of an invalidated signing request cannot evict a newer retry'
  // The old catch handler has run; it must not remove the new entry.
  const concurrent=api.getDirectMediaUrl('same-jwt',PATH);
  assert.equal(calls.length,2,'late old rejection must not cause a third signing call');
- fresh.resolve(reply('/object/sign/ikonosfera-direct-media/new?token=fresh'));
+ fresh.resolve(reply(signedURL(PATH,'fresh')));
  const [newUrl,concurrentUrl]=await Promise.all([newCall,concurrent]);
  assert.equal(newUrl,concurrentUrl);
  assert.match(newUrl,/token=fresh$/);
@@ -75,7 +76,7 @@ test('late failure of an invalidated signing request cannot evict a newer retry'
 test('a failed current signing request is evicted so the next retry can succeed',async()=>{
  const {api,calls}=scenario((url,options,n)=>n===1
   ?Promise.reject(Error('temporary offline'))
-  :Promise.resolve(reply('/object/sign/ikonosfera-direct-media/recovered')));
+  :Promise.resolve(reply(signedURL(PATH,'recovered'))));
  await assert.rejects(api.getDirectMediaUrl('jwt',PATH),/temporary offline/);
  const recovered=await api.getDirectMediaUrl('jwt',PATH);
  assert.match(recovered,/\/recovered$/);
@@ -85,7 +86,7 @@ test('a failed current signing request is evicted so the next retry can succeed'
 });
 
 test('signed URLs and invalidation are isolated by account token and object path',async()=>{
- const {api,calls}=scenario((url,options,n)=>Promise.resolve(reply('/object/sign/file?token='+n)));
+ const {api,calls}=scenario((url,options,n)=>{const path=url.split('/ikonosfera-direct-media/')[1];return Promise.resolve(reply(signedURL(path,String(n))));});
  const first=await api.getDirectMediaUrl('user-one',PATH);
  const second=await api.getDirectMediaUrl('user-two',PATH);
  const third=await api.getDirectMediaUrl('user-one',OTHER);
@@ -98,6 +99,37 @@ test('signed URLs and invalidation are isolated by account token and object path
  assert.equal(calls.length,3,'one account/path invalidation must not touch other cache entries');
  assert.notEqual(await api.getDirectMediaUrl('user-one',PATH),first);
  assert.equal(calls.length,4);
+});
+
+test('private signed media URLs are same-origin, tokenized and bound to the requested object',()=>{
+ const {api}=scenario(()=>Promise.resolve(reply(signedURL(PATH,'unused'))));
+ const expected='https://example.supabase.invalid/storage/v1/object/sign/ikonosfera-direct-media/'+PATH+'?token=abc';
+ assert.equal(api.resolveDirectMediaSignedUrl(signedURL(PATH,'abc'),PATH),expected);
+ assert.equal(api.resolveDirectMediaSignedUrl('/storage/v1/object/sign/ikonosfera-direct-media/'+PATH+'?token=abc',PATH),expected);
+ assert.equal(api.resolveDirectMediaSignedUrl('https://example.supabase.invalid/storage/v1/object/sign/ikonosfera-direct-media/'+PATH+'?token=abc',PATH),expected);
+ for(const value of [
+  'https://evil.invalid/storage/v1/object/sign/ikonosfera-direct-media/'+PATH+'?token=x',
+  '//evil.invalid/storage/v1/object/sign/ikonosfera-direct-media/'+PATH+'?token=x',
+  '/object/sign/other-bucket/'+PATH+'?token=x',
+  '/object/sign/ikonosfera-direct-media/'+OTHER+'?token=x',
+  '/object/sign/ikonosfera-direct-media/'+PATH,
+  'https://user:pass@example.supabase.invalid/storage/v1/object/sign/ikonosfera-direct-media/'+PATH+'?token=x',
+  'javascript:alert(1)'
+ ])assert.throws(()=>api.resolveDirectMediaSignedUrl(value,PATH),/Недопустимый URL вложения/);
+});
+
+test('getDirectMediaUrl rejects a foreign signing host and evicts it so a valid retry can recover',async()=>{
+ let calls=0;
+ const {api}=scenario(()=>{
+  calls++;
+  return Promise.resolve(reply(calls===1
+   ?'https://evil.invalid/storage/v1/object/sign/ikonosfera-direct-media/'+PATH+'?token=bad'
+   :signedURL(PATH,'recovered')));
+ });
+ await assert.rejects(api.getDirectMediaUrl('jwt',PATH),/Недопустимый URL вложения/);
+ const recovered=await api.getDirectMediaUrl('jwt',PATH);
+ assert.equal(recovered,'https://example.supabase.invalid/storage/v1/object/sign/ikonosfera-direct-media/'+PATH+'?token=recovered');
+ assert.equal(calls,2);
 });
 
 test('invalid object paths cannot reach the private Storage signing endpoint',async()=>{
