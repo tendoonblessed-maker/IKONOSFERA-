@@ -1,7 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
-import { tryAcquireInFlightLock, tryAcquireAccountInFlightLock, releaseInFlightLock } from '../lib/send-lock.mjs';
+import {
+  tryAcquireInFlightLock,
+  tryAcquireAccountInFlightLock,
+  releaseInFlightLock
+} from '../lib/send-lock.mjs';
 
 test('only one direct chat submission can acquire the lock before React rerenders', () => {
   const lock = { active: false };
@@ -15,19 +19,18 @@ test('only one direct chat submission can acquire the lock before React rerender
   assert.equal(tryAcquireInFlightLock(lock), true);
 });
 
-test('text and attachment submissions share one lock', () => {
-  const lock = { active: false };
+test('text and attachment submissions share one account lock', () => {
+  const ref = { current: { ownerId: 'account-a', active: false } };
 
-  // A text submit owns the lock; an attachment submit in the same event turn
-  // must not start a second upload or create a second message.
-  assert.equal(tryAcquireInFlightLock(lock), true);
-  assert.equal(tryAcquireInFlightLock(lock), false);
+  const textLock = tryAcquireAccountInFlightLock(ref, 'account-a');
+  assert.ok(textLock);
+  assert.equal(tryAcquireAccountInFlightLock(ref, 'account-a'), null);
 
-  releaseInFlightLock(lock);
-  assert.equal(tryAcquireInFlightLock(lock), true);
+  releaseInFlightLock(textLock);
+  assert.ok(tryAcquireAccountInFlightLock(ref, 'account-a'));
 });
 
-test('both direct send handlers acquire synchronously and always release in finally', async () => {
+test('both direct send handlers acquire synchronously and release their captured lock', async () => {
   const shell = await readFile(new URL('../components/AppShell.tsx', import.meta.url), 'utf8');
   const textStart = shell.indexOf('async function sendMessage(');
   const textEnd = shell.indexOf('async function toggleSavedContact(', textStart);
@@ -40,17 +43,18 @@ test('both direct send handlers acquire synchronously and always release in fina
   const textSend = shell.slice(textStart, textEnd);
   const mediaSend = shell.slice(mediaStart, mediaEnd);
   for (const handler of [textSend, mediaSend]) {
-    assert.match(handler, /const sendLock=tryAcquireAccountInFlightLock\\(directSendLockRef,userId\\);/);
-    assert.match(handler, /if\\(!sendLock\\)return;/);
-    assert.match(handler, /finally\\{releaseInFlightLock\\(sendLock\\);if\\(userIdRef\\.current===userId\\)setSending\\(false\\);\\}/);
-    assert.match(handler, /catch\\(e\\)\\{if\\(userIdRef\\.current===userId\\)setError\\(userFacingError\\(e\\)\\);\\}/);
-    assert.ok(handler.indexOf('tryAcquireAccountInFlightLock') < handler.indexOf('try{'), 'lock must be acquired before the network request');
+    assert.ok(handler.includes('const sendLock=tryAcquireAccountInFlightLock(directSendLockRef,userId);'));
+    assert.ok(handler.includes('if(!sendLock)return;'));
+    assert.ok(handler.includes('finally{releaseInFlightLock(sendLock);if(userIdRef.current===userId)setSending(false);}'));
+    assert.ok(handler.includes('catch(e){if(userIdRef.current===userId)setError(userFacingError(e));}'));
+    assert.ok(handler.indexOf('tryAcquireAccountInFlightLock') < handler.indexOf('try{'),
+      'lock must be acquired before the network request');
   }
-  assert.match(shell, /const directSendLockRef=useRef\\(\\{ownerId:'',active:false\\}\\)/);
-  assert.match(shell, /const userIdRef=useRef\\(userId\\);\\s*userIdRef\\.current=userId;/);});
+  assert.ok(shell.includes("const directSendLockRef=useRef({ownerId:'',active:false})"));
+  assert.ok(shell.includes('const userIdRef=useRef(userId);\n  userIdRef.current=userId;'));
+});
 
-
-test('account changes isolate in-flight locks from late previous-account completions', () => {
+test('account changes isolate locks from late previous-account completions', () => {
   const ref = { current: { ownerId: 'account-a', active: false } };
   const oldAccountLock = tryAcquireAccountInFlightLock(ref, 'account-a');
 
@@ -72,12 +76,11 @@ test('account changes isolate in-flight locks from late previous-account complet
   assert.ok(tryAcquireAccountInFlightLock(ref, 'account-b'));
 });
 
-test('direct send completion handlers cannot update another account UI', async () => {
+test('stale direct send completions cannot update the next account UI', async () => {
   const shell = await readFile(new URL('../components/AppShell.tsx', import.meta.url), 'utf8');
 
-  assert.match(shell, /const userIdRef=useRef\(userId\);\s*userIdRef\.current=userId;/);
-  assert.match(shell, /useLayoutEffect\(\(\)=>\{\s*\/\/ A previous account's pending POST/);
-  assert.match(shell, /userIdRef\.current=''[\s\S]{0,120}setSending\(false\)/);
+  assert.ok(shell.includes('useLayoutEffect(()=>{\n    // A previous account\'s pending POST'));
+  assert.ok(shell.includes("userIdRef.current='';\n    directSendLockRef.current={ownerId:'',active:false};\n    setSending(false);"));
 
   const textStart = shell.indexOf('async function sendMessage(');
   const textEnd = shell.indexOf('async function toggleSavedContact(', textStart);
@@ -86,10 +89,8 @@ test('direct send completion handlers cannot update another account UI', async (
   const textSend = shell.slice(textStart, textEnd);
   const mediaSend = shell.slice(mediaStart, mediaEnd);
 
-  for (const handler of [textSend, mediaSend]) {
-    assert.match(handler, /tryAcquireAccountInFlightLock\(directSendLockRef,userId\)/);
-    assert.match(handler, /finally\{releaseInFlightLock\(sendLock\);if\(userIdRef\.current===userId\)setSending\(false\);\}/);
-    assert.match(handler, /catch\(e\)\{if\(userIdRef\.current===userId\)setError\(userFacingError\(e\)\);\}/);
-  }
-  assert.match(mediaSend, /if\(userIdRef\.current===userId\)setNotice\("Вложение отправлено\."\)/);
+  assert.ok(textSend.includes('if(userIdRef.current===userId&&selectedRef.current===chatId&&draftsOwnerRef.current===userId)'));
+  assert.ok(textSend.includes('if(userIdRef.current===userId&&draftsOwnerRef.current===userId&&'));
+  assert.ok(textSend.includes('if(userIdRef.current===userId&&reply)'));
+  assert.ok(mediaSend.includes('if(userIdRef.current===userId)setNotice("Вложение отправлено.");'));
 });
