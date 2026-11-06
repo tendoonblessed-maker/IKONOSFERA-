@@ -31,12 +31,6 @@ function harness({
   addEventListener(name,handler){documentEvents.set(name,handler);},
   removeEventListener(name,handler){if(documentEvents.get(name)===handler)documentEvents.delete(name);}
  };
- const win={
-  setTimeout:schedule(timers),clearTimeout:id=>timers.delete(id),
-  setInterval:schedule(intervals),clearInterval:id=>intervals.delete(id),
-  addEventListener(name,handler){windowEvents.set(name,handler);},
-  removeEventListener(name,handler){if(windowEvents.get(name)===handler)windowEvents.delete(name);}
- };
  const tracks=[{
   kind:'audio',readyState:'live',stopped:false,
   addEventListener(name,listener){if(name==='ended')trackListeners.add(listener);},
@@ -54,6 +48,12 @@ function harness({
   const id=nextTimer++;
   map.set(id,{fn,ms});
   return id;
+ };
+ const win={
+  setTimeout:schedule(timers),clearTimeout:id=>timers.delete(id),
+  setInterval:schedule(intervals),clearInterval:id=>intervals.delete(id),
+  addEventListener(name,handler){windowEvents.set(name,handler);},
+  removeEventListener(name,handler){if(windowEvents.get(name)===handler)windowEvents.delete(name);}
  };
  const jsx=(type,props)=>({type,props:props??{}});
  const react={
