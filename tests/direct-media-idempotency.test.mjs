@@ -242,6 +242,76 @@ test('a mismatched row is never accepted or deleted as the requested attachment'
  assert.equal(calls.filter(c=>c.options.method==='DELETE').length,0);
 });
 
+
+test('concurrent sends for one account, chat and attempt share a single upload and INSERT',async()=>{
+ let releaseUpload;
+ const uploadGate=new Promise(resolve=>{releaseUpload=resolve;});
+ const {api,calls}=loadSupabase(async(url,options)=>{
+  if(url.includes('/storage/v1/object/ikonosfera-direct-media/')&&options.method==='POST'){
+   await uploadGate;
+   return ok({});
+  }
+  if(url.includes('/rest/v1/messages')&&options.method==='POST'){
+   const body=JSON.parse(options.body);
+   return ok([saved(body.body)]);
+  }
+  throw Error('Unexpected request '+url);
+ });
+ const first=api.sendDirectMedia('jwt',CHAT,OWNER,file(),'Подпись',ATTEMPT);
+ const second=api.sendDirectMedia('jwt',CHAT,OWNER,file(),'Подпись',ATTEMPT);
+ const uploads=()=>calls.filter(call=>call.url.includes('/storage/v1/object/ikonosfera-direct-media/')&&call.options.method==='POST').length;
+ assert.equal(uploads(),1);
+ releaseUpload();
+ const [a,b]=await Promise.all([first,second]);
+ assert.equal(a.id,ROW_ID);
+ assert.equal(b.id,ROW_ID);
+ assert.equal(uploads(),1);
+ assert.equal(calls.filter(call=>call.url.includes('/rest/v1/messages')&&call.options.method==='POST').length,1);
+});
+
+test('different accounts or chats never share an in-flight media send',async()=>{
+ const {api,calls}=loadSupabase((url,options)=>{
+  if(url.includes('/storage/v1/object/ikonosfera-direct-media/'))return ok({});
+  if(url.includes('/rest/v1/messages')&&options.method==='POST'){
+   const body=JSON.parse(options.body);
+   return ok([{
+    id:ROW_ID,chat_id:body.chat_id,sender_id:body.sender_id,body:body.body,
+    created_at:'2026-11-06T03:00:00Z',media_path:body.media_path,
+    media_type:'image',read_at:null,reply_to_message_id:null,
+    client_message_id:body.client_message_id
+   }]);
+  }
+  throw Error('Unexpected request '+url);
+ });
+ const [sameChatOtherOwner,otherChatSameOwner]=await Promise.all([
+  api.sendDirectMedia('jwt',CHAT,OTHER,file(),'Подпись',ATTEMPT),
+  api.sendDirectMedia('jwt',ROW_ID,OWNER,file(),'Подпись',ATTEMPT)
+ ]);
+ assert.equal(sameChatOtherOwner.sender_id,OTHER);
+ assert.equal(otherChatSameOwner.chat_id,ROW_ID);
+ assert.equal(calls.filter(call=>call.url.includes('/storage/v1/object/ikonosfera-direct-media/')).length,2);
+ assert.equal(calls.filter(call=>call.url.includes('/rest/v1/messages')&&call.options.method==='POST').length,2);
+});
+
+test('a failed in-flight media send releases its slot for an explicit retry',async()=>{
+ let uploadAttempts=0;
+ const {api,calls}=loadSupabase((url,options)=>{
+  if(url.includes('/storage/v1/object/ikonosfera-direct-media/')&&options.method==='POST'){
+   uploadAttempts++;
+   if(uploadAttempts===1)throw Error('temporary upload failure');
+   return ok({});
+  }
+  if(url.includes('/storage/v1/object/sign/ikonosfera-direct-media/'))return bad(404,'not found');
+  if(url.includes('/rest/v1/messages')&&options.method==='POST')return ok([saved('Подпись')]);
+  throw Error('Unexpected request '+url);
+ });
+ await assert.rejects(api.sendDirectMedia('jwt',CHAT,OWNER,file(),'Подпись',ATTEMPT),/temporary upload failure/);
+ const sent=await api.sendDirectMedia('jwt',CHAT,OWNER,file(),'Подпись',ATTEMPT);
+ assert.equal(sent.id,ROW_ID);
+ assert.equal(uploadAttempts,2);
+ assert.equal(calls.filter(call=>call.url.includes('/rest/v1/messages')&&call.options.method==='POST').length,1);
+});
+
 test('invalid account, chat or attempt UUID is rejected before any upload',async()=>{
  const {api,calls}=loadSupabase(()=>{throw Error('network must not be used');});
  await assert.rejects(api.sendDirectMedia('jwt','bad',OWNER,file(),'Подпись',ATTEMPT),/Некорректные параметры/);
