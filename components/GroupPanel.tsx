@@ -52,7 +52,9 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
  const followNewestRef=useRef(true);
  const browsingOlderRef=useRef(false);
  const searchRequestRef=useRef(0);
+ const searchAbortRef=useRef<AbortController|null>(null);
  const searchJumpRequestRef=useRef(0);
+ const searchJumpAbortRef=useRef<AbortController|null>(null);
  const lastReadRef=useRef<string|null>(null);
  const latestGroupMessageRef=useRef<string|null>(null);
  const previousMessageIdsRef=useRef<{groupId:string;ownerId:string;ids:Set<string>}>({
@@ -62,6 +64,12 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
  const confirmedGroupMessagesRef=useRef<Map<string,ConfirmedGroupMessage>>(new Map());
  const contextRef=useRef({groupId:group.id,userId,token});
  contextRef.current={groupId:group.id,userId,token};
+ useEffect(()=>()=>{
+  searchAbortRef.current?.abort();
+  searchJumpAbortRef.current?.abort();
+  searchRequestRef.current++;
+  searchJumpRequestRef.current++;
+ },[group.id,userId]);
  useEffect(()=>{
   confirmedGroupMessagesRef.current.clear();
   olderRequestRef.current++;
@@ -75,7 +83,11 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
   lastReadRef.current=null;
   followNewestRef.current=true;
   browsingOlderRef.current=false;
+  searchAbortRef.current?.abort();
+  searchAbortRef.current=null;
   searchRequestRef.current++;
+  searchJumpAbortRef.current?.abort();
+  searchJumpAbortRef.current=null;
   searchJumpRequestRef.current++;
   setSearchOpen(false);setSearchQuery('');setSearchPage(0);setSearchRetry(0);
   setSearchResults([]);setSearchLoading(false);setSearchError('');setSearchHasMore(false);
@@ -184,13 +196,17 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
  // PostgREST table. Old responses cannot cross a changed query/account/group.
  useEffect(()=>{
   const id=++searchRequestRef.current;
+  searchAbortRef.current?.abort();
+  searchAbortRef.current=null;
   const term=normalizeGroupSearch(searchQuery);
   if(!searchOpen||term.length<2){setSearchLoading(false);setSearchError('');return;}
   let cancelled=false;
+  const controller=new AbortController();
+  searchAbortRef.current=controller;
   setSearchLoading(true);setSearchError('');
   const timeout=window.setTimeout(()=>{
    const requestGroup=group.id,requestOwner=userId,requestToken=token;
-   void searchGroupMessages(token,group.id,term,searchPage*GROUP_SEARCH_PAGE_SIZE)
+   void searchGroupMessages(token,group.id,term,searchPage*GROUP_SEARCH_PAGE_SIZE,controller.signal)
     .then(rows=>{
      if(cancelled||id!==searchRequestRef.current
         ||contextRef.current.groupId!==requestGroup
@@ -204,16 +220,33 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
       &&(searchPage+1)*GROUP_SEARCH_PAGE_SIZE<=GROUP_SEARCH_MAX_OFFSET);
     })
     .catch(e=>{
-     if(!cancelled&&id===searchRequestRef.current)
+     if(!cancelled&&id===searchRequestRef.current&&!controller.signal.aborted)
        setSearchError(e instanceof Error?e.message:'Ошибка поиска');
     })
     .finally(()=>{
      if(!cancelled&&id===searchRequestRef.current)setSearchLoading(false);
+     if(searchAbortRef.current===controller)searchAbortRef.current=null;
     });
   },searchPage===0?320:0);
-  return()=>{cancelled=true;searchRequestRef.current++;window.clearTimeout(timeout);};
+  return()=>{
+   cancelled=true;
+   window.clearTimeout(timeout);
+   if(searchAbortRef.current===controller)searchAbortRef.current=null;
+   controller.abort();
+   searchRequestRef.current++;
+  };
  },[searchOpen,searchQuery,searchPage,searchRetry,group.id,userId,token]);
- function closeSearch(){searchRequestRef.current++;setSearchOpen(false);setSearchQuery('');
+ function closeSearch(cancelJump=true){
+  searchAbortRef.current?.abort();
+  searchAbortRef.current=null;
+  searchRequestRef.current++;
+  if(cancelJump&&searchJumpAbortRef.current){
+   searchJumpRequestRef.current++;
+   searchJumpAbortRef.current.abort();
+   searchJumpAbortRef.current=null;
+   setSearchLocating(null);
+  }
+  setSearchOpen(false);setSearchQuery('');
   setSearchResults([]);setSearchPage(0);setSearchError('');setSearchHasMore(false);
  }
  function changeSearch(query:string){setSearchQuery(query);setSearchPage(0);setSearchRetry(0);
@@ -223,20 +256,24 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
   if(searchLocating)return;
   const groupId=group.id,ownerId=userId,requestToken=token;
   const requestId=++searchJumpRequestRef.current;
+  searchJumpAbortRef.current?.abort();
+  const controller=new AbortController();
+  searchJumpAbortRef.current=controller;
   setSearchLocating(message.id);
-  // Pause recent-page polling so it cannot overwrite a historical jump.
-  browsingOlderRef.current=true;
-  followNewestRef.current=false;
-  setShowJumpToLatest(true);
-  setNewMessagesBelow(0);
   try{
    const current=messages.some(row=>row.id===message.id);
-   const around=current?messages:await getGroupMessageContext(token,groupId,message.id,message.created_at);
+   const around=current?messages:await getGroupMessageContext(token,groupId,message.id,message.created_at,controller.signal);
    if(requestId!==searchJumpRequestRef.current
       ||contextRef.current.groupId!==groupId
       ||contextRef.current.userId!==ownerId
       ||contextRef.current.token!==requestToken)return;
    if(!around.some(row=>row.id===message.id))throw Error('Сообщение больше недоступно.');
+   // Only enter archive mode after the context is ready. Canceling a pending
+   // jump must leave an existing latest/archive view exactly as it was.
+   browsingOlderRef.current=true;
+   followNewestRef.current=false;
+   setShowJumpToLatest(true);
+   setNewMessagesBelow(0);
    olderRequestRef.current++;
    olderLoadingRef.current=false;
    prependScrollRef.current=null;
@@ -246,14 +283,14 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
    previousMessageIdsRef.current={groupId,ownerId,ids:new Set(around.map(row=>row.id))};
    if(!current)setMessages(around);
    setPendingSearchJump(message.id);
-   closeSearch();
+   closeSearch(false);
   }catch(e){
    if(requestId===searchJumpRequestRef.current){
-    browsingOlderRef.current=false;
-    setSearchError(e instanceof Error?e.message:'Не удалось открыть сообщение');
+     if(!controller.signal.aborted)setSearchError(e instanceof Error?e.message:'Не удалось открыть сообщение');
    }
   }finally{
    if(requestId===searchJumpRequestRef.current)setSearchLocating(null);
+   if(searchJumpAbortRef.current===controller)searchJumpAbortRef.current=null;
   }
  }
  useLayoutEffect(()=>{

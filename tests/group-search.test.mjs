@@ -16,7 +16,7 @@ function setup(handler=()=>({ok:true,json:async()=>[]})){
  const calls=[];
  const exports={};
  const ctx={
-  exports,URLSearchParams,URL,AbortSignal,
+  exports,URLSearchParams,URL,AbortSignal,AbortController,
   process:{env:{NEXT_PUBLIC_SUPABASE_ANON_KEY:'test-anon'}},
   fetch:async(url,options)=>{calls.push({url,options});return handler(url,options,calls.length);},
   require(name){
@@ -47,6 +47,36 @@ test('group search queries ONLY requested group, with RLS token and bounded pagi
  assert.equal(url.searchParams.get('limit'),'25');
  assert.equal(url.searchParams.get('offset'),'0');
  assert.ok(url.searchParams.get('body').includes('ilike.'));
+});
+
+test('group search aborts its in-flight request when its owner cancels the query',async()=>{
+ const {api,calls}=setup((url,options)=>new Promise((resolve,reject)=>{
+  if(options.signal.aborted){reject(options.signal.reason);return;}
+  options.signal.addEventListener('abort',()=>reject(options.signal.reason),{once:true});
+ }));
+ const owner=new AbortController();
+ const pending=api.searchGroupMessages('jwt',GROUP,'hello',0,owner.signal);
+ assert.equal(calls.length,1);
+ owner.abort();
+ await assert.rejects(pending);
+ assert.equal(calls[0].options.signal.aborted,true);
+});
+
+test('context navigation aborts all outstanding bounded reads when the search is closed',async()=>{
+ const {api,calls}=setup((url,options)=>{
+  if(params(url).get('id'))return result([ROW]);
+  return new Promise((resolve,reject)=>{
+   if(options.signal.aborted){reject(options.signal.reason);return;}
+   options.signal.addEventListener('abort',()=>reject(options.signal.reason),{once:true});
+  });
+ });
+ const owner=new AbortController();
+ const pending=api.getGroupMessageContext('jwt',GROUP,ROW.id,ROW.created_at,owner.signal);
+ for(let i=0;i<12&&calls.length<3;i++)await Promise.resolve();
+ assert.equal(calls.length,3);
+ owner.abort();
+ await assert.rejects(pending);
+ assert.ok(calls.slice(1).every(call=>call.options.signal.aborted));
 });
 
 test('search queries with quotes, commas and Unicode are quoted/encoded, not operators',()=>{
@@ -117,12 +147,18 @@ test('search panel is account scoped, shows complete history results and never e
  assert.match(ui,/onClick=\{onMore\}/);
  assert.match(ui,/onClick=\{onClose\}/);
  assert.doesNotMatch(ui,/dangerouslySetInnerHTML|innerHTML|service_role/);
- assert.match(panel,/searchGroupMessages\(token,group\.id,term,searchPage\*GROUP_SEARCH_PAGE_SIZE\)/);
+ assert.match(panel,/searchGroupMessages\(token,group\.id,term,searchPage\*GROUP_SEARCH_PAGE_SIZE,controller\.signal\)/);
+ assert.match(panel,/searchAbortRef\.current\?\.abort\(\)/);
+ assert.match(panel,/searchJumpAbortRef\.current\?\.abort\(\)/);
+ assert.match(panel,/controller\.abort\(\)/);
  assert.match(panel,/contextRef\.current\.groupId!==requestGroup/);
  assert.match(panel,/contextRef\.current\.userId!==requestOwner/);
  assert.match(panel,/contextRef\.current\.token!==requestToken/);
- assert.match(panel,/getGroupMessageContext\(token,groupId,message\.id,message\.created_at\)/);
+ assert.match(panel,/getGroupMessageContext\(token,groupId,message\.id,message\.created_at,controller\.signal\)/);
  assert.match(panel,/browsingOlderRef\.current=true/);
+ const jump=panel.slice(panel.indexOf('async function openSearchResult'),panel.indexOf('useLayoutEffect(()=>{',panel.indexOf('async function openSearchResult')));
+ assert.ok(jump.indexOf('getGroupMessageContext')<jump.indexOf('browsingOlderRef.current=true'));
+ assert.doesNotMatch(jump,/catch\(e\)\{\s*browsingOlderRef\.current=false/);
  assert.match(panel,/if\(cancelled\|\|document\.visibilityState==='hidden'\|\|!navigator\.onLine\|\|browsingOlderRef\.current\)return/);
  assert.match(panel,/data-group-message-id=\{m\.id\}/);
  assert.match(panel,/target\.getBoundingClientRect\(\)/);
