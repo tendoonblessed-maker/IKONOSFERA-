@@ -45,9 +45,9 @@ test('native audio and video controls participate in the attachment dialog tab o
  assert.equal(getAttachmentPreviewTabTarget(media,dialog,controls,false),null);
  assert.equal(getAttachmentPreviewTabTarget(media,dialog,controls,true),null);
  const component=load('components/ChatAttachmentPreview.tsx');
- assert.match(component,/audio\\[controls\\],video\\[controls\\]/);
- assert.match(component,/<video src=\\{src\\} controls playsInline/);
- assert.match(component,/<audio src=\\{src\\} controls/);
+ assert.match(component,/audio\[controls\],video\[controls\]/);
+ assert.match(component,/<video src=\{src\} controls playsInline/);
+ assert.match(component,/<audio src=\{src\} controls/);
 });
 
 test('focus stays on the dialog while sending disables every control',()=>{
@@ -59,18 +59,18 @@ test('focus stays on the dialog while sending disables every control',()=>{
 
 test('attachment dialog retains focus through busy state and restores it without scrolling',()=>{
  const component=load('components/ChatAttachmentPreview.tsx');
- assert.match(component,/getAttachmentPreviewTabTarget\\(document.activeElement,dialog,controls,event.shiftKey\\)/);
- assert.match(component,/if\\(sending\\)dialogRef.current\\?\\.focus\\(\\{preventScroll:true\\}\\)/);
- assert.match(component,/aria-busy=\\{sending\\} tabIndex=\\{-1\\}/);
- assert.match(component,/previouslyFocused\\.focus\\(\\{preventScroll:true\\}\\)/);
- assert.match(component,/button:not\\(\\[disabled\\]\\)/);
- assert.match(component,/textarea:not\\(\\[disabled\\]\\)/);
- assert.match(component,/document.addEventListener\\('keydown',onKeyDown\\)/);
- assert.match(component,/onClick=\\{onSend\\}/);
- assert.match(component,/disabled=\\{sending\\|\\|!online\\}/);
+ assert.match(component,/getAttachmentPreviewTabTarget\(document.activeElement,dialog,controls,event.shiftKey\)/);
+ assert.match(component,/if\(sending\)dialogRef.current\?\.focus\(\{preventScroll:true\}\)/);
+ assert.match(component,/aria-busy=\{sending\} tabIndex=\{-1\}/);
+ assert.match(component,/previouslyFocused\.focus\(\{preventScroll:true\}\)/);
+ assert.match(component,/button:not\(\[disabled\]\)/);
+ assert.match(component,/textarea:not\(\[disabled\]\)/);
+ assert.match(component,/document.addEventListener\('keydown',onKeyDown\)/);
+ assert.match(component,/onClick=\{onSend\}/);
+ assert.match(component,/disabled=\{sending\|\|!online\}/);
 });
 
 test('iPhone caption font stays large enough to prevent focus zoom after a user tap',()=>{
  const css=load('app/globals.css');
- assert.match(css,/\\.ik-attachment-preview-caption textarea\\{[^}]*font-size:16px/s);
+ assert.match(css, /\.ik-attachment-preview-caption textarea\{[^}]*font-size:16px/s);
 });
