@@ -64,7 +64,7 @@ test('cursor accepts valid 6-digit microsecond timestamps and rejects invalid fi
   assert.throws(()=>api.olderGroupMessagesPath(GROUP,row(id(1),timestamp)),/курсор/);
  }
  assert.throws(()=>api.olderGroupMessagesPath(OTHER+'x',row(id(1))),/курсор/);
- assert.throws(()=>api.olderGroupMessagesPath(GROUP,row('not-uuid'),/курсор/);
+ assert.throws(()=>api.olderGroupMessagesPath(GROUP,row('not-uuid')),/курсор/);
 });
 
 test('older page uses signed-in user JWT, strict no-store, bounded limit and server RLS',async()=>{
