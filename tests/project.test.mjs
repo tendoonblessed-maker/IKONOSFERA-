@@ -1140,7 +1140,7 @@ test('attachments are reviewed with captions instead of being sent from the file
  assert.match(uploader,/getDirectMediaUrl\(token,path\)/);
  assert.match(shell,/getOrCreateDirectMediaAttempt\(userId,chatId,file,caption\)/);
  assert.match(shell,/clearDirectMediaAttempt\(userId,chatId,attemptId\)/);
- assert.match(shell,/clearAllDirectMediaAttempts\(userId\)/);
+ assert.doesNotMatch(shell,/clearAllDirectMediaAttempts\(userId\)/);
  assert.match(view,/createPortal\(/);
  assert.match(view,/role="dialog"/);
  assert.match(view,/aria-modal="true"/);
