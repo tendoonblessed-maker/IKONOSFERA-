@@ -1,4 +1,4 @@
-/** Keep soft-keyboard Enter as a newline in direct chats, including touch laptops.
+/** Keep soft-keyboard Enter as a newline in chat composers, including hybrid touch laptops.
  * Hardware keyboards can explicitly send with Ctrl/Cmd+Enter.
  */
 type ComposerKey={
