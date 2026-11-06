@@ -1,4 +1,5 @@
 import type {GroupMessage} from './groups';
+import {compareMessageTimestampAndId} from './message-order.js';
 
 export const CONFIRMED_GROUP_MESSAGE_GRACE_MS=60_000;
 export type ConfirmedGroupMessage={message:GroupMessage;expiresAt:number};
@@ -30,7 +31,5 @@ export function mergeConfirmedGroupMessages(
   }
  }
  for(const message of latest)byId.set(message.id,message);
- return Array.from(byId.values()).sort((a,b)=>
-  Date.parse(a.created_at)-Date.parse(b.created_at)||a.id.localeCompare(b.id)
- );
+ return Array.from(byId.values()).sort(compareMessageTimestampAndId);
 }
