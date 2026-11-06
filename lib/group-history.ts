@@ -1,5 +1,5 @@
 import type {GroupMessage} from './groups';
-import {compareMessageTimestampAndId} from './message-order';
+import {compareMessageTimestampAndId} from './message-order.js';
 
 export const CONFIRMED_GROUP_MESSAGE_GRACE_MS=60_000;
 export type ConfirmedGroupMessage={message:GroupMessage;expiresAt:number};
