@@ -1,7 +1,7 @@
 'use client';
 
 import {useEffect,useRef,useState} from 'react';
-import {chooseVoiceMimeType,createVoiceFile,formatVoiceTime,VOICE_RECORD_MAX_MS,VOICE_RECORD_MAX_BYTES,VOICE_FINALIZE_TIMEOUT_MS} from '@/lib/voice-notes';
+import {chooseVoiceMimeType,normalizeVoiceMimeType,createVoiceFile,formatVoiceTime,VOICE_RECORD_MAX_MS,VOICE_RECORD_MAX_BYTES,VOICE_FINALIZE_TIMEOUT_MS} from '@/lib/voice-notes';
 
 type Props={
  disabled:boolean;
@@ -102,9 +102,20 @@ export default function VoiceRecorder({disabled,onRecorded,onError}:Props){
    errorRef.current('Запись с микрофона недоступна в этом браузере или без HTTPS.');
    return;
   }
-  const mime=typeof MediaRecorder.isTypeSupported==='function'
-   ?chooseVoiceMimeType(type=>MediaRecorder.isTypeSupported(type)):null;
-  if(!mime){
+  // Prefer an explicitly supported MIME. Older/embedded implementations may
+  // omit or throw from isTypeSupported(); in that case let the browser choose
+  // its default and validate recorder.mimeType before capturing any audio.
+  let mime:string|null=null;
+  let mimeDetectionAvailable=false;
+  if(typeof MediaRecorder.isTypeSupported==='function'){
+   try{
+    mime=chooseVoiceMimeType(type=>MediaRecorder.isTypeSupported(type));
+    mimeDetectionAvailable=true;
+   }catch{
+    // Fall back to the browser-selected default MIME below.
+   }
+  }
+  if(mimeDetectionAvailable&&!mime){
    errorRef.current('Браузер не поддерживает доступные форматы голосовых сообщений.');
    return;
   }
@@ -121,7 +132,18 @@ export default function VoiceRecorder({disabled,onRecorded,onError}:Props){
     stopTracks(stream);
     return;
    }
-   const recorder=new MediaRecorder(stream,{mimeType:mime,audioBitsPerSecond:64000});
+   const recorderOptions:MediaRecorderOptions=mime
+    ?{mimeType:mime,audioBitsPerSecond:64000}
+    :{audioBitsPerSecond:64000};
+   const recorder=new MediaRecorder(stream,recorderOptions);
+   const recorderMime=recorder.mimeType||mime||'';
+   const normalizedMime=normalizeVoiceMimeType(recorderMime);
+   if(!normalizedMime){
+    stopTracks(stream);
+    setPhase('idle');
+    errorRef.current('Браузер выбрал неподдерживаемый формат голосовых сообщений.');
+    return;
+   }
    const capture:Capture={
     recorder,stream,chunks:[],bytes:0,startedAt:Date.now(),
     discard:false,clock:null,limit:null,finalize:null
@@ -150,7 +172,7 @@ export default function VoiceRecorder({disabled,onRecorded,onError}:Props){
     if(!liveRef.current)return;
     setPhase('idle');setElapsed(0);
     try{
-     const file=createVoiceFile(capture.chunks,recorder.mimeType||mime);
+     const file=createVoiceFile(capture.chunks,recorder.mimeType||mime||normalizedMime);
      recordedRef.current(file); // Existing media preview asks before upload.
     }catch(error){
      errorRef.current(error instanceof Error?error.message:'Не удалось подготовить голосовое сообщение.');
