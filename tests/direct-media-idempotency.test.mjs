@@ -104,6 +104,17 @@ test('clearing one acknowledgment keeps other attempts; logout clears only that 
  assert.equal(api.readDirectMediaAttempts(OTHER,CHAT)[0].id,other);
 });
 
+test('many unresolved attempts are retained instead of silently evicting an older retry ID',async()=>{
+ const {api}=loadAttempts();
+ const ids=[];
+ for(let index=0;index<10;index++)
+  ids.push(await api.getOrCreateDirectMediaAttempt(OWNER,CHAT,file(),'Caption '+index));
+ const records=api.readDirectMediaAttempts(OWNER,CHAT);
+ assert.equal(records.length,10);
+ assert.ok(records.some(item=>item.id===ids[0]));
+ assert.ok(records.some(item=>item.id===ids[9]));
+});
+
 test('expired and malformed attempts are discarded; blocked sessionStorage has an in-memory fallback',async()=>{
  const {api,store}=loadAttempts();
  const now=Date.now();
