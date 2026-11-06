@@ -1112,7 +1112,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
     if(action==="delete_everyone"&&!window.confirm("Удалить сообщение для обоих?"))return;
     const chatId=selected,token=session.access_token;
     const actionScope:ChatActionScope={chatId,userId,generation:chatContextGenerationRef.current};
-    const isCurrent=()=>isCurrentChatAction(actionScope,{
+    const isCurrent=()=>selectedRef.current===chatId&&isCurrentChatAction(actionScope,{
       chatId:selectedRef.current??'',
       userId:draftsOwnerRef.current,
       generation:chatContextGenerationRef.current
