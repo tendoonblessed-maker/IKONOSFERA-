@@ -48,7 +48,7 @@ export default function StoriesStrip({token,userId,contacts,ownProfile}:Props){
    }
   }
   // A slower old request must not replace a newer story list.
-  if(mountedRef.current&&isCurrentStoryRequest(userId,ownerRef.current,requestId,storyRequestRef.current)){
+  if(requestId===storyRequestRef.current&&mountedRef.current&&isCurrentStoryRequest(userId,ownerRef.current,requestId,storyRequestRef.current)){
    setPeople(participants);
    return participants;
   }
