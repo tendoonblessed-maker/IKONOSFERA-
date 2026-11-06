@@ -1134,7 +1134,7 @@ test('attachments are reviewed with captions instead of being sent from the file
  assert.match(uploader,/export function validateDirectMediaFile/);
  assert.match(uploader,/DIRECT_MEDIA_MAX_BYTES=25\*1024\*1024/);
  assert.match(uploader,/if\(problem\)throw Error\(problem\)/);
- assert.match(uploader,/body:caption\.trim\(\)\.slice\(0,4000\)/);
+ assert.match(uploader,/const body=caption\.trim\(\)\.slice\(0,4000\)/);
  assert.match(uploader,/client_message_id:clientMessageId/);
  assert.match(uploader,/&client_message_id=eq\./);
  assert.match(uploader,/getDirectMediaUrl\(token,path\)/);
