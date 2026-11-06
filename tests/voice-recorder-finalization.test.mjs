@@ -355,7 +355,7 @@ test('a stale permission rejection cannot disable background cleanup for a newer
  assert.equal(h.errors.length,2,'the active second request is still registered as a session');
  assert.match(h.errors[1],/приложение перешло в фон/);
 
- requests[1].resolve(h.stream);
+ requests[1].resolve({getTracks:()=>h.tracks});
  await h.flush();
  assert.equal(h.recorders.length,0,'a stale permission result must never start recording');
  assert.equal(h.tracks[0].stopped,true,'the late microphone stream must be released');
