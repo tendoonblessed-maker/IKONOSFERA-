@@ -1,20 +1,45 @@
 /* Stage 0 app-shell-only offline fallback. Never cache private chat content. */
 const CACHE_NAME = "ikonosfera-shell-v6";
 const OFFLINE_URL = "/offline.html";
+const PRECACHE_URLS = [OFFLINE_URL, "/icon-192.png", "/status-emojis.webp?v=2"];
 
 self.addEventListener("install", (event) => {
-  event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => cache.addAll([OFFLINE_URL, "/icon-192.png", "/status-emojis.webp?v=2"]))
-  );
+  event.waitUntil((async () => {
+    // Cache Storage is an optional enhancement. A missing icon/atlas or a
+    // private-mode/quota error must not prevent the worker from installing.
+    let cache;
+    try {
+      cache = await caches.open(CACHE_NAME);
+    } catch {
+      return;
+    }
+    await Promise.all(PRECACHE_URLS.map(async (asset) => {
+      try {
+        await cache.add(asset);
+      } catch {
+        // Precache entries are independent; online navigation still works.
+        // The offline fallback is available only when OFFLINE_URL was cached.
+      }
+    }));
+  })());
   self.skipWaiting();
 });
 
 self.addEventListener("activate", (event) => {
-  event.waitUntil(
-    caches.keys().then((names) =>
-      Promise.all(names.filter((name) => name.startsWith("ikonosfera-") && name !== CACHE_NAME).map((name) => caches.delete(name)))
-    ).then(() => self.clients.claim())
-  );
+  event.waitUntil((async () => {
+    // Keep activation usable when Cache Storage is denied by the browser.
+    try {
+      const names = await caches.keys();
+      await Promise.all(
+        names
+          .filter((name) => name.startsWith("ikonosfera-") && name !== CACHE_NAME)
+          .map((name) => caches.delete(name).catch(() => false))
+      );
+    } catch {
+      // Skip cache cleanup; it is not required to serve the app online.
+    }
+    await self.clients.claim();
+  })());
 });
 
 self.addEventListener("fetch", (event) => {
@@ -44,6 +69,10 @@ self.addEventListener("fetch", (event) => {
   }
   if (request.mode !== "navigate") return;
   event.respondWith(fetch(request).catch(async () => {
-    return (await caches.match(OFFLINE_URL)) ?? Response.error();
+    try {
+      return (await caches.match(OFFLINE_URL)) ?? Response.error();
+    } catch {
+      return Response.error();
+    }
   }));
 });
