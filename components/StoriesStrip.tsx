@@ -3,7 +3,7 @@ import {useCallback,useEffect,useRef,useState} from 'react';
 import {addStory,getContactsStories,imageUrl,uploadPhoto,type Story} from '@/lib/social';
 import type {Profile} from '@/lib/supabase-rest';
 import {useStoryProgress} from '@/lib/use-story-progress';
-import {getStoryTabTarget} from '@/lib/story-focus';
+import {getStoryTabTarget,restoreStoryViewerFocus} from '@/lib/story-focus';
 
 type Person={id:string;name:string;avatar:string|null;stories:Story[]};
 type Props={token:string;userId:string;contacts:Profile[];ownProfile:Profile|null};
@@ -70,7 +70,7 @@ export default function StoriesStrip({token,userId,contacts,ownProfile}:Props){
   document.addEventListener('keydown',keepFocus);
   return()=>{
    document.removeEventListener('keydown',keepFocus);
-   if(previousFocus?.isConnected)previousFocus.focus();
+   restoreStoryViewerFocus(previousFocus);
   };
  },[viewerOpen]);
  function next(){setActive(prev=>{if(!prev)return null;const group=people[prev.person];if(prev.story+1<group.stories.length)return {...prev,story:prev.story+1};const i=people.findIndex((p,j)=>j>prev.person&&p.stories.length);return i<0?null:{person:i,story:0};});}
