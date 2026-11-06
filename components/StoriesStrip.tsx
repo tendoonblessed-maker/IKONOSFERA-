@@ -3,6 +3,7 @@ import {useCallback,useEffect,useRef,useState} from 'react';
 import {addStory,getContactsStories,imageUrl,uploadPhoto,type Story} from '@/lib/social';
 import type {Profile} from '@/lib/supabase-rest';
 import {useStoryProgress} from '@/lib/use-story-progress';
+import {isActiveStoryPointer} from '@/lib/story-pointer-hold';
 
 type Person={id:string;name:string;avatar:string|null;stories:Story[]};
 type Props={token:string;userId:string;contacts:Profile[];ownProfile:Profile|null};
@@ -15,6 +16,7 @@ export default function StoriesStrip({token,userId,contacts,ownProfile}:Props){
  const inputRef=useRef<HTMLInputElement>(null);
  const contactsRef=useRef(contacts);
  const storyRequestRef=useRef(0);
+ const activePointerRef=useRef<number|null>(null);
  contactsRef.current=contacts;
  // Stable ID signature prevents refetching stories whenever inbox rows poll.
  const contactIdsKey=contacts.map(person=>person.id).sort().join(',');
@@ -41,6 +43,35 @@ export default function StoriesStrip({token,userId,contacts,ownProfile}:Props){
  useEffect(()=>{void load().catch(()=>{});},[load]);
 
  useEffect(()=>{if(!active)return;const onKey=(e:KeyboardEvent)=>{if(e.key==='Escape')setActive(null);if(e.key==='ArrowRight')next();if(e.key==='ArrowLeft')prev();};window.addEventListener('keydown',onKey);return()=>window.removeEventListener('keydown',onKey);},[active,people]);
+ useEffect(()=>{
+  const finishPointer=(event:PointerEvent)=>{
+   if(!isActiveStoryPointer(activePointerRef.current,event.pointerId))return;
+   activePointerRef.current=null;
+   setPaused(false);
+  };
+  const releasePointer=()=>{
+   if(activePointerRef.current===null)return;
+   activePointerRef.current=null;
+   setPaused(false);
+  };
+  const onVisibilityChange=()=>{
+   if(document.visibilityState!=='visible')releasePointer();
+  };
+  // Listen on window: pointerup may target a different element when a finger
+  // leaves the story viewer before being released. Blur/background are final
+  // safety nets for mobile browsers that cancel pointer delivery on app switch.
+  window.addEventListener('pointerup',finishPointer);
+  window.addEventListener('pointercancel',finishPointer);
+  window.addEventListener('blur',releasePointer);
+  document.addEventListener('visibilitychange',onVisibilityChange);
+  return()=>{
+   window.removeEventListener('pointerup',finishPointer);
+   window.removeEventListener('pointercancel',finishPointer);
+   window.removeEventListener('blur',releasePointer);
+   document.removeEventListener('visibilitychange',onVisibilityChange);
+   activePointerRef.current=null;
+  };
+ },[]);
  useEffect(()=>{if(!active)return;const old=document.body.style.overflow;document.body.style.overflow='hidden';return()=>{document.body.style.overflow=old;};},[active]);
  function next(){setActive(prev=>{if(!prev)return null;const group=people[prev.person];if(prev.story+1<group.stories.length)return {...prev,story:prev.story+1};const i=people.findIndex((p,j)=>j>prev.person&&p.stories.length);return i<0?null:{person:i,story:0};});}
  function prev(){setActive(current=>{if(!current)return null;if(current.story>0)return {...current,story:current.story-1};for(let j=current.person-1;j>=0;j--)if(people[j].stories.length)return {person:j,story:people[j].stories.length-1};return {...current,story:0};});}
@@ -62,7 +93,11 @@ export default function StoriesStrip({token,userId,contacts,ownProfile}:Props){
   <input ref={inputRef} type="file" accept="image/png,image/jpeg,image/webp" hidden aria-label="Загрузить свою историю" disabled={busy} onChange={e=>{void create(e.target.files?.[0]);e.target.value='';}}/>
   {people[0]?.stories.length>0&&<button className="home-story-add" type="button" disabled={busy} onClick={()=>inputRef.current?.click()}>+ Добавить историю</button>}
   {error&&<p role="alert" className="profile-error">{error}</p>}
-  {story&&person&&<div className="story-viewer story-viewer-telegram" role="dialog" aria-modal="true" aria-label={'Истории: '+person.name} onPointerDown={()=>setPaused(true)} onPointerUp={()=>setPaused(false)} onPointerCancel={()=>setPaused(false)}>
+  {story&&person&&<div className="story-viewer story-viewer-telegram" role="dialog" aria-modal="true" aria-label={'Истории: '+person.name} onPointerDown={event=>{
+   if(!event.isPrimary||event.button!==0||activePointerRef.current!==null)return;
+   activePointerRef.current=event.pointerId;
+   setPaused(true);
+  }}>
    <div className="story-viewer-stage">
     <img className="story-viewer-image" src={imageUrl(story.image_path)||''} alt={story.caption||'История'}/>
     <div className="story-progress">{person.stories.map((s,i)=><span className="story-progress-track" key={s.id}><span className={i<active!.story?'done':i===active!.story?'playing story-progress-fill':''} ref={i===active!.story?progressRef:undefined}/></span>)}</div>
