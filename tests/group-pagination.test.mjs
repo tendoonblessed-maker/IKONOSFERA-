@@ -3,7 +3,7 @@ import {test} from 'node:test';
 import {readFileSync} from 'node:fs';
 import vm from 'node:vm';
 import ts from 'typescript';
-import {compareMessageTimestampAndId} from '../lib/message-order.ts';
+import {compareMessageTimestampAndId} from '../lib/message-order.js';
 
 const GROUP='11111111-1111-4111-8111-111111111111';
 const OTHER='22222222-2222-4222-8222-222222222222';
@@ -31,7 +31,7 @@ function setup(handler=()=>({ok:true,json:async()=>[]})){
   },
   require(name){
    if(name==='@/lib/supabase-rest')return {apiUrl:'https://unit.test'};
-   if(name==='./message-order')return {compareMessageTimestampAndId};
+   if(name==='./message-order.js')return {compareMessageTimestampAndId};
    assert.fail('Unexpected module: '+name);
   }
  };
@@ -64,7 +64,7 @@ test('cursor accepts valid 6-digit microsecond timestamps and rejects invalid fi
   assert.throws(()=>api.olderGroupMessagesPath(GROUP,row(id(1),timestamp)),/курсор/);
  }
  assert.throws(()=>api.olderGroupMessagesPath(OTHER+'x',row(id(1))),/курсор/);
- assert.throws(()=>api.olderGroupMessagesPath(GROUP,row('not-uuid')),/курсор/);
+ assert.throws(()=>api.olderGroupMessagesPath(GROUP,row('not-uuid'),/курсор/);
 });
 
 test('older page uses signed-in user JWT, strict no-store, bounded limit and server RLS',async()=>{
