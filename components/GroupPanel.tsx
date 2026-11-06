@@ -14,6 +14,7 @@ import {subscribeGroupChanges} from '@/lib/group-realtime';
 import {mergeConfirmedGroupMessages,CONFIRMED_GROUP_MESSAGE_GRACE_MS,type ConfirmedGroupMessage} from '@/lib/group-history';
 import {shouldAcknowledgeGroupRead,countNewIncomingBelow} from '@/lib/group-read-position';
 import {fetchOlderGroupMessages,prependOlderGroupMessages,preserveOlderGroupMessages,GROUP_HISTORY_MAX_LOADED} from '@/lib/group-pagination';
+import {GroupSendLock} from '@/lib/group-send-lock';
 type Props={token:string;userId:string;group:Group;onBack:()=>void;onShowProfile:(id:string)=>void;onDraftChange:(groupId:string,text:string)=>void};
 export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDraftChange}:Props){
  const [messages,setMessages]=useState<GroupMessage[]>([]);
@@ -24,7 +25,10 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
  const [draft,setDraft]=useState(()=>readGroupDrafts(userId)[group.id]??'');
  const [online,setOnline]=useState(true);
  const draftVersionRef=useRef(0);
- const [busy,setBusy]=useState(false);
+ const [busyKeys,setBusyKeys]=useState<Set<string>>(()=>new Set());
+ const sendLockRef=useRef(new GroupSendLock());
+ const sendLockKey=`${userId}:${group.id}`;
+ const busy=busyKeys.has(sendLockKey);
  const [error,setError]=useState('');
  const [retryAvailable,setRetryAvailable]=useState(false);
  const [initialLoading,setInitialLoading]=useState(true);
@@ -352,12 +356,20 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
   useEffect(()=>{if(!membersOpen||!members.length)return;let gone=false;const load=()=>{if(document.visibilityState==='visible')void getUserActivities(token,members.map(m=>m.id)).then(value=>{if(!gone)setPresence(value);}).catch(()=>{});};load();const t=setInterval(load,40000);return()=>{gone=true;clearInterval(t);};},[token,membersOpen,members]);
  async function send(e:FormEvent){
  e.preventDefault();
- if(busy||!draft.trim())return;
- // Never queue a surprise send on reconnect. Let the user retry manually.
- if(!online||!navigator.onLine){setError('Нет интернета. Сообщение осталось в черновике.');return;}
+ if(!draft.trim())return;
  const body=draft.trim(),groupId=group.id,accountId=userId,requestToken=token;
+ const lockKey=`${accountId}:${groupId}`;
+ const lockToken=sendLockRef.current.acquire(lockKey);
+ if(lockToken===null)return;
+ // Never queue a surprise send on reconnect. Let the user retry manually.
+ if(!online||!navigator.onLine){
+  sendLockRef.current.release(lockKey,lockToken);
+  setError('Нет интернета. Сообщение осталось в черновике.');
+  return;
+ }
  const sentDraftVersion=draftVersionRef.current;
- setBusy(true);setError('');setRetryAvailable(false);
+ setBusyKeys(current=>new Set(current).add(lockKey));
+ setError('');setRetryAvailable(false);
  try{
    // A network timeout does not tell us whether the POST committed. Reuse a
    // UUID stored for this exact draft until the server confirms its row.
@@ -405,7 +417,16 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
    setRetryAvailable(true);
    setError((e instanceof Error?e.message:'Ошибка отправки')+' · Черновик сохранён.');
  }
- finally{setBusy(false);}
+ finally{
+  if(sendLockRef.current.release(lockKey,lockToken)){
+   setBusyKeys(current=>{
+    if(!current.has(lockKey))return current;
+    const next=new Set(current);
+    next.delete(lockKey);
+    return next;
+   });
+  }
+ }
  }
  const names=Object.fromEntries(members.map(p=>[p.id,p.display_name||p.username]));
  const memberById=new Map(members.map(p=>[p.id,p]));
