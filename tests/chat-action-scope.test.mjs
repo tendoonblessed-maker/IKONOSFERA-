@@ -36,7 +36,7 @@ test('message action checks its account/chat generation before every UI commit',
   const action=app.slice(start,end);
   assert.match(app,/import \{isCurrentChatAction,type ChatActionScope\} from ['"]@\/lib\/chat-action-scope['"]/);
   assert.match(action,/const actionScope:ChatActionScope=\{chatId,userId,generation:chatContextGenerationRef\.current\}/);
-  assert.match(action,/const isCurrent=\(\)=>isCurrentChatAction\(actionScope,\{/);
+  assert.match(action,/const isCurrent=\(\)=>selectedRef\.current===chatId&&isCurrentChatAction\(actionScope,\{/);
   assert.match(action,/await manageMessage\(token,messageId,action,body\);\s*if\(!isCurrent\(\)\)return;/);
   assert.match(action,/if\(isCurrent\(\)\)\{\s*setMessageMenuId\(null\)/);
   assert.match(action,/const updated=\(await listMessages\(token,chatId\)\)\.reverse\(\);\s*if\(isCurrent\(\)\)setChatMessages/);
