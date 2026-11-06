@@ -13,7 +13,7 @@ const compiled=ts.transpileModule(source,{
 
 function harness({
  deliverStop=false,mimeDetection='supported',
- defaultMimeType='audio/webm;codecs=opus'
+ defaultMimeType='audio/webm;codecs=opus',getUserMedia
 }={}){
  const hooks=[];
  let hook=0;
@@ -102,7 +102,7 @@ function harness({
  const exports={};
  vm.runInNewContext(compiled,{
   exports,Blob,File,Date,console,
-  navigator:{mediaDevices:{getUserMedia:async()=>stream}},
+  navigator:{mediaDevices:{getUserMedia:getUserMedia??(async()=>stream)}},
   MediaRecorder:FakeMediaRecorder,
   window:win,document:doc,
   require(name){
@@ -143,18 +143,22 @@ function harness({
  const button=(tree,text)=>find(tree,node=>
   node.type==='button'&&node.props?.children===text);
  const pending=(ms)=>Array.from(timers.values()).filter(timer=>timer.ms===ms);
- const start=async({recording=true}={})=>{
+ const clickStart=()=>{
   const trigger=find(render(),node=>node.props?.['aria-label']==='Записать голосовое сообщение');
   assert.ok(trigger);
   trigger.props.onClick();
+ };
+ const flush=()=>new Promise(resolve=>setImmediate(resolve));
+ const start=async({recording=true}={})=>{
+  clickStart();
   // getUserMedia() is asynchronous; flush its full promise chain before
   // asserting recorder construction, rather than assuming two microtasks.
-  await new Promise(resolve=>setImmediate(resolve));
+  await flush();
   assert.equal(recorders.length,1,'recorder startup: '+errors.join(' | '));
   assert.equal(recorders[0].state,recording?'recording':'inactive');
  };
  return {
-  render,button,pending,start,errors,recorded,tracks,recorders,timers,intervals,
+  render,button,pending,start,clickStart,flush,errors,recorded,tracks,recorders,timers,intervals,
   document:doc,
   emitDocument:name=>documentEvents.get(name)?.(),
   emitWindow:name=>windowEvents.get(name)?.()
@@ -314,6 +318,47 @@ test('pagehide during finalization discards the incomplete recording and ignores
  assert.equal(h.recorded.length,0,'navigation during finalization cannot expose a partial file');
  assert.equal(h.errors.length,1);
  assert.match(h.errors[0],/приложение перешло в фон/);
+ assert.equal(h.timers.size,0);
+ assert.equal(h.intervals.size,0);
+});
+
+
+test('a stale permission rejection cannot disable background cleanup for a newer microphone request',async()=>{
+ const requests=[];
+ const h=harness({
+  getUserMedia:()=>new Promise((resolve,reject)=>requests.push({resolve,reject}))
+ });
+
+ // First permission prompt is canceled when the app enters the background.
+ h.clickStart();
+ await h.flush();
+ assert.equal(requests.length,1);
+ h.document.visibilityState='hidden';
+ h.emitDocument('visibilitychange');
+ assert.equal(h.errors.length,1);
+ assert.match(h.errors[0],/приложение перешло в фон/);
+
+ // A second request starts after returning to the app.
+ h.document.visibilityState='visible';
+ h.clickStart();
+ await h.flush();
+ assert.equal(requests.length,2);
+
+ // The first, now-stale permission prompt rejects after the second began.
+ requests[0].reject(new Error('late permission denial'));
+ await h.flush();
+
+ // Backgrounding must still cancel the second request. Resolving it late
+ // must stop its stream rather than starting a recorder while the app is hidden.
+ h.document.visibilityState='hidden';
+ h.emitDocument('visibilitychange');
+ assert.equal(h.errors.length,2,'the active second request is still registered as a session');
+ assert.match(h.errors[1],/приложение перешло в фон/);
+
+ requests[1].resolve(h.stream);
+ await h.flush();
+ assert.equal(h.recorders.length,0,'a stale permission result must never start recording');
+ assert.equal(h.tracks[0].stopped,true,'the late microphone stream must be released');
  assert.equal(h.timers.size,0);
  assert.equal(h.intervals.size,0);
 });
