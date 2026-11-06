@@ -24,6 +24,19 @@ function harness({
  const recorded=[];
  const recorders=[];
  const trackListeners=new Set();
+ const documentEvents=new Map();
+ const windowEvents=new Map();
+ const doc={
+  visibilityState:'visible',
+  addEventListener(name,handler){documentEvents.set(name,handler);},
+  removeEventListener(name,handler){if(documentEvents.get(name)===handler)documentEvents.delete(name);}
+ };
+ const win={
+  setTimeout:schedule(timers),clearTimeout:id=>timers.delete(id),
+  setInterval:schedule(intervals),clearInterval:id=>intervals.delete(id),
+  addEventListener(name,handler){windowEvents.set(name,handler);},
+  removeEventListener(name,handler){if(windowEvents.get(name)===handler)windowEvents.delete(name);}
+ };
  const tracks=[{
   kind:'audio',readyState:'live',stopped:false,
   addEventListener(name,listener){if(name==='ended')trackListeners.add(listener);},
@@ -91,12 +104,7 @@ function harness({
   exports,Blob,File,Date,console,
   navigator:{mediaDevices:{getUserMedia:async()=>stream}},
   MediaRecorder:FakeMediaRecorder,
-  window:{
-   setTimeout:schedule(timers),
-   clearTimeout:id=>timers.delete(id),
-   setInterval:schedule(intervals),
-   clearInterval:id=>intervals.delete(id)
-  },
+  window:win,document:doc,
   require(name){
    if(name==='react')return react;
    if(name==='react/jsx-runtime')return {jsx,jsxs:jsx,Fragment:Symbol.for('react.fragment')};
@@ -145,7 +153,12 @@ function harness({
   assert.equal(recorders.length,1,'recorder startup: '+errors.join(' | '));
   assert.equal(recorders[0].state,recording?'recording':'inactive');
  };
- return {render,button,pending,start,errors,recorded,tracks,recorders,timers,intervals};
+ return {
+  render,button,pending,start,errors,recorded,tracks,recorders,timers,intervals,
+  document:doc,
+  emitDocument:name=>documentEvents.get(name)?.(),
+  emitWindow:name=>windowEvents.get(name)?.()
+ };
 }
 
 test('a hung mobile MediaRecorder stop releases microphone and returns to idle',async()=>{
@@ -266,6 +279,41 @@ test('manual cancellation detaches the microphone-ended listener before late dev
  assert.equal(h.recorded.length,0);
  assert.deepEqual(h.errors,[],'a late device event after cancel must be ignored');
  assert.equal(h.button(h.render(),'Отменить'),null);
+ assert.equal(h.timers.size,0);
+ assert.equal(h.intervals.size,0);
+});
+
+
+test('backgrounding a recording cancels it, releases the mic and never resumes it',async()=>{
+ const h=harness();
+ await h.start();
+ h.document.visibilityState='hidden';
+ h.emitDocument('visibilitychange');
+ assert.equal(h.tracks[0].stopped,true,'backgrounding releases the microphone');
+ assert.equal(h.recorded.length,0,'a backgrounded recording is never sent to preview');
+ assert.equal(h.errors.length,1);
+ assert.match(h.errors[0],/приложение перешло в фон/);
+ assert.equal(h.timers.size,0);
+ assert.equal(h.intervals.size,0);
+ assert.equal(h.button(h.render(),'Отменить'),null,'the composer returns to idle');
+ h.document.visibilityState='visible';
+ h.emitDocument('visibilitychange');
+ assert.ok(h.button(h.render(),'Готово')===null,'returning to the app does not resume the old recording');
+ h.emitWindow('pagehide');
+ assert.equal(h.errors.length,1,'pagehide after visibilitychange is ignored');
+});
+
+test('pagehide during finalization discards the incomplete recording and ignores late stop',async()=>{
+ const h=harness();
+ await h.start();
+ h.button(h.render(),'Готово').props.onClick();
+ assert.equal(h.pending(VOICE_FINALIZE_TIMEOUT_MS).length,1);
+ h.emitWindow('pagehide');
+ h.recorders[0].onstop?.();
+ assert.equal(h.tracks[0].stopped,true);
+ assert.equal(h.recorded.length,0,'navigation during finalization cannot expose a partial file');
+ assert.equal(h.errors.length,1);
+ assert.match(h.errors[0],/приложение перешло в фон/);
  assert.equal(h.timers.size,0);
  assert.equal(h.intervals.size,0);
 });

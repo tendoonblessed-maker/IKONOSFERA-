@@ -42,6 +42,7 @@ export default function VoiceRecorder({disabled,onRecorded,onError}:Props){
  const [elapsed,setElapsed]=useState(0);
  const captureRef=useRef<Capture|null>(null);
  const requestRef=useRef(0);
+ const sessionActiveRef=useRef(false);
  const liveRef=useRef(true);
  const errorRef=useRef(onError);
  const recordedRef=useRef(onRecorded);
@@ -52,6 +53,7 @@ export default function VoiceRecorder({disabled,onRecorded,onError}:Props){
  // navigation, account switch, blocking, unmount, or explicit cancellation.
  const dispose=(discard:boolean)=>{
   requestRef.current+=1;
+  sessionActiveRef.current=false;
   const capture=captureRef.current;
   captureRef.current=null;
   if(capture){
@@ -69,6 +71,24 @@ export default function VoiceRecorder({disabled,onRecorded,onError}:Props){
  useEffect(()=>{
   liveRef.current=true;
   return()=>{liveRef.current=false;dispose(true);};
+ },[]);
+ useEffect(()=>{
+  const cancelForBackground=()=>{
+   if(!sessionActiveRef.current)return;
+   dispose(true);
+   setElapsed(0);
+   setPhase('idle');
+   errorRef.current('Запись отменена, потому что приложение перешло в фон. Вернись в чат и начни запись заново.');
+  };
+  const onVisibilityChange=()=>{
+   if(document.visibilityState==='hidden')cancelForBackground();
+  };
+  document.addEventListener('visibilitychange',onVisibilityChange);
+  window.addEventListener('pagehide',cancelForBackground);
+  return()=>{
+   document.removeEventListener('visibilitychange',onVisibilityChange);
+   window.removeEventListener('pagehide',cancelForBackground);
+  };
  },[]);
  useEffect(()=>{
   if(disabled&&phase!=='idle'){
@@ -126,6 +146,7 @@ export default function VoiceRecorder({disabled,onRecorded,onError}:Props){
    return;
   }
   const generation=++requestRef.current;
+  sessionActiveRef.current=true;
   setPhase('requesting');
   setElapsed(0);
   let stream:MediaStream|null=null;
@@ -145,6 +166,7 @@ export default function VoiceRecorder({disabled,onRecorded,onError}:Props){
    const recorderMime=recorder.mimeType||mime||'';
    const normalizedMime=normalizeVoiceMimeType(recorderMime);
    if(!normalizedMime){
+    sessionActiveRef.current=false;
     stopTracks(stream);
     setPhase('idle');
     errorRef.current('Браузер выбрал неподдерживаемый формат голосовых сообщений.');
@@ -152,6 +174,7 @@ export default function VoiceRecorder({disabled,onRecorded,onError}:Props){
    }
    const audioTrack=stream.getTracks().find(track=>track.kind==='audio');
    if(!audioTrack){
+    sessionActiveRef.current=false;
     stopTracks(stream);
     setPhase('idle');
     errorRef.current('Браузер не предоставил аудиодорожку микрофона.');
@@ -182,6 +205,7 @@ export default function VoiceRecorder({disabled,onRecorded,onError}:Props){
     clearCaptureResources(capture);
     stopTracks(capture.stream);
     captureRef.current=null;
+    sessionActiveRef.current=false;
     if(!liveRef.current)return;
     setPhase('idle');setElapsed(0);
     try{
@@ -214,6 +238,7 @@ export default function VoiceRecorder({disabled,onRecorded,onError}:Props){
    },VOICE_RECORD_MAX_MS);
    setPhase('recording');
   }catch(error){
+   sessionActiveRef.current=false;
    if(stream)stopTracks(stream);
    if(captureRef.current?.stream===stream)captureRef.current=null;
    if(requestRef.current!==generation||!liveRef.current)return;
