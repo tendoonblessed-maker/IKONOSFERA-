@@ -1,6 +1,7 @@
 'use client';
 
-import {useEffect,useState} from 'react';
+import {useCallback,useEffect,useRef,useState} from 'react';
+import {pauseChatMediaOnDetach} from '@/lib/chat-media-lifecycle';
 import {getDirectMediaUrl,invalidateDirectMediaUrl} from '@/lib/supabase-rest';
 import ChatPhotoViewer from '@/components/ChatPhotoViewer';
 
@@ -17,6 +18,16 @@ export default function ChatMedia({token,path,type}:Props){
  const [errorScope,setErrorScope]=useState<string|null>(null);
  const [retry,setRetry]=useState(0);
  const [previewOpen,setPreviewOpen]=useState(false);
+ const mediaElementRef=useRef<HTMLMediaElement|null>(null);
+ const bindMediaElement=useCallback((element:HTMLMediaElement|null)=>{
+  if(element){
+   mediaElementRef.current=element;
+   return;
+  }
+  // Stop audio/video before a chat switch or account change detaches the node.
+  pauseChatMediaOnDetach(mediaElementRef.current);
+  mediaElementRef.current=null;
+ },[]);
  const scope=token+':'+path;
  const url=signed?.scope===scope?signed.url:null;
  const error=errorScope===scope;
@@ -52,12 +63,13 @@ export default function ChatMedia({token,path,type}:Props){
   {previewOpen&&<ChatPhotoViewer src={url} onClose={()=>setPreviewOpen(false)}
     onImageError={handleMediaError}/>}
  </>;
- if(type==='video')return <video className="chat-media-video" src={url}
-   controls playsInline preload="metadata" onError={handleMediaError}
+ if(type==='video')return <video ref={bindMediaElement}
+   className="chat-media-video" src={url} controls playsInline
+   preload="metadata" onError={handleMediaError}
    aria-label="Видео в сообщении"/>;
- if(type==='audio')return <audio className="chat-media-audio" src={url}
-   controls preload="metadata" onError={handleMediaError}
-   aria-label="Музыка в сообщении"/>;
+ if(type==='audio')return <audio ref={bindMediaElement}
+   className="chat-media-audio" src={url} controls preload="metadata"
+   onError={handleMediaError} aria-label="Музыка в сообщении"/>;
  return <a className="chat-file-link" href={url} target="_blank"
    rel="noopener noreferrer" download>📎 Открыть файл</a>;
 }
