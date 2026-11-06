@@ -11,7 +11,10 @@ const compiled=ts.transpileModule(source,{
   jsx:ts.JsxEmit.ReactJSX}
 }).outputText;
 
-function harness({deliverStop=false}={}){
+function harness({
+ deliverStop=false,mimeDetection='supported',
+ defaultMimeType='audio/webm;codecs=opus'
+}={}){
  const hooks=[];
  let hook=0;
  let nextTimer=1;
@@ -51,10 +54,14 @@ function harness({deliverStop=false}={}){
   }
  };
  class FakeMediaRecorder{
-  static isTypeSupported(type){return type==='audio/webm';}
-  constructor(_stream,{mimeType}){
+  static isTypeSupported(type){
+   if(mimeDetection==='throws')throw Error('feature detection unavailable');
+   return mimeDetection==='supported'&&type==='audio/webm';
+  }
+  constructor(_stream,options={}){
    this.state='inactive';
-   this.mimeType=mimeType;
+   this.options=options;
+   this.mimeType=options.mimeType||defaultMimeType;
    recorders.push(this);
   }
   start(){this.state='recording';}
@@ -66,6 +73,7 @@ function harness({deliverStop=false}={}){
    }
   }
  }
+ if(mimeDetection==='missing')delete FakeMediaRecorder.isTypeSupported;
  const exports={};
  vm.runInNewContext(compiled,{
   exports,Blob,File,Date,console,
@@ -83,8 +91,16 @@ function harness({deliverStop=false}={}){
    if(name==='@/lib/voice-notes')return {
     VOICE_FINALIZE_TIMEOUT_MS,VOICE_RECORD_MAX_MS,VOICE_RECORD_MAX_BYTES:25*1024*1024,
     chooseVoiceMimeType:check=>check('audio/webm')?'audio/webm':null,
+    normalizeVoiceMimeType:mime=>{
+     const base=(mime||'').split(';',1)[0].trim().toLowerCase();
+     return ['audio/mp4','audio/webm','audio/ogg'].includes(base)?base:null;
+    },
     formatVoiceTime:()=> '00:00',
-    createVoiceFile:chunks=>new File(chunks,'voice.webm',{type:'audio/webm'})
+    createVoiceFile:(chunks,mime)=>{
+     const base=(mime||'').split(';',1)[0].trim().toLowerCase();
+     const ext=base==='audio/mp4'?'m4a':base==='audio/ogg'?'ogg':'webm';
+     return new File(chunks,'voice.'+ext,{type:base});
+    }
    };
    throw Error('Unexpected dependency: '+name);
   }
@@ -107,7 +123,7 @@ function harness({deliverStop=false}={}){
  const button=(tree,text)=>find(tree,node=>
   node.type==='button'&&node.props?.children===text);
  const pending=(ms)=>Array.from(timers.values()).filter(timer=>timer.ms===ms);
- const start=async()=>{
+ const start=async({recording=true}={})=>{
   const trigger=find(render(),node=>node.props?.['aria-label']==='Записать голосовое сообщение');
   assert.ok(trigger);
   trigger.props.onClick();
@@ -115,7 +131,7 @@ function harness({deliverStop=false}={}){
   // asserting recorder construction, rather than assuming two microtasks.
   await new Promise(resolve=>setImmediate(resolve));
   assert.equal(recorders.length,1,'recorder startup: '+errors.join(' | '));
-  assert.equal(recorders[0].state,'recording');
+  assert.equal(recorders[0].state,recording?'recording':'inactive');
  };
  return {render,button,pending,start,errors,recorded,tracks,recorders,timers,intervals};
 }
@@ -175,4 +191,42 @@ test('automatic two-minute stop uses the same guarded finalization path',async()
  h.pending(VOICE_FINALIZE_TIMEOUT_MS)[0].fn();
  assert.equal(h.tracks[0].stopped,true);
  assert.equal(h.recorded.length,0);
+});
+
+test('missing MIME feature detection uses the browser default and still previews supported audio',async()=>{
+ const h=harness({
+  deliverStop:true,mimeDetection:'missing',
+  defaultMimeType:'audio/mp4;codecs=mp4a.40.2'
+ });
+ await h.start();
+ assert.equal(Object.hasOwn(h.recorders[0].options,'mimeType'),false,
+  'do not force a guessed MIME when the browser must choose');
+ h.button(h.render(),'Готово').props.onClick();
+ assert.equal(h.recorded.length,1);
+ assert.equal(h.recorded[0].type,'audio/mp4');
+ assert.equal(h.recorded[0].name,'voice.m4a');
+ assert.deepEqual(h.errors,[]);
+});
+
+test('a throwing MIME feature detector also falls back to the browser default',async()=>{
+ const h=harness({
+  deliverStop:true,mimeDetection:'throws',
+  defaultMimeType:'audio/ogg;codecs=opus'
+ });
+ await h.start();
+ assert.equal(Object.hasOwn(h.recorders[0].options,'mimeType'),false);
+ h.button(h.render(),'Готово').props.onClick();
+ assert.equal(h.recorded[0].type,'audio/ogg');
+ assert.deepEqual(h.errors,[]);
+});
+
+test('an unsupported browser-default MIME is rejected before recording and releases the microphone',async()=>{
+ const h=harness({mimeDetection:'missing',defaultMimeType:'video/webm',});
+ await h.start({recording:false});
+ assert.equal(h.tracks[0].stopped,true);
+ assert.equal(h.recorded.length,0);
+ assert.equal(h.errors.length,1);
+ assert.match(h.errors[0],/выбрал неподдерживаемый формат/);
+ assert.equal(h.intervals.size,0);
+ assert.equal(h.timers.size,0);
 });
