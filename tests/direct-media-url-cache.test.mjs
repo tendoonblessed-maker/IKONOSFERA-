@@ -80,7 +80,7 @@ test('a failed current signing request is evicted so the next retry can succeed'
   :Promise.resolve(reply(signedURL(PATH,'recovered'))));
  await assert.rejects(api.getDirectMediaUrl('jwt',PATH),/temporary offline/);
  const recovered=await api.getDirectMediaUrl('jwt',PATH);
- assert.match(recovered,/\/recovered$/);
+ assert.match(recovered,/token=recovered$/);
  assert.equal(calls.length,2);
  assert.equal(await api.getDirectMediaUrl('jwt',PATH),recovered);
  assert.equal(calls.length,2);
