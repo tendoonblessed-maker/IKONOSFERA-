@@ -11,3 +11,10 @@ export function getStoryTabTarget(
  if(!shiftKey&&activeIndex===controlCount-1)return 0;
  return null;
 }
+
+/** Restore the story opener without moving the underlying mobile scroll position. */
+export function restoreStoryViewerFocus(
+ element:Pick<HTMLElement,'isConnected'|'focus'>|null
+):void{
+ if(element?.isConnected)element.focus({preventScroll:true});
+}
