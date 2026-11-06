@@ -76,6 +76,18 @@ test('same file bytes and caption reuse one ID; changed bytes or caption get new
  assert.notEqual(changedBytes,first);
 });
 
+test('concurrent submits for the same file and caption share one attempt UUID',async()=>{
+ const {api}=loadAttempts();
+ const [first,second,third]=await Promise.all([
+  api.getOrCreateDirectMediaAttempt(OWNER,CHAT,file(),'Same caption'),
+  api.getOrCreateDirectMediaAttempt(OWNER,CHAT,file(),'Same caption'),
+  api.getOrCreateDirectMediaAttempt(OWNER,CHAT,file(),'Same caption')
+ ]);
+ assert.equal(first,second);
+ assert.equal(second,third);
+ assert.equal(api.readDirectMediaAttempts(OWNER,CHAT).length,1);
+});
+
 test('attempt identity is isolated by account and chat and storage contains no file bytes or caption',async()=>{
  const {api,store}=loadAttempts();
  const id=await api.getOrCreateDirectMediaAttempt(OWNER,CHAT,file(),'Секретная подпись');
