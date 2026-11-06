@@ -12,6 +12,7 @@ import ChatMessageText from "@/components/ChatMessageText";
 import {subscribeDirectChatChanges} from "@/lib/direct-realtime";
 import {subscribeInboxChanges,type InboxChangeKind} from "@/lib/inbox-realtime";
 import {isLatestAccountSnapshot} from "@/lib/inbox-snapshot";
+import {createSingleFlightGuard} from "@/lib/single-flight-guard";
 import {shouldOpenDirectChatSearch} from "@/lib/chat-shortcuts";
 import {reconcileRecentChannelUpdates,CHANNEL_UPDATE_GRACE_MS,type RecentChannelUpdate} from "@/lib/channel-sync";
 import ChatAttachmentPreview from "@/components/ChatAttachmentPreview";
@@ -92,6 +93,9 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
   const [olderMessagesError,setOlderMessagesError]=useState(false);
   const [messageReactions,setMessageReactions]=useState<MessageReaction[]>([]);
   const [messageReactionPicker,setMessageReactionPicker]=useState<string|null>(null);
+  // React state disables the UI after render; this synchronous guard closes same-tick double taps.
+  const reactionActionGuardRef=useRef<ReturnType<typeof createSingleFlightGuard>|null>(null);
+  if(!reactionActionGuardRef.current)reactionActionGuardRef.current=createSingleFlightGuard();
   const [editingMessageId,setEditingMessageId]=useState<string|null>(null);
   const [editingMessageBody,setEditingMessageBody]=useState("");
   const [search,setSearch]=useState('');
@@ -1134,6 +1138,9 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
   }
   async function reactToMessage(messageId:string,emoji:ReactionEmoji){
     if(!session||!selected||!userId||sending)return;
+    // setSending() is asynchronous: a rapid second tap can enter before React rerenders.
+    const release=reactionActionGuardRef.current?.acquire();
+    if(!release)return;
     const chatId=selected,token=session.access_token;
     const previous=messageReactions.find(r=>r.message_id===messageId&&r.user_id===userId);
     setSending(true);setError("");
@@ -1146,7 +1153,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
           ...current.filter(reaction=>reaction.message_id!==messageId),...updated
         ]);
       }catch{/* Reaction was saved; the chat poll will reload its state. */}
-    }catch(e){setError(userFacingError(e));}finally{setSending(false);}
+    }catch(e){setError(userFacingError(e));}finally{release();setSending(false);}
   }
   function queueAttachment(file:File|undefined){
     if(!file||!selected||!userId||sending||activePartnerBlocked)return;
