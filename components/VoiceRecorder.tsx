@@ -11,6 +11,8 @@ type Props={
 type Capture={
  recorder:MediaRecorder;
  stream:MediaStream;
+ audioTrack:MediaStreamTrack;
+ trackEnded:(()=>void)|null;
  chunks:Blob[];
  bytes:number;
  startedAt:number;
@@ -24,11 +26,15 @@ type Phase='idle'|'requesting'|'recording'|'finalizing';
 function stopTracks(stream:MediaStream){
  stream.getTracks().forEach(track=>track.stop());
 }
-function clearCaptureTimers(capture:Capture){
+function clearCaptureResources(capture:Capture){
  if(capture.clock!==null)window.clearInterval(capture.clock);
  if(capture.limit!==null)window.clearTimeout(capture.limit);
  if(capture.finalize!==null)window.clearTimeout(capture.finalize);
  capture.clock=null;capture.limit=null;capture.finalize=null;
+ if(capture.trackEnded){
+  capture.audioTrack.removeEventListener('ended',capture.trackEnded);
+  capture.trackEnded=null;
+ }
 }
 
 export default function VoiceRecorder({disabled,onRecorded,onError}:Props){
@@ -50,7 +56,7 @@ export default function VoiceRecorder({disabled,onRecorded,onError}:Props){
   captureRef.current=null;
   if(capture){
    capture.discard=discard;
-   clearCaptureTimers(capture);
+   clearCaptureResources(capture);
    capture.recorder.ondataavailable=null;
    capture.recorder.onstop=null;
    capture.recorder.onerror=null;
@@ -144,8 +150,15 @@ export default function VoiceRecorder({disabled,onRecorded,onError}:Props){
     errorRef.current('Браузер выбрал неподдерживаемый формат голосовых сообщений.');
     return;
    }
+   const audioTrack=stream.getTracks().find(track=>track.kind==='audio');
+   if(!audioTrack){
+    stopTracks(stream);
+    setPhase('idle');
+    errorRef.current('Браузер не предоставил аудиодорожку микрофона.');
+    return;
+   }
    const capture:Capture={
-    recorder,stream,chunks:[],bytes:0,startedAt:Date.now(),
+    recorder,stream,audioTrack,trackEnded:null,chunks:[],bytes:0,startedAt:Date.now(),
     discard:false,clock:null,limit:null,finalize:null
    };
    captureRef.current=capture;
@@ -166,7 +179,7 @@ export default function VoiceRecorder({disabled,onRecorded,onError}:Props){
    };
    recorder.onstop=()=>{
     if(capture.discard||captureRef.current!==capture)return;
-    clearCaptureTimers(capture);
+    clearCaptureResources(capture);
     stopTracks(capture.stream);
     captureRef.current=null;
     if(!liveRef.current)return;
@@ -178,6 +191,20 @@ export default function VoiceRecorder({disabled,onRecorded,onError}:Props){
      errorRef.current(error instanceof Error?error.message:'Не удалось подготовить голосовое сообщение.');
     }
    };
+   // A permission revocation or unplugged microphone can end its audio track
+   // while MediaRecorder still appears active. Cancel rather than previewing
+   // a truncated/silent recording, and detach this listener on every cleanup.
+   const trackEnded=()=>{
+    if(capture.discard||captureRef.current!==capture)return;
+    cancel();
+    errorRef.current('Соединение с микрофоном прервано. Запись отменена; проверь микрофон и попробуй ещё раз.');
+   };
+   capture.trackEnded=trackEnded;
+   audioTrack.addEventListener('ended',trackEnded,{once:true});
+   if(audioTrack.readyState==='ended'){
+    trackEnded();
+    return;
+   }
    recorder.start(1000);
    capture.clock=window.setInterval(()=>{
     if(captureRef.current===capture)setElapsed(Math.min(120,Math.floor((Date.now()-capture.startedAt)/1000)));
