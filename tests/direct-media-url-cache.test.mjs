@@ -28,6 +28,7 @@ function scenario(handler){
    NEXT_PUBLIC_SUPABASE_ANON_KEY:'public-anon-test'
   }},
   AbortSignal,
+  URL,
   fetch:(url,options)=>{
    calls.push({url,options});
    return handler(url,options,calls.length);
