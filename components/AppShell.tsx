@@ -1,6 +1,6 @@
 'use client';
 import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import {getOrCreateDirectMediaAttempt,clearDirectMediaAttempt,clearAllDirectMediaAttempts} from '@/lib/direct-media-attempts';
+import {getOrCreateDirectMediaAttempt,clearDirectMediaAttempt} from '@/lib/direct-media-attempts';
 import { backendReady, createTemporaryAccount, consumeEmailLinkSession, loadSession, currentUser, findProfileByUsername, listChats, listChatPreviews, listMessages, listOlderMessages, listReplyTargets, searchDirectMessages, type DirectMessageSearchResult, DIRECT_MESSAGE_SEARCH_PAGE_SIZE, type ReplyTarget, CHAT_MESSAGE_PAGE_SIZE, manageChat, manageMessage, listMessageReactions, setMessageReaction, markChatRead, listProfiles, myProfile, postMessage, reopenChat, sendDirectMedia, validateDirectMediaFile, sendEmailCode, signOut, startDirectChat, validSession, type ChatMessage, type MessageReaction, type DirectChat, type Profile, type Session, type ChatPreview } from '@/lib/supabase-rest';
 
 import ProfilePanel from "@/components/ProfilePanel";
@@ -1193,7 +1193,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
     const revokeOnServer=signOut(session.access_token);
     inboxOwnerRef.current='';inboxRequestRef.current++;
     previewRequestRef.current++;groupOverviewRequestRef.current++;
-    clearChatDrafts(userId);clearGroupDrafts(userId);clearAllGroupSendAttempts(userId);clearAllDirectMediaAttempts(userId);
+    clearChatDrafts(userId);clearGroupDrafts(userId);clearAllGroupSendAttempts(userId);
     groupDraftsOwnerRef.current='';setGroupDraftPreviews({});
     draftsOwnerRef.current='';draftsRef.current={};setDraftPreviews({});setDraft('');
     previewCacheRef.current={ownerId:'',previews:new Map()};
