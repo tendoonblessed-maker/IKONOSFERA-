@@ -504,7 +504,7 @@ test('rapid chat switching never inserts a sent attachment or edited message in 
  assert.match(shell,/draftsRef\.current\[chatId\].*\.trim\(\)===plainText/);
  assert.match(shell,/setDraft\(current=>current\.trim\(\)===plainText\?'':current\)/);
  assert.match(shell,/const sent=await postMessage\(token,chatId,userId,plainText,crypto\.randomUUID\(\),reply\?\.id\?\?null\)/);
- assert.match(shell,/const sent=await sendDirectMedia\(token,chatId,userId,file,caption\)/);
+ assert.match(shell,/const sent=await sendDirectMedia\(token,chatId,userId,file,caption,attemptId\)/);
 });
 test('group conversations always fetch newest messages and show real loading/errors',()=>{
  const api=load('lib/groups.ts');
@@ -1122,9 +1122,9 @@ test('attachments are reviewed with captions instead of being sent from the file
  assert.match(shell,/setPendingAttachment\(\{chatId:selected,ownerId:userId,file\}\)/);
  assert.match(shell,/setPendingAttachment\(null\);setAttachmentCaption\(''\)/);
  assert.match(shell,/async function sendAttachment\(file:File\|undefined,caption=''\)/);
- assert.match(shell,/sendDirectMedia\(token,chatId,userId,file,caption\)/);
+ assert.match(shell,/sendDirectMedia\(token,chatId,userId,file,caption,attemptId\)/);
  assert.match(shell,/setPendingAttachment\(current=>current\?\.chatId===chatId&&current\.ownerId===userId&&current\.file===file\?null:current\)/);
- assert.match(shell,/const sent=await sendDirectMedia\(token,chatId,userId,file,caption\)/);
+ assert.match(shell,/const sent=await sendDirectMedia\(token,chatId,userId,file,caption,attemptId\)/);
  assert.match(shell,/queueAttachment\(e\.target\.files\?\.\[0\]\);e\.target\.value=""/);
  assert.doesNotMatch(shell,/void sendAttachment\(e\.target\.files\?\.\[0\]\)/);
  assert.match(shell,/pendingAttachment\?\.chatId===selected&&pendingAttachment\.ownerId===userId/);
@@ -1134,7 +1134,13 @@ test('attachments are reviewed with captions instead of being sent from the file
  assert.match(uploader,/export function validateDirectMediaFile/);
  assert.match(uploader,/DIRECT_MEDIA_MAX_BYTES=25\*1024\*1024/);
  assert.match(uploader,/if\(problem\)throw Error\(problem\)/);
- assert.match(uploader,/body:caption\.trim\(\)\.slice\(0,4000\)/);
+ assert.match(uploader,/const body=caption\.trim\(\)\.slice\(0,4000\)/);
+ assert.match(uploader,/client_message_id:clientMessageId/);
+ assert.match(uploader,/&client_message_id=eq\./);
+ assert.match(uploader,/getDirectMediaUrl\(token,path\)/);
+ assert.match(shell,/getOrCreateDirectMediaAttempt\(userId,chatId,file,caption\)/);
+ assert.match(shell,/clearDirectMediaAttempt\(userId,chatId,attemptId\)/);
+ assert.doesNotMatch(shell,/clearAllDirectMediaAttempts\(userId\)/);
  assert.match(view,/createPortal\(/);
  assert.match(view,/role="dialog"/);
  assert.match(view,/aria-modal="true"/);
