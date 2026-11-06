@@ -58,8 +58,10 @@ export default function ChatAttachmentPreview({file,caption,sending,online,onCap
    if(event.key!=='Tab')return;
    const dialog=dialogRef.current;
    if(!dialog)return;
+   // Native audio/video controls are tab stops too; include their host
+   // elements so wrapping stays correct for media previews on mobile.
    const controls=Array.from(dialog.querySelectorAll<HTMLElement>(
-    'a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])'
+    'a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),audio[controls],video[controls],[tabindex]:not([tabindex="-1"])'
    ));
    const target=getAttachmentPreviewTabTarget(document.activeElement,dialog,controls,event.shiftKey);
    if(target){
