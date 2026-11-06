@@ -2,6 +2,8 @@
 
 import {useEffect,useRef,useState} from 'react';
 import {createPortal} from 'react-dom';
+import {getAttachmentPreviewTabTarget,preferNonTextFocusForAttachment} from '@/lib/attachment-preview-focus';
+import {isAttachmentImeEvent} from '@/lib/attachment-shortcuts';
 
 type Props={
  file:File;
@@ -17,6 +19,7 @@ export default function ChatAttachmentPreview({file,caption,sending,online,onCap
  const [preview,setPreview]=useState<{file:File;url:string}|null>(null);
  const dialogRef=useRef<HTMLElement|null>(null);
  const captionRef=useRef<HTMLTextAreaElement|null>(null);
+ const dismissRef=useRef<HTMLButtonElement|null>(null);
  const sendRef=useRef<HTMLButtonElement|null>(null);
  const closeRef=useRef(onCancel);
  closeRef.current=onCancel;
@@ -37,29 +40,48 @@ export default function ChatAttachmentPreview({file,caption,sending,online,onCap
   const previouslyFocused=document.activeElement instanceof HTMLElement?document.activeElement:null;
   const previousOverflow=document.body.style.overflow;
   document.body.style.overflow='hidden';
-  captionRef.current?.focus();
+  // Focusing a textarea on iPhone/Android opens the software keyboard before
+  // the user has seen the photo/video. Keep focus inside the dialog without
+  // activating the keyboard; desktop keyboard users still land on the caption.
+  const touchFirst=preferNonTextFocusForAttachment(
+   window.matchMedia?.('(pointer: coarse)').matches??false,
+   navigator.maxTouchPoints
+  );
+  if(touchFirst)dismissRef.current?.focus({preventScroll:true});
+  else captionRef.current?.focus({preventScroll:true});
   const onKeyDown=(event:KeyboardEvent)=>{
    if(event.key==='Escape'&&!busyRef.current){
+    if(isAttachmentImeEvent(event))return; // Escape confirms IME composition, not the dialog.
     event.preventDefault();
     closeRef.current();
    }
    if(event.key!=='Tab')return;
-   const controls=dialogRef.current?.querySelectorAll<HTMLElement>('button:not([disabled]),textarea:not([disabled])');
-   if(!controls?.length)return;
-   const first=controls[0],last=controls[controls.length-1];
-   if(event.shiftKey&&(document.activeElement===first||!dialogRef.current?.contains(document.activeElement))){
-    event.preventDefault();last.focus();
-   }else if(!event.shiftKey&&(document.activeElement===last||!dialogRef.current?.contains(document.activeElement))){
-    event.preventDefault();first.focus();
+   const dialog=dialogRef.current;
+   if(!dialog)return;
+   // Native audio/video controls are tab stops too; include their host
+   // elements so wrapping stays correct for media previews on mobile.
+   const controls=Array.from(dialog.querySelectorAll<HTMLElement>(
+    'a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),audio[controls],video[controls],[tabindex]:not([tabindex="-1"])'
+   ));
+   const target=getAttachmentPreviewTabTarget(document.activeElement,dialog,controls,event.shiftKey);
+   if(target){
+    event.preventDefault();
+    (target as HTMLElement).focus({preventScroll:true});
    }
   };
   document.addEventListener('keydown',onKeyDown);
   return()=>{
    document.removeEventListener('keydown',onKeyDown);
    document.body.style.overflow=previousOverflow;
-   if(previouslyFocused?.isConnected)previouslyFocused.focus();
+   if(previouslyFocused?.isConnected)previouslyFocused.focus({preventScroll:true});
   };
  },[]);
+
+ useEffect(()=>{
+  // While sending, every action is disabled. Move focus to the dialog itself
+  // so keyboard users cannot tab into the private chat behind the overlay.
+  if(sending)dialogRef.current?.focus({preventScroll:true});
+ },[sending]);
 
  const size=file.size<1024?file.size+' Б':file.size<1048576?(file.size/1024).toFixed(1)+' КБ':(file.size/1048576).toFixed(1)+' МБ';
  return createPortal(
@@ -67,10 +89,10 @@ export default function ChatAttachmentPreview({file,caption,sending,online,onCap
     if(event.target===event.currentTarget&&!sending)onCancel();
   }}>
    <section ref={dialogRef} className="ik-attachment-preview-dialog" role="dialog"
-     aria-modal="true" aria-label="Подготовка вложения">
+     aria-modal="true" aria-label="Подготовка вложения" aria-busy={sending} tabIndex={-1}>
     <header className="ik-attachment-preview-header">
      <div><strong>Отправить вложение</strong><span>Проверь файл перед отправкой</span></div>
-     <button type="button" onClick={onCancel} disabled={sending}
+     <button ref={dismissRef} type="button" onClick={onCancel} disabled={sending}
        aria-label="Отменить вложение" title="Закрыть">✕</button>
     </header>
     <div className="ik-attachment-preview-stage">
@@ -93,6 +115,7 @@ export default function ChatAttachmentPreview({file,caption,sending,online,onCap
        placeholder="Добавить подпись…"
        onKeyDown={event=>{
         if(event.key==='Enter'&&(event.ctrlKey||event.metaKey)&&!event.nativeEvent.isComposing){
+         if(event.repeat||isAttachmentImeEvent(event.nativeEvent))return;
          event.preventDefault();
          sendRef.current?.click();
         }
