@@ -90,7 +90,7 @@ test('attempt identity is isolated by account and chat and storage contains no f
  assert.match(raw,/fingerprint/);
 });
 
-test('clearing one acknowledgment keeps other attempts; logout clears only that account',async()=>{
+test('clearing one acknowledgment keeps other attempts; explicit account cleanup stays scoped',async()=>{
  const {api}=loadAttempts();
  const first=await api.getOrCreateDirectMediaAttempt(OWNER,CHAT,file(),'A');
  const second=await api.getOrCreateDirectMediaAttempt(OWNER,CHAT,file(),'B');
