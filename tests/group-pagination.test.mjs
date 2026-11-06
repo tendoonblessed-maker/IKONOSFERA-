@@ -3,6 +3,7 @@ import {test} from 'node:test';
 import {readFileSync} from 'node:fs';
 import vm from 'node:vm';
 import ts from 'typescript';
+import {compareMessageTimestampAndId} from '../lib/message-order.ts';
 
 const GROUP='11111111-1111-4111-8111-111111111111';
 const OTHER='22222222-2222-4222-8222-222222222222';
@@ -29,8 +30,9 @@ function setup(handler=()=>({ok:true,json:async()=>[]})){
    return handler(url,options,calls.length);
   },
   require(name){
-   assert.equal(name,'@/lib/supabase-rest');
-   return {apiUrl:'https://unit.test'};
+   if(name==='@/lib/supabase-rest')return {apiUrl:'https://unit.test'};
+   if(name==='./message-order')return {compareMessageTimestampAndId};
+   assert.fail('Unexpected module: '+name);
   }
  };
  vm.runInNewContext(compiled,context,{timeout:2000,filename:'group-pagination.cjs'});
@@ -108,6 +110,22 @@ test('cursor ordering handles identical milliseconds, microseconds and UUID ties
  ];
  const sorted=rows.sort(api.compareGroupMessages);
  assert.deepEqual(Array.from(sorted,x=>x.id),[id(2),id(3),id(1),id(4)]);
+});
+
+test('group pagination and confirmed-send reconciliation share one comparator',()=>{
+ const {api}=setup();
+ const rows=[
+  row('z','2026-10-29T09:00:00.1234Z'),
+  row('a','2026-10-29T10:00:00.123401+01:00'),
+  row('b','2026-10-29T09:00:00.123401Z')
+ ];
+ for(const left of rows)for(const right of rows){
+  assert.equal(
+   api.compareGroupMessages(left,right),
+   compareMessageTimestampAndId(left,right),
+   'both paths must use identical microsecond and ID ordering'
+  );
+ }
 });
 
 test('prepend new page deduplicates concurrent overlap and keeps updated current content',()=>{
