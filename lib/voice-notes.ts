@@ -16,6 +16,11 @@ const EXTENSIONS:Record<string,string>={
 export function chooseVoiceMimeType(supported:(type:string)=>boolean):string|null{
  return VOICE_MIME_CANDIDATES.find(type=>supported(type))??null;
 }
+/** Strip codec parameters and accept only formats allowed by the private media bucket. */
+export function normalizeVoiceMimeType(mime:string):string|null{
+ const base=typeof mime==='string'?mime.split(';',1)[0].trim().toLowerCase():'';
+ return VALID_MIMES.has(base)?base:null;
+}
 export function formatVoiceTime(elapsedSeconds:number):string{
  const time=Math.max(0,Math.floor(Number.isFinite(elapsedSeconds)?elapsedSeconds:0));
  return Math.floor(time/60).toString().padStart(2,'0')+':'
@@ -23,8 +28,8 @@ export function formatVoiceTime(elapsedSeconds:number):string{
 }
 /** Normalizes codec parameters because Storage verifies exact audio/* MIME. */
 export function createVoiceFile(chunks:Blob[],mime:string,timestamp=Date.now()):File{
- const base=mime.split(';')[0].trim().toLowerCase();
- if(!VALID_MIMES.has(base))throw Error('Браузер записал звук в неподдерживаемом формате.');
+ const base=normalizeVoiceMimeType(mime);
+ if(!base)throw Error('Браузер записал звук в неподдерживаемом формате.');
  const blob=new Blob(chunks,{type:base});
  if(!blob.size||blob.size>VOICE_RECORD_MAX_BYTES)
   throw Error('Голосовое сообщение пустое или превышает 25 МБ.');
