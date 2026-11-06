@@ -2,7 +2,7 @@
 
 import {useEffect,useRef,useState} from 'react';
 import {createPortal} from 'react-dom';
-import {preferNonTextFocusForAttachment} from '@/lib/attachment-preview-focus';
+import {getAttachmentPreviewTabTarget,preferNonTextFocusForAttachment} from '@/lib/attachment-preview-focus';
 import {isAttachmentImeEvent} from '@/lib/attachment-shortcuts';
 
 type Props={
@@ -56,22 +56,30 @@ export default function ChatAttachmentPreview({file,caption,sending,online,onCap
     closeRef.current();
    }
    if(event.key!=='Tab')return;
-   const controls=dialogRef.current?.querySelectorAll<HTMLElement>('button:not([disabled]),textarea:not([disabled])');
-   if(!controls?.length)return;
-   const first=controls[0],last=controls[controls.length-1];
-   if(event.shiftKey&&(document.activeElement===first||!dialogRef.current?.contains(document.activeElement))){
-    event.preventDefault();last.focus();
-   }else if(!event.shiftKey&&(document.activeElement===last||!dialogRef.current?.contains(document.activeElement))){
-    event.preventDefault();first.focus();
+   const dialog=dialogRef.current;
+   if(!dialog)return;
+   const controls=Array.from(dialog.querySelectorAll<HTMLElement>(
+    'a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])'
+   ));
+   const target=getAttachmentPreviewTabTarget(document.activeElement,dialog,controls,event.shiftKey);
+   if(target){
+    event.preventDefault();
+    (target as HTMLElement).focus({preventScroll:true});
    }
   };
   document.addEventListener('keydown',onKeyDown);
   return()=>{
    document.removeEventListener('keydown',onKeyDown);
    document.body.style.overflow=previousOverflow;
-   if(previouslyFocused?.isConnected)previouslyFocused.focus();
+   if(previouslyFocused?.isConnected)previouslyFocused.focus({preventScroll:true});
   };
  },[]);
+
+ useEffect(()=>{
+  // While sending, every action is disabled. Move focus to the dialog itself
+  // so keyboard users cannot tab into the private chat behind the overlay.
+  if(sending)dialogRef.current?.focus({preventScroll:true});
+ },[sending]);
 
  const size=file.size<1024?file.size+' Б':file.size<1048576?(file.size/1024).toFixed(1)+' КБ':(file.size/1048576).toFixed(1)+' МБ';
  return createPortal(
@@ -79,7 +87,7 @@ export default function ChatAttachmentPreview({file,caption,sending,online,onCap
     if(event.target===event.currentTarget&&!sending)onCancel();
   }}>
    <section ref={dialogRef} className="ik-attachment-preview-dialog" role="dialog"
-     aria-modal="true" aria-label="Подготовка вложения">
+     aria-modal="true" aria-label="Подготовка вложения" aria-busy={sending} tabIndex={-1}>
     <header className="ik-attachment-preview-header">
      <div><strong>Отправить вложение</strong><span>Проверь файл перед отправкой</span></div>
      <button ref={dismissRef} type="button" onClick={onCancel} disabled={sending}

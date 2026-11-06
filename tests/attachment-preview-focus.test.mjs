@@ -1,7 +1,9 @@
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
 import {readFileSync} from 'node:fs';
-import {preferNonTextFocusForAttachment} from '../lib/attachment-preview-focus.ts';
+import {
+ getAttachmentPreviewTabTarget,preferNonTextFocusForAttachment
+} from '../lib/attachment-preview-focus.ts';
 
 const load=path=>readFileSync(new URL('../'+path,import.meta.url),'utf8');
 
@@ -21,19 +23,35 @@ test('non-touch desktops retain fast caption keyboard entry',()=>{
  assert.equal(preferNonTextFocusForAttachment(false,-1),false);
 });
 
-test('attachment dialog keeps focus inside, without scrolling or changing send/cancel actions',()=>{
+test('Tab and Shift+Tab stay inside the dialog when controls are available',()=>{
+ const first={},middle={},last={};
+ const controls=[first,middle,last];
+ const dialog={contains:node=>controls.includes(node)};
+ assert.equal(getAttachmentPreviewTabTarget(dialog,dialog,controls,false),first);
+ assert.equal(getAttachmentPreviewTabTarget(dialog,dialog,controls,true),last);
+ assert.equal(getAttachmentPreviewTabTarget(first,dialog,controls,true),last);
+ assert.equal(getAttachmentPreviewTabTarget(last,dialog,controls,false),first);
+ assert.equal(getAttachmentPreviewTabTarget({},dialog,controls,false),first);
+ assert.equal(getAttachmentPreviewTabTarget({},dialog,controls,true),last);
+ assert.equal(getAttachmentPreviewTabTarget(middle,dialog,controls,false),null);
+});
+
+test('focus stays on the dialog while sending disables every control',()=>{
+ const dialog={contains:()=>true};
+ assert.equal(getAttachmentPreviewTabTarget(dialog,dialog,[],false),dialog);
+ assert.equal(getAttachmentPreviewTabTarget(dialog,dialog,[],true),dialog);
+ assert.equal(getAttachmentPreviewTabTarget(null,dialog,[],false),dialog);
+});
+
+test('attachment dialog retains focus through busy state and restores it without scrolling',()=>{
  const component=load('components/ChatAttachmentPreview.tsx');
- assert.match(component,/preferNonTextFocusForAttachment\(/);
- assert.match(component,/matchMedia\?\.\('\(pointer: coarse\)'\)/);
- assert.match(component,/navigator\.maxTouchPoints/);
- assert.match(component,/if\(touchFirst\)dismissRef\.current\?\.focus\(\{preventScroll:true\}\)/);
- assert.match(component,/else captionRef\.current\?\.focus\(\{preventScroll:true\}\)/);
- assert.match(component,/<button ref=\{dismissRef\} type="button" onClick=\{onCancel\}/);
+ assert.match(component,/getAttachmentPreviewTabTarget\(document\.activeElement,dialog,controls,event\.shiftKey\)/);
+ assert.match(component,/if\(sending\)dialogRef\.current\?\.focus\(\{preventScroll:true\}\)/);
+ assert.match(component,/aria-busy=\{sending\} tabIndex=\{-1\}/);
+ assert.match(component,/previouslyFocused\.focus\(\{preventScroll:true\}\)/);
+ assert.match(component,/button:not\(\[disabled\]\)/);
+ assert.match(component,/textarea:not\(\[disabled\]\)/);
  assert.match(component,/document\.addEventListener\('keydown',onKeyDown\)/);
- assert.match(component,/if\(event\.key==='Escape'&&!busyRef\.current\)/);
- assert.match(component,/if\(event\.key!=='Tab'\)return/);
- assert.match(component,/document\.body\.style\.overflow='hidden'/);
- assert.match(component,/if\(previouslyFocused\?\.isConnected\)previouslyFocused\.focus\(\)/);
  assert.match(component,/onClick=\{onSend\}/);
  assert.match(component,/disabled=\{sending\|\|!online\}/);
 });
