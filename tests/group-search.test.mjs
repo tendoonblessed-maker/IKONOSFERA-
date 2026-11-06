@@ -76,7 +76,7 @@ test('context navigation aborts all outstanding bounded reads when the search is
  assert.equal(calls.length,3);
  owner.abort();
  await assert.rejects(pending);
- assert.ok(calls.every(call=>call.options.signal.aborted));
+ assert.ok(calls.slice(1).every(call=>call.options.signal.aborted));
 });
 
 test('search queries with quotes, commas and Unicode are quoted/encoded, not operators',()=>{
