@@ -298,7 +298,7 @@ export async function uploadDirectMedia(
  }
  return {path,type};
 }
-export async function sendDirectMedia(
+async function sendDirectMediaRequest(
  token:string,chatId:string,userId:string,file:File,caption="",clientMessageId:string=crypto.randomUUID()
 ){
  if(!DIRECT_MEDIA_UUID.test(chatId)||!DIRECT_MEDIA_UUID.test(userId)||!DIRECT_MEDIA_UUID.test(clientMessageId))
@@ -337,6 +337,29 @@ export async function sendDirectMedia(
   }
   throw Error("Не удалось подтвердить отправку вложения. Файл сохранён — повтори вручную.");
  }
+}
+
+const directMediaSendInFlight=new Map<string,Promise<ChatMessage>>();
+/**
+ * Treat a client_message_id as one logical operation. Two event handlers can
+ * run before React disables the composer; they must share the same upload and
+ * INSERT promise rather than racing two requests against Storage/PostgREST.
+ */
+export function sendDirectMedia(
+ token:string,chatId:string,userId:string,file:File,caption="",clientMessageId:string=crypto.randomUUID()
+):Promise<ChatMessage>{
+ if(!DIRECT_MEDIA_UUID.test(chatId)||!DIRECT_MEDIA_UUID.test(userId)||!DIRECT_MEDIA_UUID.test(clientMessageId))
+  return Promise.reject(Error("Некорректные параметры вложения."));
+ const attemptKey=userId+":"+chatId+":"+clientMessageId;
+ const pending=directMediaSendInFlight.get(attemptKey);
+ if(pending)return pending;
+ const operation=sendDirectMediaRequest(token,chatId,userId,file,caption,clientMessageId);
+ let shared:Promise<ChatMessage>;
+ shared=operation.finally(()=>{
+  if(directMediaSendInFlight.get(attemptKey)===shared)directMediaSendInFlight.delete(attemptKey);
+ });
+ directMediaSendInFlight.set(attemptKey,shared);
+ return shared;
 }
 // Signed URLs remain private, short-lived and in memory only. Sharing one
 // in-flight signing request prevents dozens of requests for the same image.
