@@ -281,7 +281,7 @@ export function invalidateDirectMediaUrl(token:string,path:string):void{
 }
 /** Resolve only the signed URL for the exact private object requested from this Supabase project. */
 export function resolveDirectMediaSignedUrl(signedURL:string,path:string,baseUrl=apiUrl):string{
- if(!/^[a-f0-9-]{36}\/[a-f0-9-]{36}\/[a-f0-9-]{36}\\.[a-z0-9]+$/i.test(path))
+ if(!/^[a-f0-9-]{36}\/[a-f0-9-]{36}\/[a-f0-9-]{36}\.[a-z0-9]+$/i.test(path))
   throw Error('Недопустимый путь вложения');
  const candidate=typeof signedURL==='string'?signedURL.trim():'';
  if(!candidate||candidate.length>4096)throw Error('Недопустимый URL вложения');
