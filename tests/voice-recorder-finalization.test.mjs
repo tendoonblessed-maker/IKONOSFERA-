@@ -23,7 +23,19 @@ function harness({
  const errors=[];
  const recorded=[];
  const recorders=[];
- const tracks=[{stopped:false,stop(){this.stopped=true;}}];
+ const trackListeners=new Set();
+ const tracks=[{
+  kind:'audio',readyState:'live',stopped:false,
+  addEventListener(name,listener){if(name==='ended')trackListeners.add(listener);},
+  removeEventListener(name,listener){if(name==='ended')trackListeners.delete(listener);},
+  stop(){this.stopped=true;this.readyState='ended';},
+  end(){
+   this.readyState='ended';
+   const listeners=[...trackListeners];
+   trackListeners.clear();
+   listeners.forEach(listener=>listener());
+  }
+ }];
  const stream={getTracks:()=>tracks};
  const schedule=(map)=>(fn,ms)=>{
   const id=nextTimer++;
@@ -229,4 +241,31 @@ test('an unsupported browser-default MIME is rejected before recording and relea
  assert.match(h.errors[0],/выбрал неподдерживаемый формат/);
  assert.equal(h.intervals.size,0);
  assert.equal(h.timers.size,0);
+});
+
+
+test('an unexpectedly ended microphone track cancels recording and releases all resources',async()=>{
+ const h=harness();
+ await h.start();
+ h.tracks[0].end();
+ assert.equal(h.tracks[0].stopped,true,'the ended microphone is fully released');
+ assert.equal(h.recorded.length,0,'a truncated recording is never passed to preview');
+ assert.equal(h.errors.length,1);
+ assert.match(h.errors[0],/микрофоном прервано/);
+ assert.equal(h.button(h.render(),'Отменить'),null,'the composer returns to idle');
+ assert.equal(h.timers.size,0,'the recording deadline is cleared');
+ assert.equal(h.intervals.size,0,'the elapsed-time ticker is cleared');
+ assert.equal(h.pending(VOICE_FINALIZE_TIMEOUT_MS).length,0);
+});
+
+test('manual cancellation detaches the microphone-ended listener before late device events',async()=>{
+ const h=harness();
+ await h.start();
+ h.button(h.render(),'Отменить').props.onClick();
+ h.tracks[0].end();
+ assert.equal(h.recorded.length,0);
+ assert.deepEqual(h.errors,[],'a late device event after cancel must be ignored');
+ assert.equal(h.button(h.render(),'Отменить'),null);
+ assert.equal(h.timers.size,0);
+ assert.equal(h.intervals.size,0);
 });
