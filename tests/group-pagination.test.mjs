@@ -89,7 +89,6 @@ test('extra row establishes hasMore but never overlaps next page boundary',async
  assert.equal(page.messages[0].id,id(11));
  assert.equal(page.messages.at(-1).id,id(80));
  assert.equal(page.hasMore,true);
- // 71st row id(10) is not shown. Next page queries below id(11).
  const nextUrl=new URL(api.olderGroupMessagesPath(GROUP,page.messages[0]),'https://unit.test');
  assert.ok(nextUrl.searchParams.get('or').includes('id.lt.'+id(11)));
 });
