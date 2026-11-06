@@ -17,6 +17,32 @@ function fetchHandler({match=async()=>undefined,open=async()=>({put:async()=>{}}
  };
 }
 
+function lifecycleHandler({open=async()=>({add:async()=>{}}),keys=async()=>[]}={}){
+ const handlers=new Map();
+ let skipped=0,claimed=0;
+ const self={
+  location:{origin:'https://ikonosfera.test'},
+  clients:{claim:async()=>{claimed++;}},
+  addEventListener:(name,handler)=>handlers.set(name,handler),
+  skipWaiting:()=>{skipped++;}
+ };
+ vm.runInNewContext(source,{self,caches:{open,keys,delete:async()=>true},URL,Response},{timeout:1000});
+ return {
+  async install(){
+   let completion;
+   handlers.get('install')({waitUntil:promise=>{completion=promise;}});
+   await completion;
+  },
+  async activate(){
+   let completion;
+   handlers.get('activate')({waitUntil:promise=>{completion=promise;}});
+   await completion;
+  },
+  skipped:()=>skipped,
+  claimed:()=>claimed
+ };
+}
+
 test('public emoji atlas uses cached response without a network request',async()=>{
  const cached={source:'cache'};
  const handle=fetchHandler({match:async()=>cached,network:async()=>{throw Error('unexpected network');}});
@@ -58,4 +84,38 @@ test('private API requests, POST and cross-origin assets are never intercepted',
  assert.equal(handle({method:'GET',mode:'cors',url:'https://ikonosfera.test/rest/v1/messages'}),undefined);
  assert.equal(handle({...atlasRequest,method:'POST'}),undefined);
  assert.equal(handle({...atlasRequest,url:'https://elsewhere.test/status-emojis.webp'}),undefined);
+});
+
+test('one failed precache asset does not reject installation or skip other public assets',async()=>{
+ const attempted=[];
+ const worker=lifecycleHandler({
+  open:async()=>({add:async asset=>{
+   attempted.push(asset);
+   if(asset==='/icon-192.png')throw Error('optional icon unavailable');
+  }})
+ });
+ await assert.doesNotReject(worker.install());
+ assert.deepEqual(attempted,['/offline.html','/icon-192.png','/status-emojis.webp?v=2']);
+ assert.equal(worker.skipped(),1);
+});
+
+test('Cache Storage denial does not prevent service worker installation',async()=>{
+ const worker=lifecycleHandler({open:async()=>{throw Error('SecurityError');}});
+ await assert.doesNotReject(worker.install());
+ assert.equal(worker.skipped(),1);
+});
+
+test('activation still claims clients when cache cleanup is unavailable',async()=>{
+ const worker=lifecycleHandler({keys:async()=>{throw Error('SecurityError');}});
+ await assert.doesNotReject(worker.activate());
+ assert.equal(worker.claimed(),1);
+});
+
+test('offline navigation fails closed when the offline cache lookup is denied',async()=>{
+ const handle=fetchHandler({
+  match:async()=>{throw Error('CacheStorage disabled');},
+  network:async()=>{throw Error('offline');}
+ });
+ const response=await handle({method:'GET',mode:'navigate',url:'https://ikonosfera.test/private-chat'});
+ assert.equal(response.type,'error');
 });
