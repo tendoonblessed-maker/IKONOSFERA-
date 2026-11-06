@@ -13,6 +13,7 @@ import {subscribeDirectChatChanges} from "@/lib/direct-realtime";
 import {subscribeInboxChanges,type InboxChangeKind} from "@/lib/inbox-realtime";
 import {isLatestAccountSnapshot} from "@/lib/inbox-snapshot";
 import {shouldOpenDirectChatSearch} from "@/lib/chat-shortcuts";
+import {isCurrentChatAction,type ChatActionScope} from "@/lib/chat-action-scope";
 import {reconcileRecentChannelUpdates,CHANNEL_UPDATE_GRACE_MS,type RecentChannelUpdate} from "@/lib/channel-sync";
 import ChatAttachmentPreview from "@/components/ChatAttachmentPreview";
 import VoiceRecorder from "@/components/VoiceRecorder";
@@ -1110,11 +1111,20 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
     if(!session||!selected||!userId)return;
     if(action==="delete_everyone"&&!window.confirm("Удалить сообщение для обоих?"))return;
     const chatId=selected,token=session.access_token;
+    const actionScope:ChatActionScope={chatId,userId,generation:chatContextGenerationRef.current};
+    const isCurrent=()=>isCurrentChatAction(actionScope,{
+      chatId:selectedRef.current??'',
+      userId:draftsOwnerRef.current,
+      generation:chatContextGenerationRef.current
+    });
     try{
       await manageMessage(token,messageId,action,body);
+      // The server mutation may finish after navigation; never let its old
+      // response alter the next chat/account or an earlier visit to this chat.
+      if(!isCurrent())return;
       // An edit/delete must not be reverted by a still-pending send overlay.
       confirmedMessagesRef.current.delete(messageId);
-      if(selectedRef.current===chatId){
+      if(isCurrent()){
         setMessageMenuId(null);setEditingMessageId(null);
         // Actions on pages older than 100 messages must update locally too.
         setChatMessages(current=>current.flatMap(message=>{
@@ -1126,11 +1136,11 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
       }
       try{
         const updated=(await listMessages(token,chatId)).reverse();
-        if(selectedRef.current===chatId&&draftsOwnerRef.current===userId)setChatMessages(current=>mergeConfirmedRecentPage(
+        if(isCurrent())setChatMessages(current=>mergeConfirmedRecentPage(
           current,updated,CHAT_MESSAGE_PAGE_SIZE,confirmedMessagesRef.current,chatId,userId
         ));
       }catch{/* Keep the confirmed action; retry updating the history on polling. */}
-    }catch(e){setError(userFacingError(e));}
+    }catch(e){if(isCurrent())setError(userFacingError(e));}
   }
   async function reactToMessage(messageId:string,emoji:ReactionEmoji){
     if(!session||!selected||!userId||sending)return;
