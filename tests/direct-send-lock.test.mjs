@@ -40,11 +40,14 @@ test('both direct send handlers acquire synchronously and always release in fina
   const textSend = shell.slice(textStart, textEnd);
   const mediaSend = shell.slice(mediaStart, mediaEnd);
   for (const handler of [textSend, mediaSend]) {
-    assert.match(handler, /if\(!tryAcquireInFlightLock\(directSendLockRef\.current\)\)return;/);
-    assert.match(handler, /finally\{releaseInFlightLock\(directSendLockRef\.current\);setSending\(false\);\}/);
+    assert.match(handler, /const sendLock=tryAcquireAccountInFlightLock\\(directSendLockRef,userId\\);/);
+    assert.match(handler, /if\\(!sendLock\\)return;/);
+    assert.match(handler, /finally\\{releaseInFlightLock\\(sendLock\\);if\\(userIdRef\\.current===userId\\)setSending\\(false\\);\\}/);
+    assert.match(handler, /catch\\(e\\)\\{if\\(userIdRef\\.current===userId\\)setError\\(userFacingError\\(e\\)\\);\\}/);
+    assert.ok(handler.indexOf('tryAcquireAccountInFlightLock') < handler.indexOf('try{'), 'lock must be acquired before the network request');
   }
-  assert.match(shell, /const directSendLockRef=useRef\(\{active:false\}\)/);
-});
+  assert.match(shell, /const directSendLockRef=useRef\\(\\{ownerId:'',active:false\\}\\)/);
+  assert.match(shell, /const userIdRef=useRef\\(userId\\);\\s*userIdRef\\.current=userId;/);});
 
 
 test('account changes isolate in-flight locks from late previous-account completions', () => {
