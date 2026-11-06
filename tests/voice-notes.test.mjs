@@ -75,7 +75,7 @@ test('recording never auto-uploads: it passes a real file into existing preview 
  assert.match(shell,/const problem=validateDirectMediaFile\(file\)/);
  assert.match(ui,/VOICE_RECORD_MAX_MS/);
  assert.match(ui,/setTimeout\(\(\)=>\{/);
- assert.match(ui,/clearCaptureTimers\(capture\)/);
+ assert.match(ui,/clearCaptureResources\(capture\)/);
  assert.doesNotMatch(ui,/sendDirectMedia|fetch\(|uploadDirectMedia|localStorage/);
 });
 
