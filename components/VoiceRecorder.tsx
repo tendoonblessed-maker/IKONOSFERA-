@@ -238,9 +238,13 @@ export default function VoiceRecorder({disabled,onRecorded,onError}:Props){
    },VOICE_RECORD_MAX_MS);
    setPhase('recording');
   }catch(error){
-   sessionActiveRef.current=false;
+   // A stale permission prompt can reject after a newer recording request starts.
+   // Only the generation that still owns this request may clear shared session state.
+   if(requestRef.current===generation){
+    sessionActiveRef.current=false;
+    if(captureRef.current?.stream===stream)captureRef.current=null;
+   }
    if(stream)stopTracks(stream);
-   if(captureRef.current?.stream===stream)captureRef.current=null;
    if(requestRef.current!==generation||!liveRef.current)return;
    setPhase('idle');
    const denial=error instanceof Error&&(error.name==='NotAllowedError'||error.name==='PermissionDeniedError');
