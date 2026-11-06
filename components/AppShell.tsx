@@ -7,7 +7,7 @@ import {mergeConfirmedRecentPage,prependEarlierPage,CONFIRMED_MESSAGE_GRACE_MS,t
 import {readChatDrafts,writeChatDrafts,clearChatDrafts,updateChatDraftEntry,type ChatDrafts} from "@/lib/chat-drafts";
 import {readGroupDrafts,writeGroupDraft,clearGroupDrafts,type GroupDrafts} from "@/lib/group-drafts";
 import {clearAllGroupSendAttempts} from "@/lib/group-send-attempts";
-import {tryAcquireInFlightLock,releaseInFlightLock} from '@/lib/send-lock.mjs';
+import {tryAcquireAccountInFlightLock,releaseInFlightLock} from '@/lib/send-lock.mjs';
 import ChatMedia from "@/components/ChatMedia";
 import ChatMessageText from "@/components/ChatMessageText";
 import {subscribeDirectChatChanges} from "@/lib/direct-realtime";
@@ -135,7 +135,9 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
   const [notice,setNotice]=useState('');
   const [installHelp,setInstallHelp]=useState(false);
   const [installPrompt,setInstallPrompt]=useState<(Event & {prompt:()=>Promise<void>;userChoice:Promise<{outcome:string}>})|null>(null);
-  const directSendLockRef=useRef({active:false});
+  const directSendLockRef=useRef({ownerId:'',active:false});
+  const userIdRef=useRef(userId);
+  userIdRef.current=userId;
   const messageEnd=useRef<HTMLDivElement|null>(null);
   const conversationHistoryRef=useRef<HTMLDivElement|null>(null);
   const chatAutoScrollRef=useRef(true);
@@ -158,6 +160,13 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
   const composerRef=useRef<HTMLTextAreaElement|null>(null);
   const confirmedMessagesRef=useRef<Map<string,ConfirmedMessage>>(new Map());
   const attachmentDragDepthRef=useRef(0);
+
+  useLayoutEffect(()=>{
+    // A previous account's pending POST must not keep the next account's
+    // composer disabled. In-flight handlers retain their own lock object.
+    directSendLockRef.current={ownerId:userId,active:false};
+    setSending(false);
+  },[userId]);
 
   // In-memory edits belong to one signed-in user; never reuse across accounts.
   useEffect(()=>{recentChannelUpdatesRef.current.clear();},[userId]);
@@ -1020,13 +1029,14 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
     // Reply metadata is stored server-side rather than prepended to plain text.
     // This keeps editing, copying and message search free from fake quote text.
     if(!plainText||plainText.length>4000)return;
-    if(!tryAcquireInFlightLock(directSendLockRef.current))return;
+    const sendLock=tryAcquireAccountInFlightLock(directSendLockRef,userId);
+    if(!sendLock)return;
     setSending(true);setError('');
     try{
       const sent=await postMessage(token,chatId,userId,plainText,crypto.randomUUID(),reply?.id??null);
       // Display the DB-confirmed row immediately. Do not manufacture a pending
       // bubble, and never write into a different chat or signed-in account.
-      if(selectedRef.current===chatId&&draftsOwnerRef.current===userId){
+      if(userIdRef.current===userId&&selectedRef.current===chatId&&draftsOwnerRef.current===userId){
         confirmedMessagesRef.current.set(sent.id,{
           message:sent,expiresAt:Date.now()+CONFIRMED_MESSAGE_GRACE_MS
         });
@@ -1034,15 +1044,15 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
       }
       // Users may type their next message while the previous send is in flight.
       // Only clear the exact draft that was submitted, not their new text.
-      if((draftsRef.current[chatId]||'').trim()===plainText){
+      if(userIdRef.current===userId&&draftsOwnerRef.current===userId&&(draftsRef.current[chatId]||'').trim()===plainText){
         updateChatDraft(chatId,'');
         if(selectedRef.current===chatId)setDraft(current=>current.trim()===plainText?'':current);
       }
-      if(reply)setReplyingTo(current=>current?.id===reply.id&&current.chatId===chatId?null:current);
+      if(userIdRef.current===userId&&reply)setReplyingTo(current=>current?.id===reply.id&&current.chatId===chatId?null:current);
       // Polling will reconcile read receipts and any concurrent edits; the
       // send is already visible and never waits for a second network request.
-    }catch(e){setError(userFacingError(e));}
-    finally{releaseInFlightLock(directSendLockRef.current);setSending(false);}
+    }catch(e){if(userIdRef.current===userId)setError(userFacingError(e));}
+    finally{releaseInFlightLock(sendLock);if(userIdRef.current===userId)setSending(false);}
   }
   async function toggleSavedContact(person:Profile){
     if(!session||!userId||busy)return;
@@ -1168,11 +1178,12 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
     const chatId=selected,token=session.access_token;
     const problem=validateDirectMediaFile(file);
     if(problem){setError(problem);return;}
-    if(!tryAcquireInFlightLock(directSendLockRef.current))return;
+    const sendLock=tryAcquireAccountInFlightLock(directSendLockRef,userId);
+    if(!sendLock)return;
     setSending(true);setError("");
     try{
       const sent=await sendDirectMedia(token,chatId,userId,file,caption);
-      if(selectedRef.current===chatId&&draftsOwnerRef.current===userId){
+      if(userIdRef.current===userId&&selectedRef.current===chatId&&draftsOwnerRef.current===userId){
         confirmedMessagesRef.current.set(sent.id,{
           message:sent,expiresAt:Date.now()+CONFIRMED_MESSAGE_GRACE_MS
         });
@@ -1180,17 +1191,20 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
         setPendingAttachment(current=>current?.chatId===chatId&&current.ownerId===userId&&current.file===file?null:current);
         setAttachmentCaption('');
       }
-      setNotice("Вложение отправлено.");
+      if(userIdRef.current===userId)setNotice("Вложение отправлено.");
       // The server confirmed the attachment; polling updates its metadata
       // without delaying the new message bubble or reporting a false failure.
-    }catch(e){setError(userFacingError(e));}
-    finally{releaseInFlightLock(directSendLockRef.current);setSending(false);}
+    }catch(e){if(userIdRef.current===userId)setError(userFacingError(e));}
+    finally{releaseInFlightLock(sendLock);if(userIdRef.current===userId)setSending(false);}
   }
   async function logout(){
     if(!session)return;
     if(anonymous&&!window.confirm('Это временный аккаунт. После выхода восстановить его нельзя. Выйти?'))return;
     // signOut clears this session synchronously before its network request.
     // Never keep the old account visible while waiting for a slow/offline POST.
+    userIdRef.current='';
+    directSendLockRef.current={ownerId:'',active:false};
+    setSending(false);
     const revokeOnServer=signOut(session.access_token);
     inboxOwnerRef.current='';inboxRequestRef.current++;
     previewRequestRef.current++;groupOverviewRequestRef.current++;
