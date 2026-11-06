@@ -13,6 +13,7 @@ import {subscribeDirectChatChanges} from "@/lib/direct-realtime";
 import {subscribeInboxChanges,type InboxChangeKind} from "@/lib/inbox-realtime";
 import {isLatestAccountSnapshot} from "@/lib/inbox-snapshot";
 import {shouldOpenDirectChatSearch} from "@/lib/chat-shortcuts";
+import {shouldSubmitDirectComposerOnEnter} from "@/lib/direct-composer-keys";
 import {reconcileRecentChannelUpdates,CHANNEL_UPDATE_GRACE_MS,type RecentChannelUpdate} from "@/lib/channel-sync";
 import ChatAttachmentPreview from "@/components/ChatAttachmentPreview";
 import VoiceRecorder from "@/components/VoiceRecorder";
@@ -1577,11 +1578,11 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
        onRecorded={file=>queueAttachment(file)}
        onError={message=>setError(message)}/>
       <textarea ref={composerRef} aria-label="Написать сообщение" enterKeyHint="enter" placeholder={activePartnerBlocked?"Вы заблокировали пользователя":"Сообщение…"} rows={1} disabled={activePartnerBlocked} value={draft} onChange={e=>{setDraft(e.target.value);if(selected)updateChatDraft(selected,e.target.value);}} onInput={e=>{const element=e.currentTarget;element.style.height='auto';element.style.height=Math.min(element.scrollHeight,136)+'px';}} onKeyDown={e=>{
-        // On iOS/Android the Return key must create a newline, not send the
-        // message unexpectedly. Hardware-keyboard users retain Enter-to-send.
+        // Touch devices (including hybrid laptops) use Enter for a newline.
+        // Desktop Enter and explicit Ctrl/Cmd+Enter send; IME never does.
         const softKeyboard=/iPhone|iPad|iPod|Android/i.test(navigator.userAgent)
-          ||window.matchMedia('(pointer:coarse) and (hover:none)').matches;
-        if(e.key==='Enter'&&!e.shiftKey&&!e.nativeEvent.isComposing&&!softKeyboard){
+          ||window.matchMedia('(any-pointer:coarse)').matches;
+        if(shouldSubmitDirectComposerOnEnter(e,softKeyboard)){
           e.preventDefault();
           if(draft.trim()&&!sending)e.currentTarget.form?.requestSubmit();
         }

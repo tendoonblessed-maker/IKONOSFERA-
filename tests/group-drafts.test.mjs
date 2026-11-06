@@ -107,8 +107,9 @@ test('group multiline composer supports Shift+Enter and prevents iOS input zoom'
  const group=load('components/GroupPanel.tsx');
  const css=load('app/globals.css');
  assert.match(group,/<textarea aria-label="Сообщение группе"/);
- assert.match(group,/e\.nativeEvent\.isComposing/);
- assert.match(group,/e\.ctrlKey\|\|e\.metaKey\|\|\(!e\.shiftKey&&window\.matchMedia/);
+ assert.match(group,/shouldSubmitComposerOnEnter\(e,softKeyboard\)/);
+ assert.match(group,/navigator\.userAgent/);
+ assert.match(group,/window\.matchMedia\('\(any-pointer:coarse\)'\)/);
  assert.match(group,/e\.currentTarget\.form\?\.requestSubmit\(\)/);
  assert.match(css,/\.group-view \.ik-group-composer textarea/);
  assert.match(css,/font-size:16px/);
