@@ -7,7 +7,7 @@ export const backendReady = Boolean(apiUrl && anonKey);
 export type Session = { access_token: string; refresh_token: string; expires_at: number };
 export type Profile = { id: string; username: string; display_name: string; avatar_path?: string|null; cover_path?: string|null; bio?: string; status_emoji?:number|null; age_years?:number|null };
 export type DirectChat = { id: string; user_a: string; user_b: string; created_at: string; hidden_for?:string[]; pinned_for?:string[] };
-export type ChatMessage = { id: string; chat_id: string; sender_id: string; body: string; created_at: string; media_path: string|null; media_type: "image"|"video"|"audio"|"file"|null; read_at: string|null; edited_at?:string|null; deleted_for?:string[]; deleted_for_everyone?:boolean; reply_to_message_id?:string|null };
+export type ChatMessage = { id: string; chat_id: string; sender_id: string; body: string; created_at: string; media_path: string|null; media_type: "image"|"video"|"audio"|"file"|null; read_at: string|null; edited_at?:string|null; deleted_for?:string[]; deleted_for_everyone?:boolean; reply_to_message_id?:string|null;client_message_id?:string|null };
 const STORAGE = 'ikonosfera-session-v1';
 
 class SupabaseHttpError extends Error {
@@ -245,29 +245,97 @@ export function validateDirectMediaFile(file:Pick<File,'type'|'size'>):string|nu
  return null;
 }
 
-export async function uploadDirectMedia(token:string,chatId:string,userId:string,file:File):Promise<{path:string;type:"image"|"video"|"audio"|"file"}>{
+const DIRECT_MEDIA_UUID=/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
+type DirectMediaRow=ChatMessage & {client_message_id?:string|null};
+function verifyDirectMediaMessage(
+ row:DirectMediaRow|null|undefined,chatId:string,userId:string,body:string,
+ path:string,type:ChatMessage['media_type'],clientMessageId:string
+):ChatMessage{
+ if(!row||row.chat_id!==chatId||row.sender_id!==userId
+   ||row.client_message_id!==clientMessageId||row.body!==body
+   ||row.media_path!==path||row.media_type!==type){
+  throw Error('Сервер вернул другое вложение; отправка не подтверждена.');
+ }
+ return row;
+}
+function definiteMediaInsertRejection(error:unknown):boolean{
+ return error instanceof SupabaseHttpError&&error.status>=400&&error.status<500
+   &&![408,409,425,429].includes(error.status);
+}
+async function deleteUnreferencedDirectMedia(token:string,path:string):Promise<void>{
+ await fetch(apiUrl+"/storage/v1/object/ikonosfera-direct-media/"+path,{
+  method:"DELETE",headers:{apikey:anonKey,Authorization:"Bearer "+token},
+  signal:AbortSignal.timeout(8000)
+ }).catch(()=>{});
+}
+export async function uploadDirectMedia(
+ token:string,chatId:string,userId:string,file:File,clientMessageId:string=crypto.randomUUID()
+):Promise<{path:string;type:"image"|"video"|"audio"|"file"}>{
  const problem=validateDirectMediaFile(file);
  if(problem)throw Error(problem);
+ if(!DIRECT_MEDIA_UUID.test(chatId)||!DIRECT_MEDIA_UUID.test(userId)||!DIRECT_MEDIA_UUID.test(clientMessageId))
+  throw Error("Некорректные параметры вложения.");
  const ext=DIRECT_MEDIA_FORMATS[file.type];
- const path=chatId+"/"+userId+"/"+crypto.randomUUID()+"."+ext;
- const res=await fetch(apiUrl+"/storage/v1/object/ikonosfera-direct-media/"+path,{
-  method:"POST",headers:{apikey:anonKey,Authorization:"Bearer "+token,"Content-Type":file.type,"x-upsert":"false"},body:file
- });
- if(!res.ok){const err=await res.json().catch(()=>null);throw Error(err?.message||err?.error||"Не удалось загрузить файл");}
- return {path,type:file.type.startsWith("image/")?"image":file.type.startsWith("video/")?"video":file.type.startsWith("audio/")?"audio":"file"};
-}
-export async function sendDirectMedia(token:string,chatId:string,userId:string,file:File,caption=""){
- const {path,type}=await uploadDirectMedia(token,chatId,userId,file);
+ // One send attempt always uploads to the same private object path. A retry
+ // can verify an earlier upload whose HTTP acknowledgment was lost.
+ const path=chatId+"/"+userId+"/"+clientMessageId+"."+ext;
+ const type=file.type.startsWith("image/")?"image":file.type.startsWith("video/")?"video":file.type.startsWith("audio/")?"audio":"file";
+ let res:Response;
  try{
-  const messages=await http<ChatMessage[]>('/rest/v1/messages?select=id,chat_id,sender_id,body,created_at,media_path,media_type,read_at,reply_to_message_id',{
-   token,method:"POST",body:{chat_id:chatId,sender_id:userId,body:caption.trim().slice(0,4000),media_path:path,media_type:type},
-   extraHeaders:{Prefer:"return=representation"}
+  res=await fetch(apiUrl+"/storage/v1/object/ikonosfera-direct-media/"+path,{
+   method:"POST",headers:{apikey:anonKey,Authorization:"Bearer "+token,"Content-Type":file.type,"x-upsert":"false"},
+   body:file,signal:AbortSignal.timeout(18000)
   });
-  if(!messages[0])throw Error("Медиа не отправлено");
-  return messages[0];
- }catch(e){
-  await fetch(apiUrl+"/storage/v1/object/ikonosfera-direct-media/"+path,{method:"DELETE",headers:{apikey:anonKey,Authorization:"Bearer "+token}}).catch(()=>{});
-  throw e;
+ }catch(error){
+  try{await getDirectMediaUrl(token,path);return {path,type};}
+  catch{throw error;}
+ }
+ if(!res.ok){
+  const err=await res.json().catch(()=>null);
+  const message=err?.message||err?.error||"Не удалось загрузить файл";
+  try{await getDirectMediaUrl(token,path);return {path,type};}
+  catch{throw Error(message);}
+ }
+ return {path,type};
+}
+export async function sendDirectMedia(
+ token:string,chatId:string,userId:string,file:File,caption="",clientMessageId:string=crypto.randomUUID()
+){
+ if(!DIRECT_MEDIA_UUID.test(chatId)||!DIRECT_MEDIA_UUID.test(userId)||!DIRECT_MEDIA_UUID.test(clientMessageId))
+  throw Error("Некорректные параметры вложения.");
+ const body=caption.trim().slice(0,4000);
+ const {path,type}=await uploadDirectMedia(token,chatId,userId,file,clientMessageId);
+ const columns="id,chat_id,sender_id,body,created_at,media_path,media_type,read_at,reply_to_message_id,client_message_id";
+ try{
+  const messages=await http<DirectMediaRow[]>('/rest/v1/messages?select='+columns,{
+   token,method:"POST",body:{
+    chat_id:chatId,sender_id:userId,body,media_path:path,media_type:type,client_message_id:clientMessageId
+   },extraHeaders:{Prefer:"return=representation"}
+  });
+  if(!messages[0])throw Error("Медиа не подтверждено.");
+  return verifyDirectMediaMessage(messages[0],chatId,userId,body,path,type,clientMessageId);
+ }catch(error){
+  let rows:DirectMediaRow[];
+  const lookup='/rest/v1/messages?select='+columns
+   +'&chat_id=eq.'+encodeURIComponent(chatId)
+   +'&sender_id=eq.'+encodeURIComponent(userId)
+   +'&client_message_id=eq.'+encodeURIComponent(clientMessageId)
+   +'&limit=2';
+  try{rows=await http<DirectMediaRow[]>(lookup,{token});}
+  catch{
+   // A failed read-back cannot prove that the original INSERT did not commit.
+   // Keep both the object and its stable attempt ID for an explicit retry.
+   throw Error("Не удалось подтвердить отправку вложения. Файл сохранён — повтори вручную.");
+  }
+  if(rows.length>1)throw Error("Найдено несколько записей для одного вложения; отправка не подтверждена.");
+  if(rows[0])return verifyDirectMediaMessage(rows[0],chatId,userId,body,path,type,clientMessageId);
+  if(definiteMediaInsertRejection(error)){
+   // Delete only after a successful scoped read proves there is no message
+   // referencing this path. Network/5xx/timeout outcomes keep the object.
+   await deleteUnreferencedDirectMedia(token,path);
+   throw error;
+  }
+  throw Error("Не удалось подтвердить отправку вложения. Файл сохранён — повтори вручную.");
  }
 }
 // Signed URLs remain private, short-lived and in memory only. Sharing one
