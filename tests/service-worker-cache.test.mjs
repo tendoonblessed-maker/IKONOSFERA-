@@ -8,13 +8,25 @@ const atlasRequest={method:'GET',mode:'no-cors',url:'https://ikonosfera.test/sta
 
 function fetchHandler({match=async()=>undefined,open=async()=>({put:async()=>{}}),network=async()=>({ok:true,clone(){return this;}})}={}){
  const handlers=new Map();
+ let lastLifetime=[];
  const self={location:{origin:'https://ikonosfera.test'},addEventListener:(name,handler)=>handlers.set(name,handler)};
- vm.runInNewContext(source,{self,caches:{match,open},fetch:network,URL,Response},{timeout:1000});
- return request=>{
+ vm.runInNewContext(source,{self,caches:{match,open},fetch:network,URL,Response,setTimeout,clearTimeout},{timeout:1000});
+ const handle=request=>{
   let promise;
-  handlers.get('fetch')({request,respondWith:result=>{promise=result;}});
+  lastLifetime=[];
+  handlers.get('fetch')({
+   request,
+   respondWith:result=>{promise=result;},
+   waitUntil:background=>{lastLifetime.push(background);}
+  });
   return promise;
  };
+ handle.lifetimePromises=()=>lastLifetime;
+ return handle;
+}
+
+async function settleBackground(handle){
+ await Promise.all(handle.lifetimePromises());
 }
 
 function lifecycleHandler({
@@ -53,8 +65,9 @@ function lifecycleHandler({
 
 test('public emoji atlas uses cached response without a network request',async()=>{
  const cached={source:'cache'};
- const handle=fetchHandler({match:async()=>cached,network:async()=>{throw Error('unexpected network');}});
+ const handle=fetchHandler({match:async()=>cached,network:async()=>{throw Error('unexpected network');},open:async()=>{throw Error('cached response must not be rewritten');}});
  assert.equal(await handle(atlasRequest),cached);
+ await settleBackground(handle);
 });
 
 test('denied cache read falls back to a successful network response',async()=>{
@@ -66,6 +79,7 @@ test('denied cache read falls back to a successful network response',async()=>{
   open:async()=>({put:async()=>{writes++;}})
  });
  assert.equal(await handle(atlasRequest),networkResponse);
+ await settleBackground(handle);
  assert.equal(writes,1);
 });
 
@@ -76,6 +90,7 @@ test('quota errors on cache write never discard an already downloaded atlas',asy
   open:async()=>({put:async()=>{throw Error('QuotaExceededError');}})
  });
  assert.equal(await handle(atlasRequest),networkResponse);
+ await settleBackground(handle);
 });
 
 test('denied cache open never discards the public image',async()=>{
@@ -85,6 +100,28 @@ test('denied cache open never discards the public image',async()=>{
   open:async()=>{throw Error('storage blocked');}
  });
  assert.equal(await handle(atlasRequest),networkResponse);
+ await settleBackground(handle);
+});
+
+test('a slow optional cache write does not delay the public image response',async()=>{
+ const networkResponse={ok:true,clone(){return this;}};
+ let startWrite;
+ const writeStarted=new Promise(resolve=>{startWrite=resolve;});
+ let finishWrite;
+ const pendingWrite=new Promise(resolve=>{finishWrite=resolve;});
+ const handle=fetchHandler({
+  network:async()=>networkResponse,
+  open:async()=>({put:async()=>{startWrite();return pendingWrite;}})
+ });
+ const response=await Promise.race([
+  handle(atlasRequest),
+  new Promise((_,reject)=>setTimeout(()=>reject(new Error('network response waited for Cache Storage')),100))
+ ]);
+ await writeStarted;
+ assert.equal(response,networkResponse);
+ assert.equal(handle.lifetimePromises().length,1);
+ finishWrite();
+ await settleBackground(handle);
 });
 
 test('private API requests, POST and cross-origin assets are never intercepted',()=>{
