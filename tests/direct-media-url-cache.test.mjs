@@ -253,3 +253,25 @@ test('a signal aborted during request setup also cancels the newly created fetch
  assert.equal(calls.length,1);
  assert.equal(calls[0].options.signal.aborted,true,'the fetch created before the consumer listener must still be stopped');
 });
+
+test('cache capacity never evicts an in-flight signing request with mounted consumers',async()=>{
+ const deferreds=[];
+ const pathFor=index=>CHAT+'/'+USER+'/dddddddd-dddd-4ddd-8ddd-'+String(index).padStart(12,'0')+'.jpg';
+ const {api,calls}=scenario(url=>{
+  const pending=deferred();
+  pending.path=url.split('/ikonosfera-direct-media/')[1];
+  deferreds.push(pending);
+  return pending.promise;
+ });
+ const paths=Array.from({length:121},(_,index)=>pathFor(index));
+ const pending=paths.map(path=>api.getDirectMediaUrl('bounded-cache-jwt',path));
+ assert.equal(calls.length,121,'each distinct object starts one signing request');
+ const duplicate=api.getDirectMediaUrl('bounded-cache-jwt',paths[0]);
+ assert.equal(calls.length,121,'the oldest active entry remains shared beyond the nominal cache limit');
+ for(let index=0;index<deferreds.length;index++){
+  deferreds[index].resolve(reply(signedURL(paths[index],'token-'+index)));
+ }
+ const results=await Promise.all([...pending,duplicate]);
+ assert.equal(results[0],results[121],'both mounted previews receive the same signed URL');
+ assert.equal(calls.length,121,'cache pressure must not create a duplicate request for an active preview');
+});

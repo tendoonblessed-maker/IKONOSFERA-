@@ -283,6 +283,17 @@ type SignedMediaCacheEntry={
 const signedMediaCache=new Map<string,SignedMediaCacheEntry>();
 const SIGNED_URL_CACHE_MS=15*60*1000;
 const SIGNED_URL_CACHE_LIMIT=120;
+/** Keep active requests pinned; trim only settled entries with no mounted consumers. */
+function trimSignedMediaCache():void{
+ const now=Date.now();
+ for(const [key,entry] of signedMediaCache){
+  if(entry.settled&&entry.consumers===0&&
+     (entry.validUntil<=now||signedMediaCache.size>SIGNED_URL_CACHE_LIMIT)){
+   signedMediaCache.delete(key);
+  }
+  if(signedMediaCache.size<=SIGNED_URL_CACHE_LIMIT&&entry.validUntil>now)break;
+ }
+}
 function createMediaAbortError():Error{
  const error=new Error('Загрузка вложения отменена');
  error.name='AbortError';
@@ -341,6 +352,7 @@ function consumeSignedMediaEntry(
     if(signedMediaCache.get(key)===entry)signedMediaCache.delete(key);
     entry.controller.abort();
    }
+   trimSignedMediaCache();
   };
   const onAbort=()=>{
    release(true);
@@ -387,14 +399,12 @@ export async function getDirectMediaUrl(token:string,path:string,signal?:AbortSi
   }finally{
    requestAbort.dispose();
    entry.settled=true;
+   trimSignedMediaCache();
   }
  })();
  entry.promise=request;
  signedMediaCache.set(key,entry);
- if(signedMediaCache.size>SIGNED_URL_CACHE_LIMIT){
-  const first=signedMediaCache.keys().next().value;
-  if(first)signedMediaCache.delete(first);
- }
+ trimSignedMediaCache();
  // A late rejection must never evict a newer retry for the same object.
  void request.catch(()=>{
   if(signedMediaCache.get(key)===entry)signedMediaCache.delete(key);
