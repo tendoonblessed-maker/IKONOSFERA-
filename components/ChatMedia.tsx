@@ -1,7 +1,7 @@
 'use client';
 
 import {useCallback,useEffect,useRef,useState} from 'react';
-import {pauseChatMediaOnDetach} from '@/lib/chat-media-lifecycle';
+import {pauseChatMediaOnDetach,watchChatMediaPageLifecycle} from '@/lib/chat-media-lifecycle';
 import {getDirectMediaUrl,invalidateDirectMediaUrl} from '@/lib/supabase-rest';
 import ChatPhotoViewer from '@/components/ChatPhotoViewer';
 
@@ -18,13 +18,16 @@ export default function ChatMedia({token,path,type}:Props){
  const [errorScope,setErrorScope]=useState<string|null>(null);
  const [retry,setRetry]=useState(0);
  const [previewOpen,setPreviewOpen]=useState(false);
- const mediaElementRef=useRef<HTMLMediaElement|null>(null);
+ const mediaElementRef=useRef<HTMLMediaElement|null>(null);\n const mediaLifecycleCleanupRef=useRef<(()=>void)|null>(null);
  const bindMediaElement=useCallback((element:HTMLMediaElement|null)=>{
   if(element){
    mediaElementRef.current=element;
+   mediaLifecycleCleanupRef.current=watchChatMediaPageLifecycle(element,document,window);
    return;
   }
-  // Stop audio/video before a chat switch or account change detaches the node.
+  // Remove page listeners and stop playback before a chat switch or unmount.
+  mediaLifecycleCleanupRef.current?.();
+  mediaLifecycleCleanupRef.current=null;
   pauseChatMediaOnDetach(mediaElementRef.current);
   mediaElementRef.current=null;
  },[]);
