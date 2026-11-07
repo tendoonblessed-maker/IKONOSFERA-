@@ -78,7 +78,9 @@ export async function sendGroupMessage(
 }
 
 export async function listGroupOverviews(token:string):Promise<GroupOverview[]>{
- return request<GroupOverview[]>(token,'/rest/v1/rpc/list_group_overviews','POST',{});
+ // This is a read-only RPC carried over POST, so it needs the same bounded
+ // wait as GET requests even though the HTTP method is POST.
+ return request<GroupOverview[]>(token,'/rest/v1/rpc/list_group_overviews','POST',{}, {}, GROUP_REQUEST_TIMEOUT_MS);
 }
 export async function markGroupRead(token:string,id:string):Promise<void>{
  await request(token,'/rest/v1/rpc/mark_group_read','POST',{p_group_id:id});
