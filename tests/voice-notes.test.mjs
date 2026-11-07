@@ -41,7 +41,8 @@ test('voice recorder uses only microphone, stops tracks on cancel, unmount and p
  assert.match(ui,/navigator\.mediaDevices\.getUserMedia\(\{/);
  assert.match(ui,/audio:\{echoCancellation:true,noiseSuppression:true,autoGainControl:true\},video:false/);
  assert.match(ui,/if\(requestRef\.current!==generation\|\|!liveRef\.current\|\|disabled\)\{/);
- assert.match(ui,/stopTracks\(stream\)/);
+ assert.match(ui,/stopMediaStreamTracks\(stream\)/);
+ assert.match(ui,/stopMediaStreamTracks\(capture\.stream\)/);
  assert.match(ui,/requestRef\.current\+=1/);
  assert.match(ui,/capture\.recorder\.onstop=null/);
  assert.match(ui,/if\(capture\.recorder\.state!=='inactive'\)/);

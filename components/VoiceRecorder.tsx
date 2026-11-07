@@ -2,6 +2,7 @@
 
 import {useEffect,useRef,useState} from 'react';
 import {chooseVoiceMimeType,createVoiceFile,formatVoiceTime,VOICE_RECORD_MAX_MS,VOICE_RECORD_MAX_BYTES} from '@/lib/voice-notes';
+import {stopMediaStreamTracks} from '@/lib/media-stream-lifecycle';
 
 type Props={
  disabled:boolean;
@@ -20,9 +21,6 @@ type Capture={
 };
 type Phase='idle'|'requesting'|'recording'|'finalizing';
 
-function stopTracks(stream:MediaStream){
- stream.getTracks().forEach(track=>track.stop());
-}
 function clearCaptureTimers(capture:Capture){
  if(capture.clock!==null)window.clearInterval(capture.clock);
  if(capture.limit!==null)window.clearTimeout(capture.limit);
@@ -55,7 +53,7 @@ export default function VoiceRecorder({disabled,onRecorded,onError}:Props){
    if(capture.recorder.state!=='inactive'){
     try{capture.recorder.stop();}catch{}
    }
-   stopTracks(capture.stream);
+   stopMediaStreamTracks(capture.stream);
   }
  };
  useEffect(()=>{
@@ -107,7 +105,7 @@ export default function VoiceRecorder({disabled,onRecorded,onError}:Props){
    });
    // Permission may have been granted after the user left the chat.
    if(requestRef.current!==generation||!liveRef.current||disabled){
-    stopTracks(stream);
+    stopMediaStreamTracks(stream);
     return;
    }
    const recorder=new MediaRecorder(stream,{mimeType:mime,audioBitsPerSecond:64000});
@@ -134,7 +132,7 @@ export default function VoiceRecorder({disabled,onRecorded,onError}:Props){
    recorder.onstop=()=>{
     if(capture.discard||captureRef.current!==capture)return;
     clearCaptureTimers(capture);
-    stopTracks(capture.stream);
+    stopMediaStreamTracks(capture.stream);
     captureRef.current=null;
     if(!liveRef.current)return;
     setPhase('idle');setElapsed(0);
@@ -157,7 +155,7 @@ export default function VoiceRecorder({disabled,onRecorded,onError}:Props){
    },VOICE_RECORD_MAX_MS);
    setPhase('recording');
   }catch(error){
-   if(stream)stopTracks(stream);
+   if(stream)stopMediaStreamTracks(stream);
    if(captureRef.current?.stream===stream)captureRef.current=null;
    if(requestRef.current!==generation||!liveRef.current)return;
    setPhase('idle');
