@@ -4,13 +4,13 @@ import type {GroupMessage} from '@/lib/groups';
 
 const anonKey=process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY||'';
 const UUID=/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
-const TIMESTAMP=/^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d{1,6})?(?:Z|[+-]\\d{2}:\\d{2})$/;
+const TIMESTAMP=/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?(?:Z|[+-]\d{2}:\d{2})$/;
 export const GROUP_OLDER_PAGE_SIZE=70;
 export const GROUP_HISTORY_MAX_LOADED=1500;
 export const GROUP_HISTORY_REQUEST_TIMEOUT_MS=18000;
 
 function subMillisecondFraction(timestamp:string):number{
- const part=/\\.(\\d{1,6})/.exec(timestamp)?.[1]??'';
+ const part=/\.(\d{1,6})/.exec(timestamp)?.[1]??'';
  return Number(part.padEnd(6,'0'));
 }
 export function compareGroupMessages(a:GroupMessage,b:GroupMessage):number{
