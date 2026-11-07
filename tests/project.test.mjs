@@ -1052,7 +1052,9 @@ test('private photo attachments open a modal inside the chat without leaking pre
  assert.match(media,/signed\?\.scope===scope\?signed\.url:null/);
  assert.match(media,/const error=errorScope===scope/);
  assert.match(media,/if\(active\)setSigned\(\{scope,url:value\}\)/);
- assert.match(media,/return\(\)=>\{active=false;\}/);
+ assert.match(media,/const controller=new AbortController\(\)/);
+ assert.match(media,/getDirectMediaUrl\(token,path,controller\.signal\)/);
+ assert.match(media,/return\(\)=>\{\s*active=false;\s*controller\.abort\(\);\s*\}/);
  assert.match(media,/setPreviewOpen\(false\)/);
  assert.match(media,/className="chat-media-open"/);
  assert.match(media,/onClick=\{\(\)=>setPreviewOpen\(true\)\}/);
