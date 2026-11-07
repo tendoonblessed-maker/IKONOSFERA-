@@ -233,3 +233,23 @@ test('ChatMedia aborts its signing consumer when the effect is cleaned up',()=>{
  assert.match(component,/getDirectMediaUrl\(token,path,controller\.signal\)/);
  assert.match(component,/controller\.abort\(\)/);
 });
+
+
+test('a signal aborted during request setup also cancels the newly created fetch',async()=>{
+ const controller=new AbortController();
+ const {api,calls}=scenario((url,options)=>{
+  controller.abort();
+  return new Promise((resolve,reject)=>{
+   const abort=()=>{
+    const error=new Error('setup request aborted');
+    error.name='AbortError';
+    reject(error);
+   };
+   options.signal.addEventListener('abort',abort,{once:true});
+   if(options.signal.aborted)abort();
+  });
+ });
+ await assert.rejects(api.getDirectMediaUrl('setup-jwt',PATH,controller.signal),error=>error?.name==='AbortError');
+ assert.equal(calls.length,1);
+ assert.equal(calls[0].options.signal.aborted,true,'the fetch created before the consumer listener must still be stopped');
+});

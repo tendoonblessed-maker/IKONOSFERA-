@@ -322,7 +322,13 @@ export function resolveDirectMediaSignedUrl(signedURL:string,path:string,baseUrl
 function consumeSignedMediaEntry(
  entry:SignedMediaCacheEntry,key:string,signal?:AbortSignal
 ):Promise<string>{
- if(signal?.aborted)return Promise.reject(createMediaAbortError());
+ if(signal?.aborted){
+  if(entry.consumers===0&&!entry.settled){
+   if(signedMediaCache.get(key)===entry)signedMediaCache.delete(key);
+   entry.controller.abort();
+  }
+  return Promise.reject(createMediaAbortError());
+ }
  entry.consumers+=1;
  return new Promise((resolve,reject)=>{
   let released=false;

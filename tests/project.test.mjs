@@ -429,9 +429,9 @@ test('private signed media URLs are scoped to token, deduplicated and bounded',(
  assert.match(source,/SIGNED_URL_CACHE_MS=15\*60\*1000/);
  const signedRequest=source.slice(source.indexOf('export async function getDirectMediaUrl'),source.indexOf('export async function markChatRead'));
  assert.match(source,/import \{createRequestAbortSignal\} from '.\/request-signal\.js'/);
- assert.match(signedRequest,/createRequestAbortSignal\\(entry\\.controller\\.signal,18000\\)/);
- assert.match(signedRequest,/consumers:number/);
- assert.match(signedRequest,/signal\\?:AbortSignal/);
+ assert.match(signedRequest,/createRequestAbortSignal\(entry\.controller\.signal,18000\)/);
+ assert.match(source,/consumers:number/);
+ assert.match(signedRequest,/signal\?:AbortSignal/);
  assert.doesNotMatch(signedRequest,/AbortSignal\.timeout/);
  assert.match(source,/signedMediaCache\.delete\(key\)/);
 });
