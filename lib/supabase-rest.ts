@@ -1,5 +1,6 @@
 /* Dependency-free Supabase Auth + PostgREST client.
    Never put a service-role or database password in NEXT_PUBLIC_* variables. */
+import {createRequestAbortSignal} from './request-signal.js';
 export const apiUrl = (process.env.NEXT_PUBLIC_SUPABASE_URL ?? '').replace(/\/$/, '');
 const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? '';
 export const backendReady = Boolean(apiUrl && anonKey);
@@ -21,41 +22,6 @@ let sessionGeneration=0;
 
 function ensureReady() { if (!backendReady) throw Error('Сервер пока не подключён'); }
 
-/** Combine caller cancellation with a bounded timeout without newer static AbortSignal helpers. */
-export function createRequestAbortSignal(
-  callerSignal?:AbortSignal,
-  timeoutMs=18000
-):{signal:AbortSignal;dispose:()=>void}{
-  const controller=new AbortController();
-  let timeoutId:ReturnType<typeof setTimeout>|null=null;
-  let disposed=false;
-  const abortFromCaller=()=>{
-    if(controller.signal.aborted)return;
-    const reason=callerSignal?.reason;
-    if(reason!==undefined)controller.abort(reason);
-    else controller.abort();
-  };
-  if(callerSignal?.aborted)abortFromCaller();
-  else callerSignal?.addEventListener('abort',abortFromCaller,{once:true});
-  if(!controller.signal.aborted){
-    const delay=Number.isFinite(timeoutMs)?Math.max(0,timeoutMs):18000;
-    timeoutId=setTimeout(()=>{
-      if(controller.signal.aborted)return;
-      const error=new Error('The request timed out');
-      error.name='TimeoutError';
-      controller.abort(error);
-    },delay);
-  }
-  return {
-    signal:controller.signal,
-    dispose(){
-      if(disposed)return;
-      disposed=true;
-      if(timeoutId!==null){clearTimeout(timeoutId);timeoutId=null;}
-      callerSignal?.removeEventListener('abort',abortFromCaller);
-    }
-  };
-}
 function headers(token?: string, extras?: Record<string,string>) {
   return { apikey: anonKey, Authorization: `Bearer ${token || anonKey}`, 'Content-Type': 'application/json', ...extras };
 }
