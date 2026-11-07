@@ -69,15 +69,26 @@ test('contact IDs are deduplicated and split into bounded batches of 100',async(
  assert.ok(calls.every(call=>call.options.headers.Authorization==='Bearer jwt'));
 });
 
-test('more than 200 active stories are paginated without truncation',async()=>{
- const rows=Array.from({length:202},(_,i)=>({id:String(i),user_id:VALID}));
- const {api,calls}=setup((url)=>{
-  const offset=Number(parsed({url}).searchParams.get('offset'));
-  return rows.slice(offset,offset+200);
+test('keyset pagination does not skip later stories when earlier rows are deleted between pages',async()=>{
+ const createdAt='2026-11-07T18:00:00.000000+00:00';
+ const storyId=i=>'00000000-0000-4000-8000-'+String(i).padStart(12,'0');
+ const rows=Array.from({length:202},(_,i)=>({id:storyId(i),user_id:VALID,created_at:createdAt}));
+ const {api,calls}=setup((url,options,callNumber)=>{
+  const query=parsed({url});
+  if(callNumber===2)rows.splice(0,10); // deletion before the saved cursor
+  const filter=query.searchParams.get('or');
+  if(!filter)return rows.slice(0,200);
+  const match=filter.match(/id\\.gt\\.([0-9a-f-]+)\\)\\)$/);
+  assert.ok(match,'second page must use a UUID keyset cursor');
+  return rows.filter(row=>row.created_at>createdAt||(row.created_at===createdAt&&row.id>match[1])).slice(0,200);
  });
  const result=await api.getContactsStories('jwt',[VALID]);
  assert.equal(result.length,202);
- assert.deepEqual(calls.map(call=>parsed(call).searchParams.get('offset')),['0','200']);
+ assert.deepEqual(result.slice(-2).map(row=>row.id),[storyId(200),storyId(201)]);
+ assert.deepEqual(calls.map(call=>parsed(call).searchParams.get('limit')),['200','200']);
+ assert.deepEqual(calls.map(call=>parsed(call).searchParams.get('offset')),[null,null]);
  assert.deepEqual(calls.map(call=>parsed(call).searchParams.get('order')),['created_at.asc,id.asc','created_at.asc,id.asc']);
+ assert.equal(parsed(calls[0]).searchParams.get('or'),null);
+ assert.equal(parsed(calls[1]).searchParams.get('or'),'(created_at.gt.'+createdAt+',and(created_at.eq.'+createdAt+',id.gt.'+storyId(199)+'))');
  assert.equal(parsed(calls[0]).searchParams.get('expires_at'),parsed(calls[1]).searchParams.get('expires_at'));
 });
