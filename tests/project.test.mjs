@@ -969,7 +969,7 @@ test('direct-chat search debounces and never renders old account results',()=>{
  assert.match(shell,/messageSearchRequestRef=useRef\(0\)/);
  assert.match(shell,/const requestId=\+\+messageSearchRequestRef\.current/);
  assert.match(shell,/chatContextGenerationRef\.current===generation&&selectedRef\.current===chatId/);
- assert.match(shell,/void searchDirectMessages\(token,chatId,term,offset\)/);
+ assert.match(shell,/void searchDirectMessages\(token,chatId,term,offset,controller\.signal\)/);
  assert.match(shell,/messageSearchPage===0\?320:0/);
  assert.match(shell,/setMessageSearchResults\(previous=>offset===0\?page/);
  assert.match(shell,/resetMessageSearch\(\)/);
