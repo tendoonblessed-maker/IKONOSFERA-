@@ -2,6 +2,7 @@
 
 import {useEffect,useRef,useState} from 'react';
 import {chooseVoiceMimeType,normalizeVoiceMimeType,createVoiceFile,formatVoiceTime,VOICE_RECORD_MAX_MS,VOICE_RECORD_MAX_BYTES,VOICE_FINALIZE_TIMEOUT_MS} from '@/lib/voice-notes';
+import {stopMediaStreamTracks} from '@/lib/media-stream-lifecycle';
 
 type Props={
  disabled:boolean;
@@ -23,9 +24,6 @@ type Capture={
 };
 type Phase='idle'|'requesting'|'recording'|'finalizing';
 
-function stopTracks(stream:MediaStream){
- stream.getTracks().forEach(track=>track.stop());
-}
 function clearCaptureResources(capture:Capture){
  if(capture.clock!==null)window.clearInterval(capture.clock);
  if(capture.limit!==null)window.clearTimeout(capture.limit);
@@ -65,7 +63,7 @@ export default function VoiceRecorder({disabled,onRecorded,onError}:Props){
    if(capture.recorder.state!=='inactive'){
     try{capture.recorder.stop();}catch{}
    }
-   stopTracks(capture.stream);
+   stopMediaStreamTracks(capture.stream);
   }
  };
  useEffect(()=>{
@@ -156,7 +154,7 @@ export default function VoiceRecorder({disabled,onRecorded,onError}:Props){
    });
    // Permission may have been granted after the user left the chat.
    if(requestRef.current!==generation||!liveRef.current||disabled){
-    stopTracks(stream);
+    stopMediaStreamTracks(stream);
     return;
    }
    const recorderOptions:MediaRecorderOptions=mime
@@ -167,7 +165,7 @@ export default function VoiceRecorder({disabled,onRecorded,onError}:Props){
    const normalizedMime=normalizeVoiceMimeType(recorderMime);
    if(!normalizedMime){
     sessionActiveRef.current=false;
-    stopTracks(stream);
+    stopMediaStreamTracks(stream);
     setPhase('idle');
     errorRef.current('Браузер выбрал неподдерживаемый формат голосовых сообщений.');
     return;
@@ -175,7 +173,7 @@ export default function VoiceRecorder({disabled,onRecorded,onError}:Props){
    const audioTrack=stream.getTracks().find(track=>track.kind==='audio');
    if(!audioTrack){
     sessionActiveRef.current=false;
-    stopTracks(stream);
+    stopMediaStreamTracks(stream);
     setPhase('idle');
     errorRef.current('Браузер не предоставил аудиодорожку микрофона.');
     return;
@@ -203,7 +201,7 @@ export default function VoiceRecorder({disabled,onRecorded,onError}:Props){
    recorder.onstop=()=>{
     if(capture.discard||captureRef.current!==capture)return;
     clearCaptureResources(capture);
-    stopTracks(capture.stream);
+    stopMediaStreamTracks(capture.stream);
     captureRef.current=null;
     sessionActiveRef.current=false;
     if(!liveRef.current)return;
@@ -244,7 +242,7 @@ export default function VoiceRecorder({disabled,onRecorded,onError}:Props){
     sessionActiveRef.current=false;
     if(captureRef.current?.stream===stream)captureRef.current=null;
    }
-   if(stream)stopTracks(stream);
+   if(stream)stopMediaStreamTracks(stream);
    if(requestRef.current!==generation||!liveRef.current)return;
    setPhase('idle');
    const denial=error instanceof Error&&(error.name==='NotAllowedError'||error.name==='PermissionDeniedError');
