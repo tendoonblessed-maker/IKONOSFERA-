@@ -81,12 +81,12 @@ export async function getContactsStories(token:string,userIds:string[]):Promise<
   while(true){
    // Keyset pagination is stable when earlier rows are deleted between pages.
    // The UUID tie-breaker preserves PostgreSQL order for equal timestamps.
-   const after=cursor
+   const after:string=cursor
     ?"&or="+encodeURIComponent(
       "(created_at.gt."+cursor.created_at+",and(created_at.eq."+cursor.created_at+",id.gt."+cursor.id+"))"
      )
     :"";
-   const page=await api<Story[]>(
+   const page:Story[]=await api<Story[]>(
     "/rest/v1/stories?select=*&user_id=in.("+batch.map(encodeURIComponent).join(",")+")"
     +"&expires_at=gt."+expiresAt
     +after
@@ -95,7 +95,7 @@ export async function getContactsStories(token:string,userIds:string[]):Promise<
    );
    stories.push(...page);
    if(page.length<CONTACT_STORY_PAGE_SIZE)break;
-   const last=page[page.length-1];
+   const last:Story|undefined=page[page.length-1];
    if(!last?.id||!last?.created_at)throw Error("Не удалось продолжить загрузку историй: сервер вернул некорректный курсор.");
    if(cursor&&!(last.created_at>cursor.created_at||(last.created_at===cursor.created_at&&last.id>cursor.id)))
     throw Error("Не удалось продолжить загрузку историй: курсор не продвинулся.");
