@@ -511,10 +511,10 @@ test('group conversations use portable request deadlines and show real loading/e
  const ui=load('components/GroupPanel.tsx');
  assert.match(api,/order=created_at\.desc,id\.desc&limit=150/);
  assert.match(api,/return latest\.reverse\(\)/);
- assert.match(api,/fetchWithTimeout\\(fetch,url,init,timeoutMs\\?\\?GROUP_REQUEST_TIMEOUT_MS/);
+ assert.match(api,/fetchWithTimeout\(fetch,url,init,timeoutMs\?\?GROUP_REQUEST_TIMEOUT_MS/);
  assert.match(api,/GROUP_REQUEST_TIMEOUT_MS=18000/);
- assert.doesNotMatch(api,/AbortSignal\\.timeout/);
- assert.match(api,/request<GroupMessage\\[\\]>\\(token,path,'POST'[\\s\\S]*?GROUP_REQUEST_TIMEOUT_MS\\)/);
+ assert.doesNotMatch(api,/AbortSignal\.timeout/);
+ assert.match(api,/request<GroupMessage\[\]>\(token,path,'POST'[\s\S]*?GROUP_REQUEST_TIMEOUT_MS\)/);
  assert.ok(!api.includes('order=created_at.asc&limit=150'));
  assert.match(ui,/initialLoading,setInitialLoading/);
  assert.match(ui,/role="status" aria-label="Загружаем сообщения группы"/);
