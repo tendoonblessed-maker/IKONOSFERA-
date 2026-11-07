@@ -8,6 +8,14 @@ const source=readFileSync(new URL('../lib/supabase-rest.ts',import.meta.url),'ut
 const compiled=ts.transpileModule(source,{
  compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}
 }).outputText;
+const requestSignalSource=readFileSync(new URL('../lib/request-signal.js',import.meta.url),'utf8');
+const requestSignalCompiled=ts.transpileModule(requestSignalSource,{
+ compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}
+}).outputText;
+const requestSignalExports={};
+vm.runInNewContext(requestSignalCompiled,{
+ exports:requestSignalExports,AbortController,setTimeout,clearTimeout
+},{filename:'request-signal.cjs',timeout:2500});
 const CHAT='aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 const USER='bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
 const MEDIA='cccccccc-cccc-4ccc-8ccc-cccccccccccc';
@@ -20,14 +28,19 @@ function deferred(){
  const promise=new Promise((yes,no)=>{resolve=yes;reject=no;});
  return {promise,resolve,reject};
 }
-function scenario(handler){
+function scenario(handler,{AbortSignalImpl=AbortSignal}={}){
  const calls=[];
  const ctx={
   exports:{},process:{env:{
    NEXT_PUBLIC_SUPABASE_URL:'https://example.supabase.invalid',
    NEXT_PUBLIC_SUPABASE_ANON_KEY:'public-anon-test'
   }},
-  AbortSignal,
+  AbortSignal:AbortSignalImpl,
+  AbortController,
+  require:id=>{
+   if(id==='./request-signal.js')return requestSignalExports;
+   throw Error('Unexpected module '+id);
+  },
   URL,
   fetch:(url,options)=>{
    calls.push({url,options});
@@ -139,4 +152,19 @@ test('invalid object paths cannot reach the private Storage signing endpoint',as
   await assert.rejects(api.getDirectMediaUrl('jwt',path),/Недопустимый путь вложения/);
  }
  assert.equal(calls.length,0);
+});
+
+test('private media signing uses a portable timeout without AbortSignal.timeout',async()=>{
+ const LegacyAbortSignal=function(){};
+ assert.equal(LegacyAbortSignal.timeout,undefined);
+ const {api,calls}=scenario(
+  ()=>Promise.resolve(reply(signedURL(PATH,'portable'))),
+  {AbortSignalImpl:LegacyAbortSignal}
+ );
+ const result=await api.getDirectMediaUrl('jwt',PATH);
+ assert.match(result,/token=portable$/);
+ assert.equal(calls.length,1);
+ assert.ok(calls[0].options.signal,'signed-media fetch receives an AbortController signal');
+ assert.equal(typeof calls[0].options.signal.addEventListener,'function');
+ assert.equal(typeof calls[0].options.signal.removeEventListener,'function');
 });
