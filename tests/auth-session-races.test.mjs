@@ -8,6 +8,14 @@ const source=readFileSync(new URL('../lib/supabase-rest.ts',import.meta.url),'ut
 const compiled=ts.transpileModule(source,{
  compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}
 }).outputText;
+const requestSignalSource=readFileSync(new URL('../lib/request-signal.js',import.meta.url),'utf8');
+const requestSignalCompiled=ts.transpileModule(requestSignalSource,{
+ compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}
+}).outputText;
+const requestSignalExports={};
+vm.runInNewContext(requestSignalCompiled,{
+ exports:requestSignalExports,AbortController,setTimeout,clearTimeout
+},{filename:'request-signal.cjs',timeout:2500});
 const reply=(value,status=200)=>({
  ok:status>=200&&status<300,status,
  text:async()=>JSON.stringify(value)
@@ -27,7 +35,11 @@ function scenario(handler){
  const calls=[];
  const ctx={
   exports:{},process:{env:{NEXT_PUBLIC_SUPABASE_URL:'https://test.supabase.invalid',NEXT_PUBLIC_SUPABASE_ANON_KEY:'anon-test'}},
-  window:{},localStorage:storage,AbortSignal,URLSearchParams,
+  window:{},localStorage:storage,AbortSignal,AbortController,URLSearchParams,
+  require:id=>{
+   if(id==='./request-signal.js')return requestSignalExports;
+   throw Error('Unexpected module '+id);
+  },
   fetch:(url,options)=>{
    calls.push({url,options});
    return handler(url,options,calls.length);
