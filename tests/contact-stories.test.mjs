@@ -86,7 +86,8 @@ test('keyset pagination does not skip later stories when earlier rows are delete
  });
  const result=await api.getContactsStories('jwt',[VALID]);
  assert.equal(result.length,202);
- assert.deepEqual(result.slice(-2).map(row=>row.id),[storyId(200),storyId(201)]);
+ assert.equal(result[result.length-2].id,storyId(200));
+ assert.equal(result[result.length-1].id,storyId(201));
  assert.deepEqual(calls.map(call=>parsed(call).searchParams.get('limit')),['200','200']);
  assert.deepEqual(calls.map(call=>parsed(call).searchParams.get('offset')),[null,null]);
  assert.deepEqual(calls.map(call=>parsed(call).searchParams.get('order')),['created_at.asc,id.asc','created_at.asc,id.asc']);
