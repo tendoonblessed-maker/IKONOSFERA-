@@ -22,15 +22,19 @@ export default function ChatMedia({token,path,type}:Props){
  const error=errorScope===scope;
 
  useEffect(()=>{
+  const controller=new AbortController();
   let active=true;
   setSigned(null);
   setErrorScope(null);
   setPreviewOpen(false);
   if(retry>0)invalidateDirectMediaUrl(token,path);
-  void getDirectMediaUrl(token,path)
+  void getDirectMediaUrl(token,path,controller.signal)
    .then(value=>{if(active)setSigned({scope,url:value});})
    .catch(()=>{if(active)setErrorScope(scope);});
-  return()=>{active=false;};
+  return()=>{
+   active=false;
+   controller.abort();
+  };
  },[token,path,retry,scope]);
 
  const handleMediaError=()=>{

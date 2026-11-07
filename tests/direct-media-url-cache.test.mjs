@@ -169,3 +169,67 @@ test('private media signing uses a portable timeout without AbortSignal.timeout'
  assert.equal(typeof calls[0].options.signal.addEventListener,'function');
  assert.equal(typeof calls[0].options.signal.removeEventListener,'function');
 });
+
+
+test('aborting one mounted preview keeps a shared signed URL request alive for the other',async()=>{
+ const pending=deferred();
+ const {api,calls}=scenario(()=>pending.promise);
+ const firstController=new AbortController();
+ const secondController=new AbortController();
+ const first=api.getDirectMediaUrl('shared-jwt',PATH,firstController.signal);
+ const firstFailure=assert.rejects(first,error=>error?.name==='AbortError');
+ const second=api.getDirectMediaUrl('shared-jwt',PATH,secondController.signal);
+ assert.equal(calls.length,1,'both previews share one private signing request');
+ firstController.abort();
+ await firstFailure;
+ assert.equal(calls[0].options.signal.aborted,false,'one unmount must not cancel another preview');
+ pending.resolve(reply(signedURL(PATH,'shared')));
+ const result=await second;
+ assert.match(result,/token=shared$/);
+ assert.equal(calls.length,1);
+});
+
+test('aborting the last preview cancels the signing request and permits a clean retry',async()=>{
+ const {api,calls}=scenario((url,options,n)=>{
+  if(n>1)return Promise.resolve(reply(signedURL(PATH,'recovered')));
+  return new Promise((resolve,reject)=>{
+   const abort=()=>{
+    const error=new Error('signing request aborted');
+    error.name='AbortError';
+    reject(error);
+   };
+   options.signal.addEventListener('abort',abort,{once:true});
+   if(options.signal.aborted)abort();
+  });
+ });
+ const firstController=new AbortController();
+ const secondController=new AbortController();
+ const first=api.getDirectMediaUrl('cancel-jwt',PATH,firstController.signal);
+ const second=api.getDirectMediaUrl('cancel-jwt',PATH,secondController.signal);
+ const firstFailure=assert.rejects(first,error=>error?.name==='AbortError');
+ const secondFailure=assert.rejects(second,error=>error?.name==='AbortError');
+ assert.equal(calls.length,1);
+ firstController.abort();
+ assert.equal(calls[0].options.signal.aborted,false,'the shared fetch remains while one consumer is mounted');
+ secondController.abort();
+ assert.equal(calls[0].options.signal.aborted,true,'the underlying fetch is aborted after the final consumer leaves');
+ await Promise.all([firstFailure,secondFailure]);
+ const recovered=await api.getDirectMediaUrl('cancel-jwt',PATH);
+ assert.match(recovered,/token=recovered$/);
+ assert.equal(calls.length,2,'a cancelled in-flight entry must not poison the next retry');
+});
+
+test('an already-aborted media consumer does not start a signing request',async()=>{
+ const {api,calls}=scenario(()=>Promise.resolve(reply(signedURL(PATH,'unused'))));
+ const controller=new AbortController();
+ controller.abort();
+ await assert.rejects(api.getDirectMediaUrl('jwt',PATH,controller.signal),error=>error?.name==='AbortError');
+ assert.equal(calls.length,0);
+});
+
+test('ChatMedia aborts its signing consumer when the effect is cleaned up',()=>{
+ const component=readFileSync(new URL('../components/ChatMedia.tsx',import.meta.url),'utf8');
+ assert.match(component,/const controller=new AbortController\(\)/);
+ assert.match(component,/getDirectMediaUrl\(token,path,controller\.signal\)/);
+ assert.match(component,/controller\.abort\(\)/);
+});
