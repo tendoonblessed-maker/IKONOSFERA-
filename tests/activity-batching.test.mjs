@@ -3,7 +3,7 @@ import {readFileSync} from 'node:fs';
 import {test} from 'node:test';
 import {chunkUserActivityIds,USER_ACTIVITY_BATCH_SIZE} from '../lib/activity-batching.ts';
 
-const uuid=(value:number)=>value.toString(16).padStart(8,'0')+'-0000-4000-8000-000000000000';
+const uuid=(value)=>value.toString(16).padStart(8,'0')+'-0000-4000-8000-000000000000';
 const read=path=>readFileSync(new URL('../'+path,import.meta.url),'utf8');
 
 test('activity IDs are fetched in bounded batches without truncating later contacts',()=>{
