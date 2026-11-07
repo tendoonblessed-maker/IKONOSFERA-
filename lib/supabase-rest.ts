@@ -1,5 +1,6 @@
 /* Dependency-free Supabase Auth + PostgREST client.
    Never put a service-role or database password in NEXT_PUBLIC_* variables. */
+import {createRequestAbortSignal} from './request-signal.js';
 export const apiUrl = (process.env.NEXT_PUBLIC_SUPABASE_URL ?? '').replace(/\/$/, '');
 const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? '';
 export const backendReady = Boolean(apiUrl && anonKey);
@@ -25,24 +26,27 @@ function headers(token?: string, extras?: Record<string,string>) {
 }
 async function http<T>(path: string, options: { method?: string; token?: string; body?: unknown; extraHeaders?: Record<string,string>; signal?: AbortSignal } = {}): Promise<T> {
   ensureReady();
-  const timeoutSignal=AbortSignal.timeout(18000);
-  const signal=options.signal?AbortSignal.any([options.signal,timeoutSignal]):timeoutSignal;
-  const response = await fetch(`${apiUrl}${path}`, {
-    method: options.method ?? 'GET',
-    headers: headers(options.token, options.extraHeaders),
-    body: options.body === undefined ? undefined : JSON.stringify(options.body),
-    cache: 'no-store',
-    // Keep the bounded timeout while also allowing screens to cancel obsolete requests.
-    signal,
-  });
-  const raw = await response.text();
-  let value: unknown;
-  try { value = raw ? JSON.parse(raw) : null; } catch { value = raw; }
-  if (!response.ok) {
-    const error = value && typeof value === 'object' ? (value as { msg?: string; message?: string; error_description?: string }).message ?? (value as { msg?: string }).msg ?? (value as { error_description?: string }).error_description : null;
-    throw new SupabaseHttpError(error || `Запрос не выполнен (${response.status})`,response.status);
+  const requestAbort=createRequestAbortSignal(options.signal,18000);
+  try {
+    const response = await fetch(`${apiUrl}${path}`, {
+      method: options.method ?? 'GET',
+      headers: headers(options.token, options.extraHeaders),
+      body: options.body === undefined ? undefined : JSON.stringify(options.body),
+      cache: 'no-store',
+      // Preserve the bounded timeout without relying on newer AbortSignal helpers.
+      signal: requestAbort.signal,
+    });
+    const raw = await response.text();
+    let value: unknown;
+    try { value = raw ? JSON.parse(raw) : null; } catch { value = raw; }
+    if (!response.ok) {
+      const error = value && typeof value === 'object' ? (value as { msg?: string; message?: string; error_description?: string }).message ?? (value as { msg?: string }).msg ?? (value as { error_description?: string }).error_description : null;
+      throw new SupabaseHttpError(error || `Запрос не выполнен (${response.status})`,response.status);
+    }
+    return value as T;
+  } finally {
+    requestAbort.dispose();
   }
-  return value as T;
 }
 export function loadSession(): Session | null {
   if (typeof window === 'undefined') return null;
