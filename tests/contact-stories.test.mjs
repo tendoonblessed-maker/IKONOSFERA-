@@ -40,7 +40,7 @@ test('malformed contact UUIDs do not break valid contacts story query',async()=>
  assert.equal(url.searchParams.get('user_id'),'in.('+VALID+')');
  assert.equal(url.searchParams.get('order'),'created_at.asc,id.asc');
  assert.equal(url.searchParams.get('limit'),'200');
- assert.equal(url.searchParams.get('offset'),'0');
+ assert.equal(url.searchParams.get('offset'),null);
  assert.equal(calls[0].options.headers.Authorization,'Bearer user-jwt');
  assert.equal(calls[0].options.cache,'no-store');
 });
@@ -65,7 +65,7 @@ test('contact IDs are deduplicated and split into bounded batches of 100',async(
  });
  assert.deepEqual(queried,[...ids].map(id=>id.toLowerCase()));
  assert.deepEqual(calls.map(call=>parsed(call).searchParams.get('limit')),['200','200']);
- assert.deepEqual(calls.map(call=>parsed(call).searchParams.get('offset')),['0','0']);
+ assert.deepEqual(calls.map(call=>parsed(call).searchParams.get('offset')),[null,null]);
  assert.ok(calls.every(call=>call.options.headers.Authorization==='Bearer jwt'));
 });
 
