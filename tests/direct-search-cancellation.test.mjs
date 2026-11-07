@@ -6,18 +6,20 @@ const read = path => readFileSync(new URL(`../${path}`, import.meta.url), 'utf8'
 
 test('direct-message search forwards caller cancellation through a portable bounded request signal', () => {
   const api = read('lib/supabase-rest.ts');
+  const helper = read('lib/request-signal.js');
   const start = api.indexOf('async function http<T>');
   const end = api.indexOf('\\nexport function loadSession', start);
   const http = api.slice(start, end);
-  assert.ok(api.includes('export function createRequestAbortSignal('));
+  assert.ok(api.includes("import {createRequestAbortSignal} from './request-signal.js';"));
   assert.ok(http.includes('createRequestAbortSignal(options.signal,18000)'));
   assert.ok(http.includes('signal: requestAbort.signal'));
   assert.ok(http.includes('requestAbort.dispose()'));
   assert.equal(http.includes('AbortSignal.any('), false);
   assert.equal(http.includes('AbortSignal.timeout('), false);
+  assert.doesNotMatch(helper, /AbortSignal\\.(?:any|timeout)\\(/);
   assert.ok(api.includes('offset=0,signal?:AbortSignal'));
   assert.ok(api.includes('p_offset:Math.max(0,Math.min(600,Math.floor(offset)))'));
-  assert.match(api, /signal\\s*\\}\\);/);
+  assert.ok(api.includes('signal\\n });'));
 });
 test('private-chat search aborts the previous request and debounce timer on cleanup', () => {
   const shell = read('components/AppShell.tsx');
