@@ -1,4 +1,5 @@
 import {apiUrl} from '@/lib/supabase-rest';
+import {chunkUserActivityIds} from './activity-batching';
 const key=process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY||'';
 export type ActivityVisibility='exact'|'approximate';
 export type UserActivity={user_id:string;status:string;last_seen_at:string|null};
@@ -16,10 +17,20 @@ export async function myActivityVisibility(token:string,userId:string):Promise<A
  return rows[0]?.visibility==='exact'?'exact':'approximate';
 }
 export async function getUserActivities(token:string,ids:string[]):Promise<Record<string,UserActivity>>{
- const clean=Array.from(new Set(ids.filter(id=>/^[0-9a-f-]{36}$/i.test(id)))).slice(0,100);
- if(!clean.length)return {};
- const rows=await activityApi<UserActivity[]>(token,'/rest/v1/rpc/get_user_activity','POST',{p_user_ids:clean});
- return Object.fromEntries(rows.map(x=>[x.user_id,x]));
+ const batches=chunkUserActivityIds(ids);
+ if(!batches.length)return {};
+ const activities:Record<string,UserActivity>={};
+ // Keep each RPC below its 100-ID limit, but do not silently omit contacts
+ // after the first page. Sequential requests avoid a burst on mobile networks.
+ for(const batch of batches){
+  const rows=await activityApi<UserActivity[]>(token,'/rest/v1/rpc/get_user_activity','POST',{p_user_ids:batch});
+  for(const row of rows){
+   if(typeof row?.user_id==='string'&&batch.some(id=>id.toLowerCase()===row.user_id.toLowerCase())){
+    activities[row.user_id]=row;
+   }
+  }
+ }
+ return activities;
 }
 export function activityLabel(value:UserActivity|null|undefined):string{
  if(!value)return 'был давно';

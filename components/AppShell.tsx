@@ -1217,7 +1217,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
   useEffect(()=>{
     if(tab!=='contacts'||!session||!contactPeople.length)return;
     let cancelled=false;
-    const check=()=>{if(document.visibilityState==='hidden')return;void getUserActivities(session.access_token,contactPeople.slice(0,60).map(p=>p.id)).then(activities=>{if(!cancelled)setUserActivities(previous=>({...previous,...activities}));}).catch(()=>{});};
+    const check=()=>{if(document.visibilityState==='hidden')return;void getUserActivities(session.access_token,contactPeople.map(p=>p.id)).then(activities=>{if(!cancelled)setUserActivities(previous=>({...previous,...activities}));}).catch(()=>{});};
     check();const poll=window.setInterval(check,45000);
     return()=>{cancelled=true;window.clearInterval(poll);};
   },[tab,session,contactPeople]);
