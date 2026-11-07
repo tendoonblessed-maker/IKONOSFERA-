@@ -78,9 +78,11 @@ test('keyset pagination does not skip later stories when earlier rows are delete
   if(callNumber===2)rows.splice(0,10); // deletion before the saved cursor
   const filter=query.searchParams.get('or');
   if(!filter)return rows.slice(0,200);
-  const match=filter.match(/id\\.gt\\.([0-9a-f-]+)\\)\\)$/);
-  assert.ok(match,'second page must use a UUID keyset cursor');
-  return rows.filter(row=>row.created_at>createdAt||(row.created_at===createdAt&&row.id>match[1])).slice(0,200);
+  const marker='id.gt.';
+  const markerAt=filter.lastIndexOf(marker);
+  const cursorId=markerAt>=0?filter.slice(markerAt+marker.length,-2):'';
+  assert.ok(/^[0-9a-f-]{36}$/i.test(cursorId),'second page must use a UUID keyset cursor');
+  return rows.filter(row=>row.created_at>createdAt||(row.created_at===createdAt&&row.id>cursorId)).slice(0,200);
  });
  const result=await api.getContactsStories('jwt',[VALID]);
  assert.equal(result.length,202);
