@@ -4,6 +4,7 @@ import {addStory,getContactsStories,imageUrl,removeUpload,uploadPhoto,type Story
 import type {Profile} from '@/lib/supabase-rest';
 import {useStoryProgress} from '@/lib/use-story-progress';
 import {isCurrentStoryRequest} from '@/lib/story-request-scope';
+import {runScopedStoryLoad} from '@/lib/story-load';
 
 type Person={id:string;name:string;avatar:string|null;stories:Story[]};
 type Props={token:string;userId:string;contacts:Profile[];ownProfile:Profile|null};
@@ -12,6 +13,8 @@ export default function StoriesStrip({token,userId,contacts,ownProfile}:Props){
  const [active,setActive]=useState<{person:number;story:number}|null>(null);
  const [busy,setBusy]=useState(false);
  const [error,setError]=useState('');
+ const [storiesLoadError,setStoriesLoadError]=useState('');
+ const [storiesLoading,setStoriesLoading]=useState(false);
  const [paused,setPaused]=useState(false);
  const inputRef=useRef<HTMLInputElement>(null);
  const contactsRef=useRef(contacts);
@@ -34,27 +37,35 @@ export default function StoriesStrip({token,userId,contacts,ownProfile}:Props){
    createRequestRef.current+=1;
   };
  },[]);
- const load=useCallback(async()=>{
+ const load=useCallback(async(afterPublish=false)=>{
   const requestId=++storyRequestRef.current;
   const currentContacts=contactsRef.current;
   const ids=[userId,...currentContacts.map(person=>person.id)];
-  const stories=await getContactsStories(token,ids);
-  const own=stories.filter(story=>story.user_id===userId).sort((a,b)=>a.created_at.localeCompare(b.created_at));
-  const participants:Person[]=[{id:userId,name:'Моя история',avatar:avatarPath,stories:own}];
-  for(const contact of currentContacts){
-   const list=stories.filter(story=>story.user_id===contact.id).sort((a,b)=>a.created_at.localeCompare(b.created_at));
-   if(list.length&&!participants.some(person=>person.id===contact.id)){
-     participants.push({id:contact.id,name:contact.display_name||contact.username,avatar:contact.avatar_path??null,stories:list});
+  const isCurrent=()=>mountedRef.current&&isCurrentStoryRequest(userId,ownerRef.current,requestId,storyRequestRef.current);
+  setStoriesLoading(true);
+  return runScopedStoryLoad(async()=>{
+   const stories=await getContactsStories(token,ids);
+   const own=stories.filter(story=>story.user_id===userId).sort((a,b)=>a.created_at.localeCompare(b.created_at));
+   const participants:Person[]=[{id:userId,name:'Моя история',avatar:avatarPath,stories:own}];
+   for(const contact of currentContacts){
+    const list=stories.filter(story=>story.user_id===contact.id).sort((a,b)=>a.created_at.localeCompare(b.created_at));
+    if(list.length&&!participants.some(person=>person.id===contact.id)){
+      participants.push({id:contact.id,name:contact.display_name||contact.username,avatar:contact.avatar_path??null,stories:list});
+    }
    }
-  }
-  // A slower old request must not replace a newer story list.
-  if(requestId===storyRequestRef.current&&mountedRef.current&&isCurrentStoryRequest(userId,ownerRef.current,requestId,storyRequestRef.current)){
-   setPeople(participants);
    return participants;
-  }
-  return null;
+  },isCurrent,participants=>{
+   setPeople(participants);
+   setStoriesLoadError('');
+   setStoriesLoading(false);
+  },()=>{
+   setStoriesLoadError(afterPublish
+    ?'История опубликована, но список не обновился. Нажми «Повторить».'
+    :'Не удалось загрузить истории. Проверь соединение и попробуй ещё раз.');
+   setStoriesLoading(false);
+  });
  },[token,userId,contactIdsKey,avatarPath]);
- useEffect(()=>{void load().catch(()=>{});},[load]);
+ useEffect(()=>{void load();},[load]);
 
  useEffect(()=>{if(!active)return;const onKey=(e:KeyboardEvent)=>{if(e.key==='Escape')setActive(null);if(e.key==='ArrowRight')next();if(e.key==='ArrowLeft')prev();};window.addEventListener('keydown',onKey);return()=>window.removeEventListener('keydown',onKey);},[active,people]);
  useEffect(()=>{if(!active)return;const old=document.body.style.overflow;document.body.style.overflow='hidden';return()=>{document.body.style.overflow=old;};},[active]);
@@ -76,7 +87,7 @@ export default function StoriesStrip({token,userId,contacts,ownProfile}:Props){
    }
    await addStory(token,ownerId,path,'');
    if(!isCurrent())return;
-   const updated=await load();
+   const updated=await load(true);
    if(!isCurrent()||!updated?.[0])return;
    setActive({person:0,story:Math.max(0,updated[0].stories.length-1)});
   }catch(e){
@@ -95,6 +106,7 @@ export default function StoriesStrip({token,userId,contacts,ownProfile}:Props){
    </button>)}
    {!people.slice(1).length&&<p className="home-stories-empty">Истории людей, с которыми ты переписываешься, появятся здесь.</p>}
   </div>
+  {storiesLoadError&&<div className="profile-error" role="alert"><span>{storiesLoadError}</span><button type="button" className="text-button" disabled={storiesLoading||busy} onClick={()=>{void load();}}>{storiesLoading?'Загружаем…':'Повторить'}</button></div>}
   <input ref={inputRef} type="file" accept="image/png,image/jpeg,image/webp" hidden aria-label="Загрузить свою историю" disabled={busy} onChange={e=>{void create(e.target.files?.[0]);e.target.value='';}}/>
   {people[0]?.stories.length>0&&<button className="home-story-add" type="button" disabled={busy} onClick={()=>inputRef.current?.click()}>+ Добавить историю</button>}
   {error&&<p role="alert" className="profile-error">{error}</p>}
