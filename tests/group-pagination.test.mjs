@@ -80,9 +80,9 @@ test('older page uses signed-in user JWT, strict no-store and portable AbortCont
  assert.deepEqual(Array.from(page.messages,x=>x.id),[id(2),id(3),id(4)]);
  assert.equal(page.hasMore,false);
  const source=read('lib/group-pagination.ts');
- assert.match(source,/fetchWithTimeout\\(fetch,apiUrl\\+olderGroupMessagesPath/);
+ assert.match(source,/fetchWithTimeout\(fetch,apiUrl\+olderGroupMessagesPath/);
  assert.match(source,/GROUP_HISTORY_REQUEST_TIMEOUT_MS=18000/);
- assert.doesNotMatch(source,/AbortSignal\\.timeout/);
+ assert.doesNotMatch(source,/AbortSignal\.timeout/);
 });
 
 test('group history request remains usable when AbortSignal.timeout is not exposed',async()=>{
@@ -150,25 +150,25 @@ test('realtime latest page retains paged earlier messages but removes deleted la
 test('group pagination UI restores the history scroll anchor and avoids account crossover',()=>{
  const panel=read('components/GroupPanel.tsx');
  const css=read('app/globals.css');
- assert.match(panel,/fetchOlderGroupMessages\\(requestToken,groupId,oldest\\)/);
- assert.match(panel,/prependOlderGroupMessages\\(current,page.messages\\)/);
- assert.match(panel,/preserveOlderGroupMessages\\(current,msgs\\)/);
- assert.match(panel,/snapshot\\.top\\+growth/);
- assert.match(panel,/snapshot\\.groupId!==group\\.id\\|\\|snapshot\\.userId!==userId/);
- assert.match(panel,/requestId!==olderRequestRef\\.current/);
- assert.match(panel,/contextRef\\.current\\.userId!==ownerId/);
- assert.match(panel,/olderRequestRef\\.current\\+\\+/);
- assert.match(panel,/area\\.scrollTop<100/);
- assert.match(panel,/olderLoadingRef\\.current\\|\\|!hasOlder/);
+ assert.match(panel,/fetchOlderGroupMessages\(requestToken,groupId,oldest\)/);
+ assert.match(panel,/prependOlderGroupMessages\(current,page.messages\)/);
+ assert.match(panel,/preserveOlderGroupMessages\(current,msgs\)/);
+ assert.match(panel,/snapshot\.top\+growth/);
+ assert.match(panel,/snapshot\.groupId!==group\.id\|\|snapshot\.userId!==userId/);
+ assert.match(panel,/requestId!==olderRequestRef\.current/);
+ assert.match(panel,/contextRef\.current\.userId!==ownerId/);
+ assert.match(panel,/olderRequestRef\.current\+\+/);
+ assert.match(panel,/area\.scrollTop<100/);
+ assert.match(panel,/olderLoadingRef\.current\|\|!hasOlder/);
  assert.match(panel,/Показать более ранние сообщения/);
  assert.match(panel,/role="alert"/);
- assert.match(css,/\\.ik-group-older-control button/);
+ assert.match(css,/\.ik-group-older-control button/);
 });
 
 test('paged history does not change message schema or database privileges',()=>{
  const groups=read('lib/groups.ts');
  const pagination=read('lib/group-pagination.ts');
- assert.match(groups,/order=created_at\\.desc,id\\.desc&limit=150/);
+ assert.match(groups,/order=created_at\.desc,id\.desc&limit=150/);
  assert.match(pagination,/const GROUP_/g);
  assert.doesNotMatch(pagination,/service_role|ALTER TABLE|GRANT |dangerouslySetInnerHTML/i);
 });
