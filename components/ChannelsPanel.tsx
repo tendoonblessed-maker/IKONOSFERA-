@@ -43,12 +43,51 @@ export default function ChannelsPanel({token,userId,channel,onBack,onShowProfile
  const commentsRequestGuardRef=useRef<ReturnType<typeof createRequestEpoch> | null>(null);
  if(!commentsRequestGuardRef.current)commentsRequestGuardRef.current=createRequestEpoch();
  const commentsRequestGuard=commentsRequestGuardRef.current;
- useEffect(()=>()=>commentsRequestGuard.invalidate(),[commentsRequestGuard]);
- const reload=useCallback(async()=>{const list=await listChannelPosts(token,channel.id);setPosts(list);setReactions(await listPostReactions(token,list.map(p=>p.id)));},[token,channel.id]);
+ const postsRequestGuardRef=useRef<ReturnType<typeof createRequestEpoch> | null>(null);
+ if(!postsRequestGuardRef.current)postsRequestGuardRef.current=createRequestEpoch();
+ const postsRequestGuard=postsRequestGuardRef.current;
+ const discussionRequestGuardRef=useRef<ReturnType<typeof createRequestEpoch> | null>(null);
+ if(!discussionRequestGuardRef.current)discussionRequestGuardRef.current=createRequestEpoch();
+ const discussionRequestGuard=discussionRequestGuardRef.current;
+ const channelScopeRef=useRef({token,channelId:channel.id});
+ channelScopeRef.current={token,channelId:channel.id};
+ useEffect(()=>()=> {
+  commentsRequestGuard.invalidate();
+  postsRequestGuard.invalidate();
+  discussionRequestGuard.invalidate();
+ },[commentsRequestGuard,postsRequestGuard,discussionRequestGuard]);
+ const reload=useCallback(async()=>{
+  const requestId=postsRequestGuard.begin();
+  const isCurrent=()=>postsRequestGuard.isCurrent(requestId)
+   &&channelScopeRef.current.token===token
+   &&channelScopeRef.current.channelId===channel.id;
+  try{
+   const list=await listChannelPosts(token,channel.id);
+   if(!isCurrent())return false;
+   const nextReactions=await listPostReactions(token,list.map(p=>p.id));
+   if(!isCurrent())return false;
+   setPosts(list);setReactions(nextReactions);
+   return true;
+  }catch(e){
+   if(isCurrent())throw e;
+   return false;
+  }
+ },[token,channel.id,postsRequestGuard]);
  const loadDiscussion=useCallback(async()=>{
-  const [messages,replies]=await Promise.all([listDiscussionMessages(token,channel.id),listDiscussionComments(token,channel.id)]);
-  setDiscussionMessages(messages);setDiscussionComments(replies);
- },[token,channel.id]);
+  const requestId=discussionRequestGuard.begin();
+  const isCurrent=()=>discussionRequestGuard.isCurrent(requestId)
+   &&channelScopeRef.current.token===token
+   &&channelScopeRef.current.channelId===channel.id;
+  try{
+   const [messages,replies]=await Promise.all([listDiscussionMessages(token,channel.id),listDiscussionComments(token,channel.id)]);
+   if(!isCurrent())return false;
+   setDiscussionMessages(messages);setDiscussionComments(replies);
+   return true;
+  }catch(e){
+   if(isCurrent())setError(readable(e));
+   return false;
+  }
+ },[token,channel.id,discussionRequestGuard]);
  async function changeChannelAvatar(file:File|undefined){
   if(!mine||!file||avatarBusy)return;
   if(!["image/jpeg","image/png","image/webp"].includes(file.type)){setError("Выбери JPG, PNG или WebP.");return;}
@@ -96,24 +135,27 @@ export default function ChannelsPanel({token,userId,channel,onBack,onShowProfile
   if(busy)return;setBusy(true);setError("");
   const mine=reactions.find(r=>r.post_id===postId&&r.user_id===userId);
   try{await setPostReaction(token,userId,postId,mine?.emoji===emoji?null:emoji);
-   setReactions(await listPostReactions(token,posts.map(p=>p.id)));setReactionPicker(null);
+   await reload();setReactionPicker(null);
   }catch(e){setError(readable(e));}finally{setBusy(false);}
  }
- useEffect(()=>{void reload().catch(e=>setError(readable(e)));setOpenComments(null);setComments([]);setBody("");setFile(null);},[reload]);
+ useEffect(()=>{void reload().catch(e=>setError(readable(e)));setOpenComments(null);setComments([]);setBody("");setFile(null);setPosts([]);setReactions([]);setDiscussionMessages([]);setDiscussionComments([]);setDiscussionOpen(false);},[reload]);
  async function showComments(postId:string){
   const requestId=commentsRequestGuard.begin();
+  const isCurrent=()=>commentsRequestGuard.isCurrent(requestId)
+   &&channelScopeRef.current.token===token
+   &&channelScopeRef.current.channelId===channel.id;
   if(openComments===postId){setOpenComments(null);setComments([]);return;}
   setError("");
   try{
    const list=await listPostComments(token,postId);
-   if(!commentsRequestGuard.isCurrent(requestId))return;
+   if(!isCurrent())return;
    setComments(list);setOpenComments(postId);
    const ids=Array.from(new Set(list.map(c=>c.author_id)));
    const people=await listProfiles(token,ids);
-   if(!commentsRequestGuard.isCurrent(requestId))return;
+   if(!isCurrent())return;
    setAuthors(Object.fromEntries(people.map(p=>[p.id,p])));
   }catch(e){
-   if(commentsRequestGuard.isCurrent(requestId))setError(readable(e));
+   if(isCurrent())setError(readable(e));
   }
  }
  async function post(e:FormEvent){
@@ -125,7 +167,7 @@ export default function ChannelsPanel({token,userId,channel,onBack,onShowProfile
    path=attachment?.path??null;
    try{await publishPost(token,userId,channel.id,body,null,attachment);}
    catch(e){if(path)await removeUpload(token,path).catch(()=>{});throw e;}
-   setBody("");setFile(null);await reload();setNotice("Пост опубликован.");
+   setBody("");setFile(null);if(await reload())setNotice("Пост опубликован.");
   }catch(e){setError(readable(e));}finally{setBusy(false);}
  }
  async function writeComment(e:FormEvent){
@@ -154,7 +196,7 @@ export default function ChannelsPanel({token,userId,channel,onBack,onShowProfile
  async function erasePost(p:ChannelPost){
   if(!mine||busy||!window.confirm("Удалить этот пост?"))return;
   setBusy(true);setError("");
-  try{await deletePost(token,p.id);if(p.image_path)await removeUpload(token,p.image_path).catch(()=>{});if(p.attachment_path)await removeUpload(token,p.attachment_path).catch(()=>{});await reload();setNotice("Пост удалён.");}
+  try{await deletePost(token,p.id);if(p.image_path)await removeUpload(token,p.image_path).catch(()=>{});if(p.attachment_path)await removeUpload(token,p.attachment_path).catch(()=>{});if(await reload())setNotice("Пост удалён.");}
   catch(e){setError(readable(e));}finally{setBusy(false);}
  }
  async function eraseComment(c:PostComment){
@@ -182,7 +224,7 @@ export default function ChannelsPanel({token,userId,channel,onBack,onShowProfile
     <button type="button" className="secondary-action channel-delete-danger" onClick={()=>void eraseChannel()} disabled={busy}>Удалить канал навсегда</button>
    </form>}
    {currentChannel.discussion_enabled&&<div style={{marginBottom:16}}>
-    <button type="button" className="secondary-action" onClick={()=>{setDiscussionOpen(v=>!v);if(!discussionOpen)void loadDiscussion();}}>{discussionOpen?"Скрыть обсуждение":"💬 Чат обсуждения"}</button>
+    <button type="button" className="secondary-action" onClick={()=>{if(discussionOpen){discussionRequestGuard.invalidate();setDiscussionOpen(false);}else{setDiscussionOpen(true);void loadDiscussion();}}}>{discussionOpen?"Скрыть обсуждение":"💬 Чат обсуждения"}</button>
    </div>}
    {currentChannel.discussion_enabled&&discussionOpen&&<section className="channel-compose" style={{marginBottom:22}}>
     <h2>Обсуждение канала</h2><p style={{fontSize:12,opacity:.7}}>Сообщения участников и комментарии к публикациям отображаются вместе. Ответы к постам также видны под публикациями.</p>
