@@ -172,10 +172,12 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
     window.addEventListener('online',update);
     window.addEventListener('offline',update);
     window.addEventListener('pageshow',update); // iOS Safari back/forward cache
+    document.addEventListener('visibilitychange',update); // Refresh the connectivity hint when a mobile PWA resumes.
     return()=>{
       window.removeEventListener('online',update);
       window.removeEventListener('offline',update);
       window.removeEventListener('pageshow',update);
+      document.removeEventListener('visibilitychange',update);
     };
   },[]);
 
