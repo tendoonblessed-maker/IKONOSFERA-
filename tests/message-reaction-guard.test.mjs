@@ -68,7 +68,7 @@ test('AppShell publishes identity in a layout effect and ignores stale reaction 
  const identityEffect=app.slice(layoutStart,layoutEnd);
  assert.match(identityEffect,/selectedRef\.current=selected;/);
  assert.match(identityEffect,/userIdRef\.current=userId;/);
- assert.match(identityEffect,/chatContextGenerationRef\.current\+\+;/);
+ assert.match(identityEffect,/chatContextGenerationRef\.current\+=1;/);
  const start=app.indexOf('async function reactToMessage(');
  const end=app.indexOf('function queueAttachment(',start);
  const handler=app.slice(start,end);
