@@ -1,13 +1,24 @@
 import {apiUrl} from '@/lib/supabase-rest';
+import {fetchWithTimeout} from '@/lib/fetch-timeout.mjs';
 const key=process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY||'';
+export const GROUP_REQUEST_TIMEOUT_MS=18000;
 export type Group={id:string;owner_id:string;title:string;created_at:string};
 export type GroupMessage={id:string;group_id:string;sender_id:string;body:string;created_at:string};
 export type GroupOverview={group_id:string;last_body:string|null;last_created_at:string|null;unread_count:number;member_count:number};
 async function request<T>(
  token:string,path:string,method='GET',body?:unknown,
- extraHeaders:Record<string,string>={},signal?:AbortSignal
+ extraHeaders:Record<string,string>={},timeoutMs?:number
 ):Promise<T>{
- const res=await fetch(apiUrl+path,{method,headers:{apikey:key,Authorization:'Bearer '+token,'Content-Type':'application/json',...(method==='POST'?{Prefer:'return=representation'}:{}),...extraHeaders},body:body===undefined?undefined:JSON.stringify(body),cache:'no-store',signal:signal??(method==='GET'?AbortSignal.timeout(18000):undefined)});
+ const url=apiUrl+path;
+ const init={
+  method,
+  headers:{apikey:key,Authorization:'Bearer '+token,'Content-Type':'application/json',...(method==='POST'?{Prefer:'return=representation'}:{}),...extraHeaders},
+  body:body===undefined?undefined:JSON.stringify(body),
+  cache:'no-store' as RequestCache
+ };
+ const res=method==='GET'||timeoutMs!==undefined
+  ?await fetchWithTimeout(fetch,url,init,timeoutMs??GROUP_REQUEST_TIMEOUT_MS,'Запрос группы не завершился вовремя. Проверь подключение и повтори попытку.')
+  :await fetch(url,init);
  const data=await res.json().catch(()=>null);if(!res.ok)throw Error(data?.message||'Ошибка группы');return data as T;
 }
 export async function createGroup(token:string,title:string,ids:string[]){return request<string>(token,'/rest/v1/rpc/create_group_chat','POST',{p_title:title,p_members:ids});}
@@ -49,7 +60,7 @@ export async function sendGroupMessage(
  try{
   const rows=await request<GroupMessage[]>(token,path,'POST',{
    id:messageId,group_id:id,sender_id:userId,body:trimmed
-  },{Prefer:'resolution=ignore-duplicates,return=representation'},AbortSignal.timeout(18000));
+  },{Prefer:'resolution=ignore-duplicates,return=representation'},GROUP_REQUEST_TIMEOUT_MS);
   if(rows[0])return assertGroupMessage(rows[0],id,userId,trimmed,messageId);
   // On an existing id PostgREST returns [], so fetch its canonical row.
  }catch(error){postError=error;}
