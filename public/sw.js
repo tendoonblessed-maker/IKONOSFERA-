@@ -3,6 +3,7 @@ const CACHE_NAME = "ikonosfera-shell-v6";
 const OFFLINE_URL = "/offline.html";
 const PRECACHE_URLS = [OFFLINE_URL, "/icon-192.png", "/status-emojis.webp?v=2"];
 const PRECACHE_TIMEOUT_MS = 8000;
+const CACHE_WRITE_TIMEOUT_MS = 1000;
 
 async function addPrecacheAsset(cache, asset) {
   let timeoutId;
@@ -63,21 +64,33 @@ self.addEventListener("fetch", (event) => {
   if (url.pathname === "/status-emojis.webp") {
     // The single 144KB corrected atlas loads from the local cache after installation.
     // This cache contains only public artwork, never user/profile/chat data.
-    // Cache Storage is optional: quota/private-mode failures must not hide a
-    // successfully downloaded public image from the messenger UI.
-    event.respondWith(caches.match(request).catch(() => undefined).then(async cached => {
-      if (cached) return cached;
-      const response = await fetch(request);
-      if (response.ok) {
-        try {
-          const cache = await caches.open(CACHE_NAME);
-          await cache.put(request, response.clone());
-        } catch {
-          // The network response remains usable even when caching is denied.
-        }
+    // Cache Storage is optional: a slow or denied write must not delay the
+    // network response that makes the public atlas visible on mobile.
+    const responseSource = caches.match(request).catch(() => undefined).then(cached => {
+      if (cached) return { response: cached, fromCache: true };
+      return fetch(request).then(response => ({ response, fromCache: false }));
+    });
+
+    event.respondWith(responseSource.then(({ response }) => response));
+    // Keep the worker alive briefly for an optional cache write, but do not
+    // make the page wait for Cache Storage. A stalled write is abandoned after
+    // one second; the already-fetched response is still returned immediately.
+    event.waitUntil(responseSource.then(async ({ response, fromCache }) => {
+      if (fromCache || !response.ok) return;
+      let timeoutId;
+      try {
+        await Promise.race([
+          caches.open(CACHE_NAME).then(cache => cache.put(request, response.clone())),
+          new Promise(resolve => {
+            timeoutId = setTimeout(resolve, CACHE_WRITE_TIMEOUT_MS);
+          })
+        ]);
+      } catch {
+        // The network response remains usable when caching is denied.
+      } finally {
+        if (timeoutId !== undefined) clearTimeout(timeoutId);
       }
-      return response;
-    }));
+    }).catch(() => {}));
     return;
   }
   if (request.mode !== "navigate") return;
