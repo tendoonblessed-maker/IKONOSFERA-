@@ -31,6 +31,7 @@ import GroupInboxRow from "@/components/GroupInboxRow";
 import {createGroup,listGroups,listGroupOverviews,type Group,type GroupOverview} from "@/lib/groups";
 import ChannelsPanel from "@/components/ChannelsPanel";
 import BotsPanel from "@/components/BotsPanel";
+import {botPanelKey} from "@/lib/bot-panel-key";
 import { REACTION_EMOJIS, type ReactionEmoji, createChannel, imageUrl, listChannels, listMySubscriptions, subscribeChannel, unsubscribeChannel, getChannelSubscriberCounts, type Channel } from "@/lib/social";
 
 type Tab = 'chats' | 'contacts' | 'channels' | 'profile' | 'settings';
@@ -1492,7 +1493,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
       {attachmentDragActive&&canPrepareAttachment&&<div className="ik-attachment-drop-overlay" aria-hidden="true">
         <span>Отпусти файл, чтобы добавить в сообщение</span>
       </div>}
-      {selectedBot&&loggedIn?<BotsPanel userId={userId} bot={selectedBot} onBack={()=>setSelectedBot(null)}/>:
+      {selectedBot&&loggedIn?<BotsPanel key={botPanelKey(userId,selectedBot)} userId={userId} bot={selectedBot} onBack={()=>setSelectedBot(null)}/>:
       selectedGroup&&session&&loggedIn?<GroupPanel key={selectedGroup.id} token={session.access_token} userId={userId} group={selectedGroup} onDraftChange={updateGroupDraft} onBack={()=>setSelectedGroup(null)} onShowProfile={id=>{setSelectedGroup(null);goToProfile(id);}}/>:
       profileTarget&&session&&loggedIn?<ProfilePanel key={profileTarget} token={session.access_token} userId={userId} targetId={profileTarget} onBack={()=>{setProfileTarget(null);if(tab==='profile')setTab('chats');}} onOwnProfileChange={()=>{void myProfile(session.access_token,userId).then(setProfile).catch(()=>{});}} onMessage={openDirectFromProfile} isBlocked={blockedUserIds.has(profileTarget)} onBlockUser={id=>void toggleProfileBlock(id)} onOpenChannel={channel=>{setProfileTarget(null);setSelected(null);setSelectedChannel(channel);setTab("channels");}}/>:
       selectedChannel&&session&&loggedIn?<ChannelsPanel key={selectedChannel.id} token={session.access_token} userId={userId} channel={selectedChannel} onBack={()=>setSelectedChannel(null)} onShowProfile={goToProfile} subscribed={subscriptions.includes(selectedChannel.id)||selectedChannel.owner_id===userId} onToggleSubscribe={()=>void toggleSubscription(selectedChannel.id)} onMessageAuthor={()=>void getChannelOwnerAndChat(selectedChannel.owner_id)} onChannelUpdated={updated=>{
