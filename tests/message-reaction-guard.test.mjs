@@ -53,6 +53,8 @@ test('reaction results are valid only for the same chat, account and context gen
  const action={chatId:'chat-a',userId:'user-a',generation:7};
  assert.equal(isCurrentChatActionScope(action,{...action}),true);
  assert.equal(isCurrentChatActionScope(action,{...action,chatId:'chat-b'}),false);
+ assert.equal(isCurrentChatActionScope(action,{...action,chatId:null}),false,
+  'no selected chat means the old action is no longer current');
  assert.equal(isCurrentChatActionScope(action,{...action,userId:'user-b'}),false);
  assert.equal(isCurrentChatActionScope(action,{...action,generation:8}),false,
   'closing and reopening the same chat must invalidate the old result');

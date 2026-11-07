@@ -12,7 +12,10 @@ export type ChatActionScope = Readonly<{
 }>;
 
 /** Reject a late action result after the account or conversation context changes. */
-export function isCurrentChatActionScope(action:ChatActionScope,current:ChatActionScope):boolean{
+export function isCurrentChatActionScope(
+ action:ChatActionScope,
+ current:Readonly<{chatId:string|null;userId:string;generation:number}>
+):boolean{
  return action.chatId===current.chatId
   &&action.userId===current.userId
   &&action.generation===current.generation;
