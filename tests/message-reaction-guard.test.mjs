@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
 import {readFileSync} from 'node:fs';
-import {createSingleFlightGuard} from '../lib/single-flight-guard.ts';
+import {createSingleFlightGuard,isCurrentChatActionScope} from '../lib/single-flight-guard.ts';
 
 const load=path=>readFileSync(new URL('../'+path,import.meta.url),'utf8');
 
@@ -47,4 +47,28 @@ test('message reactions acquire the synchronous guard before network work and re
   'the lock is acquired before the first asynchronous mutation');
  assert.match(handler,/finally\{release\(\);setSending\(false\);\}/);
  assert.match(app,/reactionActionGuardRef=useRef<ReturnType<typeof createSingleFlightGuard>\|null>\(null\)/);
+});
+
+test('reaction results are valid only for the same chat, account and context generation',()=>{
+ const action={chatId:'chat-a',userId:'user-a',generation:7};
+ assert.equal(isCurrentChatActionScope(action,{...action}),true);
+ assert.equal(isCurrentChatActionScope(action,{...action,chatId:'chat-b'}),false);
+ assert.equal(isCurrentChatActionScope(action,{...action,userId:'user-b'}),false);
+ assert.equal(isCurrentChatActionScope(action,{...action,generation:8}),false,
+  'closing and reopening the same chat must invalidate the old result');
+});
+
+test('AppShell publishes identity in a layout effect and ignores stale reaction completions',()=>{
+ const app=load('components/AppShell.tsx');
+ assert.match(app,/useLayoutEffect\(\(\)=>\{\s*\/\/ Publish chat\/account identity before paint[\s\S]*?selectedRef\.current=selected;\s*userIdRef\.current=userId;\s*chatContextGenerationRef\.current\+\+;/);
+ const start=app.indexOf('async function reactToMessage(');
+ const end=app.indexOf('function queueAttachment(',start);
+ const handler=app.slice(start,end);
+ assert.match(handler,/const actionScope=\{chatId,userId,generation:chatContextGenerationRef\.current\}/);
+ assert.match(handler,/isCurrentChatActionScope\(actionScope,\{\s*chatId:selectedRef\.current,userId:userIdRef\.current,generation:chatContextGenerationRef\.current\s*\}\)/);
+ assert.ok(handler.indexOf('if(!isCurrent())return;')<handler.indexOf('setMessageReactionPicker(null)'),
+  'a stale mutation response must not update the new chat UI');
+ assert.match(handler,/if\(isCurrent\(\)\)setMessageReactions/);
+ assert.match(handler,/catch\(e\)\{if\(isCurrent\(\)\)setError/);
+ assert.match(handler,/finally\{release\(\);setSending\(false\);\}/);
 });

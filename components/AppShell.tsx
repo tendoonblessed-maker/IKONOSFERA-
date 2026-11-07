@@ -12,7 +12,7 @@ import ChatMessageText from "@/components/ChatMessageText";
 import {subscribeDirectChatChanges} from "@/lib/direct-realtime";
 import {subscribeInboxChanges,type InboxChangeKind} from "@/lib/inbox-realtime";
 import {isLatestAccountSnapshot} from "@/lib/inbox-snapshot";
-import {createSingleFlightGuard} from "@/lib/single-flight-guard";
+import {createSingleFlightGuard,isCurrentChatActionScope} from "@/lib/single-flight-guard";
 import {shouldOpenDirectChatSearch} from "@/lib/chat-shortcuts";
 import {reconcileRecentChannelUpdates,CHANNEL_UPDATE_GRACE_MS,type RecentChannelUpdate} from "@/lib/channel-sync";
 import ChatAttachmentPreview from "@/components/ChatAttachmentPreview";
@@ -144,6 +144,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
   const loadingOlderRef=useRef(false);
   const prependScrollRef=useRef<{chatId:string;height:number;top:number}|null>(null);
   const selectedRef=useRef<string|null>(null);
+  const userIdRef=useRef(userId);
   const searchInputRef=useRef<HTMLInputElement|null>(null);
   const previewCacheRef=useRef<{ownerId:string;previews:Map<string,ChatPreview>}>({ownerId:'',previews:new Map()});
   const inboxRequestRef=useRef(0);
@@ -222,9 +223,14 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
     writeChatDrafts(userId,next);
   }
 
-  useEffect(()=>{
+  useLayoutEffect(()=>{
+    // Publish chat/account identity before paint so late network completions
+    // cannot write into the next conversation between commit and passive effects.
     selectedRef.current=selected;
+    userIdRef.current=userId;
     chatContextGenerationRef.current+=1;
+  },[selected,userId]);
+  useEffect(()=>{
     replyJumpRequestRef.current+=1;
     setLocatingReply(null);setPendingReplyJump(null);
     setReplyingTo(null);setShowJumpToLatest(false);
@@ -1142,18 +1148,23 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
     const release=reactionActionGuardRef.current?.acquire();
     if(!release)return;
     const chatId=selected,token=session.access_token;
+    const actionScope={chatId,userId,generation:chatContextGenerationRef.current};
+    const isCurrent=()=>isCurrentChatActionScope(actionScope,{
+      chatId:selectedRef.current,userId:userIdRef.current,generation:chatContextGenerationRef.current
+    });
     const previous=messageReactions.find(r=>r.message_id===messageId&&r.user_id===userId);
     setSending(true);setError("");
     try{
       await setMessageReaction(token,userId,messageId,previous?.emoji===emoji?null:emoji);
-      if(selectedRef.current===chatId)setMessageReactionPicker(null);
+      if(!isCurrent())return;
+      setMessageReactionPicker(null);
       try{
         const updated=await listMessageReactions(token,[messageId]);
-        if(selectedRef.current===chatId)setMessageReactions(current=>[
+        if(isCurrent())setMessageReactions(current=>[
           ...current.filter(reaction=>reaction.message_id!==messageId),...updated
         ]);
       }catch{/* Reaction was saved; the chat poll will reload its state. */}
-    }catch(e){setError(userFacingError(e));}finally{release();setSending(false);}
+    }catch(e){if(isCurrent())setError(userFacingError(e));}finally{release();setSending(false);}
   }
   function queueAttachment(file:File|undefined){
     if(!file||!selected||!userId||sending||activePartnerBlocked)return;
