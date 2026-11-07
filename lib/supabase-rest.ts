@@ -1,5 +1,6 @@
 /* Dependency-free Supabase Auth + PostgREST client.
    Never put a service-role or database password in NEXT_PUBLIC_* variables. */
+import {createRequestAbortSignal} from './request-signal.js';
 export const apiUrl = (process.env.NEXT_PUBLIC_SUPABASE_URL ?? '').replace(/\/$/, '');
 const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? '';
 export const backendReady = Boolean(apiUrl && anonKey);
@@ -272,39 +273,143 @@ export async function sendDirectMedia(token:string,chatId:string,userId:string,f
 }
 // Signed URLs remain private, short-lived and in memory only. Sharing one
 // in-flight signing request prevents dozens of requests for the same image.
-const signedMediaCache=new Map<string,{promise:Promise<string>;validUntil:number}>();
+type SignedMediaCacheEntry={
+ promise:Promise<string>;
+ validUntil:number;
+ controller:AbortController;
+ consumers:number;
+ settled:boolean;
+};
+const signedMediaCache=new Map<string,SignedMediaCacheEntry>();
 const SIGNED_URL_CACHE_MS=15*60*1000;
 const SIGNED_URL_CACHE_LIMIT=120;
+/** Keep active requests pinned; trim only settled entries with no mounted consumers. */
+function trimSignedMediaCache():void{
+ const now=Date.now();
+ for(const [key,entry] of signedMediaCache){
+  if(entry.settled&&entry.consumers===0&&
+     (entry.validUntil<=now||signedMediaCache.size>SIGNED_URL_CACHE_LIMIT)){
+   signedMediaCache.delete(key);
+  }
+  if(signedMediaCache.size<=SIGNED_URL_CACHE_LIMIT&&entry.validUntil>now)break;
+ }
+}
+function createMediaAbortError():Error{
+ const error=new Error('Загрузка вложения отменена');
+ error.name='AbortError';
+ return error;
+}
 /** Force a fresh private URL when media loading itself fails. */
 export function invalidateDirectMediaUrl(token:string,path:string):void{
  signedMediaCache.delete(token+':'+path);
 }
-export async function getDirectMediaUrl(token:string,path:string):Promise<string>{
+/** Resolve only the signed URL for the exact private object requested from this Supabase project. */
+export function resolveDirectMediaSignedUrl(signedURL:string,path:string,baseUrl=apiUrl):string{
+ if(!/^[a-f0-9-]{36}\/[a-f0-9-]{36}\/[a-f0-9-]{36}\.[a-z0-9]+$/i.test(path))
+  throw Error('Недопустимый путь вложения');
+ const candidate=typeof signedURL==='string'?signedURL.trim():'';
+ if(!candidate||candidate.length>4096)throw Error('Недопустимый URL вложения');
+ let base:URL,parsed:URL;
+ try{
+  base=new URL(baseUrl);
+  if((base.protocol!=='https:'&&base.protocol!=='http:')||base.username||base.password)throw Error();
+  let input=candidate;
+  if(input.startsWith('/object/sign/'))input='/storage/v1'+input;
+  else if(input.startsWith('object/sign/'))input='/storage/v1/'+input;
+  else if(input.startsWith('storage/v1/object/sign/'))input='/'+input;
+  parsed=new URL(input,base.origin);
+ }catch{
+  throw Error('Недопустимый URL вложения');
+ }
+ if(parsed.origin!==base.origin||parsed.protocol!==base.protocol||parsed.username||parsed.password||parsed.hash)
+  throw Error('Недопустимый URL вложения');
+ if(parsed.pathname.startsWith('/object/sign/'))parsed.pathname='/storage/v1'+parsed.pathname;
+ const expectedPath='/storage/v1/object/sign/ikonosfera-direct-media/'+path;
+ if(parsed.pathname!==expectedPath||!parsed.searchParams.get('token'))
+  throw Error('Недопустимый URL вложения');
+ return parsed.href;
+}
+/** Each mounted preview owns one cache consumer; abort only after the last one leaves. */
+function consumeSignedMediaEntry(
+ entry:SignedMediaCacheEntry,key:string,signal?:AbortSignal
+):Promise<string>{
+ if(signal?.aborted){
+  if(entry.consumers===0&&!entry.settled){
+   if(signedMediaCache.get(key)===entry)signedMediaCache.delete(key);
+   entry.controller.abort();
+  }
+  return Promise.reject(createMediaAbortError());
+ }
+ entry.consumers+=1;
+ return new Promise((resolve,reject)=>{
+  let released=false;
+  const release=(cancelled=false)=>{
+   if(released)return;
+   released=true;
+   signal?.removeEventListener('abort',onAbort);
+   entry.consumers=Math.max(0,entry.consumers-1);
+   if(cancelled&&entry.consumers===0&&!entry.settled){
+    if(signedMediaCache.get(key)===entry)signedMediaCache.delete(key);
+    entry.controller.abort();
+   }
+   trimSignedMediaCache();
+  };
+  const onAbort=()=>{
+   release(true);
+   reject(createMediaAbortError());
+  };
+  if(signal){
+   signal.addEventListener('abort',onAbort,{once:true});
+   if(signal.aborted){onAbort();return;}
+  }
+  entry.promise.then(
+   value=>{release();resolve(value);},
+   error=>{release();reject(error);}
+  );
+ });
+}
+export async function getDirectMediaUrl(token:string,path:string,signal?:AbortSignal):Promise<string>{
+ if(signal?.aborted)throw createMediaAbortError();
  if(!/^[a-f0-9-]{36}\/[a-f0-9-]{36}\/[a-f0-9-]{36}\.[a-z0-9]+$/i.test(path)){
    throw Error('Недопустимый путь вложения');
  }
  const key=token+':'+path;
  const cached=signedMediaCache.get(key);
- if(cached&&cached.validUntil>Date.now())return cached.promise;
+ if(cached&&cached.validUntil>Date.now())return consumeSignedMediaEntry(cached,key,signal);
  if(cached)signedMediaCache.delete(key);
+ const entry:SignedMediaCacheEntry={
+  promise:Promise.resolve(''),
+  validUntil:Date.now()+SIGNED_URL_CACHE_MS,
+  controller:new AbortController(),
+  consumers:0,
+  settled:false
+ };
  const request=(async()=>{
+  const requestAbort=createRequestAbortSignal(entry.controller.signal,18000);
+  try{
    const res=await fetch(apiUrl+"/storage/v1/object/sign/ikonosfera-direct-media/"+path,{
     method:"POST",headers:{apikey:anonKey,Authorization:"Bearer "+token,"Content-Type":"application/json"},
     body:JSON.stringify({expiresIn:3600}),cache:"no-store",
-    signal:AbortSignal.timeout(18000)
+    signal:requestAbort.signal
    });
    const value=await res.json().catch(()=>null);
    if(!res.ok||!value?.signedURL)throw Error("Не удалось открыть вложение");
    const signed=value.signedURL as string;
-   return signed.startsWith("http")?signed:apiUrl+"/storage/v1"+(signed.startsWith("/")?signed:"/"+signed);
+   return resolveDirectMediaSignedUrl(signed,path);
+  }finally{
+   requestAbort.dispose();
+   entry.settled=true;
+   trimSignedMediaCache();
+  }
  })();
- signedMediaCache.set(key,{promise:request,validUntil:Date.now()+SIGNED_URL_CACHE_MS});
- if(signedMediaCache.size>SIGNED_URL_CACHE_LIMIT){
-   const first=signedMediaCache.keys().next().value;
-   if(first)signedMediaCache.delete(first);
- }
- request.catch(()=>signedMediaCache.delete(key));
- return request;
+ entry.promise=request;
+ signedMediaCache.set(key,entry);
+ trimSignedMediaCache();
+ // A late rejection must never evict a newer retry for the same object.
+ void request.catch(()=>{
+  if(signedMediaCache.get(key)===entry)signedMediaCache.delete(key);
+ });
+ return consumeSignedMediaEntry(entry,key,signal);
 }
 
 export async function markChatRead(token:string,chatId:string):Promise<number>{

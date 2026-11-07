@@ -427,7 +427,12 @@ test('private signed media URLs are scoped to token, deduplicated and bounded',(
  assert.match(source,/const key=token\+':\'\+path/);
  assert.match(source,/SIGNED_URL_CACHE_LIMIT=120/);
  assert.match(source,/SIGNED_URL_CACHE_MS=15\*60\*1000/);
- assert.match(source,/signal:AbortSignal\.timeout\(18000\)/);
+ const signedRequest=source.slice(source.indexOf('export async function getDirectMediaUrl'),source.indexOf('export async function markChatRead'));
+ assert.match(source,/import \{createRequestAbortSignal\} from '.\/request-signal\.js'/);
+ assert.match(signedRequest,/createRequestAbortSignal\(entry\.controller\.signal,18000\)/);
+ assert.match(source,/consumers:number/);
+ assert.match(signedRequest,/signal\?:AbortSignal/);
+ assert.doesNotMatch(signedRequest,/AbortSignal\.timeout/);
  assert.match(source,/signedMediaCache\.delete\(key\)/);
 });
 test('security headers prevent sniffing and framing but preserve future calls',()=>{
@@ -1047,7 +1052,9 @@ test('private photo attachments open a modal inside the chat without leaking pre
  assert.match(media,/signed\?\.scope===scope\?signed\.url:null/);
  assert.match(media,/const error=errorScope===scope/);
  assert.match(media,/if\(active\)setSigned\(\{scope,url:value\}\)/);
- assert.match(media,/return\(\)=>\{active=false;\}/);
+ assert.match(media,/const controller=new AbortController\(\)/);
+ assert.match(media,/getDirectMediaUrl\(token,path,controller\.signal\)/);
+ assert.match(media,/return\(\)=>\{\s*active=false;\s*controller\.abort\(\);\s*\}/);
  assert.match(media,/setPreviewOpen\(false\)/);
  assert.match(media,/className="chat-media-open"/);
  assert.match(media,/onClick=\{\(\)=>setPreviewOpen\(true\)\}/);

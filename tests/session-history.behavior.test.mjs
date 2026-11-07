@@ -4,6 +4,15 @@ import {readFileSync} from 'node:fs';
 import vm from 'node:vm';
 import ts from 'typescript';
 
+const requestSignalSource=readFileSync(new URL('../lib/request-signal.js',import.meta.url),'utf8');
+const requestSignalCompiled=ts.transpileModule(requestSignalSource,{compilerOptions:{
+  module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022
+}}).outputText;
+const requestSignalExports={};
+vm.runInNewContext(requestSignalCompiled,{
+  exports:requestSignalExports,AbortController,setTimeout,clearTimeout
+},{filename:'request-signal.cjs',timeout:1000});
+
 function compile(sourceFile,bindings={}){
   const source=readFileSync(new URL('../'+sourceFile,import.meta.url),'utf8');
   const compiled=ts.transpileModule(source,{compilerOptions:{
@@ -13,7 +22,11 @@ function compile(sourceFile,bindings={}){
   const context={exports:result,process:{env:{
     NEXT_PUBLIC_SUPABASE_URL:'https://example.supabase.co',
     NEXT_PUBLIC_SUPABASE_ANON_KEY:'public-key'
-  }},Date,Promise,Math,JSON,URLSearchParams,AbortSignal,Error,Map,Set,...bindings};
+  }},Date,Promise,Math,JSON,URLSearchParams,AbortSignal,AbortController,Error,Map,Set,
+    require:id=>{
+      if(id==='./request-signal.js')return requestSignalExports;
+      throw Error('Unexpected module '+id);
+    },...bindings};
   vm.runInNewContext(compiled,context,{timeout:1000});
   return result;
 }
