@@ -25,6 +25,6 @@ test('private-chat search aborts the previous request and debounce timer on clea
 test('aborted private-chat searches cannot publish results, errors or loading completion', () => {
   const shell = read('components/AppShell.tsx');
   assert.match(shell, /if\(!belongs\(\)\)return;[\s\S]*setMessageSearchResults/);
-  assert.match(shell, /catch\(\)=>\{\s*if\(belongs\(\)\)setMessageSearchError\(true\)/);
-  assert.match(shell, /finally\(\)=>\{\s*if\(belongs\(\)\)setMessageSearchLoading\(false\)/);
+  assert.match(shell, /catch\(\(\)=>\{\s*if\(belongs\(\)\)setMessageSearchError\(true\)/);
+  assert.match(shell, /finally\(\(\)=>\{\s*if\(belongs\(\)\)setMessageSearchLoading\(false\)/);
 });
