@@ -1,5 +1,6 @@
 /* Dependency-free Supabase Auth + PostgREST client.
    Never put a service-role or database password in NEXT_PUBLIC_* variables. */
+import {createRequestAbortSignal} from './request-signal.js';
 export const apiUrl = (process.env.NEXT_PUBLIC_SUPABASE_URL ?? '').replace(/\/$/, '');
 const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? '';
 export const backendReady = Boolean(apiUrl && anonKey);
@@ -314,15 +315,20 @@ export async function getDirectMediaUrl(token:string,path:string):Promise<string
  if(cached&&cached.validUntil>Date.now())return cached.promise;
  if(cached)signedMediaCache.delete(key);
  const request=(async()=>{
-   const res=await fetch(apiUrl+"/storage/v1/object/sign/ikonosfera-direct-media/"+path,{
-    method:"POST",headers:{apikey:anonKey,Authorization:"Bearer "+token,"Content-Type":"application/json"},
-    body:JSON.stringify({expiresIn:3600}),cache:"no-store",
-    signal:AbortSignal.timeout(18000)
-   });
-   const value=await res.json().catch(()=>null);
-   if(!res.ok||!value?.signedURL)throw Error("Не удалось открыть вложение");
-   const signed=value.signedURL as string;
-   return resolveDirectMediaSignedUrl(signed,path);
+   const requestAbort=createRequestAbortSignal(undefined,18000);
+   try{
+    const res=await fetch(apiUrl+"/storage/v1/object/sign/ikonosfera-direct-media/"+path,{
+     method:"POST",headers:{apikey:anonKey,Authorization:"Bearer "+token,"Content-Type":"application/json"},
+     body:JSON.stringify({expiresIn:3600}),cache:"no-store",
+     signal:requestAbort.signal
+    });
+    const value=await res.json().catch(()=>null);
+    if(!res.ok||!value?.signedURL)throw Error("Не удалось открыть вложение");
+    const signed=value.signedURL as string;
+    return resolveDirectMediaSignedUrl(signed,path);
+   }finally{
+    requestAbort.dispose();
+   }
  })();
  signedMediaCache.set(key,{promise:request,validUntil:Date.now()+SIGNED_URL_CACHE_MS});
  if(signedMediaCache.size>SIGNED_URL_CACHE_LIMIT){
