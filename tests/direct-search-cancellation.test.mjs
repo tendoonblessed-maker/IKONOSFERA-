@@ -6,7 +6,7 @@ const read = path => readFileSync(new URL(`../${path}`, import.meta.url), 'utf8'
 
 test('direct-message search forwards caller cancellation through a portable bounded request signal', () => {
   const api = read('lib/supabase-rest.ts');
-  assert.ok(api.includes("import {createRequestAbortSignal} from './request-signal.js';"));
+  assert.ok(api.includes('export function createRequestAbortSignal('));
   assert.ok(api.includes('createRequestAbortSignal(options.signal,18000)'));
   assert.ok(api.includes('signal: requestAbort.signal'));
   assert.ok(api.includes('requestAbort.dispose()'));
