@@ -62,7 +62,13 @@ test('reaction results are valid only for the same chat, account and context gen
 
 test('AppShell publishes identity in a layout effect and ignores stale reaction completions',()=>{
  const app=load('components/AppShell.tsx');
- assert.match(app,/useLayoutEffect\(\(\)=>\{\s*\/\/ Publish chat\/account identity before paint[\s\S]*?selectedRef\.current=selected;\s*userIdRef\.current=userId;\s*chatContextGenerationRef\.current\+\+;/);
+ const layoutStart=app.indexOf('useLayoutEffect(()=>{');
+ const layoutEnd=app.indexOf('},[selected,userId]);',layoutStart);
+ assert.ok(layoutStart>=0&&layoutEnd>layoutStart,'chat identity layout effect exists');
+ const identityEffect=app.slice(layoutStart,layoutEnd);
+ assert.match(identityEffect,/selectedRef\.current=selected;/);
+ assert.match(identityEffect,/userIdRef\.current=userId;/);
+ assert.match(identityEffect,/chatContextGenerationRef\.current\+\+;/);
  const start=app.indexOf('async function reactToMessage(');
  const end=app.indexOf('function queueAttachment(',start);
  const handler=app.slice(start,end);
