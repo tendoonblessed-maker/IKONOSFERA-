@@ -1,6 +1,7 @@
 'use client';
-import { useCallback, useEffect, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import { listProfiles, type Profile } from "@/lib/supabase-rest";
+import { createRequestEpoch } from "@/lib/request-epoch";
 import StatusEmoji from "@/components/StatusEmoji";
 import {
  addPostComment, deletePost, editChannelPost, manageChannelComment, imageUrl, listChannelPosts, listPostComments, listPostReactions, setPostReaction, REACTION_EMOJIS, publishPost,
@@ -39,6 +40,10 @@ export default function ChannelsPanel({token,userId,channel,onBack,onShowProfile
  const [editingCommentId,setEditingCommentId]=useState<string|null>(null);
  const [editingBody,setEditingBody]=useState("");
  const [busy,setBusy]=useState(false);const [error,setError]=useState("");const [notice,setNotice]=useState("");
+ const commentsRequestGuardRef=useRef<ReturnType<typeof createRequestEpoch> | null>(null);
+ if(!commentsRequestGuardRef.current)commentsRequestGuardRef.current=createRequestEpoch();
+ const commentsRequestGuard=commentsRequestGuardRef.current;
+ useEffect(()=>()=>commentsRequestGuard.invalidate(),[commentsRequestGuard]);
  const reload=useCallback(async()=>{const list=await listChannelPosts(token,channel.id);setPosts(list);setReactions(await listPostReactions(token,list.map(p=>p.id)));},[token,channel.id]);
  const loadDiscussion=useCallback(async()=>{
   const [messages,replies]=await Promise.all([listDiscussionMessages(token,channel.id),listDiscussionComments(token,channel.id)]);
@@ -96,14 +101,20 @@ export default function ChannelsPanel({token,userId,channel,onBack,onShowProfile
  }
  useEffect(()=>{void reload().catch(e=>setError(readable(e)));setOpenComments(null);setComments([]);setBody("");setFile(null);},[reload]);
  async function showComments(postId:string){
-  if(openComments===postId){setOpenComments(null);return;}
+  const requestId=commentsRequestGuard.begin();
+  if(openComments===postId){setOpenComments(null);setComments([]);return;}
   setError("");
   try{
-   const list=await listPostComments(token,postId);setComments(list);setOpenComments(postId);
+   const list=await listPostComments(token,postId);
+   if(!commentsRequestGuard.isCurrent(requestId))return;
+   setComments(list);setOpenComments(postId);
    const ids=Array.from(new Set(list.map(c=>c.author_id)));
    const people=await listProfiles(token,ids);
+   if(!commentsRequestGuard.isCurrent(requestId))return;
    setAuthors(Object.fromEntries(people.map(p=>[p.id,p])));
-  }catch(e){setError(readable(e));}
+  }catch(e){
+   if(commentsRequestGuard.isCurrent(requestId))setError(readable(e));
+  }
  }
  async function post(e:FormEvent){
   e.preventDefault();if(!mine||busy||(!body.trim()&&!file))return;
