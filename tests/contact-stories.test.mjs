@@ -8,7 +8,7 @@ const VALID='abcdefab-cdef-4abc-8def-abcdefabcdef';
 const INVALID=['a'.repeat(36),'11111111-2222-4333-8444-55555555555g','111111112222-4333-8444-555555555555'];
 const source=readFileSync(new URL('../lib/social.ts',import.meta.url),'utf8');
 
-function setup(){
+function setup(handler=()=>[]){
  const calls=[];
  const exports={};
  const compiled=ts.transpileModule(source,{compilerOptions:{
@@ -23,21 +23,24 @@ function setup(){
   },
   fetch:async(url,options)=>{
    calls.push({url,options});
-   return {ok:true,json:async()=>[]};
+   return {ok:true,json:async()=>handler(url,options,calls.length)};
   }
  },{filename:'social.cjs',timeout:2500});
  return {api:exports,calls};
 }
 
+function parsed(call){return new URL(call.url);}
+
 test('malformed contact UUIDs do not break valid contacts story query',async()=>{
  const {api,calls}=setup();
  await api.getContactsStories('user-jwt',[...INVALID,VALID.toUpperCase(),VALID]);
  assert.equal(calls.length,1);
- const url=new URL(calls[0].url);
+ const url=parsed(calls[0]);
  assert.equal(url.pathname,'/rest/v1/stories');
  assert.equal(url.searchParams.get('user_id'),'in.('+VALID+')');
- assert.equal(url.searchParams.get('order'),'created_at.desc');
+ assert.equal(url.searchParams.get('order'),'created_at.asc,id.asc');
  assert.equal(url.searchParams.get('limit'),'200');
+ assert.equal(url.searchParams.get('offset'),'0');
  assert.equal(calls[0].options.headers.Authorization,'Bearer user-jwt');
  assert.equal(calls[0].options.cache,'no-store');
 });
@@ -49,15 +52,32 @@ test('invalid-only and empty contact lists never issue a request',async()=>{
  assert.equal(calls.length,0);
 });
 
-test('contact story filter is deduplicated and bounded to 100 valid UUIDs',async()=>{
+test('contact IDs are deduplicated and split into bounded batches of 100',async()=>{
  const {api,calls}=setup();
  const ids=Array.from({length:120},(_,i)=>
   'abcdefab-cdef-4abc-8def-'+i.toString(16).padStart(12,'0'));
  await api.getContactsStories('jwt',[ids[0].toUpperCase(),...ids,ids[0]]);
- assert.equal(calls.length,1);
- const filter=new URL(calls[0].url).searchParams.get('user_id');
- const queried=filter.slice(4,-1).split(',');
- assert.equal(queried.length,100);
- assert.equal(new Set(queried).size,100);
- assert.ok(queried.every(id=>/^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/.test(id)));
+ assert.equal(calls.length,2);
+ const queried=calls.flatMap(call=>{
+  const filter=parsed(call).searchParams.get('user_id');
+  assert.ok(filter?.startsWith('in.(')&&filter.endsWith(')'));
+  return filter.slice(4,-1).split(',');
+ });
+ assert.deepEqual(queried,[...ids].map(id=>id.toLowerCase()));
+ assert.deepEqual(calls.map(call=>parsed(call).searchParams.get('limit')),['200','200']);
+ assert.deepEqual(calls.map(call=>parsed(call).searchParams.get('offset')),['0','0']);
+ assert.ok(calls.every(call=>call.options.headers.Authorization==='Bearer jwt'));
+});
+
+test('more than 200 active stories are paginated without truncation',async()=>{
+ const rows=Array.from({length:202},(_,i)=>({id:String(i),user_id:VALID}));
+ const {api,calls}=setup((url)=>{
+  const offset=Number(parsed({url}).searchParams.get('offset'));
+  return rows.slice(offset,offset+200);
+ });
+ const result=await api.getContactsStories('jwt',[VALID]);
+ assert.equal(result.length,202);
+ assert.deepEqual(calls.map(call=>parsed(call).searchParams.get('offset')),['0','200']);
+ assert.deepEqual(calls.map(call=>parsed(call).searchParams.get('order')),['created_at.asc,id.asc','created_at.asc,id.asc']);
+ assert.equal(parsed(calls[0]).searchParams.get('expires_at'),parsed(calls[1]).searchParams.get('expires_at'));
 });
