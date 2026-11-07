@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
-import {createRequestAbortSignal} from '../lib/request-signal.js';
+import {createRequestAbortSignal} from '../lib/supabase-rest.ts';
 
 test('caller abort is forwarded to the request signal',()=>{
   const caller=new AbortController();
