@@ -62,13 +62,37 @@ export async function getStories(token:string,userId:string):Promise<Story[]>{
   return api<Story[]>("/rest/v1/stories?select=*&user_id=eq."+encodeURIComponent(userId)+"&expires_at=gt."+encodeURIComponent(new Date().toISOString())+"&order=created_at.desc&limit=40",token);
 }
 const CONTACT_STORY_UUID=/^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i;
+const CONTACT_STORY_BATCH_SIZE=100;
+const CONTACT_STORY_PAGE_SIZE=200;
 export async function getContactsStories(token:string,userIds:string[]):Promise<Story[]>{
  if(!userIds.length)return [];
  // A single malformed ID makes PostgREST reject the whole UUID IN filter.
  // Normalize case before deduplication so one contact is queried only once.
- const ids=Array.from(new Set(userIds.filter(id=>CONTACT_STORY_UUID.test(id)).map(id=>id.toLowerCase()))).slice(0,100);
+ const ids=Array.from(new Set(userIds
+  .filter(id=>typeof id==="string"&&CONTACT_STORY_UUID.test(id))
+  .map(id=>id.toLowerCase())));
  if(!ids.length)return [];
- return api<Story[]>("/rest/v1/stories?select=*&user_id=in.("+ids.map(encodeURIComponent).join(",")+")&expires_at=gt."+encodeURIComponent(new Date().toISOString())+"&order=created_at.desc&limit=200",token);
+ // Keep the expiry boundary stable across every page and batch.
+ const expiresAt=encodeURIComponent(new Date().toISOString());
+ const stories:Story[]=[];
+ for(let start=0;start<ids.length;start+=CONTACT_STORY_BATCH_SIZE){
+  const batch=ids.slice(start,start+CONTACT_STORY_BATCH_SIZE);
+  let offset=0;
+  while(true){
+   // Stable ascending order means newly-created stories append after the
+   // current snapshot instead of shifting rows between offset pages.
+   const page=await api<Story[]>(
+    "/rest/v1/stories?select=*&user_id=in.("+batch.map(encodeURIComponent).join(",")+")"
+    +"&expires_at=gt."+expiresAt
+    +"&order=created_at.asc,id.asc&limit="+CONTACT_STORY_PAGE_SIZE+"&offset="+offset,
+    token
+   );
+   stories.push(...page);
+   if(page.length<CONTACT_STORY_PAGE_SIZE)break;
+   offset+=page.length;
+  }
+ }
+ return stories;
 }
 export async function addStory(token:string,userId:string,image_path:string,caption:string):Promise<Story>{
   const rows=await api<Story[]>("/rest/v1/stories?select=*",token,"POST",{user_id:userId,image_path,caption:caption.slice(0,240)});
