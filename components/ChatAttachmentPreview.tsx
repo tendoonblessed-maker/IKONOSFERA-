@@ -23,7 +23,7 @@ export default function ChatAttachmentPreview({file,caption,sending,online,onCap
  closeRef.current=onCancel;
  const busyRef=useRef(sending);
  busyRef.current=sending;
- const canPreview=/^(image\\/|video\\/|audio\\/)/.test(file.type);
+ const canPreview=/^(image\/|video\/|audio\/)/.test(file.type);
  const src=preview?.file===file?preview.url:null;
 
  useEffect(()=>{
