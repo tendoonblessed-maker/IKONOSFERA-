@@ -77,19 +77,29 @@ export async function getContactsStories(token:string,userIds:string[]):Promise<
  const stories:Story[]=[];
  for(let start=0;start<ids.length;start+=CONTACT_STORY_BATCH_SIZE){
   const batch=ids.slice(start,start+CONTACT_STORY_BATCH_SIZE);
-  let offset=0;
+  let cursor:Pick<Story,'created_at'|'id'>|null=null;
   while(true){
-   // Stable ascending order means newly-created stories append after the
-   // current snapshot instead of shifting rows between offset pages.
+   // Keyset pagination is stable when earlier rows are deleted between pages.
+   // The UUID tie-breaker preserves PostgreSQL order for equal timestamps.
+   const after=cursor
+    ?"&or="+encodeURIComponent(
+      "(created_at.gt."+cursor.created_at+",and(created_at.eq."+cursor.created_at+",id.gt."+cursor.id+"))"
+     )
+    :"";
    const page=await api<Story[]>(
     "/rest/v1/stories?select=*&user_id=in.("+batch.map(encodeURIComponent).join(",")+")"
     +"&expires_at=gt."+expiresAt
-    +"&order=created_at.asc,id.asc&limit="+CONTACT_STORY_PAGE_SIZE+"&offset="+offset,
+    +after
+    +"&order=created_at.asc,id.asc&limit="+CONTACT_STORY_PAGE_SIZE,
     token
    );
    stories.push(...page);
    if(page.length<CONTACT_STORY_PAGE_SIZE)break;
-   offset+=page.length;
+   const last=page[page.length-1];
+   if(!last?.id||!last?.created_at)throw Error("Не удалось продолжить загрузку историй: сервер вернул некорректный курсор.");
+   if(cursor&&!(last.created_at>cursor.created_at||(last.created_at===cursor.created_at&&last.id>cursor.id)))
+    throw Error("Не удалось продолжить загрузку историй: курсор не продвинулся.");
+   cursor={created_at:last.created_at,id:last.id};
   }
  }
  return stories;
