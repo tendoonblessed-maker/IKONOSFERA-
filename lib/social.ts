@@ -61,11 +61,48 @@ export async function deleteProfilePhoto(token:string,id:string):Promise<void>{
 export async function getStories(token:string,userId:string):Promise<Story[]>{
   return api<Story[]>("/rest/v1/stories?select=*&user_id=eq."+encodeURIComponent(userId)+"&expires_at=gt."+encodeURIComponent(new Date().toISOString())+"&order=created_at.desc&limit=40",token);
 }
+const CONTACT_STORY_UUID=/^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i;
+const CONTACT_STORY_BATCH_SIZE=100;
+const CONTACT_STORY_PAGE_SIZE=200;
 export async function getContactsStories(token:string,userIds:string[]):Promise<Story[]>{
  if(!userIds.length)return [];
- const ids=Array.from(new Set(userIds)).filter(id=>/^[0-9a-f-]{36}$/i.test(id)).slice(0,100);
+ // A single malformed ID makes PostgREST reject the whole UUID IN filter.
+ // Normalize case before deduplication so one contact is queried only once.
+ const ids=Array.from(new Set(userIds
+  .filter(id=>typeof id==="string"&&CONTACT_STORY_UUID.test(id))
+  .map(id=>id.toLowerCase())));
  if(!ids.length)return [];
- return api<Story[]>("/rest/v1/stories?select=*&user_id=in.("+ids.map(encodeURIComponent).join(",")+")&expires_at=gt."+encodeURIComponent(new Date().toISOString())+"&order=created_at.desc&limit=200",token);
+ // Keep the expiry boundary stable across every page and batch.
+ const expiresAt=encodeURIComponent(new Date().toISOString());
+ const stories:Story[]=[];
+ for(let start=0;start<ids.length;start+=CONTACT_STORY_BATCH_SIZE){
+  const batch=ids.slice(start,start+CONTACT_STORY_BATCH_SIZE);
+  let cursor:Pick<Story,'created_at'|'id'>|null=null;
+  while(true){
+   // Keyset pagination is stable when earlier rows are deleted between pages.
+   // The UUID tie-breaker preserves PostgreSQL order for equal timestamps.
+   const after:string=cursor
+    ?"&or="+encodeURIComponent(
+      "(created_at.gt."+cursor.created_at+",and(created_at.eq."+cursor.created_at+",id.gt."+cursor.id+"))"
+     )
+    :"";
+   const page:Story[]=await api<Story[]>(
+    "/rest/v1/stories?select=*&user_id=in.("+batch.map(encodeURIComponent).join(",")+")"
+    +"&expires_at=gt."+expiresAt
+    +after
+    +"&order=created_at.asc,id.asc&limit="+CONTACT_STORY_PAGE_SIZE,
+    token
+   );
+   stories.push(...page);
+   if(page.length<CONTACT_STORY_PAGE_SIZE)break;
+   const last:Story|undefined=page[page.length-1];
+   if(!last?.id||!last?.created_at)throw Error("Не удалось продолжить загрузку историй: сервер вернул некорректный курсор.");
+   if(cursor&&!(last.created_at>cursor.created_at||(last.created_at===cursor.created_at&&last.id>cursor.id)))
+    throw Error("Не удалось продолжить загрузку историй: курсор не продвинулся.");
+   cursor={created_at:last.created_at,id:last.id};
+  }
+ }
+ return stories;
 }
 export async function addStory(token:string,userId:string,image_path:string,caption:string):Promise<Story>{
   const rows=await api<Story[]>("/rest/v1/stories?select=*",token,"POST",{user_id:userId,image_path,caption:caption.slice(0,240)});
