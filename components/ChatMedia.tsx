@@ -18,7 +18,8 @@ export default function ChatMedia({token,path,type}:Props){
  const [errorScope,setErrorScope]=useState<string|null>(null);
  const [retry,setRetry]=useState(0);
  const [previewOpen,setPreviewOpen]=useState(false);
- const mediaElementRef=useRef<HTMLMediaElement|null>(null);\n const mediaLifecycleCleanupRef=useRef<(()=>void)|null>(null);
+ const mediaElementRef=useRef<HTMLMediaElement|null>(null);
+ const mediaLifecycleCleanupRef=useRef<(()=>void)|null>(null);
  const bindMediaElement=useCallback((element:HTMLMediaElement|null)=>{
   if(element){
    mediaElementRef.current=element;
