@@ -6,15 +6,18 @@ const read = path => readFileSync(new URL(`../${path}`, import.meta.url), 'utf8'
 
 test('direct-message search forwards caller cancellation through a portable bounded request signal', () => {
   const api = read('lib/supabase-rest.ts');
+  const start = api.indexOf('async function http<T>');
+  const end = api.indexOf('\\nexport function loadSession', start);
+  const http = api.slice(start, end);
   assert.ok(api.includes('export function createRequestAbortSignal('));
-  assert.ok(api.includes('createRequestAbortSignal(options.signal,18000)'));
-  assert.ok(api.includes('signal: requestAbort.signal'));
-  assert.ok(api.includes('requestAbort.dispose()'));
-  assert.equal(api.includes('AbortSignal.any('), false);
-  assert.equal(api.includes('AbortSignal.timeout('), false);
+  assert.ok(http.includes('createRequestAbortSignal(options.signal,18000)'));
+  assert.ok(http.includes('signal: requestAbort.signal'));
+  assert.ok(http.includes('requestAbort.dispose()'));
+  assert.equal(http.includes('AbortSignal.any('), false);
+  assert.equal(http.includes('AbortSignal.timeout('), false);
   assert.ok(api.includes('offset=0,signal?:AbortSignal'));
   assert.ok(api.includes('p_offset:Math.max(0,Math.min(600,Math.floor(offset)))'));
-  assert.match(api, /signal\s*\}\);/);
+  assert.match(api, /signal\\s*\\}\\);/);
 });
 test('private-chat search aborts the previous request and debounce timer on cleanup', () => {
   const shell = read('components/AppShell.tsx');
