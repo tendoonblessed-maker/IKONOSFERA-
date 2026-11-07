@@ -23,15 +23,17 @@ function ensureReady() { if (!backendReady) throw Error('Сервер пока �
 function headers(token?: string, extras?: Record<string,string>) {
   return { apikey: anonKey, Authorization: `Bearer ${token || anonKey}`, 'Content-Type': 'application/json', ...extras };
 }
-async function http<T>(path: string, options: { method?: string; token?: string; body?: unknown; extraHeaders?: Record<string,string> } = {}): Promise<T> {
+async function http<T>(path: string, options: { method?: string; token?: string; body?: unknown; extraHeaders?: Record<string,string>; signal?: AbortSignal } = {}): Promise<T> {
   ensureReady();
+  const timeoutSignal=AbortSignal.timeout(18000);
+  const signal=options.signal?AbortSignal.any([options.signal,timeoutSignal]):timeoutSignal;
   const response = await fetch(`${apiUrl}${path}`, {
     method: options.method ?? 'GET',
     headers: headers(options.token, options.extraHeaders),
     body: options.body === undefined ? undefined : JSON.stringify(options.body),
     cache: 'no-store',
-    // Fail visibly instead of showing a perpetual spinner during network stalls.
-    signal: AbortSignal.timeout(18000),
+    // Keep the bounded timeout while also allowing screens to cancel obsolete requests.
+    signal,
   });
   const raw = await response.text();
   let value: unknown;
@@ -205,7 +207,7 @@ export async function listReplyTargets(token:string,chatId:string,ids:string[]):
 export type DirectMessageSearchResult=Pick<ChatMessage,'id'|'sender_id'|'body'|'created_at'>;
 export const DIRECT_MESSAGE_SEARCH_PAGE_SIZE=30;
 export async function searchDirectMessages(
- token:string,chatId:string,query:string,offset=0
+ token:string,chatId:string,query:string,offset=0,signal?:AbortSignal
 ):Promise<DirectMessageSearchResult[]>{
  const term=query.trim();
  if(term.length<2||term.length>120)return [];
@@ -214,7 +216,8 @@ export async function searchDirectMessages(
    p_chat_id:chatId,p_query:term,
    p_limit:DIRECT_MESSAGE_SEARCH_PAGE_SIZE+1,
    p_offset:Math.max(0,Math.min(600,Math.floor(offset)))
-  }
+  },
+  signal
  });
 }
 
