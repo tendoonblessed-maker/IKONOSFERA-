@@ -1,3 +1,4 @@
+import {createRequestAbortSignal} from './request-signal.js';
 /* Dependency-free Supabase Auth + PostgREST client.
    Never put a service-role or database password in NEXT_PUBLIC_* variables. */
 export const apiUrl = (process.env.NEXT_PUBLIC_SUPABASE_URL ?? '').replace(/\/$/, '');
@@ -25,22 +26,27 @@ function headers(token?: string, extras?: Record<string,string>) {
 }
 async function http<T>(path: string, options: { method?: string; token?: string; body?: unknown; extraHeaders?: Record<string,string> } = {}): Promise<T> {
   ensureReady();
-  const response = await fetch(`${apiUrl}${path}`, {
-    method: options.method ?? 'GET',
-    headers: headers(options.token, options.extraHeaders),
-    body: options.body === undefined ? undefined : JSON.stringify(options.body),
-    cache: 'no-store',
-    // Fail visibly instead of showing a perpetual spinner during network stalls.
-    signal: AbortSignal.timeout(18000),
-  });
-  const raw = await response.text();
-  let value: unknown;
-  try { value = raw ? JSON.parse(raw) : null; } catch { value = raw; }
-  if (!response.ok) {
-    const error = value && typeof value === 'object' ? (value as { msg?: string; message?: string; error_description?: string }).message ?? (value as { msg?: string }).msg ?? (value as { error_description?: string }).error_description : null;
-    throw new SupabaseHttpError(error || `Запрос не выполнен (${response.status})`,response.status);
+  const requestAbort=createRequestAbortSignal(undefined,18000);
+  try {
+    const response = await fetch(`${apiUrl}${path}`, {
+      method: options.method ?? 'GET',
+      headers: headers(options.token, options.extraHeaders),
+      body: options.body === undefined ? undefined : JSON.stringify(options.body),
+      cache: 'no-store',
+      // Preserve the bounded timeout without relying on newer static AbortSignal helpers.
+      signal: requestAbort.signal,
+    });
+    const raw = await response.text();
+    let value: unknown;
+    try { value = raw ? JSON.parse(raw) : null; } catch { value = raw; }
+    if (!response.ok) {
+      const error = value && typeof value === 'object' ? (value as { msg?: string; message?: string; error_description?: string }).message ?? (value as { msg?: string }).msg ?? (value as { error_description?: string }).error_description : null;
+      throw new SupabaseHttpError(error || `Запрос не выполнен (${response.status})`,response.status);
+    }
+    return value as T;
+  } finally {
+    requestAbort.dispose();
   }
-  return value as T;
 }
 export function loadSession(): Session | null {
   if (typeof window === 'undefined') return null;
@@ -263,10 +269,15 @@ function definiteMediaInsertRejection(error:unknown):boolean{
    &&![408,409,425,429].includes(error.status);
 }
 async function deleteUnreferencedDirectMedia(token:string,path:string):Promise<void>{
- await fetch(apiUrl+"/storage/v1/object/ikonosfera-direct-media/"+path,{
-  method:"DELETE",headers:{apikey:anonKey,Authorization:"Bearer "+token},
-  signal:AbortSignal.timeout(8000)
- }).catch(()=>{});
+ const requestAbort=createRequestAbortSignal(undefined,8000);
+ try{
+  await fetch(apiUrl+"/storage/v1/object/ikonosfera-direct-media/"+path,{
+   method:"DELETE",headers:{apikey:anonKey,Authorization:"Bearer "+token},
+   signal:requestAbort.signal
+  }).catch(()=>{});
+ }finally{
+  requestAbort.dispose();
+ }
 }
 export async function uploadDirectMedia(
  token:string,chatId:string,userId:string,file:File,clientMessageId:string=crypto.randomUUID()
@@ -280,22 +291,31 @@ export async function uploadDirectMedia(
  // can verify an earlier upload whose HTTP acknowledgment was lost.
  const path=chatId+"/"+userId+"/"+clientMessageId+"."+ext;
  const type=file.type.startsWith("image/")?"image":file.type.startsWith("video/")?"video":file.type.startsWith("audio/")?"audio":"file";
- let res:Response;
+ let response:Response|null=null;
+ let uploadFailed=false;
+ let uploadError:unknown;
+ const requestAbort=createRequestAbortSignal(undefined,18000);
  try{
-  res=await fetch(apiUrl+"/storage/v1/object/ikonosfera-direct-media/"+path,{
+  response=await fetch(apiUrl+"/storage/v1/object/ikonosfera-direct-media/"+path,{
    method:"POST",headers:{apikey:anonKey,Authorization:"Bearer "+token,"Content-Type":file.type,"x-upsert":"false"},
-   body:file,signal:AbortSignal.timeout(18000)
+   body:file,signal:requestAbort.signal
   });
+  if(!response.ok){
+   const err=await response.json().catch(()=>null);
+   uploadError=Error(err?.message||err?.error||"Не удалось загрузить файл");
+   uploadFailed=true;
+  }
  }catch(error){
-  try{await getDirectMediaUrl(token,path);return {path,type};}
-  catch{throw error;}
+  uploadError=error;
+  uploadFailed=true;
+ }finally{
+  requestAbort.dispose();
  }
- if(!res.ok){
-  const err=await res.json().catch(()=>null);
-  const message=err?.message||err?.error||"Не удалось загрузить файл";
+ if(uploadFailed){
   try{await getDirectMediaUrl(token,path);return {path,type};}
-  catch{throw Error(message);}
+  catch{throw uploadError;}
  }
+ if(!response)throw Error("Не удалось загрузить файл.");
  return {path,type};
 }
 async function sendDirectMediaRequest(
@@ -379,15 +399,19 @@ export async function getDirectMediaUrl(token:string,path:string):Promise<string
  if(cached&&cached.validUntil>Date.now())return cached.promise;
  if(cached)signedMediaCache.delete(key);
  const request=(async()=>{
-   const res=await fetch(apiUrl+"/storage/v1/object/sign/ikonosfera-direct-media/"+path,{
-    method:"POST",headers:{apikey:anonKey,Authorization:"Bearer "+token,"Content-Type":"application/json"},
-    body:JSON.stringify({expiresIn:3600}),cache:"no-store",
-    signal:AbortSignal.timeout(18000)
-   });
-   const value=await res.json().catch(()=>null);
-   if(!res.ok||!value?.signedURL)throw Error("Не удалось открыть вложение");
-   const signed=value.signedURL as string;
-   return signed.startsWith("http")?signed:apiUrl+"/storage/v1"+(signed.startsWith("/")?signed:"/"+signed);
+   const requestAbort=createRequestAbortSignal(undefined,18000);
+   try{
+    const res=await fetch(apiUrl+"/storage/v1/object/sign/ikonosfera-direct-media/"+path,{
+     method:"POST",headers:{apikey:anonKey,Authorization:"Bearer "+token,"Content-Type":"application/json"},
+     body:JSON.stringify({expiresIn:3600}),cache:"no-store",signal:requestAbort.signal
+    });
+    const value=await res.json().catch(()=>null);
+    if(!res.ok||!value?.signedURL)throw Error("Не удалось открыть вложение");
+    const signed=value.signedURL as string;
+    return signed.startsWith("http")?signed:apiUrl+"/storage/v1"+(signed.startsWith("/")?signed:"/"+signed);
+   }finally{
+    requestAbort.dispose();
+   }
  })();
  signedMediaCache.set(key,{promise:request,validUntil:Date.now()+SIGNED_URL_CACHE_MS});
  if(signedMediaCache.size>SIGNED_URL_CACHE_LIMIT){

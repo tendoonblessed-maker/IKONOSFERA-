@@ -427,7 +427,16 @@ test('private signed media URLs are scoped to token, deduplicated and bounded',(
  assert.match(source,/const key=token\+':\'\+path/);
  assert.match(source,/SIGNED_URL_CACHE_LIMIT=120/);
  assert.match(source,/SIGNED_URL_CACHE_MS=15\*60\*1000/);
- assert.match(source,/signal:AbortSignal\.timeout\(18000\)/);
+ assert.match(source,/import \{createRequestAbortSignal\} from '.\/request-signal\.js'/);
+ const httpBody=source.slice(source.indexOf('async function http'),source.indexOf('export function loadSession'));
+ const deleteBody=source.slice(source.indexOf('async function deleteUnreferencedDirectMedia'),source.indexOf('export async function uploadDirectMedia'));
+ const uploadBody=source.slice(source.indexOf('export async function uploadDirectMedia'),source.indexOf('async function sendDirectMediaRequest'));
+ const signingBody=source.slice(source.indexOf('export async function getDirectMediaUrl'),source.indexOf('export async function markChatRead'));
+ for(const body of [httpBody,deleteBody,uploadBody,signingBody]){
+  assert.match(body,/createRequestAbortSignal\(undefined,\d+\)/);
+  assert.match(body,/requestAbort\.dispose\(\)/);
+ }
+ assert.doesNotMatch(source,/AbortSignal\.(?:timeout|any)/);
  assert.match(source,/signedMediaCache\.delete\(key\)/);
 });
 test('security headers prevent sniffing and framing but preserve future calls',()=>{

@@ -23,6 +23,11 @@ function compile(source){
   compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}
  }).outputText;
 }
+const requestSignalSource=readFileSync(new URL('../lib/request-signal.js',import.meta.url),'utf8');
+const requestSignalExports={};
+vm.runInNewContext(compile(requestSignalSource),{
+ exports:requestSignalExports,AbortController,setTimeout,clearTimeout
+},{filename:'request-signal.cjs',timeout:2000});
 function loadAttempts({blocked=false}={}){
  const source=readFileSync(new URL('../lib/direct-media-attempts.ts',import.meta.url),'utf8');
  const exports={},store=new Map();
@@ -39,11 +44,15 @@ function loadAttempts({blocked=false}={}){
  },{filename:'direct-media-attempts.cjs',timeout:2000});
  return {api:exports,store};
 }
-function loadSupabase(fetchHandler){
+function loadSupabase(fetchHandler,{AbortSignalImpl=AbortSignal}={}){
  const source=readFileSync(new URL('../lib/supabase-rest.ts',import.meta.url),'utf8');
  const exports={},calls=[];
  vm.runInNewContext(compile(source),{
-  exports,crypto:webcrypto,AbortSignal,
+  exports,crypto:webcrypto,AbortSignal:AbortSignalImpl,AbortController,
+  require:specifier=>{
+   if(specifier==='./request-signal.js')return requestSignalExports;
+   throw Error('Unexpected module '+specifier);
+  },
   process:{env:{
    NEXT_PUBLIC_SUPABASE_URL:BASE,
    NEXT_PUBLIC_SUPABASE_ANON_KEY:'public-test-key'
@@ -317,4 +326,28 @@ test('invalid account, chat or attempt UUID is rejected before any upload',async
  await assert.rejects(api.sendDirectMedia('jwt','bad',OWNER,file(),'Подпись',ATTEMPT),/Некорректные параметры/);
  await assert.rejects(api.sendDirectMedia('jwt',CHAT,OWNER,file(),'Подпись','bad'),/Некорректные параметры/);
  assert.equal(calls.length,0);
+});
+
+
+test('direct media upload, signed URL and message send work without AbortSignal.timeout',async()=>{
+ class LegacyAbortSignal {}
+ assert.equal(LegacyAbortSignal.timeout,undefined);
+ const {api,calls}=loadSupabase((url,options)=>{
+  if(url.includes('/storage/v1/object/ikonosfera-direct-media/')&&options.method==='POST')return ok({});
+  if(url.includes('/storage/v1/object/sign/ikonosfera-direct-media/'))
+   return ok({signedURL:'/object/sign/ikonosfera-direct-media/'+CHAT+'/'+OWNER+'/'+ATTEMPT+'.png?token=portable'});
+  if(url.includes('/rest/v1/messages')&&options.method==='POST')
+   return ok([saved(JSON.parse(options.body).body)]);
+  throw Error('Unexpected request '+url);
+ },{AbortSignalImpl:LegacyAbortSignal});
+ const uploaded=await api.uploadDirectMedia('jwt',CHAT,OWNER,file(),ATTEMPT);
+ assert.equal(uploaded.path,CHAT+'/'+OWNER+'/'+ATTEMPT+'.png');
+ const signed=await api.getDirectMediaUrl('jwt',uploaded.path);
+ assert.match(signed,/token=portable$/);
+ const sent=await api.sendDirectMedia('jwt',CHAT,OWNER,file(),'Подпись',ATTEMPT);
+ assert.equal(sent.id,ROW_ID);
+ assert.equal(calls.length,4);
+ assert.ok(calls.every(call=>call.options.signal),'all private-media and PostgREST requests receive AbortController signals');
+ assert.ok(calls.every(call=>typeof call.options.signal.addEventListener==='function'));
+ assert.doesNotMatch(readFileSync(new URL('../lib/supabase-rest.ts',import.meta.url),'utf8'),/AbortSignal\.(?:timeout|any)/);
 });
