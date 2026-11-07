@@ -32,7 +32,7 @@ test('ChannelsPanel checks freshness after comments and profile awaits and ignor
  assert.match(panel,/if\(isCurrent\(\)\)setError\(readable\(e\)\)/);
  assert.match(panel,/channelScopeRef\.current\.token===token/);
  assert.match(panel,/channelScopeRef\.current\.channelId===channel\.id/);
- assert.match(panel,/useEffect\(\(\)=>\(\)=>commentsRequestGuard\.invalidate\(\),\[commentsRequestGuard\]\)/);
+ assert.match(panel,/useEffect\(\(\)=>\(\)=>\s*\{\s*commentsRequestGuard\.invalidate\(\);\s*postsRequestGuard\.invalidate\(\);\s*discussionRequestGuard\.invalidate\(\);\s*\},\[commentsRequestGuard,postsRequestGuard,discussionRequestGuard\]\)/);
 });
 
 
