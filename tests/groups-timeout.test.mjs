@@ -51,6 +51,20 @@ test('group GET requests use the portable deadline without a global AbortSignal'
  assert.doesNotMatch(source,/AbortSignal\.timeout/);
 });
 
+test('read-only group overview RPC POST has a portable deadline too',async()=>{
+ const {api,calls}=setup(()=>ok([]));
+ const overviews=await api.listGroupOverviews('signed-user-jwt');
+ assert.deepEqual(overviews,[]);
+ assert.equal(calls.length,1);
+ assert.equal(calls[0].options.method,'POST');
+ assert.equal(calls[0].options.body,'{}');
+ assert.equal(calls[0].options.headers.Authorization,'Bearer signed-user-jwt');
+ assert.equal(calls[0].options.cache,'no-store');
+ assert.equal(calls[0].options.headers.Prefer,'return=representation');
+ assert.ok(calls[0].options.signal instanceof AbortSignal);
+ assert.match(read('lib/groups.ts'),/list_group_overviews','POST',\{\}, \{\}, GROUP_REQUEST_TIMEOUT_MS\)/);
+});
+
 test('idempotent group POST and read-after-write GET both use portable deadlines',async()=>{
  const message={id:MESSAGE,group_id:GROUP,sender_id:USER,body:'hello',created_at:'2026-11-07T12:00:00Z'};
  const {api,calls}=setup((_url,options,index)=>options.method==='POST'?ok([]):ok([message]));
