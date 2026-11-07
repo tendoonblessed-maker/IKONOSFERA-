@@ -157,7 +157,7 @@ test('invalid object paths cannot reach the private Storage signing endpoint',as
 test('private media signing uses a portable timeout without AbortSignal.timeout',async()=>{
  const LegacyAbortSignal=function(){};
  assert.equal(LegacyAbortSignal.timeout,undefined);
- assert.match(source,/createRequestAbortSignal\(undefined,18000\)/,'the existing 18-second bound remains in force');
+ assert.match(source,/createRequestAbortSignal\(entry\.controller\.signal,18000\)/,'the existing 18-second bound remains in force');
  const {api,calls}=scenario(
   ()=>Promise.resolve(reply(signedURL(PATH,'portable'))),
   {AbortSignalImpl:LegacyAbortSignal}
