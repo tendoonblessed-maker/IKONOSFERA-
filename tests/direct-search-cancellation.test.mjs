@@ -8,7 +8,7 @@ test('direct-message search forwards caller cancellation through a portable boun
   const api = read('lib/supabase-rest.ts');
   const helper = read('lib/request-signal.js');
   const start = api.indexOf('async function http<T>');
-  const end = api.indexOf('\\nexport function loadSession', start);
+  const end = api.indexOf('export function loadSession', start);
   const http = api.slice(start, end);
   assert.ok(api.includes("import {createRequestAbortSignal} from './request-signal.js';"));
   assert.ok(http.includes('createRequestAbortSignal(options.signal,18000)'));
@@ -16,10 +16,10 @@ test('direct-message search forwards caller cancellation through a portable boun
   assert.ok(http.includes('requestAbort.dispose()'));
   assert.equal(http.includes('AbortSignal.any('), false);
   assert.equal(http.includes('AbortSignal.timeout('), false);
-  assert.doesNotMatch(helper, /AbortSignal\\.(?:any|timeout)\\(/);
+  assert.doesNotMatch(helper, /AbortSignal[.]any[.]|AbortSignal[.]timeout[.]/);
   assert.ok(api.includes('offset=0,signal?:AbortSignal'));
   assert.ok(api.includes('p_offset:Math.max(0,Math.min(600,Math.floor(offset)))'));
-  assert.ok(api.includes('signal\\n });'));
+  assert.ok(api.includes('signal' + String.fromCharCode(10) + ' });'));
 });
 test('private-chat search aborts the previous request and debounce timer on cleanup', () => {
   const shell = read('components/AppShell.tsx');
