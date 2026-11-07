@@ -108,6 +108,13 @@ function harness({
   require(name){
    if(name==='react')return react;
    if(name==='react/jsx-runtime')return {jsx,jsxs:jsx,Fragment:Symbol.for('react.fragment')};
+   if(name==='@/lib/media-stream-lifecycle')return {
+    stopMediaStreamTracks(stream){
+     let tracks;
+     try{tracks=stream?.getTracks?.()??[];}catch{return;}
+     for(const track of tracks){try{track.stop();}catch{}}
+    }
+   };
    if(name==='@/lib/voice-notes')return {
     VOICE_FINALIZE_TIMEOUT_MS,VOICE_RECORD_MAX_MS,VOICE_RECORD_MAX_BYTES:25*1024*1024,
     chooseVoiceMimeType:check=>check('audio/webm')?'audio/webm':null,
