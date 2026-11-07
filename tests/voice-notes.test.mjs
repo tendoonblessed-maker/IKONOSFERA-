@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import {test} from 'node:test';
 import {readFileSync} from 'node:fs';
 import {
- chooseVoiceMimeType,createVoiceFile,formatVoiceTime,
+ chooseVoiceMimeType,normalizeVoiceMimeType,createVoiceFile,formatVoiceTime,
  VOICE_RECORD_MAX_MS,VOICE_RECORD_MAX_BYTES,VOICE_MIME_CANDIDATES
 } from '../lib/voice-notes.ts';
 const load=path=>readFileSync(new URL('../'+path,import.meta.url),'utf8');
@@ -13,6 +13,15 @@ test('Safari MP4 and Chrome/Firefox Opus WebM are selected using feature detecti
  assert.equal(chooseVoiceMimeType(type=>type==='audio/ogg'),'audio/ogg');
  assert.equal(chooseVoiceMimeType(()=>false),null);
  assert.equal(VOICE_MIME_CANDIDATES[0],'audio/mp4');
+});
+
+test('browser-selected MIME is normalized and restricted to private audio formats',()=>{
+ assert.equal(normalizeVoiceMimeType('audio/mp4;codecs=mp4a.40.2'),'audio/mp4');
+ assert.equal(normalizeVoiceMimeType(' AUDIO/WEBM ;codecs=opus '),'audio/webm');
+ assert.equal(normalizeVoiceMimeType('audio/ogg;codecs=opus'),'audio/ogg');
+ assert.equal(normalizeVoiceMimeType('video/webm'),null);
+ assert.equal(normalizeVoiceMimeType('application/octet-stream'),null);
+ assert.equal(normalizeVoiceMimeType(''),null);
 });
 
 test('recorded audio normalizes codec parameters to strict private Storage MIME',()=>{
@@ -41,7 +50,9 @@ test('voice recorder uses only microphone, stops tracks on cancel, unmount and p
  assert.match(ui,/navigator\.mediaDevices\.getUserMedia\(\{/);
  assert.match(ui,/audio:\{echoCancellation:true,noiseSuppression:true,autoGainControl:true\},video:false/);
  assert.match(ui,/if\(requestRef\.current!==generation\|\|!liveRef\.current\|\|disabled\)\{/);
- assert.match(ui,/stopTracks\(stream\)/);
+ assert.match(ui,/import \{stopMediaStreamTracks\} from '@\/lib\/media-stream-lifecycle'/);
+ assert.match(ui,/stopMediaStreamTracks\(stream\)/);
+ assert.match(ui,/stopMediaStreamTracks\(capture\.stream\)/);
  assert.match(ui,/requestRef\.current\+=1/);
  assert.match(ui,/capture\.recorder\.onstop=null/);
  assert.match(ui,/if\(capture\.recorder\.state!=='inactive'\)/);
@@ -49,6 +60,8 @@ test('voice recorder uses only microphone, stops tracks on cancel, unmount and p
  assert.match(ui,/capture\.discard=discard/);
  assert.match(ui,/if\(capture\.discard\|\|captureRef\.current!==capture\)return/);
  assert.match(ui,/typeof MediaRecorder\.isTypeSupported==='function'/);
+ assert.match(ui,/normalizeVoiceMimeType\(recorderMime\)/);
+ assert.match(ui,/const recorderOptions:MediaRecorderOptions=mime/);
 });
 
 test('recording never auto-uploads: it passes a real file into existing preview flow',()=>{
@@ -64,7 +77,7 @@ test('recording never auto-uploads: it passes a real file into existing preview 
  assert.match(shell,/const problem=validateDirectMediaFile\(file\)/);
  assert.match(ui,/VOICE_RECORD_MAX_MS/);
  assert.match(ui,/setTimeout\(\(\)=>\{/);
- assert.match(ui,/clearCaptureTimers\(capture\)/);
+ assert.match(ui,/clearCaptureResources\(capture\)/);
  assert.doesNotMatch(ui,/sendDirectMedia|fetch\(|uploadDirectMedia|localStorage/);
 });
 
@@ -100,6 +113,7 @@ test('voice recorder exposes accessible controls with permission and failure fee
  assert.match(ui,/>Готово<\/button>/);
  assert.match(ui,/Разреши доступ к микрофону/);
  assert.match(ui,/не поддерживает доступные форматы/);
+ assert.match(ui,/выбрал неподдерживаемый формат/);
  assert.match(css,/prefers-reduced-motion:reduce/);
  assert.match(css,/\.ik-voice-panel/);
 });
