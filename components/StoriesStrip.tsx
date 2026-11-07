@@ -41,7 +41,7 @@ export default function StoriesStrip({token,userId,contacts,ownProfile}:Props){
   const requestId=++storyRequestRef.current;
   const currentContacts=contactsRef.current;
   const ids=[userId,...currentContacts.map(person=>person.id)];
-  const isCurrent=()=>mountedRef.current&&isCurrentStoryRequest(userId,ownerRef.current,requestId,storyRequestRef.current);
+  const isCurrent=()=>requestId===storyRequestRef.current&&mountedRef.current&&isCurrentStoryRequest(userId,ownerRef.current,requestId,storyRequestRef.current);
   setStoriesLoading(true);
   return runScopedStoryLoad(async()=>{
    const stories=await getContactsStories(token,ids);
