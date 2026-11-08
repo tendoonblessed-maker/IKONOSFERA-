@@ -10,6 +10,7 @@ import {clearAllGroupSendAttempts} from "@/lib/group-send-attempts";
 import ChatMedia from "@/components/ChatMedia";
 import ChatMessageText from "@/components/ChatMessageText";
 import {subscribeDirectChatChanges} from "@/lib/direct-realtime";
+import {startVisiblePolling} from "@/lib/visible-polling";
 import {subscribeInboxChanges,type InboxChangeKind} from "@/lib/inbox-realtime";
 import {isLatestAccountSnapshot} from "@/lib/inbox-snapshot";
 import {shouldOpenDirectChatSearch} from "@/lib/chat-shortcuts";
@@ -580,17 +581,13 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
     const unsubscribeRealtime=subscribeDirectChatChanges(token,chatId,onRealtimeChange);
     // HTTP polling remains a fallback when WebSocket is blocked, offline,
     // rate-limited or disconnected (and it repairs missed Realtime events).
-    const timer=window.setInterval(()=>void sync(),6000);
-    const onVisible=()=>{if(document.visibilityState==='visible')void sync();};
-    const onConnected=()=>{if(document.visibilityState==='visible')void sync(true);};
-    document.addEventListener('visibilitychange',onVisible);
-    window.addEventListener('online',onConnected);
+    const stopVisiblePolling=startVisiblePolling(
+      ()=>void sync(),6000,document,window,navigator,()=>void sync(true)
+    );
     return()=>{
-      cancelled=true;window.clearInterval(timer);
+      cancelled=true;stopVisiblePolling();
       if(realtimeTimer!==null)window.clearTimeout(realtimeTimer);
       unsubscribeRealtime();
-      document.removeEventListener('visibilitychange',onVisible);
-      window.removeEventListener('online',onConnected);
     };
   },[selected,session?.access_token,userId,chatReloadNonce]);
 
