@@ -1,5 +1,5 @@
 'use client';
-import {useEffect,useLayoutEffect,useRef} from 'react';
+import {useLayoutEffect,useRef} from 'react';
 import {createStoryProgressScheduler} from '@/lib/story-progress-scheduler';
 
 /**
@@ -21,7 +21,7 @@ export function useStoryProgress(storyId:string|null,onComplete:()=>void,paused=
   schedulerRef.current?.sync();
  },[paused]);
 
- useEffect(()=>{
+ useLayoutEffect(()=>{
   if(!storyId)return;
   const scheduler=createStoryProgressScheduler({
    durationMs:STORY_DURATION_MS,
