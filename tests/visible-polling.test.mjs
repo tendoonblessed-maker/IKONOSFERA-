@@ -5,7 +5,7 @@ import {startVisiblePolling} from '../lib/visible-polling.ts';
 
 function createHarness(initialVisibility = 'visible', initiallyOnline = true) {
   const documentListeners = new Set();
-  const windowListeners = new Map([['online', new Set()], ['offline', new Set()], ['pageshow', new Set()]]);
+  const windowListeners = new Map([['online', new Set()], ['offline', new Set()], ['pageshow', new Set()], ['pagehide', new Set()]]);
   const intervals = new Map();
   let nextId = 1;
   const documentRef = {
@@ -53,6 +53,9 @@ function createHarness(initialVisibility = 'visible', initiallyOnline = true) {
     setPageShow(persisted) {
       for (const listener of [...windowListeners.get('pageshow')]) listener({persisted});
     },
+    setPageHide(persisted = true) {
+      for (const listener of [...windowListeners.get('pagehide')]) listener({persisted});
+    },
     tick() {
       for (const interval of [...intervals.values()]) interval.callback();
     }
@@ -87,6 +90,7 @@ test('group polling pauses while hidden and refreshes once before resuming', () 
   assert.equal(harness.windowListeners.get('online').size, 0);
   assert.equal(harness.windowListeners.get('offline').size, 0);
   assert.equal(harness.windowListeners.get('pageshow').size, 0);
+  assert.equal(harness.windowListeners.get('pagehide').size, 0);
   harness.setVisibility('hidden');
   harness.setVisibility('visible');
   harness.setOnline(false);
@@ -273,4 +277,46 @@ test('group polling aborts its active history read when paused or unmounted', ()
   assert.match(panel, /requestAbortScope\.abort\(\)/);
   assert.match(groups, /groupMessages\(token:string,id:string,signal\?:AbortSignal\)/);
   assert.match(groups, /id\.desc&limit=150'.*'GET',undefined,\{\},signal/s);
+});
+
+
+test('pagehide pauses polling and aborts active work before a mobile BFCache freeze', () => {
+  const harness = createHarness();
+  let resumes = 0;
+  let pauses = 0;
+  const stop = startVisiblePolling(
+    () => {}, 6000, harness.documentRef, harness.windowRef, harness.navigatorRef,
+    () => resumes++, () => pauses++
+  );
+
+  assert.equal(harness.intervals.size, 1);
+  harness.setPageHide(true);
+  assert.equal(harness.intervals.size, 0, 'pagehide must stop the timer before the page is frozen');
+  assert.equal(pauses, 1, 'pagehide invalidates active reads even without visibilitychange');
+  assert.equal(resumes, 0);
+
+  harness.setPageShow(true);
+  assert.equal(resumes, 1, 'persisted pageshow reconciles data after BFCache restoration');
+  assert.equal(harness.intervals.size, 1);
+  harness.setVisibility('visible');
+  harness.setOnline(true);
+  assert.equal(resumes, 1, 'paired resume events do not cause duplicate refreshes');
+
+  stop();
+  assert.equal(harness.windowListeners.get('pagehide').size, 0);
+});
+
+test('pagehide does not report a second pause after the document is already hidden', () => {
+  const harness = createHarness();
+  let pauses = 0;
+  const stop = startVisiblePolling(
+    () => {}, 6000, harness.documentRef, harness.windowRef, harness.navigatorRef,
+    () => {}, () => pauses++
+  );
+
+  harness.setVisibility('hidden');
+  harness.setPageHide(true);
+  assert.equal(pauses, 1, 'the active generation is invalidated only once');
+  assert.equal(harness.intervals.size, 0);
+  stop();
 });
