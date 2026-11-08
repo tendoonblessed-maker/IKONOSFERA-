@@ -8,7 +8,8 @@ export function startVisiblePolling(
   intervalMs = 6000,
   documentRef: Pick<Document, 'visibilityState' | 'addEventListener' | 'removeEventListener'> = document,
   windowRef: Pick<Window, 'setInterval' | 'clearInterval' | 'addEventListener' | 'removeEventListener'> = window,
-  navigatorRef: Pick<Navigator, 'onLine'> = navigator
+  navigatorRef: Pick<Navigator, 'onLine'> = navigator,
+  onResume: () => void = callback
 ): () => void {
   let timer: number | null = null;
   let disposed = false;
@@ -33,7 +34,7 @@ export function startVisiblePolling(
       stop();
       return;
     }
-    callback();
+    onResume();
     start();
   };
 
