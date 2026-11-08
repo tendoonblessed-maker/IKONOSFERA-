@@ -15,6 +15,7 @@ import {mergeConfirmedGroupMessages,CONFIRMED_GROUP_MESSAGE_GRACE_MS,type Confir
 import {shouldAcknowledgeGroupRead,countNewIncomingBelow} from '@/lib/group-read-position';
 import {fetchOlderGroupMessages,prependOlderGroupMessages,preserveOlderGroupMessages,GROUP_HISTORY_MAX_LOADED} from '@/lib/group-pagination';
 import {startVisiblePolling} from '@/lib/visible-polling';
+import {createAbortableRequestScope} from '@/lib/request-abort-scope';
 type Props={token:string;userId:string;group:Group;onBack:()=>void;onShowProfile:(id:string)=>void;onDraftChange:(groupId:string,text:string)=>void};
 export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDraftChange}:Props){
  const [messages,setMessages]=useState<GroupMessage[]>([]);
@@ -60,6 +61,9 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
   groupId:group.id,ownerId:userId,ids:new Set()
  });
  const requestSequenceRef=useRef(0);
+ const requestAbortScopeRef=useRef<ReturnType<typeof createAbortableRequestScope>|null>(null);
+ if(!requestAbortScopeRef.current)requestAbortScopeRef.current=createAbortableRequestScope();
+ const requestAbortScope=requestAbortScopeRef.current;
  const confirmedGroupMessagesRef=useRef<Map<string,ConfirmedGroupMessage>>(new Map());
  const contextRef=useRef({groupId:group.id,userId,token});
  contextRef.current={groupId:group.id,userId,token};
@@ -116,9 +120,9 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
   });
  },[token,group.id]);
 
- const refresh=useCallback(async()=>{
+ const refresh=useCallback(async(signal?:AbortSignal)=>{
   const requestId=++requestSequenceRef.current;
-  const msgs=await groupMessages(token,group.id);
+  const msgs=await groupMessages(token,group.id,signal);
   // When a slower poll finishes after a newer one, do not replace the newer
   // messages. The same guard applies after a quick group-switch/unmount.
   if(requestId!==requestSequenceRef.current
@@ -150,7 +154,8 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
     if(inFlight){queuedSync=true;return;}
     inFlight=true;
     const generation=requestGeneration;
-    void refresh().then(()=>{
+    const controller=requestAbortScope.begin();
+    void refresh(controller.signal).then(()=>{
       if(!cancelled&&generation===requestGeneration)setError('');
     }).catch(e=>{
       if(!cancelled&&generation===requestGeneration){
@@ -158,6 +163,7 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
         setError(e instanceof Error?e.message:'Не удалось загрузить сообщения группы');
       }
     }).finally(()=>{
+      requestAbortScope.clear(controller);
       inFlight=false;
       // A Realtime event arriving during an older GET must not be discarded.
       if(queuedSync&&!cancelled){queuedSync=false;sync();}
@@ -179,16 +185,19 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
   const stopVisiblePolling=startVisiblePolling(sync,6000,document,window,navigator,undefined,()=>{
     requestGeneration++;
     requestSequenceRef.current++;
+    queuedSync=false;
+    requestAbortScope.abort();
   });
   return()=>{
     cancelled=true;
     requestGeneration++;
     requestSequenceRef.current++;
+    requestAbortScope.abort();
     stopVisiblePolling();
     if(realtimeTimer!==null)window.clearTimeout(realtimeTimer);
     unsubscribeRealtime();
   };
- },[refresh,token,group.id]);
+ },[refresh,token,group.id,requestAbortScope]);
  // Search runs against the full group history via the existing RLS-filtered
  // PostgREST table. Old responses cannot cross a changed query/account/group.
  useEffect(()=>{
