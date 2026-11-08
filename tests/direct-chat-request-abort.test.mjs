@@ -1,9 +1,14 @@
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
+import {readFileSync} from 'node:fs';
+import ts from 'typescript';
 
 process.env.NEXT_PUBLIC_SUPABASE_URL='https://ikonosfera-test.supabase.co';
 process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY='public-test-key';
-const {listMessages,listMessageReactions}=await import('../lib/supabase-rest.ts');
+const source=readFileSync(new URL('../lib/supabase-rest.ts',import.meta.url),'utf8');
+assert.doesNotMatch(source,/^import\s/m,'the REST module stays dependency-free for this isolated contract test');
+const compiled=ts.transpileModule(source,{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.ES2022}}).outputText;
+const {listMessages,listMessageReactions}=await import('data:text/javascript;base64,'+Buffer.from(compiled).toString('base64'));
 
 test('private history and reaction GETs forward their lifecycle AbortSignal to fetch',async()=>{
   const originalFetch=globalThis.fetch;
