@@ -2,6 +2,7 @@
 
 import {createClient} from '@supabase/supabase-js';
 import {apiUrl,backendReady} from './supabase-rest';
+import {createRealtimeWakeup} from './realtime-wakeup';
 
 const publishableKey=process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY??'';
 const UUID=/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
@@ -18,18 +19,21 @@ export function subscribeGroupChanges(token:string,groupId:string,onChanged:()=>
  });
  let disposed=false;
  const channel=client.channel('group-db:'+groupId);
- const changed=()=>{if(!disposed)onChanged();};
+ const wakeup=createRealtimeWakeup<void>(()=>onChanged());
+ const changed=()=>{if(!disposed)wakeup.notify(undefined);};
  const scope={schema:'public' as const,table:'group_messages',filter:'group_id=eq.'+groupId};
  void client.realtime.setAuth(token).then(()=>{
   if(disposed)return;
   channel
    .on('postgres_changes',{...scope,event:'INSERT'},changed)
+   .on('postgres_changes',{...scope,event:'UPDATE'},changed)
    .subscribe(status=>{
     if(status==='SUBSCRIBED')changed(); // reconcile events missed during join
    });
  }).catch(()=>{/* The periodic HTTPS refresh remains active. */});
  return()=>{
   disposed=true;
+  wakeup.dispose();
   void client.removeChannel(channel)
    .finally(()=>{client.realtime.disconnect();})
    .catch(()=>{client.realtime.disconnect();});
