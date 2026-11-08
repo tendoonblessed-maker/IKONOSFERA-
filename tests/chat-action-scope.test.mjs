@@ -35,12 +35,12 @@ test('message action checks its account/chat generation before every UI commit',
   assert.ok(start>=0&&end>start,'messageAction handler exists');
   const action=app.slice(start,end);
   assert.match(app,/import \{isCurrentChatAction,type ChatActionScope\} from ['"]@\/lib\/chat-action-scope['"]/);
-  assert.match(action,/const actionScope:ChatActionScope=\{chatId,userId,generation:chatContextGenerationRef\.current\}/);
-  assert.match(action,/const isCurrent=\(\)=>selectedRef\.current===chatId&&isCurrentChatAction\(actionScope,\{/);
+  assert.match(action,/const actionScope:ChatActionScope=expectedScope\?\?\{chatId,userId,generation:chatContextGenerationRef\.current\}/);
+  assert.match(action,/const isCurrent=\(\)=>selectedRef\.current===chatId&&isCurrentMessageActionScope\(actionScope\)/);
   const mutation=action.indexOf('await manageMessage(token,messageId,action,body);');
   const staleGuard=action.indexOf('if(!isCurrent())return;',mutation);
   assert.ok(mutation>=0&&staleGuard>mutation,'late mutation is ignored before any UI update');
-  assert.match(action,/if\(isCurrent\(\)\)\{\s*setMessageMenuId\(null\)/);
+  assert.match(action,/if\(isCurrent\(\)\)\{\s*closeMessageMenu\(\)/);
   assert.match(action,/const updated=\(await listMessages\(token,chatId\)\)\.reverse\(\);\s*if\(isCurrent\(\)\)setChatMessages/);
   assert.match(action,/catch\(e\)\{if\(isCurrent\(\)\)setError\(userFacingError\(e\)\);\}/);
 });
