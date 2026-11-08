@@ -166,3 +166,17 @@ test('GroupPanel and private chats share the visibility- and network-aware polle
   assert.match(shell, /stopVisiblePolling\(\)/);
   assert.doesNotMatch(shell, /window\.setInterval\(\(\)=>void sync\(\),6000\)/);
 });
+
+test('ProfilePanel pauses activity polling while hidden or offline and scopes results to the current profile', () => {
+  const panel = readFileSync(new URL('../components/ProfilePanel.tsx', import.meta.url), 'utf8');
+  assert.match(panel, /startVisiblePolling\\(poll,30000\\)/);
+  assert.match(panel, /if\\(!mounted\\|\\|document\\.visibilityState!=='visible'\\|\\|!navigator\\.onLine\\)return/);
+  assert.match(panel, /scopedProfileActivity\\(activitySnapshot,userId,targetId\\)/);
+  assert.match(panel, /setActivitySnapshot\\(\\{ownerId:userId,targetId,value:rows\\[targetId\\]\\|\\|null\\}\\)/);
+  assert.match(panel, /return\\(\\)=>\\{mounted=false;stopPolling\\(\\);\\}/);
+  const effect = panel.slice(
+    panel.indexOf('useEffect(()=>{let mounted=true;const poll='),
+    panel.indexOf(' const run=async')
+  );
+  assert.doesNotMatch(effect, /window\\.setInterval/);
+});
