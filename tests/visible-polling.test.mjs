@@ -3,17 +3,18 @@ import {test} from 'node:test';
 import {readFileSync} from 'node:fs';
 import {startVisiblePolling} from '../lib/visible-polling.ts';
 
-function createHarness(initialVisibility = 'visible') {
-  const listeners = new Set();
+function createHarness(initialVisibility = 'visible', initiallyOnline = true) {
+  const documentListeners = new Set();
+  const windowListeners = new Map([['online', new Set()], ['offline', new Set()]]);
   const intervals = new Map();
   let nextId = 1;
   const documentRef = {
     visibilityState: initialVisibility,
     addEventListener(type, listener) {
-      if (type === 'visibilitychange') listeners.add(listener);
+      if (type === 'visibilitychange') documentListeners.add(listener);
     },
     removeEventListener(type, listener) {
-      if (type === 'visibilitychange') listeners.delete(listener);
+      if (type === 'visibilitychange') documentListeners.delete(listener);
     }
   };
   const windowRef = {
@@ -24,16 +25,30 @@ function createHarness(initialVisibility = 'visible') {
     },
     clearInterval(id) {
       intervals.delete(id);
+    },
+    addEventListener(type, listener) {
+      windowListeners.get(type)?.add(listener);
+    },
+    removeEventListener(type, listener) {
+      windowListeners.get(type)?.delete(listener);
     }
   };
+  const navigatorRef = {onLine: initiallyOnline};
   return {
     documentRef,
     windowRef,
+    navigatorRef,
     intervals,
-    listeners,
+    documentListeners,
+    windowListeners,
     setVisibility(value) {
       documentRef.visibilityState = value;
-      for (const listener of [...listeners]) listener();
+      for (const listener of [...documentListeners]) listener();
+    },
+    setOnline(value) {
+      navigatorRef.onLine = value;
+      const type = value ? 'online' : 'offline';
+      for (const listener of [...windowListeners.get(type)]) listener();
     },
     tick() {
       for (const interval of [...intervals.values()]) interval.callback();
@@ -44,7 +59,9 @@ function createHarness(initialVisibility = 'visible') {
 test('group polling pauses while hidden and refreshes once before resuming', () => {
   const harness = createHarness();
   let calls = 0;
-  const stop = startVisiblePolling(() => calls++, 6000, harness.documentRef, harness.windowRef);
+  const stop = startVisiblePolling(
+    () => calls++, 6000, harness.documentRef, harness.windowRef, harness.navigatorRef
+  );
 
   assert.equal(harness.intervals.size, 1);
   assert.equal([...harness.intervals.values()][0].delay, 6000);
@@ -63,16 +80,22 @@ test('group polling pauses while hidden and refreshes once before resuming', () 
 
   stop();
   assert.equal(harness.intervals.size, 0);
-  assert.equal(harness.listeners.size, 0);
+  assert.equal(harness.documentListeners.size, 0);
+  assert.equal(harness.windowListeners.get('online').size, 0);
+  assert.equal(harness.windowListeners.get('offline').size, 0);
   harness.setVisibility('hidden');
   harness.setVisibility('visible');
+  harness.setOnline(false);
+  harness.setOnline(true);
   assert.equal(calls, 2, 'disposed pollers never restart');
 });
 
 test('a group opened in the background starts polling only after becoming visible', () => {
   const harness = createHarness('hidden');
   let calls = 0;
-  const stop = startVisiblePolling(() => calls++, 6000, harness.documentRef, harness.windowRef);
+  const stop = startVisiblePolling(
+    () => calls++, 6000, harness.documentRef, harness.windowRef, harness.navigatorRef
+  );
 
   assert.equal(harness.intervals.size, 0);
   assert.equal(calls, 0);
@@ -83,9 +106,63 @@ test('a group opened in the background starts polling only after becoming visibl
   stop();
 });
 
-test('GroupPanel uses the visibility-aware poller instead of a permanent interval', () => {
+test('offline state stops polling and reconnect refreshes before restarting it', () => {
+  const harness = createHarness('visible', false);
+  let polls = 0;
+  let resumes = 0;
+  const stop = startVisiblePolling(
+    () => polls++, 6000, harness.documentRef, harness.windowRef, harness.navigatorRef,
+    () => resumes++
+  );
+
+  assert.equal(harness.intervals.size, 0, 'an offline page must not start a timer');
+  harness.tick();
+  assert.equal(polls, 0);
+
+  harness.setOnline(true);
+  assert.equal(resumes, 1, 'reconnect triggers one authoritative refresh');
+  assert.equal(harness.intervals.size, 1);
+  harness.tick();
+  assert.equal(polls, 1);
+
+  harness.setOnline(false);
+  assert.equal(harness.intervals.size, 0);
+  harness.tick();
+  assert.equal(polls, 1, 'offline pages do not keep waking for fallback polls');
+
+  harness.setOnline(true);
+  assert.equal(resumes, 2);
+  assert.equal(harness.intervals.size, 1);
+  stop();
+  assert.equal(harness.intervals.size, 0);
+});
+
+test('visibility resume uses the dedicated resume callback, not the periodic poll callback', () => {
+  const harness = createHarness();
+  let polls = 0;
+  let resumes = 0;
+  const stop = startVisiblePolling(
+    () => polls++, 6000, harness.documentRef, harness.windowRef, harness.navigatorRef,
+    () => resumes++
+  );
+
+  harness.setVisibility('hidden');
+  harness.setVisibility('visible');
+  assert.equal(resumes, 1);
+  assert.equal(polls, 0);
+  harness.tick();
+  assert.equal(polls, 1);
+  stop();
+});
+
+test('GroupPanel and private chats share the visibility- and network-aware poller', () => {
   const panel = readFileSync(new URL('../components/GroupPanel.tsx', import.meta.url), 'utf8');
+  const shell = readFileSync(new URL('../components/AppShell.tsx', import.meta.url), 'utf8');
   assert.match(panel, /startVisiblePolling\(sync,6000\)/);
   assert.match(panel, /stopVisiblePolling\(\)/);
   assert.doesNotMatch(panel, /window\.setInterval\(sync,6000\)/);
+  assert.match(shell, /startVisiblePolling\(/);
+  assert.match(shell, /\(\)=>void sync\(true\)/);
+  assert.match(shell, /stopVisiblePolling\(\)/);
+  assert.doesNotMatch(shell, /window\.setInterval\(\(\)=>void sync\(\),6000\)/);
 });
