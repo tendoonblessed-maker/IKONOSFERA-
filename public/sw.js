@@ -94,7 +94,19 @@ self.addEventListener("fetch", (event) => {
     return;
   }
   if (request.mode !== "navigate") return;
-  event.respondWith(fetch(request).catch(async () => {
+  event.respondWith(fetch(request).then(async response => {
+    // A gateway/service outage can return an HTTP response instead of rejecting
+    // fetch(). Use the cached offline shell for transient gateway failures, but
+    // preserve application errors (for example HTTP 500) for diagnosis.
+    if (response.status === 502 || response.status === 503 || response.status === 504) {
+      try {
+        return (await caches.match(OFFLINE_URL)) ?? response;
+      } catch {
+        return response;
+      }
+    }
+    return response;
+  }).catch(async () => {
     try {
       return (await caches.match(OFFLINE_URL)) ?? Response.error();
     } catch {
