@@ -18,6 +18,7 @@ import ChatAttachmentPreview from "@/components/ChatAttachmentPreview";
 import VoiceRecorder from "@/components/VoiceRecorder";
 import ChatInboxRow from "@/components/ChatInboxRow";
 import StatusEmoji from "@/components/StatusEmoji";
+import {copyTextToClipboard} from "@/lib/clipboard";
 import SwipeReplyMessage from "@/components/SwipeReplyMessage";
 import ReplyQuote from "@/components/ReplyQuote";
 import MessageEditForm from "@/components/MessageEditForm";
@@ -705,7 +706,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
   }
   async function copyCleanLink(){
     try{
-      await navigator.clipboard.writeText(window.location.origin+'/');
+      await copyTextToClipboard(window.location.origin+'/');
       setError('');
       setNotice('Ссылка скопирована!');
     }catch{
@@ -1527,7 +1528,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
         onOpen={id=>{void jumpToOriginalMessage(id,true);}}
         userId={userId} partnerName={active.other?.display_name||active.other?.username||'Собеседник'}
         locatingId={locatingReply}
-      />}{selectedMessages.length>0&&<div className="ik-selection-toolbar"><span>Выбрано: {selectedMessages.length}</span><button type="button" onClick={()=>{const text=chatMessages.filter(m=>selectedMessages.includes(m.id)).map(m=>m.body).join("\n\n");void navigator.clipboard.writeText(text).then(()=>setNotice("Сообщения скопированы")).catch(()=>setError("Не удалось скопировать"));}}>Копировать</button><button type="button" onClick={()=>setSelectedMessages([])}>Отмена</button></div>}<div className="conversation-history" ref={conversationHistoryRef} aria-live="polite" aria-busy={activeChatLoading} onScroll={event=>{
+      />}{selectedMessages.length>0&&<div className="ik-selection-toolbar"><span>Выбрано: {selectedMessages.length}</span><button type="button" onClick={()=>{const text=chatMessages.filter(m=>selectedMessages.includes(m.id)).map(m=>m.body).join("\n\n");void copyTextToClipboard(text).then(()=>{setError('');setNotice("Сообщения скопированы");}).catch(()=>setError("Не удалось скопировать"));}}>Копировать</button><button type="button" onClick={()=>setSelectedMessages([])}>Отмена</button></div>}<div className="conversation-history" ref={conversationHistoryRef} aria-live="polite" aria-busy={activeChatLoading} onScroll={event=>{
         const area=event.currentTarget;
         const distance=area.scrollHeight-area.scrollTop-area.clientHeight;
         chatAutoScrollRef.current=distance<120;
@@ -1612,7 +1613,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
           <button type="button" onClick={()=>replyToMessage(menuMessage)}>
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M10 9 5 14l5 5"/><path d="M5 14h9a5 5 0 0 0 5-5V5"/></svg><span>Ответить</span>
           </button>
-          {Boolean(menuMessage.body)&&<button type="button" onClick={()=>{const text=menuMessage.body;setMessageMenuId(null);void navigator.clipboard.writeText(text).then(()=>setNotice('Сообщение скопировано.')).catch(()=>setError('Не удалось скопировать сообщение.'));}}>
+          {Boolean(menuMessage.body)&&<button type="button" onClick={()=>{const text=menuMessage.body;setMessageMenuId(null);void copyTextToClipboard(text).then(()=>{setError('');setNotice('Сообщение скопировано.');}).catch(()=>setError('Не удалось скопировать сообщение.'));}}>
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/></svg><span>Копировать</span>
           </button>}
           {menuMessage.sender_id===userId&&!menuMessage.deleted_for_everyone&&!menuMessage.media_path&&<button type="button" onClick={()=>{setEditingMessageId(menuMessage.id);setEditingMessageBody(menuMessage.body);setMessageMenuId(null);}}>
