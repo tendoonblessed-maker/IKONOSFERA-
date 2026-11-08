@@ -36,9 +36,12 @@ test('Realtime wakes server-authoritative read, preserves offline fallback and c
  assert.match(section,/if\(cancelled\|\|document\.visibilityState==='hidden'\|\|!navigator\.onLine\)return;/);
  assert.match(section,/window\.setTimeout\(\(\)=>\{/);
  assert.match(section,/},150\)/);
- assert.match(section,/window\.setInterval\(\(\)=>void sync\(\),6000\)/);
- assert.match(section,/window\.addEventListener\('online',onConnected\)/);
- assert.match(section,/document\.addEventListener\('visibilitychange',onVisible\)/);
+ assert.match(section,/startVisiblePolling\(/);
+ assert.match(section,/\(\)=>void sync\(true\)/);
+ assert.match(section,/stopVisiblePolling\(\)/);
+ assert.doesNotMatch(section,/window\.setInterval\(\(\)=>void sync\(\),6000\)/);
+ assert.doesNotMatch(section,/window\.addEventListener\('online',onConnected\)/);
+ assert.doesNotMatch(section,/document\.addEventListener\('visibilitychange',onVisible\)/);
  assert.match(helper,/status==='SUBSCRIBED'\)changed\(\)/);
  assert.doesNotMatch(helper,/setChatMessages|JSON\.parse\(payload/);
 });
