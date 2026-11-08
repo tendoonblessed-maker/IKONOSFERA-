@@ -56,7 +56,23 @@ export default function ProfilePanel({token,userId,targetId,onBack,onOwnProfileC
   setAgeInput(p?.age_years==null?"":String(p.age_years));
  },[token,targetId]);
  useEffect(()=>{let mounted=true;void reload().catch(e=>{if(mounted)setError(readableError(e));});return()=>{mounted=false;};},[reload]);
- useEffect(()=>{let mounted=true;const poll=()=>{if(!mounted||document.visibilityState!=='visible'||!navigator.onLine)return;void getUserActivities(token,[targetId]).then(rows=>{if(mounted)setActivitySnapshot({ownerId:userId,targetId,value:rows[targetId]||null});}).catch(()=>{});};poll();const stopPolling=startVisiblePolling(poll,30000);return()=>{mounted=false;stopPolling();};},[token,userId,targetId]);
+ useEffect(()=>{
+  let mounted=true;
+  let requestGeneration=0;
+  const poll=()=>{
+   if(!mounted||document.visibilityState!=='visible'||!navigator.onLine)return;
+   const generation=requestGeneration;
+   void getUserActivities(token,[targetId]).then(rows=>{
+    if(mounted&&generation===requestGeneration
+      &&document.visibilityState==='visible'&&navigator.onLine){
+      setActivitySnapshot({ownerId:userId,targetId,value:rows[targetId]||null});
+    }
+   }).catch(()=>{});
+  };
+  poll();
+  const stopPolling=startVisiblePolling(poll,30000,document,window,navigator,poll,()=>{requestGeneration++;});
+  return()=>{mounted=false;requestGeneration++;stopPolling();};
+ },[token,userId,targetId]);
  const run=async(action:()=>Promise<void>)=>{
   if(busy)return;setBusy(true);setError("");setNotice("");
   try{await action();await reload();}
