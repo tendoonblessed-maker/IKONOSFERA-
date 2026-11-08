@@ -142,14 +142,21 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
   let cancelled=false;
   let inFlight=false;
   let queuedSync=false;
+  let requestGeneration=0;
   let realtimeTimer:number|null=null;
   setInitialLoading(true);
   const sync=()=>{
     if(cancelled||document.visibilityState==='hidden'||!navigator.onLine||browsingOlderRef.current)return;
     if(inFlight){queuedSync=true;return;}
     inFlight=true;
-    void refresh().then(()=>{if(!cancelled)setError('');}).catch(e=>{
-      if(!cancelled){setInitialLoading(false);setError(e instanceof Error?e.message:'Не удалось загрузить сообщения группы');}
+    const generation=requestGeneration;
+    void refresh().then(()=>{
+      if(!cancelled&&generation===requestGeneration)setError('');
+    }).catch(e=>{
+      if(!cancelled&&generation===requestGeneration){
+        setInitialLoading(false);
+        setError(e instanceof Error?e.message:'Не удалось загрузить сообщения группы');
+      }
     }).finally(()=>{
       inFlight=false;
       // A Realtime event arriving during an older GET must not be discarded.
@@ -167,11 +174,15 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
   };
   const unsubscribeRealtime=subscribeGroupChanges(token,group.id,onRealtimeChanged);
   // Polling is a fallback and heals any missed WebSocket notifications.
-  // Do not wake a hidden mobile tab every six seconds. Resuming performs
-  // one immediate RLS-backed refresh before the fallback interval restarts.
-  const stopVisiblePolling=startVisiblePolling(sync,6000);
+  // Pause also invalidates a request already in flight, so its late result
+  // cannot replace the timeline after the app has gone into the background.
+  const stopVisiblePolling=startVisiblePolling(sync,6000,document,window,navigator,undefined,()=>{
+    requestGeneration++;
+    requestSequenceRef.current++;
+  });
   return()=>{
     cancelled=true;
+    requestGeneration++;
     requestSequenceRef.current++;
     stopVisiblePolling();
     if(realtimeTimer!==null)window.clearTimeout(realtimeTimer);
