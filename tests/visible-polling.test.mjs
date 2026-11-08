@@ -193,6 +193,12 @@ test('GroupPanel and private chats share the visibility- and network-aware polle
   assert.match(panel, /stopVisiblePolling\(\)/);
   assert.doesNotMatch(panel, /window\.setInterval\(sync,6000\)/);
   assert.match(shell, /startVisiblePolling\(/);
+  assert.match(shell,/createAbortableRequestScope/);
+  assert.match(shell,/const requestAbortScope=createAbortableRequestScope\(\)/);
+  assert.match(shell,/listMessages\(token,chatId,controller\.signal\)/);
+  assert.match(shell,/listMessageReactions\(token,messages\.map\(message=>message\.id\),reactionController\.signal\)/);
+  assert.match(shell,/requestAbortScope\.clear\(controller\)/);
+  assert.match(shell,/requestAbortScope\.abort\(\)/);
   assert.match(shell, /\(\)=>void sync\(true\),\(\)=>\{requestGeneration\+\+;\}/);
   assert.match(shell, /generation!==requestGeneration/);
   assert.match(shell, /generation===requestGeneration&&document\.visibilityState==='visible'&&navigator\.onLine/);
