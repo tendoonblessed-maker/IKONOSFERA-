@@ -2,6 +2,7 @@
 
 import {createClient} from '@supabase/supabase-js';
 import {apiUrl,backendReady} from './supabase-rest';
+import {createRealtimeWakeup} from './realtime-wakeup';
 
 const publishableKey=process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY??'';
 const UUID=/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
@@ -27,8 +28,9 @@ export function subscribeInboxChanges(
  });
  let disposed=false;
  const channel=client.channel('inbox-db:'+userId);
- const direct=()=>{if(!disposed)onChanged('direct');};
- const group=()=>{if(!disposed)onChanged('group');};
+ const wakeup=createRealtimeWakeup<InboxChangeKind>(onChanged);
+ const direct=()=>{if(!disposed)wakeup.notify('direct');};
+ const group=()=>{if(!disposed)wakeup.notify('group');};
 
  void client.realtime.setAuth(token).then(()=>{
   if(disposed)return;
@@ -45,6 +47,7 @@ export function subscribeInboxChanges(
 
  return()=>{
   disposed=true;
+  wakeup.dispose();
   void client.removeChannel(channel)
    .finally(()=>{client.realtime.disconnect();})
    .catch(()=>{client.realtime.disconnect();});
