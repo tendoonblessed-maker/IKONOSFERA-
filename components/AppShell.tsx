@@ -18,6 +18,7 @@ import ChatAttachmentPreview from "@/components/ChatAttachmentPreview";
 import VoiceRecorder from "@/components/VoiceRecorder";
 import ChatInboxRow from "@/components/ChatInboxRow";
 import StatusEmoji from "@/components/StatusEmoji";
+import {copyTextToClipboard} from "@/lib/clipboard";
 import SwipeReplyMessage from "@/components/SwipeReplyMessage";
 import ReplyQuote from "@/components/ReplyQuote";
 import MessageEditForm from "@/components/MessageEditForm";
@@ -705,7 +706,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
   }
   async function copyCleanLink(){
     try{
-      await navigator.clipboard.writeText(window.location.origin+'/');
+      await copyTextToClipboard(window.location.origin+'/');
       setError('');
       setNotice('Ссылка скопирована!');
     }catch{
@@ -1527,7 +1528,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
         onOpen={id=>{void jumpToOriginalMessage(id,true);}}
         userId={userId} partnerName={active.other?.display_name||active.other?.username||'Собеседник'}
         locatingId={locatingReply}
-      />}{selectedMessages.length>0&&<div className="ik-selection-toolbar"><span>Выбрано: {selectedMessages.length}</span><button type="button" onClick={()=>{const text=chatMessages.filter(m=>selectedMessages.includes(m.id)).map(m=>m.body).join("\n\n");void navigator.clipboard.writeText(text).then(()=>setNotice("Сообщения скопированы")).catch(()=>setError("Не удалось скопировать"));}}>Копировать</button><button type="button" onClick={()=>setSelectedMessages([])}>Отмена</button></div>}<div className="conversation-history" ref={conversationHistoryRef} aria-live="polite" aria-busy={activeChatLoading} onScroll={event=>{
+      />}{selectedMessages.length>0&&<div className="ik-selection-toolbar"><span>Выбрано: {selectedMessages.length}</span><button type="button" onClick={()=>{const text=chatMessages.filter(m=>selectedMessages.includes(m.id)).map(m=>m.body).join("\n\n");void copyTextToClipboard(text).then(()=>{setError('');setNotice("Сообщения скопированы");}).catch(()=>setError("Не удалось скопировать"));}}>Копировать</button><button type="button" onClick={()=>setSelectedMessages([])}>Отмена</button></div>}<div className="conversation-history" ref={conversationHistoryRef} aria-live="polite" aria-busy={activeChatLoading} onScroll={event=>{
         const area=event.currentTarget;
         const distance=area.scrollHeight-area.scrollTop-area.clientHeight;
         chatAutoScrollRef.current=distance<120;
