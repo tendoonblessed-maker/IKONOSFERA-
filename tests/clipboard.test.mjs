@@ -42,5 +42,6 @@ test('settings link and selected-message copy share the same mobile-safe clipboa
   const shell=source('components/AppShell.tsx');
   assert.match(shell,/await copyTextToClipboard\(window\.location\.origin\+'\/'\)/);
   assert.match(shell,/void copyTextToClipboard\(text\)\.then/);
+  assert.match(shell,/copyTextToClipboard\(text\)\.then\(\(\)=>\{setError\(''\);setNotice\('Сообщение скопировано\.'\);\}\)/);
   assert.doesNotMatch(shell,/navigator\.clipboard\.writeText/);
 });
