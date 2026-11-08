@@ -23,7 +23,7 @@ function ensureReady() { if (!backendReady) throw Error('Сервер пока �
 function headers(token?: string, extras?: Record<string,string>) {
   return { apikey: anonKey, Authorization: `Bearer ${token || anonKey}`, 'Content-Type': 'application/json', ...extras };
 }
-async function http<T>(path: string, options: { method?: string; token?: string; body?: unknown; extraHeaders?: Record<string,string> } = {}): Promise<T> {
+async function http<T>(path: string, options: { method?: string; token?: string; body?: unknown; extraHeaders?: Record<string,string>; signal?:AbortSignal } = {}): Promise<T> {
   ensureReady();
   const response = await fetch(`${apiUrl}${path}`, {
     method: options.method ?? 'GET',
@@ -31,7 +31,9 @@ async function http<T>(path: string, options: { method?: string; token?: string;
     body: options.body === undefined ? undefined : JSON.stringify(options.body),
     cache: 'no-store',
     // Fail visibly instead of showing a perpetual spinner during network stalls.
-    signal: AbortSignal.timeout(18000),
+    // Callers with a lifecycle-owned signal provide the same bounded deadline
+    // through createAbortableRequestScope; ordinary requests keep the default.
+    signal: options.signal??AbortSignal.timeout(18000),
   });
   const raw = await response.text();
   let value: unknown;
@@ -183,8 +185,8 @@ export async function listProfiles(token: string, ids: string[]) {
 export const CHAT_MESSAGE_PAGE_SIZE=100;
 const CHAT_MESSAGE_COLUMNS='id,chat_id,sender_id,body,created_at,media_path,media_type,read_at,edited_at,deleted_for,deleted_for_everyone,reply_to_message_id';
 /** Newest page first. Sort ties by ID so pagination has a stable boundary. */
-export async function listMessages(token:string,chatId:string):Promise<ChatMessage[]>{
-  return http<ChatMessage[]>(`/rest/v1/messages?select=${CHAT_MESSAGE_COLUMNS}&chat_id=eq.${encodeURIComponent(chatId)}&order=created_at.desc,id.desc&limit=${CHAT_MESSAGE_PAGE_SIZE}`,{token});
+export async function listMessages(token:string,chatId:string,signal?:AbortSignal):Promise<ChatMessage[]>{
+  return http<ChatMessage[]>(`/rest/v1/messages?select=${CHAT_MESSAGE_COLUMNS}&chat_id=eq.${encodeURIComponent(chatId)}&order=created_at.desc,id.desc&limit=${CHAT_MESSAGE_PAGE_SIZE}`,{token,signal});
 }
 /** Older than the earliest loaded message; server RLS still checks membership. */
 export async function listOlderMessages(token:string,chatId:string,before:Pick<ChatMessage,'id'|'created_at'>):Promise<ChatMessage[]>{
@@ -312,9 +314,9 @@ export async function markChatRead(token:string,chatId:string):Promise<number>{
 }
 
 export type MessageReaction={message_id:string;user_id:string;emoji:string};
-export async function listMessageReactions(token:string,messageIds:string[]):Promise<MessageReaction[]>{
+export async function listMessageReactions(token:string,messageIds:string[],signal?:AbortSignal):Promise<MessageReaction[]>{
  if(!messageIds.length)return [];
- return http<MessageReaction[]>('/rest/v1/message_reactions?select=message_id,user_id,emoji&message_id=in.('+messageIds.map(encodeURIComponent).join(',')+')&limit=3000',{token});
+ return http<MessageReaction[]>('/rest/v1/message_reactions?select=message_id,user_id,emoji&message_id=in.('+messageIds.map(encodeURIComponent).join(',')+')&limit=3000',{token,signal});
 }
 export async function setMessageReaction(token:string,userId:string,messageId:string,emoji:string|null):Promise<void>{
  await http('/rest/v1/message_reactions?message_id=eq.'+encodeURIComponent(messageId)+'&user_id=eq.'+encodeURIComponent(userId),{token,method:'DELETE'});
