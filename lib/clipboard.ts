@@ -69,7 +69,11 @@ function legacyCopyText(text:string):boolean{
   textarea.setAttribute('tabindex','-1');
   textarea.style.position='fixed';
   textarea.style.top='0';
-  textarea.style.left='-9999px';
+  textarea.style.left='0';
+  textarea.style.width='1px';
+  textarea.style.height='1px';
+  textarea.style.padding='0';
+  textarea.style.border='0';
   textarea.style.opacity='0';
   textarea.style.pointerEvents='none';
   textarea.style.fontSize='16px';
