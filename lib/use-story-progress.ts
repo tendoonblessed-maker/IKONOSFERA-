@@ -1,10 +1,11 @@
 'use client';
-import {useEffect,useRef} from 'react';
+import {useLayoutEffect,useRef} from 'react';
+import {createStoryProgressScheduler} from '@/lib/story-progress-scheduler';
 
 /**
- * The progress line is the story playback clock. Animate with a compositor
- * transform and advance only when it reaches the end. This keeps progress,
- * pause-on-hold and auto-close in sync on iPhone Safari and desktop.
+ * The progress line is the story playback clock. It advances only while the
+ * viewer is visible and not held, and does not keep scheduling frames in the
+ * background. The elapsed foreground time is preserved across pauses.
  */
 export const STORY_DURATION_MS=6000;
 
@@ -12,28 +13,36 @@ export function useStoryProgress(storyId:string|null,onComplete:()=>void,paused=
  const progressRef=useRef<HTMLSpanElement|null>(null);
  const callbackRef=useRef(onComplete);
  const pausedRef=useRef(paused);
- useEffect(()=>{callbackRef.current=onComplete;},[onComplete]);
- useEffect(()=>{pausedRef.current=paused;},[paused]);
- useEffect(()=>{
+ const schedulerRef=useRef<ReturnType<typeof createStoryProgressScheduler>|null>(null);
+
+ useLayoutEffect(()=>{callbackRef.current=onComplete;},[onComplete]);
+ useLayoutEffect(()=>{
+  pausedRef.current=paused;
+  schedulerRef.current?.sync();
+ },[paused]);
+
+ useLayoutEffect(()=>{
   if(!storyId)return;
-  let frame=0;
-  let elapsed=0;
-  let previous:number|null=null;
-  const tick=(time:number)=>{
-   // Background tabs and holding a finger on the story pause playback.
-   // The delta cap prevents a stalled frame from skipping entire stories.
-   if(previous!==null&&!pausedRef.current&&document.visibilityState==='visible'){
-    elapsed+=Math.max(0,Math.min(time-previous,100));
-   }
-   previous=time;
-   const fraction=Math.min(1,elapsed/STORY_DURATION_MS);
-   if(progressRef.current)progressRef.current.style.transform='scaleX('+fraction+')';
-   if(fraction>=1){callbackRef.current();return;}
-   frame=window.requestAnimationFrame(tick);
+  const scheduler=createStoryProgressScheduler({
+   durationMs:STORY_DURATION_MS,
+   isPaused:()=>pausedRef.current,
+   isVisible:()=>document.visibilityState==='visible',
+   requestFrame:callback=>window.requestAnimationFrame(callback),
+   cancelFrame:handle=>window.cancelAnimationFrame(handle),
+   onProgress:fraction=>{
+    if(progressRef.current)progressRef.current.style.transform='scaleX('+fraction+')';
+   },
+   onComplete:()=>callbackRef.current()
+  });
+  schedulerRef.current=scheduler;
+  const onVisibilityChange=()=>scheduler.sync();
+  document.addEventListener('visibilitychange',onVisibilityChange);
+  return()=>{
+   document.removeEventListener('visibilitychange',onVisibilityChange);
+   scheduler.dispose();
+   if(schedulerRef.current===scheduler)schedulerRef.current=null;
   };
-  if(progressRef.current)progressRef.current.style.transform='scaleX(0)';
-  frame=window.requestAnimationFrame(tick);
-  return()=>window.cancelAnimationFrame(frame);
  },[storyId]);
+
  return progressRef;
 }
