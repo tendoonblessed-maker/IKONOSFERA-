@@ -203,7 +203,7 @@ test('ProfilePanel pauses activity polling while hidden or offline and scopes re
   assert.match(panel, /if\(!mounted\|\|document\.visibilityState!=='visible'\|\|!navigator\.onLine\)return/);
   assert.match(panel, /scopedProfileActivity\(activitySnapshot,userId,targetId\)/);
   assert.match(panel, /setActivitySnapshot\(\{ownerId:userId,targetId,value:rows\[targetId\]\|\|null\}\)/);
-  assert.match(panel, /return\(\)=>\{mounted=false;stopPolling\(\);\}/);
+  assert.match(panel, /return\(\)=>\{mounted=false;requestGeneration\+\+;stopPolling\(\);\}/);
   const effect = panel.slice(
     panel.indexOf('useEffect(()=>{let mounted=true;const poll='),
     panel.indexOf(' const run=async')
