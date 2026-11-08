@@ -170,15 +170,12 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
   // Do not wake a hidden mobile tab every six seconds. Resuming performs
   // one immediate RLS-backed refresh before the fallback interval restarts.
   const stopVisiblePolling=startVisiblePolling(sync,6000);
-  const onOnline=()=>sync();
-  window.addEventListener('online',onOnline);
   return()=>{
     cancelled=true;
     requestSequenceRef.current++;
     stopVisiblePolling();
     if(realtimeTimer!==null)window.clearTimeout(realtimeTimer);
     unsubscribeRealtime();
-    window.removeEventListener('online',onOnline);
   };
  },[refresh,token,group.id]);
  // Search runs against the full group history via the existing RLS-filtered
