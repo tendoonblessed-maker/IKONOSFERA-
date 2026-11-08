@@ -5,7 +5,7 @@ import {startVisiblePolling} from '../lib/visible-polling.ts';
 
 function createHarness(initialVisibility = 'visible', initiallyOnline = true) {
   const documentListeners = new Set();
-  const windowListeners = new Map([['online', new Set()], ['offline', new Set()]]);
+  const windowListeners = new Map([['online', new Set()], ['offline', new Set()], ['pageshow', new Set()]]);
   const intervals = new Map();
   let nextId = 1;
   const documentRef = {
@@ -50,6 +50,9 @@ function createHarness(initialVisibility = 'visible', initiallyOnline = true) {
       const type = value ? 'online' : 'offline';
       for (const listener of [...windowListeners.get(type)]) listener();
     },
+    setPageShow(persisted) {
+      for (const listener of [...windowListeners.get('pageshow')]) listener({persisted});
+    },
     tick() {
       for (const interval of [...intervals.values()]) interval.callback();
     }
@@ -83,6 +86,7 @@ test('group polling pauses while hidden and refreshes once before resuming', () 
   assert.equal(harness.documentListeners.size, 0);
   assert.equal(harness.windowListeners.get('online').size, 0);
   assert.equal(harness.windowListeners.get('offline').size, 0);
+  assert.equal(harness.windowListeners.get('pageshow').size, 0);
   harness.setVisibility('hidden');
   harness.setVisibility('visible');
   harness.setOnline(false);
@@ -209,4 +213,46 @@ test('ProfilePanel pauses activity polling while hidden or offline and scopes re
     panel.indexOf(' const run=async')
   );
   assert.doesNotMatch(effect, /window\.setInterval/);
+});
+test('a persisted pageshow restores chats from BFCache and coalesces the following resume signal', () => {
+  const harness = createHarness();
+  let resumes = 0;
+  let polls = 0;
+  const stop = startVisiblePolling(
+    () => polls++, 6000, harness.documentRef, harness.windowRef, harness.navigatorRef,
+    () => resumes++
+  );
+
+  harness.setPageShow(true);
+  assert.equal(resumes, 1, 'BFCache restoration immediately reconciles missed chat events');
+  assert.equal(harness.intervals.size, 1);
+
+  harness.setVisibility('visible');
+  assert.equal(resumes, 1, 'the paired visibility signal must not cause a duplicate refresh');
+  harness.setOnline(true);
+  assert.equal(resumes, 1, 'the paired online signal must not cause a duplicate refresh');
+
+  harness.tick();
+  assert.equal(polls, 1);
+  stop();
+  assert.equal(harness.windowListeners.get('pageshow').size, 0);
+});
+
+test('ordinary pageshow is ignored and an offline BFCache restore waits for connectivity', () => {
+  const harness = createHarness('visible', false);
+  let resumes = 0;
+  const stop = startVisiblePolling(
+    () => {}, 6000, harness.documentRef, harness.windowRef, harness.navigatorRef,
+    () => resumes++
+  );
+
+  harness.setPageShow(false);
+  assert.equal(resumes, 0, 'initial/non-persisted page show is not a resume');
+  harness.setPageShow(true);
+  assert.equal(resumes, 0, 'an offline restore cannot start a network refresh');
+
+  harness.setOnline(true);
+  assert.equal(resumes, 1, 'the later online event performs the required refresh');
+  assert.equal(harness.intervals.size, 1);
+  stop();
 });
