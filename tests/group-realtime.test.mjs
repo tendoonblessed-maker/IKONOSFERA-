@@ -79,7 +79,9 @@ test('group realtime never renders WebSocket payload or stores another user sess
  assert.match(panel,/subscribeGroupChanges\(token,group\.id,onRealtimeChanged\)/);
  assert.match(panel,/if\(inFlight\)\{queuedSync=true;return;\}/);
  assert.match(panel,/if\(queuedSync&&!cancelled\)\{queuedSync=false;sync\(\);\}/);
- assert.match(panel,/window\.setInterval\(sync,6000\)/);
+ assert.match(panel,/startVisiblePolling\(sync,6000\)/);
+ assert.match(panel,/stopVisiblePolling\(\)/);
+ assert.doesNotMatch(panel,/window\.setInterval\(sync,6000\)/);
  assert.match(panel,/window\.addEventListener\('online',onOnline\)/);
  assert.match(panel,/unsubscribeRealtime\(\)/);
  assert.match(panel,/const sent=await sendGroupMessage\(requestToken,groupId,accountId,body,attempt\.id\)/);
