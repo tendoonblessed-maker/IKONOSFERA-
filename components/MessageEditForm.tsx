@@ -1,6 +1,7 @@
 'use client';
 
-import {useId,useState,type FormEvent} from 'react';
+import {useId,useRef,useState,type FormEvent} from 'react';
+import {messageEditShortcut} from '@/lib/message-edit-shortcuts';
 
 type Props={
   value:string;
@@ -13,13 +14,16 @@ type Props={
 export default function MessageEditForm({value,onChange,onSave,onCancel}:Props){
   const fieldId=useId();
   const [saving,setSaving]=useState(false);
+  const savingRef=useRef(false);
 
   async function submit(event:FormEvent<HTMLFormElement>){
     event.preventDefault();
-    if(saving||!value.trim()||value.length>4000)return;
+    // A synchronous lock also covers two submits before React commits state.
+    if(savingRef.current||!value.trim()||value.length>4000)return;
+    savingRef.current=true;
     setSaving(true);
     try{await onSave(value);}
-    finally{setSaving(false);}
+    finally{savingRef.current=false;setSaving(false);}
   }
 
   return <form className="message-edit-form ik-message-edit-form" onSubmit={event=>{void submit(event);}}>
@@ -34,13 +38,23 @@ export default function MessageEditForm({value,onChange,onSave,onCancel}:Props){
         field.style.height=Math.min(field.scrollHeight,180)+'px';
       }}
       onKeyDown={event=>{
-        if(event.key==='Escape'){
+        const composing=event.nativeEvent.isComposing||event.nativeEvent.keyCode===229;
+        const shortcut=messageEditShortcut({
+          key:event.key,ctrlKey:event.ctrlKey,metaKey:event.metaKey,
+          altKey:event.altKey,shiftKey:event.shiftKey,repeat:event.repeat,
+          isComposing:composing,keyCode:event.nativeEvent.keyCode
+        },savingRef.current);
+        if(shortcut==='cancel'){
           event.preventDefault();
           onCancel();
-        }else if(event.key==='Enter'&&(event.ctrlKey||event.metaKey)&&!event.nativeEvent.isComposing){
+        }else if(event.key==='Enter'&&(event.ctrlKey||event.metaKey)
+          &&!event.altKey&&!event.shiftKey&&!composing){
+          // Swallow auto-repeat and in-flight modified Enter, never submit twice.
           event.preventDefault();
-          if(value.trim()&&!saving)event.currentTarget.form?.requestSubmit();
+          if(shortcut==='save'&&value.trim()&&value.length<=4000)
+            event.currentTarget.form?.requestSubmit();
         }
+
       }}
     />
     <div className="ik-message-edit-footer">

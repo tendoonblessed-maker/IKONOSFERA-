@@ -444,7 +444,7 @@ test('Telegram-like message actions are compact and functional on iPhone',()=>{
  assert.match(ui,/className="ik-message-menu-reactions"/);
  assert.match(ui,/className="ik-message-menu-preview-name"/);
  assert.match(ui,/>Ответить<\/span>/);
- assert.match(ui,/reactToMessage\(id,emoji\)/);
+ assert.match(ui,/reactToMessage\(id,emoji,scope\)/);
  assert.match(ui,/>Изменить<\/span>/);
  assert.match(ui,/>Удалить для всех<\/span>/);
  assert.match(css,/\.ik-message-menu-buttons button svg/);
@@ -643,7 +643,7 @@ test('MIT open-source gesture and popover libraries are integrated without GPL c
  assert.match(panel,/FloatingFocusManager/);
  assert.match(inbox,/FloatingActionMenu/);
  assert.match(shell,/SwipeReplyMessage/);
- assert.match(shell,/onReply=\{\(\)=>replyToMessage\(message\)\}/);
+ assert.match(shell,/onReply=\{\(\)=>replyToMessage\(message,scopeForMessage\(message\)\)\}/);
  assert.match(shell,/ik-inline-reply/);
  assert.match(shell,/setReplyingTo\(current=>current\?\.id===reply\.id/);
  const manifest=load('docs/OPEN_SOURCE_INTEGRATIONS.md');
@@ -1020,16 +1020,17 @@ test('editing a direct message supports multiline text with safe iPhone actions'
  const css=load('app/globals.css');
  assert.match(shell,/import MessageEditForm from/);
  assert.match(shell,/editingMessageId===message\.id\?<MessageEditForm/);
- assert.match(shell,/onSave=\{body=>messageAction\(message\.id,'edit',body\)\}/);
+ assert.match(shell,/onSave=\{body=>messageAction\(message\.id,'edit',body,scopeForMessage\(message\)\)\}/);
  assert.match(shell,/setEditingMessageId\(null\);setEditingMessageBody\(''\)/);
  assert.doesNotMatch(shell,/editingMessageId===message\.id\?<form/);
  assert.match(editor,/<textarea id=\{fieldId\}/);
  assert.match(editor,/maxLength=\{4000\}/);
  assert.match(editor,/fontSize|onInput=\{event=>/);
  assert.match(editor,/event\.key==='Enter'&&\(event\.ctrlKey\|\|event\.metaKey\)/);
- assert.match(editor,/event\.key==='Escape'/);
+ assert.match(editor,/messageEditShortcut\(\{/);
+ assert.match(editor,/if\(shortcut==='cancel'\)/);
  assert.match(editor,/event\.currentTarget\.form\?\.requestSubmit\(\)/);
- assert.match(editor,/if\(saving\|\|!value\.trim\(\)\|\|value\.length>4000\)return/);
+ assert.match(editor,/if\(savingRef\.current\|\|!value\.trim\(\)\|\|value\.length>4000\)return/);
  assert.match(editor,/disabled=\{saving\|\|!value\.trim\(\)\}/);
  assert.match(css,/\.ik-message-edit-form textarea/);
  assert.match(css,/font-family:inherit;font-size:16px;line-height:1\.45/);
