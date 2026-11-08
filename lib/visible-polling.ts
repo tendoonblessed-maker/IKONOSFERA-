@@ -51,16 +51,48 @@ export function startVisiblePolling(
     start();
   };
 
+  // A BFCache restore can fire pageshow without a useful visibilitychange.
+  // Coalesce the follow-up visibility/online signal so one restore means one
+  // authoritative refresh, while a restore that is still offline waits for
+  // the real online event.
+  let skipNextResumeSignal = false;
   const onVisibilityChange = () => {
-    if (documentRef.visibilityState === 'visible') refreshAndStart();
-    else pause();
+    if (documentRef.visibilityState === 'visible') {
+      if (skipNextResumeSignal) {
+        skipNextResumeSignal = false;
+        return;
+      }
+      refreshAndStart();
+    } else {
+      skipNextResumeSignal = false;
+      pause();
+    }
   };
-  const onOnline = () => refreshAndStart();
-  const onOffline = () => pause();
+  const onOnline = () => {
+    if (skipNextResumeSignal) {
+      skipNextResumeSignal = false;
+      return;
+    }
+    refreshAndStart();
+  };
+  const onOffline = () => {
+    skipNextResumeSignal = false;
+    pause();
+  };
+  const onPageShow = (event: PageTransitionEvent) => {
+    if (!event.persisted) return;
+    if (!canPoll()) {
+      pause();
+      return;
+    }
+    skipNextResumeSignal = true;
+    refreshAndStart();
+  };
 
   documentRef.addEventListener('visibilitychange', onVisibilityChange);
   windowRef.addEventListener('online', onOnline);
   windowRef.addEventListener('offline', onOffline);
+  windowRef.addEventListener('pageshow', onPageShow);
   start();
 
   return () => {
@@ -70,5 +102,6 @@ export function startVisiblePolling(
     documentRef.removeEventListener('visibilitychange', onVisibilityChange);
     windowRef.removeEventListener('online', onOnline);
     windowRef.removeEventListener('offline', onOffline);
+    windowRef.removeEventListener('pageshow', onPageShow);
   };
 }
