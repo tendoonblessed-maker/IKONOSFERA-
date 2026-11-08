@@ -179,3 +179,35 @@ test('offline navigation fails closed when the offline cache lookup is denied',a
  const response=await handle({method:'GET',mode:'navigate',url:'https://ikonosfera.test/private-chat'});
  assert.equal(response.type,'error');
 });
+
+
+const navigationRequest={method:'GET',mode:'navigate',url:'https://ikonosfera.test/private-chat'};
+
+test('transient gateway failures use the cached offline shell',async()=>{
+ const offlinePage={source:'offline-shell'};
+ for(const status of [502,503,504]){
+  const handle=fetchHandler({
+   match:async()=>offlinePage,
+   network:async()=>({status,ok:false})
+  });
+  assert.equal(await handle(navigationRequest),offlinePage,`HTTP ${status}`);
+ }
+});
+
+test('ordinary application errors are not hidden by the offline shell',async()=>{
+ const serverError={status:500,ok:false};
+ const handle=fetchHandler({
+  match:async()=>{throw Error('offline cache should not be consulted');},
+  network:async()=>serverError
+ });
+ assert.equal(await handle(navigationRequest),serverError);
+});
+
+test('a gateway response is preserved when the offline cache is unavailable',async()=>{
+ const gatewayError={status:503,ok:false};
+ const handle=fetchHandler({
+  match:async()=>{throw Error('CacheStorage disabled');},
+  network:async()=>gatewayError
+ });
+ assert.equal(await handle(navigationRequest),gatewayError);
+});
