@@ -83,6 +83,13 @@ export function startVisiblePolling(
     pageShowResumeAt = 0;
     pause();
   };
+  const onPageHide = () => {
+    // pagehide may run before a mobile browser freezes the page for BFCache,
+    // even when visibilitychange is not delivered. Stop timers and abort reads
+    // before the snapshot; a persisted pageshow below performs reconciliation.
+    pageShowResumeAt = 0;
+    pause();
+  };
   const onPageShow = (event: PageTransitionEvent) => {
     if (!event.persisted) return;
     pageShowResumeAt = 0;
@@ -98,6 +105,7 @@ export function startVisiblePolling(
   windowRef.addEventListener('online', onOnline);
   windowRef.addEventListener('offline', onOffline);
   windowRef.addEventListener('pageshow', onPageShow);
+  windowRef.addEventListener('pagehide', onPageHide);
   start();
 
   return () => {
@@ -108,5 +116,6 @@ export function startVisiblePolling(
     windowRef.removeEventListener('online', onOnline);
     windowRef.removeEventListener('offline', onOffline);
     windowRef.removeEventListener('pageshow', onPageShow);
+    windowRef.removeEventListener('pagehide', onPageHide);
   };
 }
