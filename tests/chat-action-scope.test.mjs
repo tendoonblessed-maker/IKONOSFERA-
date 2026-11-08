@@ -61,6 +61,6 @@ test('message menu rendering and delayed actions retain the captured chat scope'
   assert.match(app,/messageAction\(id,'hide',undefined,scope\)/);
   assert.match(app,/messageAction\(id,'delete_everyone',undefined,scope\)/);
   assert.match(app,/onSave=\{body=>messageAction\(message.id,'edit',body,scopeForMessage\(message\)\)\}/);
-  assert.match(app,/useLayoutEffect\(\(\)=>\{\s*selectedRef\.current=selected;\s*chatContextGenerationRef\.current\+\+/);
+  assert.match(app,/useLayoutEffect\(\(\)=>\{\s*selectedRef\.current=selected;\s*chatContextGenerationRef\.current\+=1/);
   assert.match(app,/function isCurrentMessageActionScope\(scope:ChatActionScope\|null\|undefined\)/);
 });
