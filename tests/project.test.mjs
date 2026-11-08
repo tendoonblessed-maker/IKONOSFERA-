@@ -257,7 +257,8 @@ test('Chat search and multi-select are accessible and do not change backend perm
  assert.ok(shell.includes('messageSearch'));
  assert.ok(load('components/DirectMessageSearchPanel.tsx').includes('Поиск сообщений в текущем чате'));
  assert.ok(shell.includes('selectedMessages'));
- assert.ok(shell.includes('navigator.clipboard.writeText'));
+ assert.ok(shell.includes('copyTextToClipboard(text)'));
+ assert.ok(load('lib/clipboard.ts').includes("document.execCommand('copy')"));
  assert.ok(shell.includes('setMessageMenuId(message.id)'));
  assert.ok(shell.includes("'Выбрать'") && shell.includes('Снять выделение'));
  assert.ok(!shell.includes('aria-pressed={selectedMessages.includes(message.id)}'));
@@ -769,7 +770,7 @@ test('share button confirms a copied link without internal ChatGPT debug wording
  const end=shell.indexOf('// Scroll only the message history',start);
  assert.ok(start>=0&&end>start);
  const fragment=shell.slice(start,end);
- assert.match(fragment,/navigator\.clipboard\.writeText\(window\.location\.origin\+'\/'\)/);
+ assert.match(fragment,/copyTextToClipboard\(window\.location\.origin\+'\/'\)/);
  assert.match(fragment,/setNotice\('Ссылка скопирована!'\)/);
  assert.doesNotMatch(fragment,/Скопирована чистая ссылка без меток ChatGPT/);
  assert.match(fragment,/setTimeout\(\(\)=>\{/);
