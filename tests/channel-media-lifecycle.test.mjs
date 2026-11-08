@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
 import {readFileSync} from 'node:fs';
-import {pauseMediaElements} from '../lib/channel-media-lifecycle.ts';
+import {observeRemovedMediaElements,pauseMediaElements,pauseRemovedMediaNodes} from '../lib/channel-media-lifecycle.ts';
 
 const load=path=>readFileSync(new URL('../'+path,import.meta.url),'utf8');
 
@@ -43,4 +43,58 @@ test('channel feed pauses audio and video on background, pagehide and detach',()
  assert.match(panel,/ref=\{setFeedRef\}/);
  assert.match(panel,/if\(!node\)pauseFeedMedia\(feedRef\.current\)/);
  assert.doesNotMatch(panel,/\.play\(/,'media must never resume automatically when the app returns');
+});
+
+test('removing a channel post pauses its own and nested media players',()=>{
+ const calls=[];
+ const nestedAudio={pause:()=>calls.push('nested-audio')};
+ const removedVideo={pause:()=>calls.push('removed-video')};
+ const removedArticle={
+  querySelectorAll:selector=>{
+   assert.equal(selector,'audio,video');
+   return [nestedAudio];
+  }
+ };
+ pauseRemovedMediaNodes([{removedNodes:[removedVideo,removedArticle]}]);
+ assert.deepEqual(calls,['removed-video','nested-audio']);
+});
+
+test('removed media cleanup survives broken detached nodes and collections',()=>{
+ const calls=[];
+ const brokenNode={
+  pause:()=>{throw new Error('detached player');},
+  querySelectorAll:()=>{throw new Error('detached subtree');}
+ };
+ const goodNode={pause:()=>calls.push('remaining-player')};
+ assert.doesNotThrow(()=>pauseRemovedMediaNodes([
+  {removedNodes:[brokenNode,goodNode]},
+  {get removedNodes(){throw new Error('stale mutation record');}}
+ ]));
+ assert.deepEqual(calls,['remaining-player']);
+});
+
+test('channel feed observes removed post subtrees and disconnects on cleanup',()=>{
+ let callback;
+ let observed;
+ let disconnected=false;
+ class FakeMutationObserver{
+  constructor(onMutations){callback=onMutations;}
+  observe(root,options){observed={root,options};}
+  disconnect(){disconnected=true;}
+ }
+ const root={};
+ const dispose=observeRemovedMediaElements(root,FakeMutationObserver);
+ assert.deepEqual(observed,{root,options:{childList:true,subtree:true}});
+ const calls=[];
+ callback([{removedNodes:[{pause:()=>calls.push('detached')}]}]);
+ assert.deepEqual(calls,['detached']);
+ dispose();
+ assert.equal(disconnected,true);
+});
+
+test('channel feed guards unsupported MutationObserver and cleans up the observer',()=>{
+ const panel=load('components/ChannelsPanel.tsx');
+ assert.match(panel,/typeof MutationObserver!=='undefined'/);
+ assert.match(panel,/observeRemovedMediaElements\\(feed\\)/);
+ assert.match(panel,/stopObserving\\(\\)/);
 });
