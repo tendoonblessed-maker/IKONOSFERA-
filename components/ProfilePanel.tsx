@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { changeProfile, explainProfileError, validateUsername } from "@/lib/supabase-rest";
 import {getUserActivities,activityLabel,type UserActivity} from "@/lib/activity";
 import {startVisiblePolling} from "@/lib/visible-polling";
+import {scopedProfileActivity} from "@/lib/profile-activity-scope";
 import {useStoryProgress} from "@/lib/use-story-progress";
 import StatusEmoji from "@/components/StatusEmoji";
 import StatusEmojiPicker from "@/components/StatusEmojiPicker";
@@ -20,7 +21,7 @@ export default function ProfilePanel({token,userId,targetId,onBack,onOwnProfileC
  const mine=targetId===userId;
  const [profile,setProfile]=useState<FullProfile|null>(null);
  const [activitySnapshot,setActivitySnapshot]=useState<{ownerId:string;targetId:string;value:UserActivity|null}|null>(null);
- const userActivity=activitySnapshot?.ownerId===userId&&activitySnapshot?.targetId===targetId?activitySnapshot.value:null;
+ const userActivity=scopedProfileActivity(activitySnapshot,userId,targetId);
  const [photos,setPhotos]=useState<ProfilePhoto[]>([]);
  const [stories,setStories]=useState<Story[]>([]);
  const [ownedChannels,setOwnedChannels]=useState<Channel[]>([]);
