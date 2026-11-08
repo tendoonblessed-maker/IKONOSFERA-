@@ -5,6 +5,7 @@ type RemovedNodeLike = {
 };
 type MutationObserverLike = Pick<MutationObserver,'observe'|'disconnect'>;
 type MutationObserverConstructor = new (callback:MutationCallback)=>MutationObserverLike;
+type ContainmentRoot = Pick<Element,'contains'>;
 
 /**
  * Pause every media element in a channel feed without letting one broken
@@ -27,11 +28,13 @@ export function pauseMediaElements(
 }
 
 /**
- * A removed post can contain a player that was still playing when React
- * removed its DOM subtree. Pause the node itself and any nested players.
+ * Pause removed media subtrees, but ignore nodes that were only moved inside
+ * the same feed. MutationObserver callbacks run after DOM mutations, so a
+ * remove+insert reorder can otherwise pause a player that is still visible.
  */
 export function pauseRemovedMediaNodes(
-  records:ArrayLike<Pick<MutationRecord,'removedNodes'>>|null|undefined
+  records:ArrayLike<Pick<MutationRecord,'removedNodes'>>|null|undefined,
+  root?:ContainmentRoot
 ):void{
   if(!records)return;
   let recordCount=0;
@@ -46,6 +49,13 @@ export function pauseRemovedMediaNodes(
       let rawNode:unknown;
       try{rawNode=removedNodes[nodeIndex];}catch{continue;}
       if(!rawNode||typeof rawNode!=='object')continue;
+      if(root){
+        try{
+          if(root.contains(rawNode as Node))continue;
+        }catch{
+          // If containment cannot be verified, stop the player conservatively.
+        }
+      }
       const node=rawNode as RemovedNodeLike;
       if(typeof node.pause==='function')pauseMediaElements([node as PausableMediaElement]);
       if(typeof node.querySelectorAll!=='function')continue;
@@ -61,7 +71,7 @@ export function observeRemovedMediaElements(
   root:Element,
   Observer:MutationObserverConstructor=MutationObserver
 ):()=>void{
-  const observer=new Observer(records=>pauseRemovedMediaNodes(records));
+  const observer=new Observer(records=>pauseRemovedMediaNodes(records,root));
   observer.observe(root,{childList:true,subtree:true});
   return()=>observer.disconnect();
 }
