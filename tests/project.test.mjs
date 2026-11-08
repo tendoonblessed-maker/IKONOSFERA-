@@ -685,7 +685,9 @@ test('all fifty authored glossy status emojis ship as a real WebP atlas',()=>{
  assert.match(picker,/Array.from\(\{length:STATUS_EMOJI_COUNT\}/);
  assert.match(picker,/onSelect\(null\)/);
  assert.match(picker,/role="radiogroup"/);
- assert.match(picker,/role="radio" aria-checked=\{value===i\}/);
+  assert.match(picker,/role="radio" aria-checked=\{noStatusSelected\}/);
+  assert.match(picker,/role="radio" aria-checked=\{hasValidStatus&&value===i\}/);
+  assert.match(picker,/const noStatusSelected=!hasValidStatus/);
  assert.match(picker,/tabIndex=\{selectedIndex===focusIndex\?0:-1\}/);
  assert.ok(css.includes("background-image:url('/status-emojis.webp?v=2')"));
  assert.match(css,/background-size:1000% 500%/);
