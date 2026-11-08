@@ -517,6 +517,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
     let cancelled=false;
     let inFlight=false;
     let queuedSync=false;
+    let requestGeneration=0;
     let realtimeTimer:number|null=null;
     const chatId=selected;
     const token=session.access_token;
@@ -537,9 +538,13 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
       // The 'online' listener below triggers an immediate retry.
       if(!navigator.onLine)return;
       inFlight=true;
+      const generation=requestGeneration;
       try{
         const messages=(await listMessages(token,chatId)).reverse();
-        if(cancelled)return;
+        // A response started before backgrounding/offline must not update the
+        // timeline or acknowledge reads after the user has left the app.
+        if(cancelled||generation!==requestGeneration
+          ||document.visibilityState!=='visible'||!navigator.onLine)return;
         setChatMessages(current=>mergeConfirmedRecentPage(
           current,messages,CHAT_MESSAGE_PAGE_SIZE,confirmedMessagesRef.current,chatId,userId
         ));
@@ -547,16 +552,18 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
         setChatLoad({id:chatId,status:'ready'});
         // Reactions must not block displaying text and attachments.
         void listMessageReactions(token,messages.map(message=>message.id))
-          .then(reactions=>{if(!cancelled)setMessageReactions(current=>{
+          .then(reactions=>{if(!cancelled&&generation===requestGeneration
+            &&document.visibilityState==='visible'&&navigator.onLine)setMessageReactions(current=>{
             const recentIds=new Set(messages.map(message=>message.id));
             return [...current.filter(reaction=>!recentIds.has(reaction.message_id)),...reactions];
           });})
           .catch(()=>{});
-        if(messages.some(message=>message.sender_id!==userId&&!message.read_at)){
+        if(messages.some(message=>message.sender_id!==userId&&!message.read_at)
+          &&generation===requestGeneration&&document.visibilityState==='visible'&&navigator.onLine){
           void markChatRead(token,chatId).catch(()=>{});
         }
       }catch(e){
-        if(!cancelled&&first){
+        if(!cancelled&&generation===requestGeneration&&document.visibilityState==='visible'&&navigator.onLine&&first){
           setChatLoad({id:chatId,status:'error'});
           setError(userFacingError(e));
         }
@@ -582,10 +589,10 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
     // HTTP polling remains a fallback when WebSocket is blocked, offline,
     // rate-limited or disconnected (and it repairs missed Realtime events).
     const stopVisiblePolling=startVisiblePolling(
-      ()=>void sync(),6000,document,window,navigator,()=>void sync(true)
+      ()=>void sync(),6000,document,window,navigator,()=>void sync(true),()=>{requestGeneration++;}
     );
     return()=>{
-      cancelled=true;stopVisiblePolling();
+      cancelled=true;requestGeneration++;stopVisiblePolling();
       if(realtimeTimer!==null)window.clearTimeout(realtimeTimer);
       unsubscribeRealtime();
     };
