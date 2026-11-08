@@ -199,7 +199,7 @@ test('GroupPanel and private chats share the visibility- and network-aware polle
   assert.match(shell,/listMessageReactions\(token,messages\.map\(message=>message\.id\),reactionController\.signal\)/);
   assert.match(shell,/requestAbortScope\.clear\(controller\)/);
   assert.match(shell,/requestAbortScope\.abort\(\)/);
-  assert.match(shell, /\(\)=>void sync\(true\),\(\)=>\{requestGeneration\+\+;\}/);
+  assert.match(shell, /\(\)=>void sync\(true\),\(\)=>\{requestGeneration\+\+;requestAbortScope\.abort\(\);\}/);
   assert.match(shell, /generation!==requestGeneration/);
   assert.match(shell, /generation===requestGeneration&&document\.visibilityState==='visible'&&navigator\.onLine/);
   assert.match(shell, /stopVisiblePolling\(\)/);
