@@ -17,7 +17,7 @@ export default function ChannelsPanel({token,userId,channel,onBack,onShowProfile
  const feedRef=useRef<HTMLDivElement|null>(null);
  const pauseFeedMedia=useCallback((root:HTMLDivElement|null=feedRef.current)=>{
   if(!root)return;
-  pauseMediaElements(root.querySelectorAll('audio,video'));
+  pauseMediaElements(root.querySelectorAll<HTMLMediaElement>('audio,video'));
  },[]);
  const setFeedRef=useCallback((node:HTMLDivElement|null)=>{
   if(!node)pauseFeedMedia(feedRef.current);
