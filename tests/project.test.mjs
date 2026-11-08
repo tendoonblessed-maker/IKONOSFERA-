@@ -518,7 +518,7 @@ test('group conversations always fetch newest messages and show real loading/err
  assert.match(ui,/!initialLoading&&!error&&messages\.length===0/);
  assert.match(ui,/Не удалось загрузить сообщения группы/);
  assert.match(ui,/Попробовать снова/);
- assert.match(ui,/window\.setInterval\(sync,6000\)/);
+ assert.match(ui,/startVisiblePolling\(sync,6000\)/);
  assert.match(ui,/window\.setInterval\(updateMembers,120000\)/);
 });
 test('stories do not download on every inbox refresh and open newest uploaded story',()=>{
@@ -553,7 +553,7 @@ test('opening and polling group chats avoids overlapping requests and stale resp
  assert.match(group,/if\(cancelled\|\|document\.visibilityState==='hidden'\|\|!navigator\.onLine\)return/);
  assert.match(group,/if\(inFlight\)\{queuedSync=true;return;\}/);
  assert.match(group,/requestSequenceRef\.current\+\+;/);
- assert.match(group,/window\.clearInterval\(timer\)/);
+ assert.match(group,/stopVisiblePolling\(\)/);
  assert.match(group,/unsubscribeRealtime\(\)/);
  assert.match(group,/lastReadRef\.current===last/);
 });
