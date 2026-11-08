@@ -95,6 +95,6 @@ test('channel feed observes removed post subtrees and disconnects on cleanup',()
 test('channel feed guards unsupported MutationObserver and cleans up the observer',()=>{
  const panel=load('components/ChannelsPanel.tsx');
  assert.match(panel,/typeof MutationObserver!=='undefined'/);
- assert.match(panel,/observeRemovedMediaElements\\(feed\\)/);
- assert.match(panel,/stopObserving\\(\\)/);
+ assert.match(panel,/observeRemovedMediaElements\(feed\)/);
+ assert.match(panel,/stopObserving\(\)/);
 });
