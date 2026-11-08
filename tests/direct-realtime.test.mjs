@@ -30,7 +30,7 @@ test('Realtime wakes server-authoritative read, preserves offline fallback and c
  const section=shell.slice(shell.indexOf('const sync=async(first=false)'),shell.indexOf('  },[selected,session?.access_token,userId,chatReloadNonce]);'));
  assert.match(section,/if\(inFlight\)\{queuedSync=true;return;\}/);
  assert.match(section,/if\(queuedSync&&!cancelled\)\{queuedSync=false;void sync\(\);\}/);
- assert.match(section,/const messages=\(await listMessages\(token,chatId\)\)\.reverse\(\)/);
+ assert.match(section,/const messages=\(await listMessages\(token,chatId,controller\.signal\)\)\.reverse\(\)/);
  assert.match(section,/mergeConfirmedRecentPage\(/);
  assert.match(section,/const onRealtimeChange=\(\)=>\{/);
  assert.match(section,/if\(cancelled\|\|document\.visibilityState==='hidden'\|\|!navigator\.onLine\)return;/);
