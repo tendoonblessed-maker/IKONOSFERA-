@@ -1,29 +1,53 @@
 'use client';
+import {useRef,type KeyboardEvent} from 'react';
 import StatusEmoji,{STATUS_EMOJI_COUNT,STATUS_EMOJI_NAMES} from '@/components/StatusEmoji';
+import {getNextStatusEmojiFocusIndex} from '@/lib/status-emoji-navigation';
 
 type Props={value:number|null;disabled?:boolean;onSelect:(index:number|null)=>void};
 
 export default function StatusEmojiPicker({value,disabled=false,onSelect}:Props){
- return <div className="ik-status-picker" role="group" aria-label="Выбрать эмодзи статуса">
+ const choiceRefs=useRef<Array<HTMLButtonElement|null>>([]);
+ const selectedIndex=value===null?0:
+  Number.isInteger(value)&&value>=0&&value<STATUS_EMOJI_COUNT?value+1:0;
+
+ const handleKeyDown=(index:number,event:KeyboardEvent<HTMLButtonElement>)=>{
+  const next=getNextStatusEmojiFocusIndex(index,event.key,STATUS_EMOJI_COUNT+1);
+  if(next===null)return;
+  event.preventDefault();
+  choiceRefs.current[next]?.focus();
+  onSelect(next===0?null:next-1);
+ };
+
+ return <div className="ik-status-picker" role="radiogroup" aria-label="Выбрать эмодзи статуса">
     <div className="ik-status-picker-intro">
       <div><strong>Эмодзи-статус</strong><span>Маленькая фигурка рядом с твоим именем</span></div>
-      {value!==null&&<StatusEmoji index={value} size="large" decorative/>}
+      {value!==null&&Number.isInteger(value)&&value>=0&&value<STATUS_EMOJI_COUNT
+        &&<StatusEmoji index={value} size="large" decorative/>}
     </div>
     <div className="ik-status-picker-grid">
       <button type="button" className={'ik-status-choice ik-status-none'+(value===null?' is-selected':'')}
-       aria-label="Убрать эмодзи-статус" aria-pressed={value===null} disabled={disabled}
-       onClick={()=>onSelect(null)}>
+       ref={element=>{choiceRefs.current[0]=element;}}
+       role="radio" aria-checked={value===null} tabIndex={selectedIndex===0?0:-1}
+       aria-label="Убрать эмодзи-статус" disabled={disabled}
+       onClick={()=>onSelect(null)} onKeyDown={event=>handleKeyDown(0,event)}>
        <span aria-hidden="true">✕</span>
       </button>
-      {Array.from({length:STATUS_EMOJI_COUNT},(_,i)=><button
-        type="button" key={i}
-        className={'ik-status-choice'+(value===i?' is-selected':'')}
-        aria-label={'Поставить статус '+STATUS_EMOJI_NAMES[i]}
-        aria-pressed={value===i} disabled={disabled}
-        title={STATUS_EMOJI_NAMES[i]}
-        onClick={()=>onSelect(i)}>
-        <StatusEmoji index={i} size="picker" decorative/>
-      </button>)}
+      {Array.from({length:STATUS_EMOJI_COUNT},(_,i)=>{
+        const focusIndex=i+1;
+        return <button
+          type="button" key={i}
+          ref={element=>{choiceRefs.current[focusIndex]=element;}}
+          role="radio" aria-checked={value===i}
+          tabIndex={selectedIndex===focusIndex?0:-1}
+          className={'ik-status-choice'+(value===i?' is-selected':'')}
+          aria-label={'Поставить статус '+STATUS_EMOJI_NAMES[i]}
+          disabled={disabled}
+          title={STATUS_EMOJI_NAMES[i]}
+          onClick={()=>onSelect(i)}
+          onKeyDown={event=>handleKeyDown(focusIndex,event)}>
+          <StatusEmoji index={i} size="picker" decorative/>
+        </button>;
+      })}
     </div>
     <p className="ik-status-picker-help">Выбранную фигурку будут видеть другие пользователи рядом с твоим именем.</p>
   </div>;
