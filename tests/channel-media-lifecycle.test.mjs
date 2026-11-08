@@ -6,7 +6,7 @@ import {pauseMediaElements} from '../lib/channel-media-lifecycle.ts';
 const load=path=>readFileSync(new URL('../'+path,import.meta.url),'utf8');
 
 test('channel media cleanup pauses every player even when one browser node throws',()=>{
- const calls:string[]=[];
+ const calls=[];
  const players=[
   {pause:()=>calls.push('audio')},
   {pause:()=>{calls.push('broken-video');throw new Error('detached media node');}},
@@ -22,12 +22,12 @@ test('channel media cleanup tolerates missing, empty and broken collections',()=
  assert.doesNotThrow(()=>pauseMediaElements({length:0}));
  const brokenLength={get length(){throw new Error('detached collection');}};
  assert.doesNotThrow(()=>pauseMediaElements(brokenLength));
+ const calls=[];
  const brokenEntry={
   length:2,
   get 0(){throw new Error('stale node');},
-  1:{pause:()=>{calls.push('remaining');}}
+  1:{pause:()=>calls.push('remaining')}
  };
- const calls:string[]=[];
  assert.doesNotThrow(()=>pauseMediaElements(brokenEntry));
  assert.deepEqual(calls,['remaining']);
 });
