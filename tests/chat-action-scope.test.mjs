@@ -44,3 +44,23 @@ test('message action checks its account/chat generation before every UI commit',
   assert.match(action,/const updated=\(await listMessages\(token,chatId\)\)\.reverse\(\);\s*if\(isCurrent\(\)\)setChatMessages/);
   assert.match(action,/catch\(e\)\{if\(isCurrent\(\)\)setError\(userFacingError\(e\)\);\}/);
 });
+
+test('message menu scopes are invalid after chat, account, or visit-generation changes',()=>{
+  const menu={...scope(),messageId:'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'};
+  assert.equal(isCurrentChatAction(menu,scope()),true);
+  assert.equal(isCurrentChatAction(menu,scope({chatId:'33333333-3333-4333-8333-333333333333'})),false);
+  assert.equal(isCurrentChatAction(menu,scope({userId:'44444444-4444-4444-8444-444444444444'})),false);
+  assert.equal(isCurrentChatAction(menu,scope({generation:8})),false);
+});
+
+test('message menu rendering and delayed actions retain the captured chat scope',()=>{
+  const app=readFileSync(new URL('../components/AppShell.tsx',import.meta.url),'utf8');
+  assert.match(app,/const \[messageMenuScope,setMessageMenuScope\]=useState<ChatActionScope\|null>\(null\)/);
+  assert.match(app,/const currentMessageMenuScope=isCurrentMessageActionScope\(messageMenuScope\)\?messageMenuScope:null/);
+  assert.match(app,/openMessageMenu\(message,messageContextGeneration\)/);
+  assert.match(app,/messageAction\(id,'hide',undefined,scope\)/);
+  assert.match(app,/messageAction\(id,'delete_everyone',undefined,scope\)/);
+  assert.match(app,/onSave=\{body=>messageAction\(message.id,'edit',body,scopeForMessage\(message\)\)\}/);
+  assert.match(app,/useLayoutEffect\(\(\)=>\{\s*selectedRef\.current=selected;\s*chatContextGenerationRef\.current\+\+/);
+  assert.match(app,/function isCurrentMessageActionScope\(scope:ChatActionScope\|null\|undefined\)/);
+});
