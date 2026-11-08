@@ -55,37 +55,42 @@ export function startVisiblePolling(
   // Coalesce the follow-up visibility/online signal so one restore means one
   // authoritative refresh, while a restore that is still offline waits for
   // the real online event.
-  let skipNextResumeSignal = false;
+  // Coalesce visibility/online events that accompany one BFCache restore.
+  // A timestamp handles either event order without leaving a stale one-shot flag.
+  let pageShowResumeAt = 0;
+  const isPageShowFollowup = () => {
+    if (!pageShowResumeAt) return false;
+    if (Date.now() - pageShowResumeAt > 1000) {
+      pageShowResumeAt = 0;
+      return false;
+    }
+    return true;
+  };
   const onVisibilityChange = () => {
     if (documentRef.visibilityState === 'visible') {
-      if (skipNextResumeSignal) {
-        skipNextResumeSignal = false;
-        return;
-      }
+      if (isPageShowFollowup()) return;
       refreshAndStart();
     } else {
-      skipNextResumeSignal = false;
+      pageShowResumeAt = 0;
       pause();
     }
   };
   const onOnline = () => {
-    if (skipNextResumeSignal) {
-      skipNextResumeSignal = false;
-      return;
-    }
+    if (isPageShowFollowup()) return;
     refreshAndStart();
   };
   const onOffline = () => {
-    skipNextResumeSignal = false;
+    pageShowResumeAt = 0;
     pause();
   };
   const onPageShow = (event: PageTransitionEvent) => {
     if (!event.persisted) return;
+    pageShowResumeAt = 0;
     if (!canPoll()) {
       pause();
       return;
     }
-    skipNextResumeSignal = true;
+    pageShowResumeAt = Date.now();
     refreshAndStart();
   };
 
