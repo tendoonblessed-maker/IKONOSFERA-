@@ -33,6 +33,8 @@ test('legacy browser fallback selects the exact text and removes its temporary c
   assert.match(clipboard,/document\.createElement\('textarea'\)/);
   assert.match(clipboard,/textarea\.setSelectionRange\(0,textarea\.value\.length\)/);
   assert.match(clipboard,/document\.execCommand\('copy'\)/);
+  assert.match(clipboard,/textarea\.style\.left='0'/);
+  assert.match(clipboard,/textarea\.style\.width='1px'/);
   assert.match(clipboard,/textarea\.remove\(\)/);
   assert.match(clipboard,/active\.focus\(/);
   assert.match(clipboard,/active\.setSelectionRange/);
