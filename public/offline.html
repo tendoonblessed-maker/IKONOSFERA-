@@ -1,2 +1,31 @@
 <!doctype html>
-<html lang="ru"><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/><meta name="theme-color" content="#ffffff"/><title>IKONOSFERA — нет подключения</title><style>html,body{margin:0;min-height:100%;background:#fff;color:#111111;font-family:system-ui,-apple-system,sans-serif}main{min-height:100dvh;display:grid;place-content:center;text-align:center;padding:24px}p{max-width:340px;color:#696969;line-height:1.5;font-size:16px}a{color:#111111;min-height:44px;display:inline-flex;align-items:center;justify-content:center}</style></head><body><main><img src="/branding/ikonosfera.svg" alt="IKONOSFERA © BY TENDO888" style="display:block;width:min(250px,70vw);height:auto;margin:0 auto 24px"/><h1>Нет подключения</h1><p>IKONOSFERA не может связаться с сервером. Проверь интернет и попробуй снова. Сообщения не сохраняются на этом экране.</p><a href="/">Повторить</a></main></body></html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/>
+  <meta name="theme-color" content="#ffffff"/>
+  <title>IKONOSFERA — нет подключения</title>
+  <style>
+    html,body{margin:0;min-height:100%;background:#fff;color:#111111;font-family:system-ui,-apple-system,sans-serif}
+    main{min-height:100dvh;display:grid;place-content:center;text-align:center;padding:24px}
+    p{max-width:340px;color:#696969;line-height:1.5;font-size:16px}
+    a{color:#111111;min-height:44px;display:inline-flex;align-items:center;justify-content:center}
+  </style>
+</head>
+<body>
+  <main>
+    <img src="/branding/ikonosfera.svg" alt="IKONOSFERA © BY TENDO888" style="display:block;width:min(250px,70vw);height:auto;margin:0 auto 24px"/>
+    <h1>Нет подключения</h1>
+    <p role="status" aria-live="polite">IKONOSFERA не может связаться с сервером. Проверь интернет и попробуй снова. Сообщения не сохраняются на этом экране.</p>
+    <a href="/">Повторить</a>
+    <p>Когда соединение восстановится, страница попробует открыть мессенджер автоматически.</p>
+  </main>
+  <script>
+    // The offline fallback is a separate document; recover without requiring
+    // the user to discover and tap the manual retry link after reconnecting.
+    window.addEventListener("online", () => {
+      window.location.replace("/");
+    }, { once: true });
+  </script>
+</body>
+</html>
