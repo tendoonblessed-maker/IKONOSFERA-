@@ -64,10 +64,14 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
  const requestAbortScopeRef=useRef<ReturnType<typeof createAbortableRequestScope>|null>(null);
  if(!requestAbortScopeRef.current)requestAbortScopeRef.current=createAbortableRequestScope();
  const requestAbortScope=requestAbortScopeRef.current;
+ const olderRequestAbortScopeRef=useRef<ReturnType<typeof createAbortableRequestScope>|null>(null);
+ if(!olderRequestAbortScopeRef.current)olderRequestAbortScopeRef.current=createAbortableRequestScope();
+ const olderRequestAbortScope=olderRequestAbortScopeRef.current;
  const confirmedGroupMessagesRef=useRef<Map<string,ConfirmedGroupMessage>>(new Map());
  const contextRef=useRef({groupId:group.id,userId,token});
  contextRef.current={groupId:group.id,userId,token};
  useEffect(()=>{
+  olderRequestAbortScope.abort();
   confirmedGroupMessagesRef.current.clear();
   olderRequestRef.current++;
   olderLoadingRef.current=false;
@@ -187,12 +191,21 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
     requestSequenceRef.current++;
     queuedSync=false;
     requestAbortScope.abort();
+    olderRequestRef.current++;
+    olderLoadingRef.current=false;
+    prependScrollRef.current=null;
+    setLoadingOlder(false);
+    olderRequestAbortScope.abort();
   });
   return()=>{
     cancelled=true;
     requestGeneration++;
     requestSequenceRef.current++;
     requestAbortScope.abort();
+    olderRequestRef.current++;
+    olderLoadingRef.current=false;
+    prependScrollRef.current=null;
+    olderRequestAbortScope.abort();
     stopVisiblePolling();
     if(realtimeTimer!==null)window.clearTimeout(realtimeTimer);
     unsubscribeRealtime();
@@ -256,6 +269,7 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
       ||contextRef.current.token!==requestToken)return;
    if(!around.some(row=>row.id===message.id))throw Error('Сообщение больше недоступно.');
    olderRequestRef.current++;
+   olderRequestAbortScope.abort();
    olderLoadingRef.current=false;
    prependScrollRef.current=null;
    setLoadingOlder(false);setOlderError('');
@@ -294,6 +308,7 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
   const history=historyRef.current,oldest=messages[0];
   const groupId=group.id,ownerId=userId,requestToken=token;
   const requestId=++olderRequestRef.current;
+  const controller=olderRequestAbortScope.begin();
   olderLoadingRef.current=true;
   setLoadingOlder(true);setOlderError('');
   if(history)prependScrollRef.current={
@@ -301,7 +316,7 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
   };
   followNewestRef.current=false;
   try{
-   const page=await fetchOlderGroupMessages(requestToken,groupId,oldest);
+   const page=await fetchOlderGroupMessages(requestToken,groupId,oldest,controller.signal);
    if(requestId!==olderRequestRef.current
       ||contextRef.current.groupId!==groupId
       ||contextRef.current.userId!==ownerId
@@ -314,11 +329,12 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
     setHasOlder(page.hasMore&&messages.length+page.messages.length<GROUP_HISTORY_MAX_LOADED);
    }
   }catch(e){
-   if(requestId===olderRequestRef.current){
+   if(requestId===olderRequestRef.current&&!controller.signal.aborted){
     prependScrollRef.current=null;
     setOlderError(e instanceof Error?e.message:'Ошибка загрузки истории группы');
    }
   }finally{
+   olderRequestAbortScope.clear(controller);
    if(requestId===olderRequestRef.current){
     olderLoadingRef.current=false;
     setLoadingOlder(false);
@@ -399,6 +415,7 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
      initialPageLoadedRef.current=false;
      prependScrollRef.current=null;
      olderRequestRef.current++;
+     olderRequestAbortScope.abort();
      olderLoadingRef.current=false;
      setHasOlder(false);setLoadingOlder(false);setOlderError('');
      setMessages([]);
