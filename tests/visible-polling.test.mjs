@@ -256,3 +256,15 @@ test('ordinary pageshow is ignored and an offline BFCache restore waits for conn
   assert.equal(harness.intervals.size, 1);
   stop();
 });
+
+test('group polling aborts its active history read when paused or unmounted', () => {
+  const panel = readFileSync(new URL('../components/GroupPanel.tsx', import.meta.url), 'utf8');
+  const groups = readFileSync(new URL('../lib/groups.ts', import.meta.url), 'utf8');
+  assert.match(panel, /createAbortableRequestScope/);
+  assert.match(panel, /const controller=requestAbortScope\.begin\(\)/);
+  assert.match(panel, /refresh\(controller\.signal\)/);
+  assert.match(panel, /requestAbortScope\.clear\(controller\)/);
+  assert.match(panel, /requestAbortScope\.abort\(\)/);
+  assert.match(groups, /groupMessages\(token:string,id:string,signal\?:AbortSignal\)/);
+  assert.match(groups, /id\.desc&limit=150'.*'GET',undefined,\{\},signal/s);
+});
