@@ -43,7 +43,8 @@ test('channel post and reaction refreshes cannot commit after a newer request or
  assert.match(panel,/const list=await listChannelPosts\(token,channel\.id\);\s*if\(!isCurrent\(\)\)return false;/);
  assert.match(panel,/const nextReactions=await listPostReactions\(token,list\.map\(p=>p\.id\)\);\s*if\(!isCurrent\(\)\)return false;/);
  assert.match(panel,/setPosts\(list\);setReactions\(nextReactions\)/);
- assert.match(panel,/channelScopeRef\.current=\{token,channelId:channel\.id\}/);
+ assert.match(panel,/useLayoutEffect\(\(\)=>\{\s*\/\/ Publish only committed identity props; an abandoned concurrent render must not/);
+ assert.match(panel,/channelScopeRef\.current=\{token,userId,channelId:channel\.id\}/);
  assert.match(panel,/if\(isCurrent\(\)\)throw e/);
 });
 
@@ -61,4 +62,12 @@ test('switching channel context clears the previous feed and discussion snapshot
  assert.match(panel,/setPosts\(\[\]\);setReactions\(\[\]\);setDiscussionMessages\(\[\]\);setDiscussionComments\(\[\]\);setDiscussionOpen\(false\)/);
  assert.match(panel,/postsRequestGuard\.invalidate\(\)/);
  assert.match(panel,/discussionRequestGuard\.invalidate\(\)/);
+});
+
+test('ChannelsPanel publishes account and channel scope after commit and invalidates old reads before paint',()=>{
+ const panel=read('components/ChannelsPanel.tsx');
+ assert.match(panel,/useLayoutEffect/);
+ assert.match(panel,/commentsRequestGuard\.invalidate\(\);\s*postsRequestGuard\.invalidate\(\);\s*discussionRequestGuard\.invalidate\(\)/);
+ assert.equal((panel.match(/channelScopeRef\.current\.userId===userId/g)||[]).length,3);
+ assert.doesNotMatch(panel,/const channelScopeRef=useRef\(\{token,userId,channelId:channel\.id\}\);\s*channelScopeRef\.current=/);
 });

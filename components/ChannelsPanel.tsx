@@ -1,5 +1,5 @@
 'use client';
-import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type FormEvent } from "react";
 import { listProfiles, type Profile } from "@/lib/supabase-rest";
 import { createRequestEpoch } from "@/lib/request-epoch";
 import StatusEmoji from "@/components/StatusEmoji";
@@ -49,8 +49,15 @@ export default function ChannelsPanel({token,userId,channel,onBack,onShowProfile
  const discussionRequestGuardRef=useRef<ReturnType<typeof createRequestEpoch> | null>(null);
  if(!discussionRequestGuardRef.current)discussionRequestGuardRef.current=createRequestEpoch();
  const discussionRequestGuard=discussionRequestGuardRef.current;
- const channelScopeRef=useRef({token,channelId:channel.id});
- channelScopeRef.current={token,channelId:channel.id};
+ const channelScopeRef=useRef({token,userId,channelId:channel.id});
+ useLayoutEffect(()=>{
+  // Publish only committed identity props; an abandoned concurrent render must not
+  // invalidate requests that still belong to the visible channel.
+  channelScopeRef.current={token,userId,channelId:channel.id};
+  commentsRequestGuard.invalidate();
+  postsRequestGuard.invalidate();
+  discussionRequestGuard.invalidate();
+ },[token,userId,channel.id,commentsRequestGuard,postsRequestGuard,discussionRequestGuard]);
  useEffect(()=>()=> {
   commentsRequestGuard.invalidate();
   postsRequestGuard.invalidate();
@@ -60,6 +67,7 @@ export default function ChannelsPanel({token,userId,channel,onBack,onShowProfile
   const requestId=postsRequestGuard.begin();
   const isCurrent=()=>postsRequestGuard.isCurrent(requestId)
    &&channelScopeRef.current.token===token
+   &&channelScopeRef.current.userId===userId
    &&channelScopeRef.current.channelId===channel.id;
   try{
    const list=await listChannelPosts(token,channel.id);
@@ -77,6 +85,7 @@ export default function ChannelsPanel({token,userId,channel,onBack,onShowProfile
   const requestId=discussionRequestGuard.begin();
   const isCurrent=()=>discussionRequestGuard.isCurrent(requestId)
    &&channelScopeRef.current.token===token
+   &&channelScopeRef.current.userId===userId
    &&channelScopeRef.current.channelId===channel.id;
   try{
    const [messages,replies]=await Promise.all([listDiscussionMessages(token,channel.id),listDiscussionComments(token,channel.id)]);
@@ -143,6 +152,7 @@ export default function ChannelsPanel({token,userId,channel,onBack,onShowProfile
   const requestId=commentsRequestGuard.begin();
   const isCurrent=()=>commentsRequestGuard.isCurrent(requestId)
    &&channelScopeRef.current.token===token
+   &&channelScopeRef.current.userId===userId
    &&channelScopeRef.current.channelId===channel.id;
   if(openComments===postId){setOpenComments(null);setComments([]);return;}
   setError("");
