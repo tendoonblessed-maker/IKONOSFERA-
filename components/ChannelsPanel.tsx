@@ -1,7 +1,8 @@
 'use client';
-import { useCallback, useEffect, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import { listProfiles, type Profile } from "@/lib/supabase-rest";
 import StatusEmoji from "@/components/StatusEmoji";
+import {observeRemovedMediaElements,pauseMediaElements} from "@/lib/channel-media-lifecycle";
 import {
  addPostComment, deletePost, editChannelPost, manageChannelComment, imageUrl, listChannelPosts, listPostComments, listPostReactions, setPostReaction, REACTION_EMOJIS, publishPost,
  removeUpload, uploadChannelAttachment, updateChannel, updateChannelAvatar, deleteChannel, getChannelSubscriberCounts, listDiscussionMessages, sendDiscussionMessage, deleteDiscussionMessage, listDiscussionComments,
@@ -13,6 +14,31 @@ const readable=(e:unknown)=>e instanceof Error?e.message:"Ошибка соед�
 const formattedDate=(s:string)=>new Date(s).toLocaleString("ru-RU",{day:"numeric",month:"short",hour:"2-digit",minute:"2-digit"});
 
 export default function ChannelsPanel({token,userId,channel,onBack,onShowProfile,subscribed,onToggleSubscribe,onMessageAuthor,onChannelUpdated,onChannelDeleted}:Props){
+ const feedRef=useRef<HTMLDivElement|null>(null);
+ const pauseFeedMedia=useCallback((root:HTMLDivElement|null=feedRef.current)=>{
+  if(!root)return;
+  pauseMediaElements(root.querySelectorAll<HTMLMediaElement>('audio,video'));
+ },[]);
+ const setFeedRef=useCallback((node:HTMLDivElement|null)=>{
+  if(!node)pauseFeedMedia(feedRef.current);
+  feedRef.current=node;
+ },[pauseFeedMedia]);
+ useEffect(()=>{
+  const pause=()=>pauseFeedMedia();
+  const feed=feedRef.current;
+  const stopObserving=feed&&typeof MutationObserver!=='undefined'
+   ?observeRemovedMediaElements(feed)
+   :()=>{};
+  const onVisibilityChange=()=>{if(document.visibilityState==='hidden')pause();};
+  document.addEventListener('visibilitychange',onVisibilityChange);
+  window.addEventListener('pagehide',pause);
+  return()=>{
+   stopObserving();
+   document.removeEventListener('visibilitychange',onVisibilityChange);
+   window.removeEventListener('pagehide',pause);
+   pause();
+  };
+ },[pauseFeedMedia]);
  const mine=channel.owner_id===userId;
  const [currentChannel,setCurrentChannel]=useState(channel);
  const [subscriberCount,setSubscriberCount]=useState<number|null>(null);
@@ -156,7 +182,7 @@ export default function ChannelsPanel({token,userId,channel,onBack,onShowProfile
   <header className="channel-topbar"><button type="button" className="profile-back" onClick={onBack} aria-label="Назад">‹ <span>Назад</span></button>
    <div className="channel-top-title"><strong>{currentChannel.title}</strong><small>{subscriberCount===null?"@"+currentChannel.slug:subscriberCount.toLocaleString("ru-RU")+" подписчиков · @"+currentChannel.slug}</small></div>
    <button type="button" className="channel-owner-link" onClick={()=>onShowProfile(channel.owner_id)}>Автор</button></header>
-  <div className="channel-feed">
+  <div ref={setFeedRef} className="channel-feed">
    {mine&&<div className="channel-management" style={{display:"flex",gap:10,flexWrap:"wrap",marginBottom:16}}>
      <button type="button" className="secondary-action" onClick={()=>setSettingsOpen(v=>!v)}>⚙ Настроить канал</button>
      {currentChannel.discussion_enabled&&<button type="button" className="secondary-action" onClick={()=>{setDiscussionOpen(true);void loadDiscussion();}}>Открыть обсуждение</button>}
