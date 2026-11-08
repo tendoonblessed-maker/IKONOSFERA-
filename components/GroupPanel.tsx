@@ -14,6 +14,7 @@ import {subscribeGroupChanges} from '@/lib/group-realtime';
 import {mergeConfirmedGroupMessages,CONFIRMED_GROUP_MESSAGE_GRACE_MS,type ConfirmedGroupMessage} from '@/lib/group-history';
 import {shouldAcknowledgeGroupRead,countNewIncomingBelow} from '@/lib/group-read-position';
 import {fetchOlderGroupMessages,prependOlderGroupMessages,preserveOlderGroupMessages,GROUP_HISTORY_MAX_LOADED} from '@/lib/group-pagination';
+import {startVisiblePolling} from '@/lib/visible-polling';
 type Props={token:string;userId:string;group:Group;onBack:()=>void;onShowProfile:(id:string)=>void;onDraftChange:(groupId:string,text:string)=>void};
 export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDraftChange}:Props){
  const [messages,setMessages]=useState<GroupMessage[]>([]);
@@ -166,17 +167,17 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
   };
   const unsubscribeRealtime=subscribeGroupChanges(token,group.id,onRealtimeChanged);
   // Polling is a fallback and heals any missed WebSocket notifications.
-  const timer=window.setInterval(sync,6000);
+  // Do not wake a hidden mobile tab every six seconds. Resuming performs
+  // one immediate RLS-backed refresh before the fallback interval restarts.
+  const stopVisiblePolling=startVisiblePolling(sync,6000);
   const onOnline=()=>sync();
-  document.addEventListener('visibilitychange',sync);
   window.addEventListener('online',onOnline);
   return()=>{
     cancelled=true;
     requestSequenceRef.current++;
-    window.clearInterval(timer);
+    stopVisiblePolling();
     if(realtimeTimer!==null)window.clearTimeout(realtimeTimer);
     unsubscribeRealtime();
-    document.removeEventListener('visibilitychange',sync);
     window.removeEventListener('online',onOnline);
   };
  },[refresh,token,group.id]);
