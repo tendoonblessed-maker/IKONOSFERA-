@@ -20,6 +20,10 @@ export default function SwipeReplyMessage({children,className,disabled=false,onR
   const holdTimer=useRef<number|null>(null);
   const touchOrigin=useRef<{x:number;y:number}|null>(null);
   const wasHeld=useRef(false);
+  const disabledRef=useRef(disabled);
+  const openMenuRef=useRef(onOpenMenu);
+  disabledRef.current=disabled;
+  openMenuRef.current=onOpenMenu;
 
   const cancelHold=()=>{
     if(holdTimer.current!==null){
@@ -29,6 +33,9 @@ export default function SwipeReplyMessage({children,className,disabled=false,onR
     touchOrigin.current=null;
   };
   useEffect(()=>()=>cancelHold(),[]);
+  useEffect(()=>{
+    if(disabled)cancelHold();
+  },[disabled]);
 
   const onTouchStart=(event:TouchEvent<HTMLDivElement>)=>{
     cancelHold();
@@ -40,10 +47,16 @@ export default function SwipeReplyMessage({children,className,disabled=false,onR
     touchOrigin.current={x:finger.clientX,y:finger.clientY};
     holdTimer.current=window.setTimeout(()=>{
       holdTimer.current=null;
+      // A message can become deleted/editing (or lose its menu action) while
+      // the finger is still down. Never invoke a stale action from that hold.
+      if(!touchOrigin.current||disabledRef.current||!openMenuRef.current){
+        touchOrigin.current=null;
+        return;
+      }
       touchOrigin.current=null;
       wasHeld.current=true;
       setMovement(0);
-      onOpenMenu();
+      openMenuRef.current();
     },HOLD_DURATION_MS);
   };
   const onTouchMove=(event:TouchEvent<HTMLDivElement>)=>{
