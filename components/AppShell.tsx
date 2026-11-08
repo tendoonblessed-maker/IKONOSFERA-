@@ -11,6 +11,7 @@ import ChatMedia from "@/components/ChatMedia";
 import ChatMessageText from "@/components/ChatMessageText";
 import {subscribeDirectChatChanges} from "@/lib/direct-realtime";
 import {startVisiblePolling} from "@/lib/visible-polling";
+import {createAbortableRequestScope} from "@/lib/request-abort-scope";
 import {subscribeInboxChanges,type InboxChangeKind} from "@/lib/inbox-realtime";
 import {isLatestAccountSnapshot} from "@/lib/inbox-snapshot";
 import {shouldOpenDirectChatSearch} from "@/lib/chat-shortcuts";
@@ -518,6 +519,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
     let inFlight=false;
     let queuedSync=false;
     let requestGeneration=0;
+    const requestAbortScope=createAbortableRequestScope();
     let realtimeTimer:number|null=null;
     const chatId=selected;
     const token=session.access_token;
@@ -539,8 +541,10 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
       if(!navigator.onLine)return;
       inFlight=true;
       const generation=requestGeneration;
+      const controller=requestAbortScope.begin();
       try{
-        const messages=(await listMessages(token,chatId)).reverse();
+        const messages=(await listMessages(token,chatId,controller.signal)).reverse();
+        requestAbortScope.clear(controller);
         // A response started before backgrounding/offline must not update the
         // timeline or acknowledge reads after the user has left the app.
         if(cancelled||generation!==requestGeneration
@@ -551,13 +555,15 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
         if(first)setHasOlderMessages(messages.length===CHAT_MESSAGE_PAGE_SIZE);
         setChatLoad({id:chatId,status:'ready'});
         // Reactions must not block displaying text and attachments.
-        void listMessageReactions(token,messages.map(message=>message.id))
+        const reactionController=requestAbortScope.begin();
+        void listMessageReactions(token,messages.map(message=>message.id),reactionController.signal)
           .then(reactions=>{if(!cancelled&&generation===requestGeneration
             &&document.visibilityState==='visible'&&navigator.onLine)setMessageReactions(current=>{
             const recentIds=new Set(messages.map(message=>message.id));
             return [...current.filter(reaction=>!recentIds.has(reaction.message_id)),...reactions];
           });})
-          .catch(()=>{});
+          .catch(()=>{})
+          .finally(()=>requestAbortScope.clear(reactionController));
         if(messages.some(message=>message.sender_id!==userId&&!message.read_at)
           &&generation===requestGeneration&&document.visibilityState==='visible'&&navigator.onLine){
           void markChatRead(token,chatId).catch(()=>{});
@@ -568,6 +574,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
           setError(userFacingError(e));
         }
       }finally{
+        requestAbortScope.clear(controller);
         inFlight=false;
         // Never drop a Realtime hint just because an earlier GET is still
         // in flight. One extra request is enough for any number of hints.
@@ -589,10 +596,10 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
     // HTTP polling remains a fallback when WebSocket is blocked, offline,
     // rate-limited or disconnected (and it repairs missed Realtime events).
     const stopVisiblePolling=startVisiblePolling(
-      ()=>void sync(),6000,document,window,navigator,()=>void sync(true),()=>{requestGeneration++;}
+      ()=>void sync(),6000,document,window,navigator,()=>void sync(true),()=>{requestGeneration++;requestAbortScope.abort();}
     );
     return()=>{
-      cancelled=true;requestGeneration++;stopVisiblePolling();
+      cancelled=true;requestGeneration++;stopVisiblePolling();requestAbortScope.abort();
       if(realtimeTimer!==null)window.clearTimeout(realtimeTimer);
       unsubscribeRealtime();
     };
