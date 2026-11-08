@@ -98,3 +98,21 @@ test('channel feed guards unsupported MutationObserver and cleans up the observe
  assert.match(panel,/observeRemovedMediaElements\(feed\)/);
  assert.match(panel,/stopObserving\(\)/);
 });
+
+
+test('moving a post within the same channel feed does not pause its media',()=>{
+ const calls=[];
+ const movedPlayer={pause:()=>calls.push('moved')};
+ const removedPlayer={pause:()=>calls.push('removed')};
+ const feed={contains:node=>node===movedPlayer};
+ pauseRemovedMediaNodes([{removedNodes:[movedPlayer,removedPlayer]}],feed);
+ assert.deepEqual(calls,['removed']);
+});
+
+test('removed media is paused conservatively when feed containment throws',()=>{
+ const calls=[];
+ const player={pause:()=>calls.push('paused')};
+ const feed={contains:()=>{throw new Error('detached feed');}};
+ assert.doesNotThrow(()=>pauseRemovedMediaNodes([{removedNodes:[player]}],feed));
+ assert.deepEqual(calls,['paused']);
+});
