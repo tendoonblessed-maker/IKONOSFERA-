@@ -2,7 +2,7 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import { listProfiles, type Profile } from "@/lib/supabase-rest";
 import StatusEmoji from "@/components/StatusEmoji";
-import {pauseMediaElements} from "@/lib/channel-media-lifecycle";
+import {observeRemovedMediaElements,pauseMediaElements} from "@/lib/channel-media-lifecycle";
 import {
  addPostComment, deletePost, editChannelPost, manageChannelComment, imageUrl, listChannelPosts, listPostComments, listPostReactions, setPostReaction, REACTION_EMOJIS, publishPost,
  removeUpload, uploadChannelAttachment, updateChannel, updateChannelAvatar, deleteChannel, getChannelSubscriberCounts, listDiscussionMessages, sendDiscussionMessage, deleteDiscussionMessage, listDiscussionComments,
@@ -25,10 +25,15 @@ export default function ChannelsPanel({token,userId,channel,onBack,onShowProfile
  },[pauseFeedMedia]);
  useEffect(()=>{
   const pause=()=>pauseFeedMedia();
+  const feed=feedRef.current;
+  const stopObserving=feed&&typeof MutationObserver!=='undefined'
+   ?observeRemovedMediaElements(feed)
+   :()=>{};
   const onVisibilityChange=()=>{if(document.visibilityState==='hidden')pause();};
   document.addEventListener('visibilitychange',onVisibilityChange);
   window.addEventListener('pagehide',pause);
   return()=>{
+   stopObserving();
    document.removeEventListener('visibilitychange',onVisibilityChange);
    window.removeEventListener('pagehide',pause);
    pause();
