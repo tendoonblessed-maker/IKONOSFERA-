@@ -34,7 +34,7 @@ test('channel media cleanup tolerates missing, empty and broken collections',()=
 
 test('channel feed pauses audio and video on background, pagehide and detach',()=>{
  const panel=load('components/ChannelsPanel.tsx');
- assert.match(panel,/pauseMediaElements\(root\.querySelectorAll\('audio,video'\)\)/);
+ assert.match(panel,/pauseMediaElements\(root\.querySelectorAll<HTMLMediaElement>\('audio,video'\)\)/);
  assert.match(panel,/document\.addEventListener\('visibilitychange',onVisibilityChange\)/);
  assert.match(panel,/window\.addEventListener\('pagehide',pause\)/);
  assert.match(panel,/if\(document\.visibilityState==='hidden'\)pause\(\)/);
