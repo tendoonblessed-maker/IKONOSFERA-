@@ -137,6 +137,31 @@ test('offline state stops polling and reconnect refreshes before restarting it',
   assert.equal(harness.intervals.size, 0);
 });
 
+test('pause callback invalidates work when visibility or connectivity is lost', () => {
+  const harness = createHarness();
+  let pauses = 0;
+  let resumes = 0;
+  const stop = startVisiblePolling(
+    () => {}, 6000, harness.documentRef, harness.windowRef, harness.navigatorRef,
+    () => resumes++, () => pauses++
+  );
+
+  harness.setVisibility('hidden');
+  assert.equal(pauses, 1, 'hiding invalidates the active request generation');
+  assert.equal(resumes, 0);
+
+  harness.setVisibility('visible');
+  assert.equal(resumes, 1);
+
+  harness.setOnline(false);
+  assert.equal(pauses, 2, 'going offline invalidates the next active generation');
+  harness.setOnline(true);
+  assert.equal(resumes, 2);
+
+  stop();
+  assert.equal(pauses, 2, 'unmount cleanup does not report a background pause');
+});
+
 test('visibility resume uses the dedicated resume callback, not the periodic poll callback', () => {
   const harness = createHarness();
   let polls = 0;
@@ -158,18 +183,23 @@ test('visibility resume uses the dedicated resume callback, not the periodic pol
 test('GroupPanel and private chats share the visibility- and network-aware poller', () => {
   const panel = readFileSync(new URL('../components/GroupPanel.tsx', import.meta.url), 'utf8');
   const shell = readFileSync(new URL('../components/AppShell.tsx', import.meta.url), 'utf8');
-  assert.match(panel, /startVisiblePolling\(sync,6000\)/);
+  assert.match(panel, /startVisiblePolling\(sync,6000,document,window,navigator,undefined,\(\)=>\{/);
+  assert.match(panel, /requestGeneration\+\+/);
+  assert.match(panel, /requestSequenceRef\.current\+\+/);
   assert.match(panel, /stopVisiblePolling\(\)/);
   assert.doesNotMatch(panel, /window\.setInterval\(sync,6000\)/);
   assert.match(shell, /startVisiblePolling\(/);
-  assert.match(shell, /\(\)=>void sync\(true\)/);
+  assert.match(shell, /\(\)=>void sync\(true\),\(\)=>\{requestGeneration\+\+;\}/);
+  assert.match(shell, /generation!==requestGeneration/);
+  assert.match(shell, /generation===requestGeneration&&document\.visibilityState==='visible'&&navigator\.onLine/);
   assert.match(shell, /stopVisiblePolling\(\)/);
   assert.doesNotMatch(shell, /window\.setInterval\(\(\)=>void sync\(\),6000\)/);
 });
 
 test('ProfilePanel pauses activity polling while hidden or offline and scopes results to the current profile', () => {
   const panel = readFileSync(new URL('../components/ProfilePanel.tsx', import.meta.url), 'utf8');
-  assert.match(panel, /startVisiblePolling\(poll,30000\)/);
+  assert.match(panel, /startVisiblePolling\(poll,30000,document,window,navigator,poll,\(\)=>\{requestGeneration\+\+;\}\)/);
+  assert.match(panel, /generation===requestGeneration/);
   assert.match(panel, /if\(!mounted\|\|document\.visibilityState!=='visible'\|\|!navigator\.onLine\)return/);
   assert.match(panel, /scopedProfileActivity\(activitySnapshot,userId,targetId\)/);
   assert.match(panel, /setActivitySnapshot\(\{ownerId:userId,targetId,value:rows\[targetId\]\|\|null\}\)/);
