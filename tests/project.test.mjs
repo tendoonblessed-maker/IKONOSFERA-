@@ -377,16 +377,19 @@ test('own story add badge uses centered vector icon on iPhone',()=>{
 });
 test('story timeline fills before advancing, both in chat and profile',()=>{
  const story=load('components/StoriesStrip.tsx'),profile=load('components/ProfilePanel.tsx');
- const clock=load('lib/use-story-progress.ts'),css=load('app/globals.css');
- assert.match(story,/useStoryProgress\(activeStoryId/);
- assert.match(profile,/useStoryProgress\(activeStory\?\.id/);
+ const clock=load('lib/use-story-progress.ts'),scheduler=load('lib/story-progress-scheduler.ts'),css=load('app/globals.css');
+ assert.match(story,/useStoryProgress\\(activeStoryId/);
+ assert.match(profile,/useStoryProgress\\(activeStory\\?\\.id/);
  assert.ok(!story.includes('setTimeout(()=>{'));
  assert.ok(!profile.includes('setTimeout(()=>setStoryIndex('));
  assert.match(clock,/STORY_DURATION_MS=6000/);
- assert.match(clock,/requestAnimationFrame\(tick\)/);
- assert.match(clock,/pausedRef\.current/);
- assert.match(clock,/callbackRef\.current\(\)/);
- assert.match(css,/span\.playing\.story-progress-fill/);
+ assert.match(clock,/window\\.requestAnimationFrame\\(callback\\)/);
+ assert.match(clock,/document\\.addEventListener\\('visibilitychange'/);
+ assert.match(clock,/scheduler\\.sync\\(\\)/);
+ assert.match(clock,/callbackRef\\.current\\(\\)/);
+ assert.match(scheduler,/requestFrame\\(next=>tick\\(next,run\\)\\)/);
+ assert.match(scheduler,/elapsedMs/);
+ assert.match(css,/span\\.playing\\.story-progress-fill/);
  assert.match(css,/animation:none!important/);
 });
 
