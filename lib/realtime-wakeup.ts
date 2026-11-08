@@ -19,7 +19,12 @@ export function createRealtimeWakeup<T>(
     }
     const kinds = [...pending];
     pending.clear();
-    for (const kind of kinds) callback(kind);
+    for (const kind of kinds) {
+      // A callback may synchronously unmount its owner and dispose this
+      // wake-up queue. Do not deliver the rest of that already-captured batch.
+      if (disposed) break;
+      callback(kind);
+    }
   };
 
   return {

@@ -51,3 +51,20 @@ test('disposing a Realtime subscription cancels pending and future wake-ups',asy
   wakeup.notify('direct');
   assert.deepEqual(calls,[]);
 });
+
+test('disposing from the first callback suppresses the rest of the same batch',async()=>{
+  const createRealtimeWakeup=loadWakeup();
+  const calls=[];
+  let wakeup;
+  wakeup=createRealtimeWakeup(kind=>{
+    calls.push(kind);
+    if(kind==='direct')wakeup.dispose();
+  },20);
+  wakeup.notify('direct');
+  wakeup.notify('group');
+  await wait(35);
+  assert.deepEqual(calls,['direct']);
+  wakeup.notify('group');
+  await wait(25);
+  assert.deepEqual(calls,['direct']);
+});
