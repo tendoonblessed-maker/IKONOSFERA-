@@ -8,6 +8,18 @@ const GROUP='11111111-1111-4111-8111-111111111111';
 const USER='22222222-2222-4222-8222-222222222222';
 const wait=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 
+function compile(path){
+ const source=readFileSync(new URL('../'+path,import.meta.url),'utf8');
+ return ts.transpileModule(source,{compilerOptions:{
+  module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022
+ }}).outputText;
+}
+function loadWakeup(){
+ const exports={};
+ vm.runInNewContext(compile('lib/realtime-wakeup.ts'),{exports,setTimeout,clearTimeout},{timeout:2000});
+ return exports.createRealtimeWakeup;
+}
+
 function setup(path){
  const handlers=[];
  let disconnected=0;
@@ -25,31 +37,19 @@ function setup(path){
   realtime:{setAuth:async()=>{},disconnect(){disconnected++;}},
   removeChannel:async()=>{removed++;}
  };
- const source=readFileSync(new URL('../'+path,import.meta.url),'utf8');
- const compiled=ts.transpileModule(source,{compilerOptions:{
-  module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022
- }}).outputText;
  const exports={};
+ const createRealtimeWakeup=loadWakeup();
  const context={
   exports,window:{},process:{env:{NEXT_PUBLIC_SUPABASE_ANON_KEY:'public-key'}},
   setTimeout,clearTimeout,
   require(name){
    if(name==='@supabase/supabase-js')return {createClient:()=>client};
    if(name==='./supabase-rest')return {apiUrl:'https://unit.test',backendReady:true};
-   if(name==='./realtime-wakeup')return {createRealtimeWakeup:(callback,delay=75)=>{
-    let timer=null,disposed=false;
-    const pending=new Set();
-    return {
-     notify(kind){if(disposed)return;pending.add(kind);if(timer!==null)return;timer=setTimeout(()=>{
-      timer=null;const values=[...pending];pending.clear();if(!disposed)for(const value of values)callback(value);
-     },delay);},
-     dispose(){disposed=true;if(timer!==null)clearTimeout(timer);timer=null;pending.clear();}
-    };
-   }};
+   if(name==='./realtime-wakeup')return {createRealtimeWakeup};
    throw new Error('Unexpected module: '+name);
   }
  };
- vm.runInNewContext(compiled,context,{timeout:2000,filename:path});
+ vm.runInNewContext(compile(path),context,{timeout:2000,filename:path});
  return {api:exports,handlers,stats:()=>({disconnected,removed})};
 }
 
