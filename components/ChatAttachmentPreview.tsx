@@ -2,6 +2,7 @@
 
 import {useEffect,useRef,useState} from 'react';
 import {createPortal} from 'react-dom';
+import {shouldSendAttachmentPreview} from '@/lib/attachment-preview-shortcut';
 
 type Props={
  file:File;
@@ -92,7 +93,16 @@ export default function ChatAttachmentPreview({file,caption,sending,online,onCap
        disabled={sending} value={caption} onChange={event=>onCaptionChange(event.target.value)}
        placeholder="Добавить подпись…"
        onKeyDown={event=>{
-        if(event.key==='Enter'&&(event.ctrlKey||event.metaKey)&&!event.nativeEvent.isComposing){
+        if(shouldSendAttachmentPreview({
+         key:event.key,
+         ctrlKey:event.ctrlKey,
+         metaKey:event.metaKey,
+         altKey:event.altKey,
+         shiftKey:event.shiftKey,
+         repeat:event.repeat,
+         isComposing:event.nativeEvent.isComposing,
+         keyCode:event.nativeEvent.keyCode
+        })){
          event.preventDefault();
          sendRef.current?.click();
         }

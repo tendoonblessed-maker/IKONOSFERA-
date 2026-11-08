@@ -1142,7 +1142,7 @@ test('attachments are reviewed with captions instead of being sent from the file
  assert.match(view,/URL\.revokeObjectURL\(url\)/);
  assert.match(view,/preview\?\.file===file\?preview\.url:null/);
  assert.match(view,/maxLength=\{4000\}/);
- assert.match(view,/event\.ctrlKey\|\|event\.metaKey/);
+ assert.match(view,/shouldSendAttachmentPreview\(\{/);
  assert.match(view,/disabled=\{sending\|\|!online\}/);
  assert.match(view,/disabled=\{sending\} onClick=\{onCancel\}/);
  assert.match(view,/if\(event\.key==='Escape'&&!busyRef\.current\)/);

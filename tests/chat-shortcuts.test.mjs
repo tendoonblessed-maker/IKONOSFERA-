@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
 import {readFileSync} from 'node:fs';
-import {shouldOpenDirectChatSearch} from '../lib/chat-shortcuts.ts';
+import {shouldOpenDirectChatSearch,shouldIgnoreGlobalChatShortcut} from '../lib/chat-shortcuts.ts';
 
 const key=(overrides={})=>({
   key:'f',ctrlKey:true,metaKey:false,altKey:false,shiftKey:false,...overrides
@@ -39,4 +39,25 @@ test('opened message search focuses its field and closes on Escape',()=>{
   assert.match(panel,/<input autoFocus aria-label="Поиск сообщений в текущем чате"/);
   assert.match(panel,/if\(event.key==='Escape'\)\{event.preventDefault\(\);event.stopPropagation\(\);onClose\(\);\}/);
   assert.match(shell,/input\?\.focus\(\);input\?\.select\(\)/);
+});
+
+
+test('global chat shortcuts ignore IME composition, Safari keyCode 229 and auto-repeat',()=>{
+  assert.equal(shouldIgnoreGlobalChatShortcut({isComposing:true}),true);
+  assert.equal(shouldIgnoreGlobalChatShortcut({keyCode:229}),true);
+  assert.equal(shouldIgnoreGlobalChatShortcut({repeat:true}),true);
+  assert.equal(shouldIgnoreGlobalChatShortcut({isComposing:false,repeat:false,keyCode:70}),false);
+  assert.equal(shouldOpenDirectChatSearch(key({isComposing:true}),true),false);
+  assert.equal(shouldOpenDirectChatSearch(key({keyCode:229}),true),false);
+  assert.equal(shouldOpenDirectChatSearch(key({repeat:true}),true),false);
+});
+
+test('AppShell applies the IME/repeat guard before Ctrl+K, Ctrl+F and Escape handling',()=>{
+  const shell=source('components/AppShell.tsx');
+  const keyboard=shell.slice(shell.indexOf('const keyboard='),shell.indexOf("window.addEventListener('keydown',keyboard)"));
+  const guard=keyboard.indexOf('if(shouldIgnoreGlobalChatShortcut(event))return;');
+  assert.ok(guard>=0);
+  assert.ok(guard<keyboard.indexOf('const shortcut='));
+  assert.ok(guard<keyboard.indexOf('shouldOpenDirectChatSearch(event,directVisible)'));
+  assert.ok(guard<keyboard.indexOf("event.key==='Escape'"));
 });
