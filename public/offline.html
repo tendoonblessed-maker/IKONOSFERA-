@@ -23,9 +23,18 @@
   <script>
     // The offline fallback is a separate document; recover without requiring
     // the user to discover and tap the manual retry link after reconnecting.
-    window.addEventListener("online", () => {
+    let recoveryStarted = false;
+    const retryApp = () => {
+      if (recoveryStarted) return;
+      recoveryStarted = true;
       window.location.replace("/");
-    }, { once: true });
+    };
+    window.addEventListener("online", retryApp, { once: true });
+    // A page restored from BFCache may have missed the online event while
+    // frozen. Retry only on a persisted restore; never loop on initial load.
+    window.addEventListener("pageshow", (event) => {
+      if (event.persisted && navigator.onLine) retryApp();
+    });
   </script>
 </body>
 </html>
