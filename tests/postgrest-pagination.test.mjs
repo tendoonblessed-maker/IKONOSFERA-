@@ -1,14 +1,22 @@
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {test} from 'node:test';
-import {collectPostgrestPages,parsePostgrestTotal} from '../lib/postgrest-pagination.mjs';
+import {
+  collectPostgrestPages,
+  parsePostgrestContentRange,
+  parsePostgrestTotal
+} from '../lib/postgrest-pagination.mjs';
 
-test('parses exact PostgREST totals and treats unknown totals as unknown',()=>{
+test('parses exact PostgREST ranges and treats unknown totals as unknown',()=>{
+  assert.deepEqual(parsePostgrestContentRange('0-99/240'),{start:0,end:99,total:240});
+  assert.deepEqual(parsePostgrestContentRange('*/0'),{start:null,end:null,total:0});
+  assert.deepEqual(parsePostgrestContentRange('0-99/*'),{start:0,end:99,total:null});
   assert.equal(parsePostgrestTotal('0-99/240'),240);
   assert.equal(parsePostgrestTotal('*/0'),0);
   assert.equal(parsePostgrestTotal('0-99/*'),null);
   assert.equal(parsePostgrestTotal(null),null);
-  assert.equal(parsePostgrestTotal('invalid'),null);
+  assert.throws(()=>parsePostgrestContentRange('0-x/10'),/invalid Content-Range/);
+  assert.throws(()=>parsePostgrestContentRange('4-2/10'),/invalid Content-Range interval/);
 });
 
 test('continues when the server returns fewer rows than the requested range',async()=>{
@@ -41,6 +49,13 @@ test('stops on a short page when the server does not provide a total',async()=>{
   assert.equal(calls,1);
 });
 
+test('accepts an empty result with an exact zero total',async()=>{
+  const result=await collectPostgrestPages(async()=>{
+    return {rows:[],contentRange:'*/0'};
+  });
+  assert.deepEqual(result,[]);
+});
+
 test('does not silently return an incomplete list when Content-Range reports more rows',async()=>{
   let calls=0;
   await assert.rejects(
@@ -48,9 +63,31 @@ test('does not silently return an incomplete list when Content-Range reports mor
       calls+=1;
       return calls===1
         ? {rows:['one','two'],contentRange:'0-1/5'}
-        : {rows:[],contentRange:'2-1/5'};
+        : {rows:[],contentRange:'*/5'};
     },{pageSize:3}),
     /pagination ended before the reported total/
+  );
+});
+
+test('rejects a repeated first page instead of counting it as forward progress',async()=>{
+  let calls=0;
+  await assert.rejects(
+    collectPostgrestPages(async()=>{
+      calls+=1;
+      return {rows:['same-a','same-b'],contentRange:'0-1/5'};
+    },{pageSize:2}),
+    /unexpected offset/
+  );
+  assert.equal(calls,2);
+});
+
+test('rejects a Content-Range whose interval does not match the returned rows',async()=>{
+  await assert.rejects(
+    collectPostgrestPages(async()=>({
+      rows:['one','two'],
+      contentRange:'0-2/5'
+    }),{pageSize:3}),
+    /does not match the page length/
   );
 });
 
@@ -59,7 +96,7 @@ test('a broken endpoint cannot cause an unbounded pagination loop',async()=>{
   await assert.rejects(
     collectPostgrestPages(async(offset,limit)=>{
       calls+=1;
-      return {rows:Array.from({length:limit},(_,i)=>offset+i),contentRange:'0-9/100'};
+      return {rows:Array.from({length:limit},(_,i)=>offset+i),contentRange:`${offset}-${offset+limit-1}/100`};
     },{pageSize:2,maxPages:2}),
     /exceeded the safe page limit/
   );
