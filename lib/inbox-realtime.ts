@@ -30,6 +30,14 @@ export function subscribeInboxChanges(
  const channel=client.channel('inbox-db:'+userId);
  const direct=()=>{if(!disposed)onChanged('direct');};
  const group=()=>{if(!disposed)onChanged('group');};
+ const dispose=()=>{
+  if(disposed)return;
+  disposed=true;
+  removeRealtimeChannelWithDeadline(
+   ()=>client.removeChannel(channel),
+   ()=>client.realtime.disconnect()
+  );
+ };
 
  void client.realtime.setAuth(token).then(()=>{
   if(disposed)return;
@@ -41,14 +49,11 @@ export function subscribeInboxChanges(
     // A reconnect can miss inserts while offline: resynchronize both lists.
     if(status==='SUBSCRIBED'){direct();group();}
    });
- }).catch(()=>{/* Periodic inbox polling continues without Realtime. */});
+ }).catch(()=>{
+  // Failed authorization cannot establish Realtime; release this client and
+  // leave the existing authenticated HTTPS polling fallback in control.
+  dispose();
+ });
 
- return()=>{
-  if(disposed)return;
-  disposed=true;
-  removeRealtimeChannelWithDeadline(
-   ()=>client.removeChannel(channel),
-   ()=>client.realtime.disconnect()
-  );
- };
+ return dispose;
 }
