@@ -1086,10 +1086,11 @@ test('offline direct chats preserve drafts and resume polling immediately on rec
  assert.match(shell,/window\.removeEventListener\('offline',update\)/);
  assert.match(shell,/window\.removeEventListener\('online',update\)/);
  assert.equal((shell.match(/if\(!navigator\.onLine\)return;/g)||[]).length,2);
- assert.equal((shell.match(/window\.addEventListener\('online',onConnected\)/g)||[]).length,1);
- assert.equal((shell.match(/window\.removeEventListener\('online',onConnected\)/g)||[]).length,1);
+ assert.doesNotMatch(shell,/window\.addEventListener\('online',onConnected\)/);
+ assert.doesNotMatch(shell,/window\.removeEventListener\('online',onConnected\)/);
  assert.match(shell,/void sync\(true\)/);
  assert.match(shell,/void run\(true\)/);
+ assert.match(shell,/startVisiblePolling\(/);
  assert.match(shell,/bootstrapRetryNonce,setBootstrapRetryNonce/);
  assert.match(shell,/if\(session\)return;\s*const retryBootstrap=/);
  assert.match(shell,/setBootstrapRetryNonce\(count=>count\+1\)/);
