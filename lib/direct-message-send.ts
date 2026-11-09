@@ -14,6 +14,10 @@ export class DirectMessageSendLock {
     return token;
   }
 
+  isLocked(key: string): boolean {
+    return this.active.has(key);
+  }
+
   release(key: string, token: number): boolean {
     if (this.active.get(key) !== token) return false;
     this.active.delete(key);
