@@ -504,7 +504,7 @@ test('rapid chat switching never inserts a sent attachment or edited message in 
  assert.match(shell,/shouldClearSubmittedDraft\([\s\S]*draftsRef\.current\[chatId\]\|\|''/);
  assert.match(shell,/setDraft\(current=>\{[\s\S]*shouldClearSubmittedDraft\(/);
  assert.match(shell,/const sent=await postMessage\(token,chatId,accountId,plainText,crypto\.randomUUID\(\),reply\?\.id\?\?null\)/);
- assert.match(shell,/const sent=await sendDirectMedia\(token,chatId,userId,file,caption\)/);
+ assert.match(shell,/const sent=await sendDirectMedia\(token,chatId,accountId,file,caption\)/);
 });
 test('group conversations always fetch newest messages and show real loading/errors',()=>{
  const api=load('lib/groups.ts');
@@ -1122,9 +1122,9 @@ test('attachments are reviewed with captions instead of being sent from the file
  assert.match(shell,/setPendingAttachment\(\{chatId:selected,ownerId:userId,file\}\)/);
  assert.match(shell,/setPendingAttachment\(null\);setAttachmentCaption\(''\)/);
  assert.match(shell,/async function sendAttachment\(file:File\|undefined,caption=''\)/);
- assert.match(shell,/sendDirectMedia\(token,chatId,userId,file,caption\)/);
+ assert.match(shell,/sendDirectMedia\(token,chatId,accountId,file,caption\)/);
  assert.match(shell,/setPendingAttachment\(current=>current\?\.chatId===chatId&&current\.ownerId===userId&&current\.file===file\?null:current\)/);
- assert.match(shell,/const sent=await sendDirectMedia\(token,chatId,userId,file,caption\)/);
+ assert.match(shell,/const sent=await sendDirectMedia\(token,chatId,accountId,file,caption\)/);
  assert.match(shell,/queueAttachment\(e\.target\.files\?\.\[0\]\);e\.target\.value=""/);
  assert.doesNotMatch(shell,/void sendAttachment\(e\.target\.files\?\.\[0\]\)/);
  assert.match(shell,/pendingAttachment\?\.chatId===selected&&pendingAttachment\.ownerId===userId/);
@@ -1183,7 +1183,7 @@ test('confirmed direct sends are visible without waiting for an additional histo
  assert.match(textSend,/const sent=await postMessage\(/);
  assert.match(mediaSend,/const sent=await sendDirectMedia\(/);
  assert.match(textSend,/selectedRef\.current===chatId&&draftsOwnerRef\.current===accountId/);
- assert.match(mediaSend,/selectedRef\.current===chatId&&draftsOwnerRef\.current===userId/);
+ assert.match(mediaSend,/selectedRef\.current===chatId&&draftsOwnerRef\.current===accountId/);
  for(const part of [textSend,mediaSend]){
   assert.match(part,/confirmedMessagesRef\.current\.set\(sent\.id/);
   assert.match(part,/expiresAt:Date\.now\(\)\+CONFIRMED_MESSAGE_GRACE_MS/);
