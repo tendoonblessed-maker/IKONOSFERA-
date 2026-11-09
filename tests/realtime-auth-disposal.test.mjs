@@ -15,9 +15,19 @@ const modules=[
 function loadRealtimeModule(path){
  let resolveAuth;
  let removeCalls=0,disconnectCalls=0,handlerRegistrations=0,subscribeCalls=0;
+ const eventCallbacks=[];
+ let statusCallback=null;
  const channel={
-  on(){handlerRegistrations++;return this;},
-  subscribe(){subscribeCalls++;return this;}
+  on(_event,_filter,callback){
+   handlerRegistrations++;
+   if(typeof callback==='function')eventCallbacks.push(callback);
+   return this;
+  },
+  subscribe(callback){
+   subscribeCalls++;
+   if(typeof callback==='function')statusCallback=callback;
+   return this;
+  }
  };
  const client={
   channel(){return channel;},
@@ -51,6 +61,8 @@ function loadRealtimeModule(path){
  return {
   exports:module.exports,
   resolveAuth:()=>resolveAuth(),
+  emitRealtimeEvents:()=>eventCallbacks.forEach(callback=>callback()),
+  emitStatus:status=>statusCallback?.(status),
   counts:()=>({removeCalls,disconnectCalls,handlerRegistrations,subscribeCalls})
  };
 }
@@ -74,5 +86,25 @@ test('cleanup before JWT authorization resolves never starts direct, group or in
    handlerRegistrations:0,
    subscribeCalls:0
   },path+' must not subscribe after disposal');
+ }
+});
+
+test('late Realtime events and SUBSCRIBED callbacks after cleanup are ignored',async()=>{
+ for(const [path,exportName] of modules){
+  const loaded=loadRealtimeModule(path);
+  let changed=0;
+  const stop=loaded.exports[exportName]('test-user-jwt',UUID,()=>{changed++;});
+  loaded.resolveAuth();
+  await Promise.resolve();
+  await Promise.resolve();
+
+  assert.equal(loaded.counts().subscribeCalls,1,path+' establishes its channel');
+  assert.ok(loaded.counts().handlerRegistrations>0,path+' registers change handlers');
+
+  stop();
+  loaded.emitRealtimeEvents();
+  loaded.emitStatus('SUBSCRIBED');
+
+  assert.equal(changed,0,path+' ignores callbacks queued after disposal');
  }
 });
