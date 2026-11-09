@@ -43,6 +43,7 @@ export function subscribeDirectChatChanges(
  }).catch(()=>{/* A 6-second HTTP polling fallback remains active. */});
 
  return()=>{
+  if(stopped)return;
   stopped=true;
   removeRealtimeChannelWithDeadline(
    ()=>client.removeChannel(channel),
