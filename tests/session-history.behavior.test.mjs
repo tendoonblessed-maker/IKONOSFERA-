@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import vm from 'node:vm';
 import ts from 'typescript';
+import {fetchWithTimeout} from '../lib/fetch-timeout.mjs';
 
 function compile(sourceFile,bindings={}){
   const source=readFileSync(new URL('../'+sourceFile,import.meta.url),'utf8');
@@ -13,7 +14,9 @@ function compile(sourceFile,bindings={}){
   const context={exports:result,process:{env:{
     NEXT_PUBLIC_SUPABASE_URL:'https://example.supabase.co',
     NEXT_PUBLIC_SUPABASE_ANON_KEY:'public-key'
-  }},Date,Promise,Math,JSON,URLSearchParams,AbortSignal,Error,Map,Set,...bindings};
+  }},Date,Promise,Math,JSON,URLSearchParams,AbortSignal,Error,Map,Set,
+    require(name){if(name==='./fetch-timeout.mjs')return {fetchWithTimeout};throw new Error('Unexpected module: '+name);},
+    ...bindings};
   vm.runInNewContext(compiled,context,{timeout:1000});
   return result;
 }
