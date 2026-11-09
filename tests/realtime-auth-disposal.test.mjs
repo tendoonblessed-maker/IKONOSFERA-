@@ -113,3 +113,22 @@ test('late Realtime events and SUBSCRIBED callbacks after cleanup are ignored',a
   assert.equal(changed,beforeDispose,path+' ignores callbacks queued after disposal');
  }
 });
+
+test('repeated cleanup calls remove each direct, group and inbox channel only once',async()=>{
+ for(const [path,exportName] of modules){
+  const loaded=loadRealtimeModule(path);
+  const stop=loaded.exports[exportName]('test-user-jwt',UUID,()=>{});
+
+  stop();
+  stop();
+  stop();
+  await Promise.resolve();
+
+  assert.deepEqual(loaded.counts(),{
+   removeCalls:1,
+   disconnectCalls:1,
+   handlerRegistrations:0,
+   subscribeCalls:0
+  },path+' cleanup must be idempotent');
+ }
+});
