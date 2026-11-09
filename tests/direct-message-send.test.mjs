@@ -29,10 +29,12 @@ test('direct send leases are isolated by account and conversation',()=>{
   assert.notEqual(b,null);
   assert.notEqual(c,null);
   assert.equal(lock.acquire(key(OWNER,CHAT)),null);
+  assert.equal(lock.isLocked(key(OWNER,CHAT)),true);
   assert.equal(lock.release(key(OWNER,OTHER_CHAT),b),true);
   assert.equal(lock.release(key(OTHER,CHAT),c),true);
-  assert.equal(lock.isLocked?.(key(OWNER,CHAT)),undefined);
+  assert.equal(lock.isLocked(key(OWNER,CHAT)),true);
   assert.equal(lock.release(key(OWNER,CHAT),a),true);
+  assert.equal(lock.isLocked(key(OWNER,CHAT)),false);
 });
 
 test('a stale completion cannot release a newer direct send lease',()=>{
