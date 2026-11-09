@@ -415,7 +415,7 @@ test('direct chats show loading, retry, and empty state only after completed req
 test('inbox polling does not reread channels or messages every few seconds',()=>{
  const shell=load('components/AppShell.tsx');
  assert.match(shell,/const refreshInbox=useCallback/);
- assert.match(shell,/window\.setInterval\(\(\)=>void run\(\),12000\)/);
+ assert.match(shell,/startVisiblePolling\(\s*\(\)=>void run\(\),12000,document,window,navigator,\(\)=>void run\(true\)\s*\)/);
  assert.match(shell,/cycles%6===0/);
  assert.match(shell,/startVisiblePolling\(/);assert.match(shell,/stopVisiblePolling\(\)/);assert.doesNotMatch(shell,/window\.setInterval\(\(\)=>void sync\(\),6000\)/);
  const body=shell.slice(shell.indexOf('const refresh=useCallback'),shell.indexOf('const refreshInbox=useCallback'));
