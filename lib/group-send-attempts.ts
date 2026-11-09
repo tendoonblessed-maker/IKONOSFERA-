@@ -21,10 +21,19 @@ type SecureCryptoSource={
 /**
  * Prefer the native UUID API, but retain compatibility with older secure
  * browser contexts that expose getRandomValues() without randomUUID().
+ * Some partial implementations expose randomUUID() but throw or return an
+ * invalid value; in that case use the cryptographic byte fallback as well.
  * Never fall back to Math.random: the ID is also the database idempotency key.
  */
 export function createGroupSendAttemptId(source:SecureCryptoSource|undefined=globalThis.crypto):string{
- if(typeof source?.randomUUID==='function')return source.randomUUID();
+ if(typeof source?.randomUUID==='function'){
+  try{
+   const nativeId=source.randomUUID();
+   if(UUID.test(nativeId))return nativeId;
+  }catch{
+   // A partially implemented native API must not block a secure fallback.
+  }
+ }
  if(typeof source?.getRandomValues!=='function'){
   throw Error('Безопасная генерация идентификатора недоступна в этом браузере.');
  }
