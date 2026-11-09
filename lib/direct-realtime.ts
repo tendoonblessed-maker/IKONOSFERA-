@@ -28,6 +28,14 @@ export function subscribeDirectChatChanges(
  let stopped=false;
  const channel=client.channel('direct-db:'+chatId);
  const changed=()=>{if(!stopped)onChanged();};
+ const dispose=()=>{
+  if(stopped)return;
+  stopped=true;
+  removeRealtimeChannelWithDeadline(
+   ()=>client.removeChannel(channel),
+   ()=>client.realtime.disconnect()
+  );
+ };
  const scope={schema:'public' as const,table:'messages',filter:'chat_id=eq.'+chatId};
 
  // Must authorize the socket with the existing login JWT. The SDK does not
@@ -40,14 +48,11 @@ export function subscribeDirectChatChanges(
    .subscribe(status=>{
     if(status==='SUBSCRIBED')changed(); // close join/read race and resubscribe gaps
    });
- }).catch(()=>{/* A 6-second HTTP polling fallback remains active. */});
+ }).catch(()=>{
+  // Failed authorization cannot establish Realtime; release this client and
+  // leave the existing authenticated HTTPS polling fallback in control.
+  dispose();
+ });
 
- return()=>{
-  if(stopped)return;
-  stopped=true;
-  removeRealtimeChannelWithDeadline(
-   ()=>client.removeChannel(channel),
-   ()=>client.realtime.disconnect()
-  );
- };
+ return dispose;
 }
