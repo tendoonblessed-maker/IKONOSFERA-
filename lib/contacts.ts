@@ -1,12 +1,18 @@
 /* Per-account saved contacts and blocklist.
    Storage is in Supabase under owner-only row-level security (never localStorage). */
 import {apiUrl} from "@/lib/supabase-rest";
-import {collectPostgrestPages} from "@/lib/postgrest-pagination.mjs";
+import {
+ buildPostgrestCursorFilter,
+ collectPostgrestKeysetPages
+} from "@/lib/postgrest-pagination.mjs";
 
 const publishableKey=process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY??"";
 const CONTACT_PAGE_SIZE=100;
-type ContactRow={contact_id:string};
-type BlockRow={blocked_id:string};
+type ContactRow={contact_id:string;created_at:string};
+type BlockRow={blocked_id:string;created_at:string};
+type CursorRow={created_at:string;contact_id?:string;blocked_id?:string};
+type IdColumn="contact_id"|"blocked_id";
+type TableName="user_contacts"|"user_blocks";
 
 async function request<T>(path:string,token:string,method:"GET"|"POST"|"DELETE"="GET",body?:unknown):Promise<T>{
  if(!apiUrl||!publishableKey||!token)throw Error("Требуется подключение к аккаунту.");
@@ -28,18 +34,29 @@ async function request<T>(path:string,token:string,method:"GET"|"POST"|"DELETE"=
  return response.json() as Promise<T>;
 }
 
-/** Read one bounded PostgREST page and retain its total-count metadata. */
-async function requestPage<T>(
- path:string,token:string,offset:number,limit:number
+async function requestPage<T extends CursorRow>(
+ table:TableName,
+ idColumn:IdColumn,
+ token:string,
+ ownerId:string,
+ cursor:{created_at:string;id:string}|null,
+ limit:number
 ):Promise<{rows:T[];contentRange:string|null}>{
  if(!apiUrl||!publishableKey||!token)throw Error("Требуется подключение к аккаунту.");
- const response=await fetch(apiUrl+path,{
+ const params=new URLSearchParams({
+  select:idColumn+",created_at",
+  owner_id:"eq."+ownerId,
+  order:"created_at.desc,"+idColumn+".asc",
+  limit:String(limit)
+ });
+ const cursorFilter=buildPostgrestCursorFilter(cursor,idColumn);
+ if(cursorFilter)params.set("or",cursorFilter);
+
+ const response=await fetch(apiUrl+"/rest/v1/"+table+"?"+params.toString(),{
   method:"GET",
   headers:{
    apikey:publishableKey,Authorization:"Bearer "+token,
    "Content-Type":"application/json",
-   "Range-Unit":"items",
-   Range:`${offset}-${offset+limit-1}`,
    Prefer:"count=exact"
   },
   cache:"no-store"
@@ -53,18 +70,25 @@ async function requestPage<T>(
  return {rows:rows as T[],contentRange:response.headers.get("content-range")};
 }
 
-async function listAllRows<T>(path:string,token:string):Promise<T[]>{
- return collectPostgrestPages<T>(
-  (offset,limit)=>requestPage<T>(path,token,offset,limit),
+async function listAllRows<T extends CursorRow>(
+ table:TableName,
+ idColumn:IdColumn,
+ token:string,
+ ownerId:string
+):Promise<T[]>{
+ return collectPostgrestKeysetPages<T>(
+  (cursor,limit)=>requestPage<T>(table,idColumn,token,ownerId,cursor,limit),
+  row=>{
+   const id=idColumn==="contact_id"?row.contact_id:row.blocked_id;
+   if(typeof id!=="string")throw Error("Сервер вернул запись контакта без идентификатора.");
+   return {created_at:row.created_at,id};
+  },
   {pageSize:CONTACT_PAGE_SIZE,maxPages:1000}
  );
 }
 
 export async function listSavedContacts(token:string,ownerId:string):Promise<string[]>{
- const rows=await listAllRows<ContactRow>(
-  "/rest/v1/user_contacts?select=contact_id&owner_id=eq."+encodeURIComponent(ownerId)+"&order=created_at.desc,contact_id.asc",
-  token
- );
+ const rows=await listAllRows<ContactRow>("user_contacts","contact_id",token,ownerId);
  return [...new Set(rows.map(row=>row.contact_id))];
 }
 export async function addSavedContact(token:string,ownerId:string,contactId:string):Promise<void>{
@@ -75,10 +99,7 @@ export async function removeSavedContact(token:string,ownerId:string,contactId:s
  await request<void>("/rest/v1/user_contacts?owner_id=eq."+encodeURIComponent(ownerId)+"&contact_id=eq."+encodeURIComponent(contactId),token,"DELETE");
 }
 export async function listBlockedUsers(token:string,ownerId:string):Promise<string[]>{
- const rows=await listAllRows<BlockRow>(
-  "/rest/v1/user_blocks?select=blocked_id&owner_id=eq."+encodeURIComponent(ownerId)+"&order=created_at.desc,blocked_id.asc",
-  token
- );
+ const rows=await listAllRows<BlockRow>("user_blocks","blocked_id",token,ownerId);
  return [...new Set(rows.map(row=>row.blocked_id))];
 }
 export async function addBlockedUser(token:string,ownerId:string,blockedId:string):Promise<void>{
