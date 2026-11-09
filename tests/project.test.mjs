@@ -1123,7 +1123,7 @@ test('attachments are reviewed with captions instead of being sent from the file
  assert.match(shell,/setPendingAttachment\(null\);setAttachmentCaption\(''\)/);
  assert.match(shell,/async function sendAttachment\(file:File\|undefined,caption=''\)/);
  assert.match(shell,/sendDirectMedia\(token,chatId,accountId,file,caption\)/);
- assert.match(shell,/setPendingAttachment\(current=>current\?\.chatId===chatId&&current\.ownerId===userId&&current\.file===file\?null:current\)/);
+ assert.match(shell,/setPendingAttachment\(current=>current\?\.chatId===chatId&&current\.ownerId===accountId&&current\.file===file\?null:current\)/);
  assert.match(shell,/const sent=await sendDirectMedia\(token,chatId,accountId,file,caption\)/);
  assert.match(shell,/queueAttachment\(e\.target\.files\?\.\[0\]\);e\.target\.value=""/);
  assert.doesNotMatch(shell,/void sendAttachment\(e\.target\.files\?\.\[0\]\)/);
