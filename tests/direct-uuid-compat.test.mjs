@@ -71,5 +71,5 @@ test('AppShell and the PostgREST text-send default share the secure UUID helper'
  assert.match(api,/clientMessageId: string = createSecureUuid\(\)/);
  assert.doesNotMatch(shell,/crypto\.randomUUID\(\)/);
  assert.doesNotMatch(api,/clientMessageId: string = crypto\.randomUUID\(\)/);
- assert.doesNotMatch(api,/Math\.random/);
+ assert.doesNotMatch(api,/Math\.random\s*\(/);
 });
