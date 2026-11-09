@@ -30,6 +30,7 @@ export function subscribeGroupChanges(token:string,groupId:string,onChanged:()=>
    });
  }).catch(()=>{/* The periodic HTTPS refresh remains active. */});
  return()=>{
+  if(disposed)return;
   disposed=true;
   removeRealtimeChannelWithDeadline(
    ()=>client.removeChannel(channel),
