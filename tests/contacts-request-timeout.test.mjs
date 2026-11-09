@@ -69,7 +69,8 @@ test('contact pagination uses a bounded request and clears its timer after succe
   json:async()=>[{contact_id:CONTACT,created_at:STAMP}]
  }));
  const result=await api.listSavedContacts('signed-user-jwt',OWNER);
- assert.deepEqual(result,[CONTACT]);
+ assert.equal(result.length,1);
+ assert.equal(result[0],CONTACT);
  assert.equal(calls.length,1);
  assert.equal(calls[0].options.headers.Authorization,'Bearer signed-user-jwt');
  assert.equal(calls[0].options.headers.Prefer,'count=exact');
