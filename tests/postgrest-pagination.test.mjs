@@ -102,3 +102,27 @@ test('saved contacts and blocked users use created_at plus their own stable ID c
  assert.doesNotMatch(source,/Range-Unit/);
  assert.doesNotMatch(source,/limit=500/);
 });
+
+
+test('rejects pages that violate created_at DESC and ID ASC ordering at microsecond precision',async()=>{
+ const newer=row(ID_1,'2026-11-09T12:00:00.123456+00:00');
+ const older=row(ID_2,'2026-11-09T12:00:00.123455+00:00');
+ const valid=await collectPostgrestKeysetPages(async()=>({
+  rows:[newer,older],contentRange:'0-1/2'
+ }),cursorOf);
+ assert.deepEqual(valid.map(value=>value.contact_id),[ID_1,ID_2]);
+ await assert.rejects(collectPostgrestKeysetPages(async()=>({
+  rows:[older,newer],contentRange:'0-1/2'
+ }),cursorOf),/outside the requested keyset order/);
+});
+
+test('rejects a next page that moves backwards within an equal-timestamp UUID tie-break',async()=>{
+ let calls=0;
+ await assert.rejects(collectPostgrestKeysetPages(async()=>{
+  calls+=1;
+  return calls===1
+   ?{rows:[row(ID_2)],contentRange:'0-0/2'}
+   :{rows:[row(ID_1)],contentRange:'0-0/1'};
+ },cursorOf,{pageSize:1}),/outside the requested keyset order/);
+ assert.equal(calls,2);
+});
