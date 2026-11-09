@@ -3,6 +3,7 @@ import {test} from 'node:test';
 import {readFileSync} from 'node:fs';
 import {
  GROUP_SEND_ATTEMPT_TTL_MS,
+ createGroupSendAttemptId,
  readGroupSendAttempt,getOrCreateGroupSendAttempt,
  clearGroupSendAttempt,clearAllGroupSendAttempts
 } from '../lib/group-send-attempts.ts';
@@ -35,6 +36,58 @@ test('retries of one group draft use the same UUID, not a fresh message',()=>{
  assert.notEqual(c.id,a.id,'a later deliberate send of the same text must be new');
 });
 
+test('secure UUID generation falls back to getRandomValues when randomUUID is unavailable',()=>{
+ let calls=0;
+ const id=createGroupSendAttemptId({
+  getRandomValues(bytes){
+   calls++;
+   bytes.set([0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15]);
+   return bytes;
+  }
+ });
+ assert.equal(calls,1);
+ assert.equal(id,'00010203-0405-4607-8809-0a0b0c0d0e0f');
+ assert.match(id,/^[\da-f]{8}-[\da-f]{4}-4[\da-f]{3}-[89ab][\da-f]{3}-[\da-f]{12}$/i);
+});
+
+test('native randomUUID is preferred and missing secure randomness fails closed',()=>{
+ const native='aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+ let fallbackCalls=0;
+ const id=createGroupSendAttemptId({
+  randomUUID:()=>native,
+  getRandomValues(){fallbackCalls++;throw Error('native API should be preferred');}
+ });
+ assert.equal(id,native);
+ assert.equal(fallbackCalls,0);
+ assert.throws(()=>createGroupSendAttemptId({}),/Безопасная генерация идентификатора/);
+});
+
+test('a throwing or malformed native randomUUID falls back to cryptographic bytes',()=>{
+ const fill=bytes=>{
+  bytes.set([0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15]);
+  return bytes;
+ };
+ let thrownFallbackCalls=0;
+ const afterThrow=createGroupSendAttemptId({
+  randomUUID(){throw Error('native UUID API unavailable');},
+  getRandomValues(bytes){thrownFallbackCalls++;return fill(bytes);}
+ });
+ assert.equal(thrownFallbackCalls,1);
+ assert.equal(afterThrow,'00010203-0405-4607-8809-0a0b0c0d0e0f');
+
+ let malformedFallbackCalls=0;
+ const afterMalformed=createGroupSendAttemptId({
+  randomUUID:()=> 'not-a-uuid',
+  getRandomValues(bytes){malformedFallbackCalls++;return fill(bytes);}
+ });
+ assert.equal(malformedFallbackCalls,1);
+ assert.equal(afterMalformed,'00010203-0405-4607-8809-0a0b0c0d0e0f');
+ assert.throws(
+  ()=>createGroupSendAttemptId({randomUUID(){throw Error('native failure');}}),
+  /Безопасная генерация идентификатора/
+ );
+});
+
 test('edits, groups, and accounts have isolated group send attempt IDs',()=>{
  const first=getOrCreateGroupSendAttempt(OWNER,GROUP,'Первый текст');
  const changed=getOrCreateGroupSendAttempt(OWNER,GROUP,'Исправленный текст');
@@ -52,7 +105,8 @@ test('group attempts survive remount via tab sessionStorage, not localStorage',(
  assert.equal(readGroupSendAttempt(OWNER,GROUP)?.id,original.id);
  const code=source('lib/group-send-attempts.ts');
  assert.match(code,/sessionStorage/);
- assert.doesNotMatch(code,/window\.localStorage|fetch\(/);
+ assert.match(code,/createGroupSendAttemptId\(\)/);
+ assert.doesNotMatch(code,/window\.localStorage|fetch\(|Math\.random\s*\(/);
 });
 
 test('invalid, malformed, expired and future-dated send attempts are discarded',()=>{

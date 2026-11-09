@@ -13,6 +13,37 @@ export const GROUP_SEND_ATTEMPT_TTL_MS=48*60*60*1000;
 export type GroupSendAttempt={id:string;body:string;createdAt:number};
 const inMemory=new Map<string,GroupSendAttempt>();
 
+type SecureCryptoSource={
+ randomUUID?:()=>string;
+ getRandomValues?:Crypto['getRandomValues'];
+};
+
+/**
+ * Prefer the native UUID API, but retain compatibility with older secure
+ * browser contexts that expose getRandomValues() without randomUUID().
+ * Some partial implementations expose randomUUID() but throw or return an
+ * invalid value; in that case use the cryptographic byte fallback as well.
+ * Never fall back to Math.random: the ID is also the database idempotency key.
+ */
+export function createGroupSendAttemptId(source:SecureCryptoSource|undefined=globalThis.crypto):string{
+ if(typeof source?.randomUUID==='function'){
+  try{
+   const nativeId=source.randomUUID();
+   if(UUID.test(nativeId))return nativeId;
+  }catch{
+   // A partially implemented native API must not block a secure fallback.
+  }
+ }
+ if(typeof source?.getRandomValues!=='function'){
+  throw Error('Безопасная генерация идентификатора недоступна в этом браузере.');
+ }
+ const bytes=source.getRandomValues(new Uint8Array(16));
+ bytes[6]=(bytes[6]&0x0f)|0x40; // UUID version 4
+ bytes[8]=(bytes[8]&0x3f)|0x80; // RFC 4122 variant
+ const hex=Array.from(bytes,value=>value.toString(16).padStart(2,'0')).join('');
+ return hex.slice(0,8)+'-'+hex.slice(8,12)+'-'+hex.slice(12,16)+'-'+hex.slice(16,20)+'-'+hex.slice(20);
+}
+
 function storage():Storage|null{
  try{return typeof window==='undefined'?null:window.sessionStorage;}
  catch{return null;}
@@ -51,7 +82,7 @@ export function getOrCreateGroupSendAttempt(
  const trimmed=body.trim();
  const prior=readGroupSendAttempt(owner,group,now);
  if(prior?.body===trimmed)return prior;
- const attempt:GroupSendAttempt={id:crypto.randomUUID(),body:trimmed,createdAt:now};
+ const attempt:GroupSendAttempt={id:createGroupSendAttemptId(),body:trimmed,createdAt:now};
  const k=key(owner,group);
  inMemory.set(k,attempt);
  try{storage()?.setItem(k,JSON.stringify(attempt));}catch{}
