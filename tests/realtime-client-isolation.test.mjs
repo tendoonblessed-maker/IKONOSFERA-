@@ -3,7 +3,10 @@ import {test} from 'node:test';
 import {readFileSync} from 'node:fs';
 import {runInNewContext} from 'node:vm';
 import ts from 'typescript';
-import {removeRealtimeChannelWithDeadline} from '../lib/realtime-cleanup.ts';
+import {
+ authorizeRealtimeWithDeadline,
+ removeRealtimeChannelWithDeadline
+} from '../lib/realtime-cleanup.ts';
 
 const UUID='11111111-1111-4111-8111-111111111111';
 const modules=[
@@ -62,7 +65,10 @@ function loadRealtimeModule(path){
    }
   };
   if(id==='./supabase-rest')return {apiUrl:'https://supabase.invalid',backendReady:true};
-  if(id==='./realtime-cleanup')return {removeRealtimeChannelWithDeadline};
+  if(id==='./realtime-cleanup')return {
+   authorizeRealtimeWithDeadline,
+   removeRealtimeChannelWithDeadline
+  };
   throw new Error('Unexpected module: '+id);
  };
  runInNewContext(compiled,{
