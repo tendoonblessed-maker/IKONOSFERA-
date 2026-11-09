@@ -10,10 +10,7 @@ const script = scriptStart >= 0 && scriptEnd > scriptStart
   ? html.slice(scriptStart + "<script>".length, scriptEnd)
   : "";
 
-test("offline fallback retries the app once when the browser reports connectivity", () => {
-  assert.equal(html.split("<script>").length - 1, 1, "expected one small inline recovery script");
-  assert.equal(html.split("</script>").length - 1, 1);
-
+function bootOfflinePage({ onLine = false } = {}) {
   const listeners = [];
   const replacements = [];
   const window = {
@@ -26,14 +23,54 @@ test("offline fallback retries the app once when the browser reports connectivit
       },
     },
   };
+  const navigator = { onLine };
+  runInNewContext(script, { window, navigator });
+  return { listeners, replacements, window, navigator };
+}
 
-  runInNewContext(script, { window });
+test("offline fallback retries the app once when the browser reports connectivity", () => {
+  assert.equal(html.split("<script>").length - 1, 1, "expected one small inline recovery script");
+  assert.equal(html.split("</script>").length - 1, 1);
 
-  assert.equal(listeners.length, 1);
-  assert.equal(listeners[0].type, "online");
-  assert.equal(listeners[0].options.once, true);
+  const { listeners, replacements } = bootOfflinePage();
+  const online = listeners.find((listener) => listener.type === "online");
 
-  listeners[0].callback();
+  assert.ok(online, "expected an online recovery listener");
+  assert.equal(online.options.once, true);
+  online.callback();
+  assert.deepEqual(replacements, ["/"]);
+});
+
+test("a BFCache restore retries when connectivity returned while the page was frozen", () => {
+  const { listeners, replacements, navigator } = bootOfflinePage();
+  const pageshow = listeners.find((listener) => listener.type === "pageshow");
+
+  assert.ok(pageshow, "expected a pageshow recovery listener");
+  navigator.onLine = true;
+  pageshow.callback({ persisted: true });
+  assert.deepEqual(replacements, ["/"]);
+});
+
+test("initial page show and offline BFCache restore do not trigger a navigation", () => {
+  const { listeners, replacements } = bootOfflinePage();
+  const pageshow = listeners.find((listener) => listener.type === "pageshow");
+
+  assert.ok(pageshow);
+  pageshow.callback({ persisted: false });
+  pageshow.callback({ persisted: true });
+  assert.deepEqual(replacements, []);
+});
+
+test("online and BFCache signals cannot trigger duplicate navigation", () => {
+  const { listeners, replacements, navigator } = bootOfflinePage();
+  const online = listeners.find((listener) => listener.type === "online");
+  const pageshow = listeners.find((listener) => listener.type === "pageshow");
+
+  assert.ok(online);
+  assert.ok(pageshow);
+  online.callback();
+  navigator.onLine = true;
+  pageshow.callback({ persisted: true });
   assert.deepEqual(replacements, ["/"]);
 });
 
