@@ -78,7 +78,7 @@ test('contact pagination uses a bounded request and clears its timer after succe
  assert.equal(timers.size,0);
  assert.deepEqual(cleared,[1]);
  assert.match(source,/CONTACT_REQUEST_TIMEOUT_MS=18000/);
- assert.match(source,/fetchContactsWithTimeout\(apiUrl\+"\/rest\/v1\/"\+table/);
+ assert.ok(source.includes('fetchContactsWithTimeout(apiUrl+"/rest/v1/"+table'));
  assert.doesNotMatch(source,/AbortSignal\.timeout/);
 });
 
