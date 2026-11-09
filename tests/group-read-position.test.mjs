@@ -72,3 +72,17 @@ test('group jump is scoped to group/account and new message badge saturates at 9
  assert.match(panel,/newMessagesBelow<99\?newMessagesBelow:'99\+'/);
  assert.match(panel,/aria-label=\{newMessagesBelow>0/);
 });
+
+
+test('duplicate group rows from Realtime and HTTP refresh count once by message ID',()=>{
+ const repeated=message('3');
+ const next=[message('1'),repeated,{...repeated},message('4'),message('4'),message('')];
+ assert.equal(countNewIncomingBelow(next,new Set(['1']),A,false),2);
+});
+
+test('duplicate self-authored and malformed group rows never inflate the unread badge',()=>{
+ const own=message('own',A);
+ const incoming=message('incoming',B);
+ const malformed=message('');
+ assert.equal(countNewIncomingBelow([own,{...own},incoming,{...incoming},malformed,{...malformed}],new Set(['baseline']),A,false),1);
+});
