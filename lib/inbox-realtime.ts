@@ -44,6 +44,7 @@ export function subscribeInboxChanges(
  }).catch(()=>{/* Periodic inbox polling continues without Realtime. */});
 
  return()=>{
+  if(disposed)return;
   disposed=true;
   removeRealtimeChannelWithDeadline(
    ()=>client.removeChannel(channel),
