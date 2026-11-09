@@ -20,6 +20,14 @@ export function subscribeGroupChanges(token:string,groupId:string,onChanged:()=>
  let disposed=false;
  const channel=client.channel('group-db:'+groupId);
  const changed=()=>{if(!disposed)onChanged();};
+ const dispose=()=>{
+  if(disposed)return;
+  disposed=true;
+  removeRealtimeChannelWithDeadline(
+   ()=>client.removeChannel(channel),
+   ()=>client.realtime.disconnect()
+  );
+ };
  const scope={schema:'public' as const,table:'group_messages',filter:'group_id=eq.'+groupId};
  void client.realtime.setAuth(token).then(()=>{
   if(disposed)return;
@@ -28,13 +36,10 @@ export function subscribeGroupChanges(token:string,groupId:string,onChanged:()=>
    .subscribe(status=>{
     if(status==='SUBSCRIBED')changed(); // reconcile events missed during join
    });
- }).catch(()=>{/* The periodic HTTPS refresh remains active. */});
- return()=>{
-  if(disposed)return;
-  disposed=true;
-  removeRealtimeChannelWithDeadline(
-   ()=>client.removeChannel(channel),
-   ()=>client.realtime.disconnect()
-  );
- };
+ }).catch(()=>{
+  // Failed authorization cannot establish Realtime; release this client and
+  // leave the existing authenticated HTTPS polling fallback in control.
+  dispose();
+ });
+ return dispose;
 }
