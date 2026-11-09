@@ -41,6 +41,22 @@ test('forces socket teardown when removeChannel hangs and ignores late settlemen
  assert.equal(disconnected,1);
 });
 
+test('disconnect exceptions are swallowed and never retried after a late leave response',async()=>{
+ let resolveRemoval;
+ let disconnected=0;
+ const pending=new Promise(resolve=>{resolveRemoval=resolve;});
+ removeRealtimeChannelWithDeadline(
+  ()=>pending,
+  ()=>{disconnected++;throw new Error('socket already closed');},
+  8
+ );
+ await pause(20);
+ assert.equal(disconnected,1);
+ resolveRemoval('ok');
+ await pause(0);
+ assert.equal(disconnected,1);
+});
+
 test('direct, group and inbox Realtime clients all use bounded teardown',()=>{
  for(const path of ['lib/direct-realtime.ts','lib/group-realtime.ts','lib/inbox-realtime.ts']){
   const source=load(path);
