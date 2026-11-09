@@ -13,7 +13,7 @@ const modules=[
 ];
 
 function loadRealtimeModule(path){
- let resolveAuth;
+ let resolveAuth,rejectAuth;
  let removeCalls=0,disconnectCalls=0,handlerRegistrations=0,subscribeCalls=0;
  const eventCallbacks=[];
  let statusCallback=null;
@@ -32,7 +32,7 @@ function loadRealtimeModule(path){
  const client={
   channel(){return channel;},
   realtime:{
-   setAuth(){return new Promise(resolve=>{resolveAuth=resolve;});},
+   setAuth(){return new Promise((resolve,reject)=>{resolveAuth=resolve;rejectAuth=reject;});},
    disconnect(){disconnectCalls++;}
   },
   removeChannel(){removeCalls++;return Promise.resolve('ok');}
@@ -61,11 +61,14 @@ function loadRealtimeModule(path){
  return {
   exports:module.exports,
   resolveAuth:()=>resolveAuth(),
+  rejectAuth:()=>rejectAuth(new Error('expired token')),
   emitRealtimeEvents:()=>eventCallbacks.forEach(callback=>callback()),
   emitStatus:status=>statusCallback?.(status),
   counts:()=>({removeCalls,disconnectCalls,handlerRegistrations,subscribeCalls})
  };
 }
+
+const pause=()=>new Promise(resolve=>setTimeout(resolve,0));
 
 test('cleanup before JWT authorization resolves never starts direct, group or inbox subscriptions',async()=>{
  for(const [path,exportName] of modules){
@@ -130,5 +133,31 @@ test('repeated cleanup calls remove each direct, group and inbox channel only on
    handlerRegistrations:0,
    subscribeCalls:0
   },path+' cleanup must be idempotent');
+ }
+});
+
+test('failed JWT authorization releases direct, group and inbox clients without subscribing',async()=>{
+ for(const [path,exportName] of modules){
+  const loaded=loadRealtimeModule(path);
+  const stop=loaded.exports[exportName]('expired-user-jwt',UUID,()=>{});
+
+  loaded.rejectAuth();
+  await pause();
+
+  assert.deepEqual(loaded.counts(),{
+   removeCalls:1,
+   disconnectCalls:1,
+   handlerRegistrations:0,
+   subscribeCalls:0
+  },path+' releases its channel and socket after auth failure');
+
+  stop();
+  await pause();
+  assert.deepEqual(loaded.counts(),{
+   removeCalls:1,
+   disconnectCalls:1,
+   handlerRegistrations:0,
+   subscribeCalls:0
+  },path+' later React cleanup remains idempotent');
  }
 });
