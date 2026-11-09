@@ -1211,25 +1211,41 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
       setError('Нет соединения с интернетом. Вложение осталось в предпросмотре.');
       return;
     }
-    const chatId=selected,token=session.access_token;
+    const chatId=selected,accountId=userId,token=session.access_token;
     const problem=validateDirectMediaFile(file);
     if(problem){setError(problem);return;}
+    // Text and attachment submissions share one synchronous account/chat lease.
+    // This closes the same-turn double-tap gap before React can rerender.
+    const sendKey=accountId+':'+chatId;
+    const sendGeneration=draftGenerationRef.current;
+    const lock=directMessageSendLockRef.current;
+    if(!lock)return;
+    const lockToken=lock.acquire(sendKey);
+    if(lockToken===null)return;
+    const uiToken=++directMessageSendUiTokenRef.current;
+    const isCurrent=()=>draftGenerationRef.current===sendGeneration
+      &&selectedRef.current===chatId&&draftsOwnerRef.current===accountId;
     setSending(true);setError("");
     try{
-      const sent=await sendDirectMedia(token,chatId,userId,file,caption);
-      if(selectedRef.current===chatId&&draftsOwnerRef.current===userId){
+      const sent=await sendDirectMedia(token,chatId,accountId,file,caption);
+      if(isCurrent()){
         confirmedMessagesRef.current.set(sent.id,{
           message:sent,expiresAt:Date.now()+CONFIRMED_MESSAGE_GRACE_MS
         });
         setChatMessages(current=>prependEarlierPage(current,[sent]));
-        setPendingAttachment(current=>current?.chatId===chatId&&current.ownerId===userId&&current.file===file?null:current);
+        setPendingAttachment(current=>current?.chatId===chatId&&current.ownerId===accountId&&current.file===file?null:current);
         setAttachmentCaption('');
+        setNotice("Вложение отправлено.");
       }
-      setNotice("Вложение отправлено.");
-      // The server confirmed the attachment; polling updates its metadata
-      // without delaying the new message bubble or reporting a false failure.
-    }catch(e){setError(userFacingError(e));}
-    finally{setSending(false);}
+      // A late acknowledgement after chat/account changes must not update UI.
+    }catch(e){
+      if(directMessageSendUiTokenRef.current===uiToken&&isCurrent()){
+        setError(userFacingError(e));
+      }
+    }finally{
+      lock.release(sendKey,lockToken);
+      if(directMessageSendUiTokenRef.current===uiToken)setSending(false);
+    }
   }
   async function logout(){
     if(!session)return;
