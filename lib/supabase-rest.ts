@@ -10,6 +10,42 @@ export type DirectChat = { id: string; user_a: string; user_b: string; created_a
 export type ChatMessage = { id: string; chat_id: string; sender_id: string; body: string; created_at: string; media_path: string|null; media_type: "image"|"video"|"audio"|"file"|null; read_at: string|null; edited_at?:string|null; deleted_for?:string[]; deleted_for_everyone?:boolean; reply_to_message_id?:string|null };
 const STORAGE = 'ikonosfera-session-v1';
 
+const UUID_V4=/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i;
+type SecureCryptoSource={
+  randomUUID?:()=>string;
+  getRandomValues?:Crypto['getRandomValues'];
+};
+
+/**
+ * Generate client message IDs without depending on randomUUID(), which is
+ * missing in some older iOS Safari and embedded WebView versions. The
+ * fallback still uses cryptographically secure bytes; never use Math.random.
+ */
+export function createSecureUuid(source:SecureCryptoSource|undefined=globalThis.crypto):string{
+  if(typeof source?.randomUUID==='function'){
+    try{
+      const nativeId=source.randomUUID();
+      if(UUID_V4.test(nativeId))return nativeId;
+    }catch{
+      // Some partial browser implementations expose randomUUID but throw.
+    }
+  }
+  if(typeof source?.getRandomValues!=='function'){
+    throw Error('Безопасная генерация идентификатора недоступна в этом браузере.');
+  }
+  try{
+    const bytes=new Uint8Array(16);
+    source.getRandomValues(bytes);
+    bytes[6]=(bytes[6]&0x0f)|0x40;
+    bytes[8]=(bytes[8]&0x3f)|0x80;
+    const hex=Array.from(bytes,value=>value.toString(16).padStart(2,'0')).join('');
+    return hex.slice(0,8)+'-'+hex.slice(8,12)+'-'+hex.slice(12,16)+'-'+hex.slice(16,20)+'-'+hex.slice(20);
+  }catch{
+    throw Error('Безопасная генерация идентификатора недоступна в этом браузере.');
+  }
+}
+
+
 class SupabaseHttpError extends Error {
   constructor(message:string,readonly status:number){super(message);this.name='SupabaseHttpError';}
 }
@@ -218,7 +254,7 @@ export async function searchDirectMessages(
  });
 }
 
-export async function postMessage(token: string, chatId: string, userId: string, body: string, clientMessageId: string = crypto.randomUUID(), replyToMessageId:string|null=null) {
+export async function postMessage(token: string, chatId: string, userId: string, body: string, clientMessageId: string = createSecureUuid(), replyToMessageId:string|null=null) {
   void userId;
   const endpoint=replyToMessageId?'/rest/v1/rpc/send_direct_reply':'/rest/v1/rpc/send_direct_message';
   const payload={p_chat_id:chatId,p_body:body,p_client_message_id:clientMessageId};
