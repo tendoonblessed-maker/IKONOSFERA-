@@ -55,3 +55,39 @@ test('ordinary text and under-limit emoji drafts are unchanged',()=>{
  assert.equal(cleanChatDrafts({[CHAT]:direct})[CHAT],direct);
  assert.equal(cleanGroupDrafts({[GROUP]:group})[GROUP],group);
 });
+
+test('Intl.Segmenter truncation keeps ZWJ emoji, flags, skin tones and combining marks whole', () => {
+ const family='👨‍👩‍👧‍👦';
+ const direct=cleanChatDrafts({[CHAT]:'x'.repeat(3998)+family})[CHAT];
+ assert.equal(direct,'x'.repeat(3998));
+
+ const combining='e\u0301';
+ const group=cleanGroupDrafts({[GROUP]:'x'.repeat(3998)+combining})[GROUP];
+ assert.equal(group,'x'.repeat(3998)+combining);
+
+ const flag=cleanGroupDrafts({[GROUP]:'x'.repeat(3997)+'🇸🇪'})[GROUP];
+ assert.equal(flag,'x'.repeat(3997));
+
+ const skinTone=cleanChatDrafts({[CHAT]:'x'.repeat(3998)+'👋🏽'})[CHAT];
+ assert.equal(skinTone,'x'.repeat(3998));
+});
+
+test('fallback truncation preserves common grapheme sequences without Intl.Segmenter', () => {
+ const descriptor=Object.getOwnPropertyDescriptor(Intl,'Segmenter');
+ assert.ok(descriptor,'Node test runtime should expose Intl.Segmenter for fallback simulation');
+ const original=Intl.Segmenter;
+ try {
+  Object.defineProperty(Intl,'Segmenter',{...descriptor,value:undefined});
+  const family='👩🏽‍🚀';
+  assert.equal(cleanChatDrafts({[CHAT]:'x'.repeat(3998)+family})[CHAT],'x'.repeat(3998));
+
+  const combining='e\u0301';
+  assert.equal(cleanGroupDrafts({[GROUP]:'x'.repeat(3998)+combining})[GROUP],'x'.repeat(3998)+combining);
+
+  assert.equal(cleanGroupDrafts({[GROUP]:'x'.repeat(3997)+'🇸🇪'})[GROUP],'x'.repeat(3997));
+  assert.equal(cleanChatDrafts({[CHAT]:'x'.repeat(3998)+'👋🏽'})[CHAT],'x'.repeat(3998));
+ } finally {
+  Object.defineProperty(Intl,'Segmenter',{...descriptor,value:original});
+ }
+});
+
