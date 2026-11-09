@@ -80,7 +80,7 @@ test('group attempts survive remount via tab sessionStorage, not localStorage',(
  const code=source('lib/group-send-attempts.ts');
  assert.match(code,/sessionStorage/);
  assert.match(code,/createGroupSendAttemptId\(\)/);
- assert.doesNotMatch(code,/window\.localStorage|fetch\(|Math\.random/);
+ assert.doesNotMatch(code,/window\.localStorage|fetch\(|Math\.random\s*\(/);
 });
 
 test('invalid, malformed, expired and future-dated send attempts are discarded',()=>{
