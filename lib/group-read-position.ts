@@ -21,5 +21,10 @@ export function countNewIncomingBelow(
  atBottom:boolean
 ):number{
  if(atBottom||previousIds.size===0)return 0;
- return latest.reduce((n,m)=>n+(!previousIds.has(m.id)&&m.sender_id!==readerId?1:0),0);
+ const counted=new Set<string>();
+ return latest.reduce((n,m)=>{
+  if(!m.id||previousIds.has(m.id)||m.sender_id===readerId||counted.has(m.id))return n;
+  counted.add(m.id);
+  return n+1;
+ },0);
 }
