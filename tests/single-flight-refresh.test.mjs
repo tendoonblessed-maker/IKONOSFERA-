@@ -54,7 +54,7 @@ test('AppShell queues a full session/inbox refresh when resume overlaps an older
   assert.match(effect,/if\(admission\.forceFull\|\|\+\+cycles%6===0\)/);
   assert.match(effect,/const queuedFull=refreshGate\.leave\(\)/);
   assert.match(effect,/if\(queuedFull&&!cancelled&&document\.visibilityState==='visible'&&navigator\.onLine\)void run\(true\)/);
-  assert.match(effect,/startVisiblePolling\(\(\)=>void run\(\),12000,document,window,navigator,\(\)=>void run\(true\)\)/);
+  assert.match(effect,/startVisiblePolling\(\s*\(\)=>void run\(\),12000,document,window,navigator,\(\)=>void run\(true\)\s*\)/);
   assert.match(effect,/refreshGate\.dispose\(\);stopPolling\(\)/);
   assert.doesNotMatch(effect,/let inFlight=false/);
 });
