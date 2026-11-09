@@ -3,11 +3,20 @@
  * No message text is sent to a server or shared across accounts/windows.
  * sessionStorage is deliberately used instead of durable localStorage.
  */
-import {truncateDraftText} from './draft-text';
 const PREFIX='ikonosfera-drafts-tab-v1:';
 const MAX_CHATS=48;
 const MAX_TEXT=4000;
 const UUID=/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
+
+/** Truncate without leaving half of a supplementary Unicode code point. */
+function limitDraftText(text:string):string{
+  const limited=text.slice(0,MAX_TEXT);
+  if(limited.length===MAX_TEXT){
+    const last=limited.charCodeAt(limited.length-1);
+    if(last>=0xd800&&last<=0xdbff)return limited.slice(0,-1);
+  }
+  return limited;
+}
 
 export type ChatDrafts=Record<string,string>;
 
@@ -25,7 +34,7 @@ export function cleanChatDrafts(input:unknown):ChatDrafts{
   const recent=new Map<string,string>();
   for(const [chatId,text] of Object.entries(input)){
     if(!UUID.test(chatId)||typeof text!=='string')continue;
-    const limited=truncateDraftText(text,MAX_TEXT);
+    const limited=limitDraftText(text);
     if(!limited.trim())continue;
     recent.set(chatId,limited);
     if(recent.size>MAX_CHATS){
@@ -41,7 +50,7 @@ export function updateChatDraftEntry(drafts:ChatDrafts,chatId:string,text:string
   const next=cleanChatDrafts(drafts);
   if(!UUID.test(chatId))return next;
   delete next[chatId];
-  if(text.trim())next[chatId]=truncateDraftText(text,MAX_TEXT);
+  if(text.trim())next[chatId]=limitDraftText(text);
   return cleanChatDrafts(next);
 }
 export function readChatDrafts(userId:string):ChatDrafts{
