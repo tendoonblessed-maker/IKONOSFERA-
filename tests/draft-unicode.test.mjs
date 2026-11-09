@@ -86,6 +86,8 @@ test('fallback truncation preserves common grapheme sequences without Intl.Segme
 
   assert.equal(cleanGroupDrafts({[GROUP]:'x'.repeat(3997)+'🇸🇪'})[GROUP],'x'.repeat(3997));
   assert.equal(cleanChatDrafts({[CHAT]:'x'.repeat(3998)+'👋🏽'})[CHAT],'x'.repeat(3998));
+  assert.equal(cleanGroupDrafts({[GROUP]:'x'.repeat(3999)+'\u1100\u1161'})[GROUP],'x'.repeat(3999));
+  assert.equal(cleanChatDrafts({[CHAT]:'x'.repeat(3999)+'\r\n'})[CHAT],'x'.repeat(3999));
  } finally {
   Object.defineProperty(Intl,'Segmenter',{...descriptor,value:original});
  }
