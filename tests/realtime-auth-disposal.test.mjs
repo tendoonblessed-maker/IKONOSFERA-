@@ -3,7 +3,10 @@ import {test} from 'node:test';
 import {readFileSync} from 'node:fs';
 import {runInNewContext} from 'node:vm';
 import ts from 'typescript';
-import {removeRealtimeChannelWithDeadline} from '../lib/realtime-cleanup.ts';
+import {
+ authorizeRealtimeWithDeadline,
+ removeRealtimeChannelWithDeadline
+} from '../lib/realtime-cleanup.ts';
 
 const UUID='11111111-1111-4111-8111-111111111111';
 const modules=[
@@ -12,7 +15,7 @@ const modules=[
  ['lib/inbox-realtime.ts','subscribeInboxChanges']
 ];
 
-function loadRealtimeModule(path){
+function loadRealtimeModule(path,authTimeoutMs=10000){
  let resolveAuth,rejectAuth;
  let removeCalls=0,disconnectCalls=0,handlerRegistrations=0,subscribeCalls=0;
  const eventCallbacks=[];
@@ -48,7 +51,12 @@ function loadRealtimeModule(path){
  const mockRequire=id=>{
   if(id==='@supabase/supabase-js')return {createClient:()=>client};
   if(id==='./supabase-rest')return {apiUrl:'https://supabase.invalid',backendReady:true};
-  if(id==='./realtime-cleanup')return {removeRealtimeChannelWithDeadline};
+  if(id==='./realtime-cleanup')return {
+   authorizeRealtimeWithDeadline:(authorize,onAuthorized,onFailure)=>(
+    authorizeRealtimeWithDeadline(authorize,onAuthorized,onFailure,authTimeoutMs)
+   ),
+   removeRealtimeChannelWithDeadline
+  };
   throw new Error('Unexpected module: '+id);
  };
  runInNewContext(compiled,{
@@ -68,7 +76,7 @@ function loadRealtimeModule(path){
  };
 }
 
-const pause=()=>new Promise(resolve=>setTimeout(resolve,0));
+const pause=(ms=0)=>new Promise(resolve=>setTimeout(resolve,ms));
 
 test('cleanup before JWT authorization resolves never starts direct, group or inbox subscriptions',async()=>{
  for(const [path,exportName] of modules){
@@ -159,5 +167,51 @@ test('failed JWT authorization releases direct, group and inbox clients without 
    handlerRegistrations:0,
    subscribeCalls:0
   },path+' later React cleanup remains idempotent');
+ }
+});
+
+test('a stalled JWT authorization is bounded and releases every Realtime client',async()=>{
+ for(const [path,exportName] of modules){
+  const loaded=loadRealtimeModule(path,8);
+  const stop=loaded.exports[exportName]('offline-user-jwt',UUID,()=>{});
+
+  await pause(20);
+  assert.deepEqual(loaded.counts(),{
+   removeCalls:1,
+   disconnectCalls:1,
+   handlerRegistrations:0,
+   subscribeCalls:0
+  },path+' must release its channel and socket when setAuth stalls');
+
+  // A late success after the timeout must not revive the disposed channel.
+  loaded.resolveAuth();
+  await pause();
+  stop();
+  assert.deepEqual(loaded.counts(),{
+   removeCalls:1,
+   disconnectCalls:1,
+   handlerRegistrations:0,
+   subscribeCalls:0
+  },path+' ignores authorization completion after its deadline');
+ }
+});
+
+test('successful JWT authorization clears its deadline and keeps the channel alive',async()=>{
+ for(const [path,exportName] of modules){
+  const loaded=loadRealtimeModule(path,8);
+  const stop=loaded.exports[exportName]('valid-user-jwt',UUID,()=>{});
+  loaded.resolveAuth();
+  await Promise.resolve();
+  await Promise.resolve();
+  await pause(20);
+
+  assert.equal(loaded.counts().removeCalls,0,path+' does not remove an authorized channel');
+  assert.equal(loaded.counts().disconnectCalls,0,path+' clears the auth watchdog after success');
+  assert.equal(loaded.counts().subscribeCalls,1,path+' subscribes after authorization');
+
+  stop();
+  await pause();
+  assert.equal(loaded.counts().removeCalls,1,path+' cleans up normally');
+  assert.equal(loaded.counts().disconnectCalls,1,path+' disconnects normally');
  }
 });
