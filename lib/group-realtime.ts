@@ -2,6 +2,7 @@
 
 import {createClient} from '@supabase/supabase-js';
 import {apiUrl,backendReady} from './supabase-rest';
+import {removeRealtimeChannelWithDeadline} from './realtime-cleanup';
 
 const publishableKey=process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY??'';
 const UUID=/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
@@ -30,8 +31,9 @@ export function subscribeGroupChanges(token:string,groupId:string,onChanged:()=>
  }).catch(()=>{/* The periodic HTTPS refresh remains active. */});
  return()=>{
   disposed=true;
-  void client.removeChannel(channel)
-   .finally(()=>{client.realtime.disconnect();})
-   .catch(()=>{client.realtime.disconnect();});
+  removeRealtimeChannelWithDeadline(
+   ()=>client.removeChannel(channel),
+   ()=>client.realtime.disconnect()
+  );
  };
 }
