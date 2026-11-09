@@ -28,7 +28,7 @@ test('retries of one group draft use the same UUID, not a fresh message',()=>{
  const a=getOrCreateGroupSendAttempt(OWNER,GROUP,body);
  const b=getOrCreateGroupSendAttempt(OWNER,GROUP,body);
  assert.deepEqual(a,b);
- assert.match(a.id,/^[\da-f]{8}-[\da-f-]{27}$/i);
+ assert.match(a.id,/^[\\da-f]{8}-[\\da-f-]{27}$/i);
  assert.equal(readGroupSendAttempt(OWNER,GROUP)?.id,a.id);
  clearGroupSendAttempt(OWNER,GROUP,a.id);
  assert.equal(readGroupSendAttempt(OWNER,GROUP),null);
@@ -47,7 +47,7 @@ test('secure UUID generation falls back to getRandomValues when randomUUID is un
  });
  assert.equal(calls,1);
  assert.equal(id,'00010203-0405-4607-8809-0a0b0c0d0e0f');
- assert.match(id,/^[\da-f]{8}-[\da-f]{4}-4[\da-f]{3}-[89ab][\da-f]{3}-[\da-f]{12}$/i);
+ assert.match(id,/^[\\da-f]{8}-[\\da-f]{4}-4[\\da-f]{3}-[89ab][\\da-f]{3}-[\\da-f]{12}$/i);
 });
 
 test('native randomUUID is preferred and missing secure randomness fails closed',()=>{
@@ -60,6 +60,32 @@ test('native randomUUID is preferred and missing secure randomness fails closed'
  assert.equal(id,native);
  assert.equal(fallbackCalls,0);
  assert.throws(()=>createGroupSendAttemptId({}),/Безопасная генерация идентификатора/);
+});
+
+test('a throwing or malformed native randomUUID falls back to cryptographic bytes',()=>{
+ const fill=bytes=>{
+  bytes.set([0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15]);
+  return bytes;
+ };
+ let thrownFallbackCalls=0;
+ const afterThrow=createGroupSendAttemptId({
+  randomUUID(){throw Error('native UUID API unavailable');},
+  getRandomValues(bytes){thrownFallbackCalls++;return fill(bytes);}
+ });
+ assert.equal(thrownFallbackCalls,1);
+ assert.equal(afterThrow,'00010203-0405-4607-8809-0a0b0c0d0e0f');
+
+ let malformedFallbackCalls=0;
+ const afterMalformed=createGroupSendAttemptId({
+  randomUUID:()=> 'not-a-uuid',
+  getRandomValues(bytes){malformedFallbackCalls++;return fill(bytes);}
+ });
+ assert.equal(malformedFallbackCalls,1);
+ assert.equal(afterMalformed,'00010203-0405-4607-8809-0a0b0c0d0e0f');
+ assert.throws(
+  ()=>createGroupSendAttemptId({randomUUID(){throw Error('native failure');}}),
+  /Безопасная генерация идентификатора/
+ );
 });
 
 test('edits, groups, and accounts have isolated group send attempt IDs',()=>{
@@ -79,8 +105,8 @@ test('group attempts survive remount via tab sessionStorage, not localStorage',(
  assert.equal(readGroupSendAttempt(OWNER,GROUP)?.id,original.id);
  const code=source('lib/group-send-attempts.ts');
  assert.match(code,/sessionStorage/);
- assert.match(code,/createGroupSendAttemptId\(\)/);
- assert.doesNotMatch(code,/window\.localStorage|fetch\(|Math\.random\s*\(/);
+ assert.match(code,/createGroupSendAttemptId\\(\\)/);
+ assert.doesNotMatch(code,/window\\.localStorage|fetch\\(|Math\\.random\\s*\\(/);
 });
 
 test('invalid, malformed, expired and future-dated send attempts are discarded',()=>{
@@ -126,10 +152,10 @@ test('group send API uses INSERT DO NOTHING + read back the original ID under RL
  assert.match(method,/id:messageId,group_id:id,sender_id:userId,body:trimmed/);
  assert.match(method,/resolution=ignore-duplicates,return=representation/);
  assert.match(method,/on_conflict=id/);
- assert.match(method,/readGroupSendResult\(token,id,userId,messageId\)/);
- assert.match(method,/AbortSignal\.timeout\(18000\)/);
- assert.match(api,/return \(await request<GroupMessage\[\]>\(token,url\)\)\[0\]/);
- assert.match(api,/row\.id!==messageId\|\|row\.group_id!==groupId\|\|row\.sender_id!==userId\|\|row\.body!==body/);
+ assert.match(method,/readGroupSendResult\\(token,id,userId,messageId\\)/);
+ assert.match(method,/AbortSignal\\.timeout\\(18000\\)/);
+ assert.match(api,/return \\(await request<GroupMessage\\[\\]>\\(token,url\\)\\)\\[0\\]/);
+ assert.match(api,/row\\.id!==messageId\\|\\|row\\.group_id!==groupId\\|\\|row\\.sender_id!==userId\\|\\|row\\.body!==body/);
  assert.doesNotMatch(method,/resolution=merge-duplicates/);
 });
 
@@ -137,13 +163,13 @@ test('failed sends remain manual, retry with existing UUID and cannot erase newe
  const group=source('components/GroupPanel.tsx');
  const shell=source('components/AppShell.tsx');
  const send=group.slice(group.indexOf('async function send('),group.indexOf(' const names='));
- assert.match(send,/getOrCreateGroupSendAttempt\(accountId,groupId,body\)/);
- assert.match(send,/sendGroupMessage\(requestToken,groupId,accountId,body,attempt\.id\)/);
- assert.match(send,/clearGroupSendAttempt\(accountId,groupId,attempt\.id\)/);
- assert.match(send,/if\(draftVersionRef\.current===sentDraftVersion\)\{/);
- assert.match(send,/setRetryAvailable\(true\)/);
- assert.match(group,/composerFormRef\.current\?\.requestSubmit\(\)/);
+ assert.match(send,/getOrCreateGroupSendAttempt\\(accountId,groupId,body\\)/);
+ assert.match(send,/sendGroupMessage\\(requestToken,groupId,accountId,body,attempt\\.id\\)/);
+ assert.match(send,/clearGroupSendAttempt\\(accountId,groupId,attempt\\.id\\)/);
+ assert.match(send,/if\\(draftVersionRef\\.current===sentDraftVersion\\)\\{/);
+ assert.match(send,/setRetryAvailable\\(true\\)/);
+ assert.match(group,/composerFormRef\\.current\\?\\.requestSubmit\\(\\)/);
  assert.match(group,/Повторить отправку/);
- assert.match(shell,/clearAllGroupSendAttempts\(userId\)/);
- assert.match(group,/if\(!online\|\|!navigator\.onLine\)/);
+ assert.match(shell,/clearAllGroupSendAttempts\\(userId\\)/);
+ assert.match(group,/if\\(!online\\|\\|!navigator\\.onLine\\)/);
 });
