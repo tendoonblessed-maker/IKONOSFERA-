@@ -8,15 +8,35 @@ import {
 
 const publishableKey=process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY??"";
 const CONTACT_PAGE_SIZE=100;
+const CONTACT_REQUEST_TIMEOUT_MS=18000;
 type ContactRow={contact_id:string;created_at:string};
 type BlockRow={blocked_id:string;created_at:string};
 type CursorRow={created_at:string;contact_id?:string;blocked_id?:string};
 type IdColumn="contact_id"|"blocked_id";
 type TableName="user_contacts"|"user_blocks";
 
+/**
+ * Bound every contact request on mobile networks. A timed-out mutation is
+ * reported but never retried automatically because its server outcome may be
+ * unknown; add/delete operations remain safe for an explicit user retry.
+ */
+async function fetchContactsWithTimeout(input:RequestInfo|URL,init:RequestInit):Promise<Response>{
+ const controller=new AbortController();
+ const timeoutId=setTimeout(()=>controller.abort(),CONTACT_REQUEST_TIMEOUT_MS);
+ try{
+  return await fetch(input,{...init,signal:controller.signal});
+ }catch(error){
+  if(controller.signal.aborted)
+   throw Error("Запрос контактов не завершился вовремя. Проверь подключение и повтори попытку.");
+  throw error;
+ }finally{
+  clearTimeout(timeoutId);
+ }
+}
+
 async function request<T>(path:string,token:string,method:"GET"|"POST"|"DELETE"="GET",body?:unknown):Promise<T>{
  if(!apiUrl||!publishableKey||!token)throw Error("Требуется подключение к аккаунту.");
- const response=await fetch(apiUrl+path,{
+ const response=await fetchContactsWithTimeout(apiUrl+path,{
   method,
   headers:{
    apikey:publishableKey,Authorization:"Bearer "+token,
@@ -52,7 +72,7 @@ async function requestPage<T extends CursorRow>(
  const cursorFilter=buildPostgrestCursorFilter(cursor,idColumn);
  if(cursorFilter)params.set("or",cursorFilter);
 
- const response=await fetch(apiUrl+"/rest/v1/"+table+"?"+params.toString(),{
+ const response=await fetchContactsWithTimeout(apiUrl+"/rest/v1/"+table+"?"+params.toString(),{
   method:"GET",
   headers:{
    apikey:publishableKey,Authorization:"Bearer "+token,
