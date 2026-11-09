@@ -497,14 +497,14 @@ test('rapid chat switching never inserts a sent attachment or edited message in 
  for(const operation of ['sendMessage','sendAttachment','messageAction','reactToMessage']){
   const start=shell.indexOf('async function '+operation+'(');
   assert.ok(start>0,operation+' must exist');
-  const part=shell.slice(start,start+1500);
+  const part=shell.slice(start,start+3500);
   assert.match(part,/const chatId=selected/);
   assert.match(part,/selectedRef\.current===chatId/);
  }
- assert.match(shell,/draftsRef\.current\[chatId\].*\.trim\(\)===plainText/);
- assert.match(shell,/setDraft\(current=>current\.trim\(\)===plainText\?'':current\)/);
- assert.match(shell,/const sent=await postMessage\(token,chatId,userId,plainText,crypto\.randomUUID\(\),reply\?\.id\?\?null\)/);
- assert.match(shell,/const sent=await sendDirectMedia\(token,chatId,userId,file,caption\)/);
+ assert.match(shell,/shouldClearSubmittedDraft\([\s\S]*draftsRef\.current\[chatId\]\|\|''/);
+ assert.match(shell,/setDraft\(current=>\{[\s\S]*shouldClearSubmittedDraft\(/);
+ assert.match(shell,/const sent=await postMessage\(token,chatId,accountId,plainText,createSecureUuid\(\),reply\?\.id\?\?null\)/);
+ assert.match(shell,/const sent=await sendDirectMedia\(token,chatId,accountId,file,caption\)/);
 });
 test('group conversations always fetch newest messages and show real loading/errors',()=>{
  const api=load('lib/groups.ts');
@@ -851,7 +851,7 @@ test('reply UX submits plain text with a real target ID and private off-page pre
  assert.match(api,/endpoint=replyToMessageId\?'/);
  assert.match(api,/send_direct_reply/);
  assert.match(api,/p_reply_to_message_id:replyToMessageId/);
- assert.match(shell,/postMessage\(token,chatId,userId,plainText,crypto\.randomUUID\(\),reply\?\.id\?\?null\)/);
+ assert.match(shell,/postMessage\(token,chatId,accountId,plainText,createSecureUuid\(\),reply\?\.id\?\?null\)/);
  assert.doesNotMatch(shell,/const body=reply\?'↪ '/);
  assert.match(shell,/replyTargetsQueriedRef/);
  assert.match(shell,/ReplyQuote/);
@@ -1122,9 +1122,9 @@ test('attachments are reviewed with captions instead of being sent from the file
  assert.match(shell,/setPendingAttachment\(\{chatId:selected,ownerId:userId,file\}\)/);
  assert.match(shell,/setPendingAttachment\(null\);setAttachmentCaption\(''\)/);
  assert.match(shell,/async function sendAttachment\(file:File\|undefined,caption=''\)/);
- assert.match(shell,/sendDirectMedia\(token,chatId,userId,file,caption\)/);
- assert.match(shell,/setPendingAttachment\(current=>current\?\.chatId===chatId&&current\.ownerId===userId&&current\.file===file\?null:current\)/);
- assert.match(shell,/const sent=await sendDirectMedia\(token,chatId,userId,file,caption\)/);
+ assert.match(shell,/sendDirectMedia\(token,chatId,accountId,file,caption\)/);
+ assert.match(shell,/setPendingAttachment\(current=>current\?\.chatId===chatId&&current\.ownerId===accountId&&current\.file===file\?null:current\)/);
+ assert.match(shell,/const sent=await sendDirectMedia\(token,chatId,accountId,file,caption\)/);
  assert.match(shell,/queueAttachment\(e\.target\.files\?\.\[0\]\);e\.target\.value=""/);
  assert.doesNotMatch(shell,/void sendAttachment\(e\.target\.files\?\.\[0\]\)/);
  assert.match(shell,/pendingAttachment\?\.chatId===selected&&pendingAttachment\.ownerId===userId/);
@@ -1182,13 +1182,19 @@ test('confirmed direct sends are visible without waiting for an additional histo
  const polling=app.slice(app.indexOf('const sync=async(first=false)'),app.indexOf('void sync(true)'));
  assert.match(textSend,/const sent=await postMessage\(/);
  assert.match(mediaSend,/const sent=await sendDirectMedia\(/);
+ assert.match(textSend,/selectedRef\.current===chatId&&draftsOwnerRef\.current===accountId/);
+ assert.match(mediaSend,/selectedRef\.current===chatId&&draftsOwnerRef\.current===accountId/);
  for(const part of [textSend,mediaSend]){
-  assert.match(part,/selectedRef\.current===chatId&&draftsOwnerRef\.current===userId/);
   assert.match(part,/confirmedMessagesRef\.current\.set\(sent\.id/);
   assert.match(part,/expiresAt:Date\.now\(\)\+CONFIRMED_MESSAGE_GRACE_MS/);
   assert.match(part,/setChatMessages\(current=>prependEarlierPage\(current,\[sent\]\)\)/);
   assert.doesNotMatch(part,/await listMessages\(/,'no second network round trip after send');
  }
+ assert.ok(textSend.indexOf('lock.acquire(draftKey)')<textSend.indexOf('await postMessage('));
+ assert.match(textSend,/lock.release\(draftKey,lockToken\)/);
+ assert.match(textSend,/shouldClearSubmittedDraft\(/);
+ assert.match(textSend,/draftGenerationRef\.current===submittedDraftGeneration/);
+ assert.match(app,/draftRevisionRef\.current\.set\(revisionKey/);
  assert.match(polling,/mergeConfirmedRecentPage\(/);
  assert.match(polling,/confirmedMessagesRef\.current,chatId,userId/);
  assert.match(app,/confirmedMessagesRef\.current\.clear\(\)/);

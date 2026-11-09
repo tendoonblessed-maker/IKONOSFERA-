@@ -1,10 +1,11 @@
 'use client';
 import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { backendReady, createTemporaryAccount, consumeEmailLinkSession, loadSession, currentUser, findProfileByUsername, listChats, listChatPreviews, listMessages, listOlderMessages, listReplyTargets, searchDirectMessages, type DirectMessageSearchResult, DIRECT_MESSAGE_SEARCH_PAGE_SIZE, type ReplyTarget, CHAT_MESSAGE_PAGE_SIZE, manageChat, manageMessage, listMessageReactions, setMessageReaction, markChatRead, listProfiles, myProfile, postMessage, reopenChat, sendDirectMedia, validateDirectMediaFile, sendEmailCode, signOut, startDirectChat, validSession, type ChatMessage, type MessageReaction, type DirectChat, type Profile, type Session, type ChatPreview } from '@/lib/supabase-rest';
+import { backendReady, createTemporaryAccount, consumeEmailLinkSession, loadSession, currentUser, findProfileByUsername, listChats, listChatPreviews, listMessages, listOlderMessages, listReplyTargets, searchDirectMessages, type DirectMessageSearchResult, DIRECT_MESSAGE_SEARCH_PAGE_SIZE, type ReplyTarget, CHAT_MESSAGE_PAGE_SIZE, manageChat, manageMessage, listMessageReactions, setMessageReaction, markChatRead, listProfiles, myProfile, postMessage, createSecureUuid, reopenChat, sendDirectMedia, validateDirectMediaFile, sendEmailCode, signOut, startDirectChat, validSession, type ChatMessage, type MessageReaction, type DirectChat, type Profile, type Session, type ChatPreview } from '@/lib/supabase-rest';
 
 import ProfilePanel from "@/components/ProfilePanel";
 import {mergeConfirmedRecentPage,prependEarlierPage,CONFIRMED_MESSAGE_GRACE_MS,type ConfirmedMessage} from "@/lib/chat-history";
 import {readChatDrafts,writeChatDrafts,clearChatDrafts,updateChatDraftEntry,type ChatDrafts} from "@/lib/chat-drafts";
+import {DirectMessageSendLock,shouldClearSubmittedDraft} from "@/lib/direct-message-send";
 import {readGroupDrafts,writeGroupDraft,clearGroupDrafts,type GroupDrafts} from "@/lib/group-drafts";
 import {clearAllGroupSendAttempts} from "@/lib/group-send-attempts";
 import ChatMedia from "@/components/ChatMedia";
@@ -156,6 +157,20 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
   const composerRef=useRef<HTMLTextAreaElement|null>(null);
   const confirmedMessagesRef=useRef<Map<string,ConfirmedMessage>>(new Map());
   const attachmentDragDepthRef=useRef(0);
+  const directMessageSendLockRef=useRef<DirectMessageSendLock|null>(null);
+  if(!directMessageSendLockRef.current)directMessageSendLockRef.current=new DirectMessageSendLock();
+  const directMessageSendUiTokenRef=useRef(0);
+  const draftRevisionRef=useRef<Map<string,number>>(new Map());
+  const draftGenerationRef=useRef(0);
+  const draftContextOwnerRef=useRef(userId);
+  useLayoutEffect(()=>{
+    if(draftContextOwnerRef.current!==userId){
+      draftContextOwnerRef.current=userId;
+      draftGenerationRef.current++;
+      draftRevisionRef.current.clear();
+      directMessageSendUiTokenRef.current++;
+    }
+  },[userId]);
 
   // In-memory edits belong to one signed-in user; never reuse across accounts.
   useEffect(()=>{recentChannelUpdatesRef.current.clear();},[userId]);
@@ -212,6 +227,8 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
     // Preserve the most recently edited 48 chats, including newly opened ones.
     // Never write a previous account's pending draft into the next account.
     if(!userId||draftsOwnerRef.current!==userId)return;
+    const revisionKey=userId+':'+chatId;
+    draftRevisionRef.current.set(revisionKey,(draftRevisionRef.current.get(revisionKey)??0)+1);
     const next=updateChatDraftEntry(draftsRef.current,chatId,text);
     draftsRef.current=next;
     setDraftPreviews(next);
@@ -1014,32 +1031,64 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
       return;
     }
     const chatId=selected,plainText=draft.trim(),token=session.access_token;
+    const accountId=userId;
     const reply=replyingTo?.chatId===chatId?replyingTo:null;
     // Reply metadata is stored server-side rather than prepended to plain text.
     // This keeps editing, copying and message search free from fake quote text.
     if(!plainText||plainText.length>4000)return;
+    const draftKey=accountId+':'+chatId;
+    const submittedDraftRevision=draftRevisionRef.current.get(draftKey)??0;
+    const submittedDraftGeneration=draftGenerationRef.current;
+    const lock=directMessageSendLockRef.current;
+    if(!lock)return;
+    // React state disables the button after render; this synchronous lease also
+    // rejects two submit events delivered in the same event turn.
+    const lockToken=lock.acquire(draftKey);
+    if(lockToken===null)return;
+    const uiToken=++directMessageSendUiTokenRef.current;
     setSending(true);setError('');
     try{
-      const sent=await postMessage(token,chatId,userId,plainText,crypto.randomUUID(),reply?.id??null);
-      // Display the DB-confirmed row immediately. Do not manufacture a pending
-      // bubble, and never write into a different chat or signed-in account.
-      if(selectedRef.current===chatId&&draftsOwnerRef.current===userId){
+      const sent=await postMessage(token,chatId,accountId,plainText,createSecureUuid(),reply?.id??null);
+      // Never apply a late response to a different account or conversation.
+      if(draftGenerationRef.current===submittedDraftGeneration
+        &&selectedRef.current===chatId&&draftsOwnerRef.current===accountId){
         confirmedMessagesRef.current.set(sent.id,{
           message:sent,expiresAt:Date.now()+CONFIRMED_MESSAGE_GRACE_MS
         });
         setChatMessages(current=>prependEarlierPage(current,[sent]));
       }
-      // Users may type their next message while the previous send is in flight.
-      // Only clear the exact draft that was submitted, not their new text.
-      if((draftsRef.current[chatId]||'').trim()===plainText){
+      // A user may type the exact same text again while the request is pending.
+      // Compare the per-chat revision as well as the text before clearing it.
+      if(draftGenerationRef.current===submittedDraftGeneration
+        &&draftsOwnerRef.current===accountId
+        &&shouldClearSubmittedDraft(
+          submittedDraftRevision,draftRevisionRef.current.get(draftKey)??0,
+          plainText,draftsRef.current[chatId]||''
+        )){
         updateChatDraft(chatId,'');
-        if(selectedRef.current===chatId)setDraft(current=>current.trim()===plainText?'':current);
+        const clearedRevision=draftRevisionRef.current.get(draftKey)??0;
+        if(selectedRef.current===chatId)setDraft(current=>{
+          if(draftGenerationRef.current!==submittedDraftGeneration||draftsOwnerRef.current!==accountId)return current;
+          return shouldClearSubmittedDraft(
+            clearedRevision,draftRevisionRef.current.get(draftKey)??0,plainText,current
+          )?'':current;
+        });
       }
-      if(reply)setReplyingTo(current=>current?.id===reply.id&&current.chatId===chatId?null:current);
+      if(reply&&draftGenerationRef.current===submittedDraftGeneration
+        &&selectedRef.current===chatId&&draftsOwnerRef.current===accountId){
+        setReplyingTo(current=>current?.id===reply.id&&current.chatId===chatId?null:current);
+      }
       // Polling will reconcile read receipts and any concurrent edits; the
       // send is already visible and never waits for a second network request.
-    }catch(e){setError(userFacingError(e));}
-    finally{setSending(false);}
+    }catch(e){
+      if(directMessageSendUiTokenRef.current===uiToken
+        &&selectedRef.current===chatId&&draftsOwnerRef.current===accountId){
+        setError(userFacingError(e));
+      }
+    }finally{
+      lock.release(draftKey,lockToken);
+      if(directMessageSendUiTokenRef.current===uiToken)setSending(false);
+    }
   }
   async function toggleSavedContact(person:Profile){
     if(!session||!userId||busy)return;
@@ -1162,25 +1211,41 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
       setError('Нет соединения с интернетом. Вложение осталось в предпросмотре.');
       return;
     }
-    const chatId=selected,token=session.access_token;
+    const chatId=selected,accountId=userId,token=session.access_token;
     const problem=validateDirectMediaFile(file);
     if(problem){setError(problem);return;}
+    // Text and attachment submissions share one synchronous account/chat lease.
+    // This closes the same-turn double-tap gap before React can rerender.
+    const sendKey=accountId+':'+chatId;
+    const sendGeneration=draftGenerationRef.current;
+    const lock=directMessageSendLockRef.current;
+    if(!lock)return;
+    const lockToken=lock.acquire(sendKey);
+    if(lockToken===null)return;
+    const uiToken=++directMessageSendUiTokenRef.current;
+    const isCurrent=()=>draftGenerationRef.current===sendGeneration
+      &&selectedRef.current===chatId&&draftsOwnerRef.current===accountId;
     setSending(true);setError("");
     try{
-      const sent=await sendDirectMedia(token,chatId,userId,file,caption);
-      if(selectedRef.current===chatId&&draftsOwnerRef.current===userId){
+      const sent=await sendDirectMedia(token,chatId,accountId,file,caption);
+      if(isCurrent()){
         confirmedMessagesRef.current.set(sent.id,{
           message:sent,expiresAt:Date.now()+CONFIRMED_MESSAGE_GRACE_MS
         });
         setChatMessages(current=>prependEarlierPage(current,[sent]));
-        setPendingAttachment(current=>current?.chatId===chatId&&current.ownerId===userId&&current.file===file?null:current);
+        setPendingAttachment(current=>current?.chatId===chatId&&current.ownerId===accountId&&current.file===file?null:current);
         setAttachmentCaption('');
+        setNotice("Вложение отправлено.");
       }
-      setNotice("Вложение отправлено.");
-      // The server confirmed the attachment; polling updates its metadata
-      // without delaying the new message bubble or reporting a false failure.
-    }catch(e){setError(userFacingError(e));}
-    finally{setSending(false);}
+      // A late acknowledgement after chat/account changes must not update UI.
+    }catch(e){
+      if(directMessageSendUiTokenRef.current===uiToken&&isCurrent()){
+        setError(userFacingError(e));
+      }
+    }finally{
+      lock.release(sendKey,lockToken);
+      if(directMessageSendUiTokenRef.current===uiToken)setSending(false);
+    }
   }
   async function logout(){
     if(!session)return;
@@ -1188,6 +1253,10 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
     // signOut clears this session synchronously before its network request.
     // Never keep the old account visible while waiting for a slow/offline POST.
     const revokeOnServer=signOut(session.access_token);
+    directMessageSendUiTokenRef.current++;
+    draftGenerationRef.current++;
+    draftRevisionRef.current.clear();
+    draftContextOwnerRef.current='';
     inboxOwnerRef.current='';inboxRequestRef.current++;
     previewRequestRef.current++;groupOverviewRequestRef.current++;
     clearChatDrafts(userId);clearGroupDrafts(userId);clearAllGroupSendAttempts(userId);
@@ -1197,7 +1266,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
     setSession(null);setUserId('');setProfile(null);setAnonymous(false);
     setRows([]);setSavedContacts([]);setBlockedUsers([]);setSelected(null);
     setProfileTarget(null);setSelectedChannel(null);setChannels([]);
-    setChatMessages([]);setBusy(false);
+    setChatMessages([]);setBusy(false);setSending(false);
     // Remote revocation is best-effort; a late response must never log out
     // a different user who entered the app while this request was in flight.
     try{await revokeOnServer;}catch{
