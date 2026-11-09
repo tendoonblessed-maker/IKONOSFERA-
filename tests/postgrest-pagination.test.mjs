@@ -105,8 +105,8 @@ test('saved contacts and blocked users use created_at plus their own stable ID c
 
 
 test('rejects pages that violate created_at DESC and ID ASC ordering at microsecond precision',async()=>{
- const newer=row(ID_1,'2026-11-09T12:00:00.123456+00:00');
- const older=row(ID_2,'2026-11-09T12:00:00.123455+00:00');
+ const newer=row(ID_2,'2026-11-09T12:00:00.123456+00:00');
+ const older=row(ID_1,'2026-11-09T12:00:00.123455+00:00');
  const valid=await collectPostgrestKeysetPages(async()=>({
   rows:[newer,older],contentRange:'0-1/2'
  }),cursorOf);
