@@ -1,6 +1,6 @@
 'use client';
 import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { backendReady, createTemporaryAccount, consumeEmailLinkSession, loadSession, currentUser, findProfileByUsername, listChats, listChatPreviews, listMessages, listOlderMessages, listReplyTargets, searchDirectMessages, type DirectMessageSearchResult, DIRECT_MESSAGE_SEARCH_PAGE_SIZE, type ReplyTarget, CHAT_MESSAGE_PAGE_SIZE, manageChat, manageMessage, listMessageReactions, setMessageReaction, markChatRead, listProfiles, myProfile, postMessage, reopenChat, sendDirectMedia, validateDirectMediaFile, sendEmailCode, signOut, startDirectChat, validSession, type ChatMessage, type MessageReaction, type DirectChat, type Profile, type Session, type ChatPreview } from '@/lib/supabase-rest';
+import { backendReady, createTemporaryAccount, consumeEmailLinkSession, loadSession, currentUser, findProfileByUsername, listChats, listChatPreviews, listMessages, listOlderMessages, listReplyTargets, searchDirectMessages, type DirectMessageSearchResult, DIRECT_MESSAGE_SEARCH_PAGE_SIZE, type ReplyTarget, CHAT_MESSAGE_PAGE_SIZE, manageChat, manageMessage, listMessageReactions, setMessageReaction, markChatRead, listProfiles, myProfile, postMessage, createSecureUuid, reopenChat, sendDirectMedia, validateDirectMediaFile, sendEmailCode, signOut, startDirectChat, validSession, type ChatMessage, type MessageReaction, type DirectChat, type Profile, type Session, type ChatPreview } from '@/lib/supabase-rest';
 
 import ProfilePanel from "@/components/ProfilePanel";
 import {mergeConfirmedRecentPage,prependEarlierPage,CONFIRMED_MESSAGE_GRACE_MS,type ConfirmedMessage} from "@/lib/chat-history";
@@ -1048,7 +1048,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
     const uiToken=++directMessageSendUiTokenRef.current;
     setSending(true);setError('');
     try{
-      const sent=await postMessage(token,chatId,accountId,plainText,crypto.randomUUID(),reply?.id??null);
+      const sent=await postMessage(token,chatId,accountId,plainText,createSecureUuid(),reply?.id??null);
       // Never apply a late response to a different account or conversation.
       if(draftGenerationRef.current===submittedDraftGeneration
         &&selectedRef.current===chatId&&draftsOwnerRef.current===accountId){
