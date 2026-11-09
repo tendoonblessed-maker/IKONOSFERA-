@@ -12,6 +12,7 @@ import ChatMessageText from "@/components/ChatMessageText";
 import {subscribeDirectChatChanges} from "@/lib/direct-realtime";
 import {startVisiblePolling} from "@/lib/visible-polling";
 import {createAbortableRequestScope} from "@/lib/request-abort-scope";
+import {createSingleFlightRefreshGate} from "@/lib/single-flight-refresh";
 import {subscribeInboxChanges,type InboxChangeKind} from "@/lib/inbox-realtime";
 import {isLatestAccountSnapshot} from "@/lib/inbox-snapshot";
 import {shouldOpenDirectChatSearch} from "@/lib/chat-shortcuts";
@@ -656,14 +657,16 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
   useEffect(()=>{
     if(!session||!userId)return;
     let cancelled=false;
-    let inFlight=false;
     let cycles=0;
+    const refreshGate=createSingleFlightRefreshGate();
     const run=async(forceFull=false)=>{
-      if(cancelled||inFlight||document.visibilityState==='hidden')return;
+      if(cancelled||document.visibilityState==='hidden')return;
       // Offline detection avoids pointless 18-second fetch timeouts.
-      // The 'online' listener below triggers an immediate retry.
       if(!navigator.onLine)return;
-      inFlight=true;
+      // A resume can happen while a previous HTTPS request is still settling.
+      // Queue one authoritative full refresh instead of dropping that signal.
+      const admission=refreshGate.enter(forceFull);
+      if(!admission.accepted)return;
       try{
         const valid=await validSession();
         if(cancelled)return;
@@ -681,21 +684,22 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
           setSession(valid);
         }
         // Only every ~72 seconds refresh large data (channels/groups/subscriptions).
-        // The lightweight inbox refresh is enough to keep badges and new chats fresh.
-        if(forceFull||++cycles%6===0)await refresh(valid.access_token,userId,null);
+        // A queued resume always requests the full authoritative snapshot.
+        if(admission.forceFull||++cycles%6===0)await refresh(valid.access_token,userId,null);
         else await refreshInbox(valid.access_token,userId);
       }catch{ /* transient network failure; retry on the next poll */ }
-      finally{inFlight=false;}
+      finally{
+        const queuedFull=refreshGate.leave();
+        if(queuedFull&&!cancelled&&document.visibilityState==='visible'&&navigator.onLine)void run(true);
+      }
     };
-    const onVisible=()=>{if(document.visibilityState==='visible')void run(true);};
-    const onConnected=()=>{if(document.visibilityState==='visible')void run(true);};
-    const timer=window.setInterval(()=>void run(),12000);
-    document.addEventListener('visibilitychange',onVisible);
-    window.addEventListener('online',onConnected);
+    const stopPolling=startVisiblePolling(
+      ()=>void run(),12000,document,window,navigator,()=>void run(true)
+    );
     return()=>{
-      cancelled=true;window.clearInterval(timer);
-      document.removeEventListener('visibilitychange',onVisible);
-      window.removeEventListener('online',onConnected);
+      cancelled=true;
+      refreshGate.dispose();
+      stopPolling();
     };
   },[session,userId,refresh,refreshInbox]);
 
