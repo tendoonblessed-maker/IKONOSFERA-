@@ -3,6 +3,7 @@
  * per account and conversation. Never sync draft text through Supabase.
  * The prefix differs from direct-chat drafts to prevent ID collisions.
  */
+import {truncateDraftText} from './draft-text';
 const PREFIX='ikonosfera-group-drafts-tab-v1:';
 const UUID=/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
 const MAX_GROUPS=48;
@@ -19,7 +20,7 @@ export function cleanGroupDrafts(input:unknown):GroupDrafts{
  const recent=new Map<string,string>();
  for(const [groupId,text] of Object.entries(input)){
   if(!UUID.test(groupId)||typeof text!=='string')continue;
-  const limited=text.slice(0,MAX_TEXT);
+  const limited=truncateDraftText(text,MAX_TEXT);
   if(!limited.trim())continue;
   recent.set(groupId,limited);
   if(recent.size>MAX_GROUPS){
@@ -39,7 +40,7 @@ export function writeGroupDraft(ownerId:string,groupId:string,text:string):Group
  const next=readGroupDrafts(ownerId);
  // Move edited drafts to the end before enforcing the storage limit.
  delete next[groupId];
- if(text.trim())next[groupId]=text.slice(0,MAX_TEXT);
+ if(text.trim())next[groupId]=truncateDraftText(text,MAX_TEXT);
  const cleaned=cleanGroupDrafts(next);
  try{
   const storage=store();

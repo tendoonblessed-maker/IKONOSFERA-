@@ -3,6 +3,7 @@
  * No message text is sent to a server or shared across accounts/windows.
  * sessionStorage is deliberately used instead of durable localStorage.
  */
+import {truncateDraftText} from './draft-text';
 const PREFIX='ikonosfera-drafts-tab-v1:';
 const MAX_CHATS=48;
 const MAX_TEXT=4000;
@@ -24,7 +25,7 @@ export function cleanChatDrafts(input:unknown):ChatDrafts{
   const recent=new Map<string,string>();
   for(const [chatId,text] of Object.entries(input)){
     if(!UUID.test(chatId)||typeof text!=='string')continue;
-    const limited=text.slice(0,MAX_TEXT);
+    const limited=truncateDraftText(text,MAX_TEXT);
     if(!limited.trim())continue;
     recent.set(chatId,limited);
     if(recent.size>MAX_CHATS){
@@ -40,7 +41,7 @@ export function updateChatDraftEntry(drafts:ChatDrafts,chatId:string,text:string
   const next=cleanChatDrafts(drafts);
   if(!UUID.test(chatId))return next;
   delete next[chatId];
-  if(text.trim())next[chatId]=text.slice(0,MAX_TEXT);
+  if(text.trim())next[chatId]=truncateDraftText(text,MAX_TEXT);
   return cleanChatDrafts(next);
 }
 export function readChatDrafts(userId:string):ChatDrafts{
