@@ -101,10 +101,15 @@ test('late Realtime events and SUBSCRIBED callbacks after cleanup are ignored',a
   assert.equal(loaded.counts().subscribeCalls,1,path+' establishes its channel');
   assert.ok(loaded.counts().handlerRegistrations>0,path+' registers change handlers');
 
+  loaded.emitRealtimeEvents();
+  loaded.emitStatus('SUBSCRIBED');
+  const beforeDispose=changed;
+  assert.ok(beforeDispose>0,path+' delivers active channel notifications');
+
   stop();
   loaded.emitRealtimeEvents();
   loaded.emitStatus('SUBSCRIBED');
 
-  assert.equal(changed,0,path+' ignores callbacks queued after disposal');
+  assert.equal(changed,beforeDispose,path+' ignores callbacks queued after disposal');
  }
 });
