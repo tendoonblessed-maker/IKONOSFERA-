@@ -80,3 +80,26 @@ test('AppShell locks before POST, revisions draft edits and ignores stale comple
   assert.match(logout,/draftGenerationRef\.current\+\+/);
   assert.match(logout,/directMessageSendUiTokenRef\.current\+\+/);
 });
+test('direct attachment sends share the synchronous account/chat lease and ignore stale completions',()=>{
+  const shell=source('components/AppShell.tsx');
+  const start=shell.indexOf('async function sendAttachment(');
+  const end=shell.indexOf('async function logout()',start);
+  assert.ok(start>=0&&end>start);
+  const send=shell.slice(start,end);
+  const acquire=send.indexOf('lock.acquire(sendKey)');
+  const post=send.indexOf('await sendDirectMedia(');
+  assert.ok(acquire>=0&&post>acquire,'attachment lease is acquired before the upload/insert request');
+  assert.ok(send.includes("const sendKey=accountId+':'+chatId;"));
+  assert.ok(send.includes('const isCurrent=()=>draftGenerationRef.current===sendGeneration'));
+  assert.ok(send.includes('if(isCurrent())'));
+  assert.ok(send.includes('directMessageSendUiTokenRef.current===uiToken&&isCurrent()'));
+  assert.ok(send.includes('lock.release(sendKey,lockToken)'));
+  assert.ok(send.includes('if(directMessageSendUiTokenRef.current===uiToken)setSending(false)'));
+  const textStart=shell.indexOf('async function sendMessage(');
+  const textEnd=shell.indexOf('async function toggleSavedContact(',textStart);
+  const textSend=shell.slice(textStart,textEnd);
+  assert.ok(textSend.includes("const draftKey=accountId+':'+chatId;"));
+  assert.ok(textSend.includes('lock.acquire(draftKey)'));
+  assert.ok(shell.includes('setChatMessages([]);setBusy(false);setSending(false);'),
+    'logout invalidates old send UI state before another account signs in');
+});
