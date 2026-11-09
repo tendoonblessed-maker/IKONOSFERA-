@@ -110,7 +110,7 @@ test('rejects pages that violate created_at DESC and ID ASC ordering at microsec
  const valid=await collectPostgrestKeysetPages(async()=>({
   rows:[newer,older],contentRange:'0-1/2'
  }),cursorOf);
- assert.deepEqual(valid.map(value=>value.contact_id),[ID_1,ID_2]);
+ assert.deepEqual(valid.map(value=>value.contact_id),[ID_2,ID_1]);
  await assert.rejects(collectPostgrestKeysetPages(async()=>({
   rows:[older,newer],contentRange:'0-1/2'
  }),cursorOf),/outside the requested keyset order/);
