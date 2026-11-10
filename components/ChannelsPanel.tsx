@@ -3,9 +3,10 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState, type FormEve
 import { listProfiles, type Profile } from "@/lib/supabase-rest";
 import { createRequestEpoch } from "@/lib/request-epoch";
 import { appendOlderChannelPosts } from "@/lib/channel-post-pagination";
+import { prependOlderChannelComments } from "@/lib/channel-comment-pagination";
 import StatusEmoji from "@/components/StatusEmoji";
 import {
- addPostComment, deletePost, editChannelPost, manageChannelComment, imageUrl, listChannelPosts, listChannelPostsPage, listPostComments, listPostReactions, setPostReaction, REACTION_EMOJIS, publishPost,
+ addPostComment, deletePost, editChannelPost, manageChannelComment, imageUrl, listChannelPosts, listChannelPostsPage, listPostComments, listPostCommentsPage, listPostReactions, setPostReaction, REACTION_EMOJIS, publishPost,
  removeUpload, uploadChannelAttachment, updateChannel, updateChannelAvatar, deleteChannel, getChannelSubscriberCounts, listDiscussionMessages, sendDiscussionMessage, deleteDiscussionMessage, listDiscussionComments,
  type Channel, type ChannelPost, type PostComment, type PostReaction, type ReactionEmoji, type DiscussionMessage
 } from "@/lib/social";
@@ -39,6 +40,11 @@ export default function ChannelsPanel({token,userId,channel,onBack,onShowProfile
  const [body,setBody]=useState("");const [file,setFile]=useState<File|null>(null);
  const [openComments,setOpenComments]=useState<string|null>(null);
  const [comments,setComments]=useState<PostComment[]>([]);
+ const [commentsLoading,setCommentsLoading]=useState(false);
+ const [hasOlderComments,setHasOlderComments]=useState(false);
+ const [olderCommentsLoading,setOlderCommentsLoading]=useState(false);
+ const [olderCommentsError,setOlderCommentsError]=useState("");
+ const commentsPostRef=useRef<string|null>(null);
  const [authors,setAuthors]=useState<Record<string,Profile>>({});
  const [commentDraft,setCommentDraft]=useState("");
  const [editingPostId,setEditingPostId]=useState<string|null>(null);
@@ -48,6 +54,7 @@ export default function ChannelsPanel({token,userId,channel,onBack,onShowProfile
  const commentsRequestGuardRef=useRef<ReturnType<typeof createRequestEpoch> | null>(null);
  if(!commentsRequestGuardRef.current)commentsRequestGuardRef.current=createRequestEpoch();
  const commentsRequestGuard=commentsRequestGuardRef.current;
+ const olderCommentsLoadingRef=useRef(false);
  const postsRequestGuardRef=useRef<ReturnType<typeof createRequestEpoch> | null>(null);
  if(!postsRequestGuardRef.current)postsRequestGuardRef.current=createRequestEpoch();
  const postsRequestGuard=postsRequestGuardRef.current;
@@ -73,6 +80,9 @@ export default function ChannelsPanel({token,userId,channel,onBack,onShowProfile
   // invalidate requests that still belong to the visible channel.
   channelScopeRef.current={token,userId,channelId:channel.id};
   commentsRequestGuard.invalidate();
+  commentsPostRef.current=null;
+  olderCommentsLoadingRef.current=false;
+  setCommentsLoading(false);setHasOlderComments(false);setOlderCommentsLoading(false);setOlderCommentsError("");
   postsRequestGuard.invalidate();
   discussionRequestGuard.invalidate();
   cancelOlderPostsLoad();
@@ -231,25 +241,71 @@ export default function ChannelsPanel({token,userId,channel,onBack,onShowProfile
   }catch(e){if(isCurrent())setError(readable(e));}
   finally{if(isCurrent())setBusy(false);}
  }
- useEffect(()=>{void reload().catch(e=>setError(readable(e)));setOpenComments(null);setComments([]);setBody("");setFile(null);setPosts([]);setReactions([]);setDiscussionMessages([]);setDiscussionComments([]);setDiscussionOpen(false);setHasOlderPosts(false);setOlderPostsError("");setOlderPostsLoading(false);olderPostsLoadingRef.current=false;setBusy(false);},[reload]);
+ useEffect(()=>{void reload().catch(e=>setError(readable(e)));commentsPostRef.current=null;olderCommentsLoadingRef.current=false;setOpenComments(null);setComments([]);setCommentsLoading(false);setHasOlderComments(false);setOlderCommentsLoading(false);setOlderCommentsError("");setBody("");setFile(null);setPosts([]);setReactions([]);setDiscussionMessages([]);setDiscussionComments([]);setDiscussionOpen(false);setHasOlderPosts(false);setOlderPostsError("");setOlderPostsLoading(false);olderPostsLoadingRef.current=false;setBusy(false);},[reload]);
  async function showComments(postId:string){
   const requestId=commentsRequestGuard.begin();
   const isCurrent=()=>commentsRequestGuard.isCurrent(requestId)
+   &&commentsPostRef.current===postId
    &&channelScopeRef.current.token===token
    &&channelScopeRef.current.userId === userId
    &&channelScopeRef.current.channelId===channel.id;
-  if(openComments===postId){setOpenComments(null);setComments([]);return;}
+  if(openComments===postId){
+   commentsPostRef.current=null;
+   commentsRequestGuard.invalidate();
+   olderCommentsLoadingRef.current=false;
+   setOpenComments(null);setComments([]);setCommentsLoading(false);
+   setHasOlderComments(false);setOlderCommentsLoading(false);setOlderCommentsError("");
+   return;
+  }
+  commentsPostRef.current=postId;
+  olderCommentsLoadingRef.current=false;
+  setOpenComments(postId);setComments([]);setCommentsLoading(true);
+  setHasOlderComments(false);setOlderCommentsLoading(false);setOlderCommentsError("");
   setError("");
   try{
    const list=await listPostComments(token,postId);
    if(!isCurrent())return;
-   setComments(list);setOpenComments(postId);
+   setComments(list);setHasOlderComments(list.hasMore);
    const ids=Array.from(new Set(list.map(c=>c.author_id)));
    const people=await listProfiles(token,ids);
    if(!isCurrent())return;
-   setAuthors(Object.fromEntries(people.map(p=>[p.id,p])));
+   setAuthors(current=>({...current,...Object.fromEntries(people.map(p=>[p.id,p]))}));
   }catch(e){
    if(isCurrent())setError(readable(e));
+  }finally{
+   if(isCurrent())setCommentsLoading(false);
+  }
+ }
+ async function loadOlderComments(){
+  const postId=commentsPostRef.current;
+  if(!postId||!hasOlderComments||commentsLoading||busy||olderCommentsLoadingRef.current||!comments.length)return;
+  const oldest=comments[0];
+  olderCommentsLoadingRef.current=true;
+  const requestId=commentsRequestGuard.begin();
+  const isCurrent=()=>commentsRequestGuard.isCurrent(requestId)
+   &&commentsPostRef.current===postId
+   &&channelScopeRef.current.token===token
+   &&channelScopeRef.current.userId === userId
+   &&channelScopeRef.current.channelId===channel.id;
+  setOlderCommentsLoading(true);setOlderCommentsError("");
+  try{
+   const page=await listPostCommentsPage(token,postId,oldest);
+   if(!isCurrent())return;
+   const ids=Array.from(new Set(page.comments.map(comment=>comment.author_id)));
+   const people=await listProfiles(token,ids);
+   if(!isCurrent())return;
+   const merged=prependOlderChannelComments(comments,page.comments);
+   if(merged.length===comments.length&&page.hasMore){
+    setOlderCommentsError("Не удалось продвинуться к более ранним комментариям. Повтори загрузку.");
+    return;
+   }
+   setComments(current=>prependOlderChannelComments(current,page.comments));
+   setHasOlderComments(page.hasMore);
+   setAuthors(current=>({...current,...Object.fromEntries(people.map(person=>[person.id,person]))}));
+  }catch(e){
+   if(isCurrent())setOlderCommentsError(readable(e));
+  }finally{
+   if(isCurrent()){olderCommentsLoadingRef.current=false;setOlderCommentsLoading(false);}
   }
  }
  async function post(e:FormEvent){
@@ -265,13 +321,13 @@ export default function ChannelsPanel({token,userId,channel,onBack,onShowProfile
   }catch(e){setError(readable(e));}finally{setBusy(false);}
  }
  async function writeComment(e:FormEvent){
-  e.preventDefault();if(!openComments||!commentDraft.trim()||busy)return;
+  e.preventDefault();if(!openComments||!commentDraft.trim()||busy||commentsLoading||olderCommentsLoadingRef.current)return;
   setBusy(true);setError("");
   try{
    await addPostComment(token,openComments,userId,commentDraft);
    setCommentDraft("");
    const list=await listPostComments(token,openComments);
-   setComments(list);
+   setComments(list);setHasOlderComments(list.hasMore);setOlderCommentsError("");
    if(currentChannel.discussion_enabled)await loadDiscussion();
    if(!authors[userId]){const mine=await listProfiles(token,[userId]);if(mine[0])setAuthors(prev=>({...prev,[userId]:mine[0]}));}
   }catch(e){setError(readable(e));}finally{setBusy(false);}
@@ -292,9 +348,10 @@ export default function ChannelsPanel({token,userId,channel,onBack,onShowProfile
   finally{if(isCurrent())setBusy(false);}
  }
  async function saveCommentEdit(id:string){
-  if(busy)return;setBusy(true);setError("");
+  if(busy||olderCommentsLoadingRef.current)return;setBusy(true);setError("");
   try{await manageChannelComment(token,id,"edit",editingBody);setEditingCommentId(null);
-   if(openComments)setComments(await listPostComments(token,openComments));if(currentChannel.discussion_enabled)await loadDiscussion();
+   setComments(current=>current.map(comment=>comment.id===id?{...comment,body:editingBody}:comment));
+   if(currentChannel.discussion_enabled)await loadDiscussion();
   }catch(e){setError(readable(e));}finally{setBusy(false);}
  }
  async function erasePost(p:ChannelPost){
@@ -317,7 +374,7 @@ export default function ChannelsPanel({token,userId,channel,onBack,onShowProfile
   finally{if(isCurrent())setBusy(false);}
  }
  async function eraseComment(c:PostComment){
-  if((c.author_id!==userId&&!mine)||busy)return;
+  if((c.author_id!==userId&&!mine)||busy||olderCommentsLoadingRef.current)return;
   setBusy(true);
   try{await manageChannelComment(token,c.id,"delete");setComments(old=>old.filter(x=>x.id!==c.id));if(currentChannel.discussion_enabled)await loadDiscussion();}
   catch(e){setError(readable(e));}finally{setBusy(false);}
@@ -390,10 +447,12 @@ export default function ChannelsPanel({token,userId,channel,onBack,onShowProfile
     <div className="channel-post-actions"><button type="button" onClick={()=>void showComments(post.id)}>{openComments===post.id?"Скрыть комментарии":"Комментарии"}</button>
     {mine&&<button type="button" disabled={busy} onClick={()=>{setEditingPostId(post.id);setEditingBody(post.body);}}>Редактировать</button>}{mine&&<button type="button" disabled={busy} onClick={()=>void erasePost(post)}>Удалить пост</button>}</div>
     {openComments===post.id&&<div className="channel-comments">
-       {comments.length===0?<p className="channel-no-comments">Будь первым, кто оставит комментарий.</p>:
-        comments.map(comment=><div className="channel-comment" key={comment.id}><div className="channel-comment-head"><button type="button" onClick={()=>onShowProfile(comment.author_id)}><span className="ik-name-with-status"><span>{authors[comment.author_id]?.display_name||"Пользователь"}</span><StatusEmoji index={authors[comment.author_id]?.status_emoji} decorative/></span></button><time dateTime={comment.created_at}>{formattedDate(comment.created_at)}</time></div>{editingCommentId===comment.id?<form className="channel-inline-editor" onSubmit={e=>{e.preventDefault();void saveCommentEdit(comment.id);}}><input value={editingBody} maxLength={1500} onChange={e=>setEditingBody(e.target.value)}/><button type="submit">Сохранить</button><button type="button" onClick={()=>setEditingCommentId(null)}>Отмена</button></form>:<p>{comment.body}</p>}
-        {comment.author_id===userId&&<button className="channel-delete-comment" type="button" onClick={()=>{setEditingCommentId(comment.id);setEditingBody(comment.body);}}>Редактировать</button>}{(comment.author_id===userId||mine)&&<button className="channel-delete-comment" disabled={busy} onClick={()=>void eraseComment(comment)} type="button">Удалить</button>}</div>)}
-       <form className="channel-comment-form" onSubmit={writeComment}><input aria-label="Написать комментарий" maxLength={1500} placeholder="Написать комментарий…" value={commentDraft} onChange={e=>setCommentDraft(e.target.value)}/><button type="submit" className="accent-button" disabled={busy||!commentDraft.trim()}>➤</button></form>
+       {olderCommentsError&&<p role="alert" className="profile-error">{olderCommentsError}</p>}
+       {hasOlderComments&&<div className="channel-older-posts"><button type="button" className="secondary-action" disabled={busy||commentsLoading||olderCommentsLoading} onClick={()=>void loadOlderComments()}>{olderCommentsLoading?"Загружаем…":"Показать более ранние комментарии"}</button></div>}
+       {commentsLoading?<p className="channel-no-comments">Загружаем комментарии…</p>:comments.length===0?<p className="channel-no-comments">Будь первым, кто оставит комментарий.</p>:
+        comments.map(comment=><div className="channel-comment" key={comment.id}><div className="channel-comment-head"><button type="button" onClick={()=>onShowProfile(comment.author_id)}><span className="ik-name-with-status"><span>{authors[comment.author_id]?.display_name||"Пользователь"}</span><StatusEmoji index={authors[comment.author_id]?.status_emoji} decorative/></span></button><time dateTime={comment.created_at}>{formattedDate(comment.created_at)}</time></div>{editingCommentId===comment.id?<form className="channel-inline-editor" onSubmit={e=>{e.preventDefault();void saveCommentEdit(comment.id);}}><input value={editingBody} maxLength={1500} onChange={e=>setEditingBody(e.target.value)}/><button type="submit" disabled={busy||olderCommentsLoading}>Сохранить</button><button type="button" onClick={()=>setEditingCommentId(null)}>Отмена</button></form>:<p>{comment.body}</p>}
+        {comment.author_id===userId&&<button className="channel-delete-comment" type="button" disabled={busy||olderCommentsLoading} onClick={()=>{setEditingCommentId(comment.id);setEditingBody(comment.body);}}>Редактировать</button>}{(comment.author_id===userId||mine)&&<button className="channel-delete-comment" disabled={busy||olderCommentsLoading} onClick={()=>void eraseComment(comment)} type="button">Удалить</button>}</div>)}
+       <form className="channel-comment-form" onSubmit={writeComment}><input aria-label="Написать комментарий" maxLength={1500} disabled={commentsLoading||olderCommentsLoading} placeholder="Написать комментарий…" value={commentDraft} onChange={e=>setCommentDraft(e.target.value)}/><button type="submit" className="accent-button" disabled={busy||commentsLoading||olderCommentsLoading||!commentDraft.trim()}>➤</button></form>
       </div>}
    </article>)}
    {olderPostsError&&<p role="alert" className="profile-error">{olderPostsError}</p>}
