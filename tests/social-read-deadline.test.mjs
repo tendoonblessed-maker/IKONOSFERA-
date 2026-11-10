@@ -69,6 +69,13 @@ test('a stalled social read is aborted and reports a readable timeout',async()=>
  assert.equal(signal.aborted,true);
 });
 
+test('late results are rejected even when an operation ignores the abort signal',async()=>{
+ await assert.rejects(
+  withSocialReadDeadline(()=>delay(15).then(()=>({stale:true})),5),
+  error=>error.name==='TimeoutError'
+ );
+});
+
 test('ordinary social network errors are preserved and do not become timeout errors',async()=>{
  const networkError=new TypeError('offline');
  let signal;
