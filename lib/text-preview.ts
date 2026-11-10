@@ -1,7 +1,7 @@
-/** Truncate an inbox preview without cutting a visible Unicode character.
+/** Truncate an inbox preview without splitting UTF-16 surrogate pairs.
  * The limit is measured in UTF-16 code units to preserve the existing UI cap.
  * Intl.Segmenter keeps extended grapheme clusters intact where available;
- * the fallback at least preserves complete Unicode code points on older browsers.
+ * the fallback preserves complete Unicode code points on older browsers.
  */
 type GraphemeSegmenter = {
   segment(value: string): Iterable<{ segment: string }>;
