@@ -2,6 +2,10 @@
 
 import {useEffect,useRef} from 'react';
 import {createPortal} from 'react-dom';
+import {
+  getPhotoViewerTabTarget,isPhotoViewerTabStop,
+  restorePhotoViewerFocus,shouldClosePhotoViewerOnKeydown
+} from '@/lib/photo-viewer-a11y';
 
 type Props={
   src:string;
@@ -25,27 +29,30 @@ export default function ChatPhotoViewer({src,onClose,onImageError}:Props){
     closeButtonRef.current?.focus();
 
     const handleKeyboard=(event:KeyboardEvent)=>{
-      if(event.key==='Escape'){
+      if(shouldClosePhotoViewerOnKeydown(event)){
         event.preventDefault();
         onCloseRef.current();
         return;
       }
       if(event.key!=='Tab')return;
-      // Keyboard focus must not escape the modal into private chat actions.
-      const controls=dialogRef.current?.querySelectorAll<HTMLElement>('a[href],button:not([disabled])');
-      if(!controls?.length)return;
-      const first=controls[0],last=controls[controls.length-1];
-      if(event.shiftKey&&(document.activeElement===first||!dialogRef.current?.contains(document.activeElement))){
-        event.preventDefault();last.focus();
-      }else if(!event.shiftKey&&(document.activeElement===last||!dialogRef.current?.contains(document.activeElement))){
-        event.preventDefault();first.focus();
+      const dialog=dialogRef.current;
+      if(!dialog)return;
+      // Follow the visible tab order; native media controls are included and
+      // hidden/disabled descendants are excluded before choosing a wrap target.
+      const controls=Array.from(dialog.querySelectorAll<HTMLElement>(
+        'a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),audio[controls],video[controls],[tabindex]'
+      )).filter(isPhotoViewerTabStop);
+      const target=getPhotoViewerTabTarget(document.activeElement,dialog,controls,event.shiftKey);
+      if(target){
+        event.preventDefault();
+        target.focus({preventScroll:true});
       }
     };
     document.addEventListener('keydown',handleKeyboard);
     return()=>{
       document.removeEventListener('keydown',handleKeyboard);
       document.body.style.overflow=previousOverflow;
-      if(previousFocus?.isConnected)previousFocus.focus();
+      restorePhotoViewerFocus(previousFocus);
     };
   },[]);
 
@@ -54,7 +61,7 @@ export default function ChatPhotoViewer({src,onClose,onImageError}:Props){
       if(event.target===event.currentTarget)onClose();
     }}>
       <section ref={dialogRef} className="ik-chat-photo-dialog" role="dialog"
-        aria-modal="true" aria-label="Просмотр фотографии">
+        aria-modal="true" aria-label="Просмотр фотографии" tabIndex={-1}>
         <header className="ik-chat-photo-header">
           <strong>Фотография</strong>
           <div className="ik-chat-photo-controls">
