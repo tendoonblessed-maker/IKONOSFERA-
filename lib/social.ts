@@ -1,5 +1,6 @@
 /* IKONOSFERA social API. All writes use the signed-in user's JWT and Supabase RLS. */
 import { apiUrl } from "@/lib/supabase-rest";
+import { withSocialReadDeadline } from "@/lib/social-read-deadline.mjs";
 const publicKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "";
 export type FullProfile = { id:string; username:string; display_name:string; avatar_path:string|null; cover_path:string|null; bio:string; featured_channel_id:string|null; status_emoji:number|null; age_years:number|null };
 export type ProfilePhoto = { id:string; user_id:string; image_path:string; caption:string; created_at:string };
@@ -12,11 +13,21 @@ function requestHeaders(token:string, extras:Record<string,string>={}) {
   return { apikey:publicKey, Authorization:"Bearer "+token, "Content-Type":"application/json", ...extras };
 }
 async function api<T>(path:string,token:string,method="GET",body?:unknown) : Promise<T> {
-  const res=await fetch(apiUrl+path,{method,headers:requestHeaders(token,method==="POST"||method==="PATCH"||method==="DELETE"?{Prefer:"return=representation"}:{}),
-    body:body===undefined?undefined:JSON.stringify(body),cache:"no-store"});
-  const value=await res.json().catch(()=>null);
-  if(!res.ok)throw Error(value?.message||value?.error||value?.msg||"Ошибка сервера ("+res.status+")");
-  return value as T;
+  const execute = async (signal?:AbortSignal):Promise<T> => {
+    const res=await fetch(apiUrl+path,{
+      method,
+      headers:requestHeaders(token,method==="POST"||method==="PATCH"||method==="DELETE"?{Prefer:"return=representation"}:{}),
+      body:body===undefined?undefined:JSON.stringify(body),
+      cache:"no-store",
+      ...(signal?{signal}:{})
+    });
+    const value=await res.json().catch(()=>null);
+    if(!res.ok)throw Error(value?.message||value?.error||value?.msg||"Ошибка сервера ("+res.status+")");
+    return value as T;
+  };
+  // Only idempotent reads get a client deadline. Mutations keep their existing
+  // acknowledgement semantics so an aborted write is never presented as a safe retry.
+  return method==="GET" ? withSocialReadDeadline(execute) : execute();
 }
 export function imageUrl(path:string|null|undefined):string|null {
   if(!path||!apiUrl||!/^[a-z0-9-]+\/[a-z0-9.-]+\.(jpg|png|webp)$/i.test(path))return null;
