@@ -75,7 +75,7 @@ function fallbackTruncate(text: string, maxUnits: number): string {
  * the existing 110-unit inbox preview budget.
  */
 export function inboxDraftPreview(value: string, maxUnits = 110): string {
-  const text = value.trim().replace(/\\s+/g, " ");
+  const text = value.trim().replace(/\s+/g, " ");
   if (!Number.isFinite(maxUnits) || maxUnits <= 0) return "";
   const limit = Math.floor(maxUnits);
   if (text.length <= limit) return text;
