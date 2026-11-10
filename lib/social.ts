@@ -1,5 +1,6 @@
 /* IKONOSFERA social API. All writes use the signed-in user's JWT and Supabase RLS. */
 import { apiUrl } from "@/lib/supabase-rest";
+import { CHANNEL_POST_PAGE_SIZE, channelPostsPagePath } from "@/lib/channel-post-pagination";
 const publicKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "";
 export type FullProfile = { id:string; username:string; display_name:string; avatar_path:string|null; cover_path:string|null; bio:string; featured_channel_id:string|null; status_emoji:number|null; age_years:number|null };
 export type ProfilePhoto = { id:string; user_id:string; image_path:string; caption:string; created_at:string };
@@ -124,8 +125,18 @@ export async function deleteDiscussionMessage(token:string,id:string):Promise<vo
 export async function listDiscussionComments(token:string,channelId:string):Promise<(PostComment & {channel_posts:{body:string;channel_id:string}|null})[]>{
  return api<(PostComment & {channel_posts:{body:string;channel_id:string}|null})[]>("/rest/v1/channel_comments?select=id,post_id,author_id,body,created_at,channel_posts!inner(body,channel_id)&channel_posts.channel_id=eq."+encodeURIComponent(channelId)+"&order=created_at.asc&limit=300",token);
 }
-export async function listChannelPosts(token:string,channelId:string):Promise<ChannelPost[]>{
-  return api<ChannelPost[]>("/rest/v1/channel_posts?select=*&channel_id=eq."+encodeURIComponent(channelId)+"&order=created_at.desc&limit=100",token);
+export type ChannelPostPage={posts:ChannelPost[];hasMore:boolean};
+export async function listChannelPostsPage(token:string,channelId:string,before?:Pick<ChannelPost,"id"|"created_at">):Promise<ChannelPostPage>{
+ const rows=await api<ChannelPost[]>(channelPostsPagePath(channelId,before),token);
+ const scoped=rows.filter(post=>post.channel_id===channelId);
+ return {posts:scoped.slice(0,CHANNEL_POST_PAGE_SIZE),hasMore:scoped.length>CHANNEL_POST_PAGE_SIZE};
+}
+export type ChannelPostList=ChannelPost[] & {hasMore:boolean};
+export async function listChannelPosts(token:string,channelId:string):Promise<ChannelPostList>{
+ const page=await listChannelPostsPage(token,channelId);
+ const list=page.posts as ChannelPostList;
+ list.hasMore=page.hasMore;
+ return list;
 }
 export async function publishPost(token:string,author_id:string,channel_id:string,body:string,image_path:string|null,attachment?:{path:string;type:"image"|"video"|"audio"|"file"}|null):Promise<ChannelPost>{
   const rows=await api<ChannelPost[]>("/rest/v1/channel_posts?select=*",token,"POST",{author_id,channel_id,body:body.trim(),image_path,attachment_path:attachment?.path??null,attachment_type:attachment?.type??null});
