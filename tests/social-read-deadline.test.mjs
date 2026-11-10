@@ -44,8 +44,8 @@ function setup(fetchHandler,timeoutMs=25){
 test('social read deadline is a portable 18-second AbortController timeout',()=>{
  assert.equal(SOCIAL_READ_TIMEOUT_MS,18_000);
  const helper=readFileSync(new URL('../lib/social-read-deadline.mjs',import.meta.url),'utf8');
- assert.match(helper,/new AbortController\\(\\)/);
- assert.doesNotMatch(helper,/AbortSignal\\.timeout/);
+ assert.equal(helper.includes('new AbortController()'),true);
+ assert.equal(helper.includes('AbortSignal.timeout'),false);
 });
 
 test('successful social reads clear their deadline timer',async()=>{
