@@ -111,6 +111,7 @@ test('aborting an older direct history signal cancels the underlying fetch',asyn
 test('older direct history is cancelled on background/offline pause and chat cleanup',()=>{
   assert.match(appShell,/const olderHistoryAbortScopeRef=useRef\(createAbortableRequestScope\(\)\)/);
   assert.match(appShell,/listOlderMessages\(token,chatId,oldest,controller\.signal\)/);
+  assert.match(appShell,/document\.visibilityState!=='visible'\|\|!navigator\.onLine\)return/);
   assert.match(appShell,/requestAbortScope\.abort\(\);olderHistoryAbortScopeRef\.current\.abort\(\);/);
   assert.match(appShell,/stopVisiblePolling\(\);requestAbortScope\.abort\(\);olderHistoryAbortScopeRef\.current\.abort\(\);/);
   assert.match(appShell,/document\.visibilityState==='visible'&&navigator\.onLine/);
