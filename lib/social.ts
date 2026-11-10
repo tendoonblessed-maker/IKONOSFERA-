@@ -1,6 +1,7 @@
 /* IKONOSFERA social API. All writes use the signed-in user's JWT and Supabase RLS. */
 import { apiUrl } from "@/lib/supabase-rest";
 import { CHANNEL_POST_PAGE_SIZE, channelPostsPagePath } from "@/lib/channel-post-pagination";
+import { CHANNEL_COMMENT_PAGE_SIZE, channelCommentsPagePath } from "@/lib/channel-comment-pagination";
 const publicKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "";
 export type FullProfile = { id:string; username:string; display_name:string; avatar_path:string|null; cover_path:string|null; bio:string; featured_channel_id:string|null; status_emoji:number|null; age_years:number|null };
 export type ProfilePhoto = { id:string; user_id:string; image_path:string; caption:string; created_at:string };
@@ -143,8 +144,18 @@ export async function publishPost(token:string,author_id:string,channel_id:strin
   if(!rows[0])throw Error("Пост не опубликован");return rows[0];
 }
 export async function deletePost(token:string,id:string):Promise<void>{await api("/rest/v1/channel_posts?id=eq."+encodeURIComponent(id),token,"DELETE");}
-export async function listPostComments(token:string,postId:string):Promise<PostComment[]>{
-  return api<PostComment[]>("/rest/v1/channel_comments?select=*&post_id=eq."+encodeURIComponent(postId)+"&order=created_at.asc&limit=150",token);
+export type ChannelCommentPage={comments:PostComment[];hasMore:boolean};
+export async function listPostCommentsPage(token:string,postId:string,before?:Pick<PostComment,"id"|"created_at">):Promise<ChannelCommentPage>{
+ const rows=await api<PostComment[]>(channelCommentsPagePath(postId,before),token);
+ const scoped=rows.filter(comment=>comment.post_id===postId);
+ return {comments:scoped.slice(0,CHANNEL_COMMENT_PAGE_SIZE).reverse(),hasMore:scoped.length>CHANNEL_COMMENT_PAGE_SIZE};
+}
+export type PostCommentList=PostComment[] & {hasMore:boolean};
+export async function listPostComments(token:string,postId:string):Promise<PostCommentList>{
+ const page=await listPostCommentsPage(token,postId);
+ const list=page.comments as PostCommentList;
+ list.hasMore=page.hasMore;
+ return list;
 }
 export async function addPostComment(token:string,post_id:string,author_id:string,body:string):Promise<PostComment>{
   const rows=await api<PostComment[]>("/rest/v1/channel_comments?select=*",token,"POST",{post_id,author_id,body:body.trim()});
