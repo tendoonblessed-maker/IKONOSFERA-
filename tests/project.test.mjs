@@ -808,7 +808,8 @@ test('inbox displays per-chat drafts and keeps cached previews during transient 
  assert.match(app,/previewCacheRef\.current\.ownerId!==ownerId/);
  assert.match(app,/previewCacheRef\.current=\{ownerId:'',previews:new Map\(\)\}/);
  assert.match(app,/previewUnavailable:previewResult\.failed&&!overview\.has\(chat\.id\)/);
- assert.match(row,/Не удалось обновить сообщения/);
+ assert.match(row,/directInboxPreviewText\(preview,row\.previewUnavailable\)/);
+ assert.match(load('lib/inbox-row-presentation.ts'),/Не удалось обновить сообщения/);
 });
 
 test('jump to latest is accessible and remains above the iPhone composer',()=>{
