@@ -13,6 +13,7 @@ import {subscribeDirectChatChanges} from "@/lib/direct-realtime";
 import {subscribeInboxChanges,type InboxChangeKind} from "@/lib/inbox-realtime";
 import {isLatestAccountSnapshot} from "@/lib/inbox-snapshot";
 import {shouldOpenDirectChatSearch} from "@/lib/chat-shortcuts";
+import {getDirectMessageSearchPageState} from "@/lib/chat-search-pagination";
 import {reconcileRecentChannelUpdates,CHANNEL_UPDATE_GRACE_MS,type RecentChannelUpdate} from "@/lib/channel-sync";
 import ChatAttachmentPreview from "@/components/ChatAttachmentPreview";
 import VoiceRecorder from "@/components/VoiceRecorder";
@@ -106,6 +107,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
   const [messageSearchLoading,setMessageSearchLoading]=useState(false);
   const [messageSearchError,setMessageSearchError]=useState(false);
   const [messageSearchHasMore,setMessageSearchHasMore]=useState(false);
+  const [messageSearchLimitReached,setMessageSearchLimitReached]=useState(false);
   const [messageSearchPage,setMessageSearchPage]=useState(0);
   const [messageSearchRetry,setMessageSearchRetry]=useState(0);
   const [selectedMessages,setSelectedMessages]=useState<string[]>([]);
@@ -270,6 +272,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
       setMessageSearchLoading(false);
       setMessageSearchError(false);
       setMessageSearchHasMore(false);
+      setMessageSearchLimitReached(false);
       return;
     }
     const token=session.access_token;
@@ -285,8 +288,9 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
         setMessageSearchResults(previous=>offset===0?page:[
           ...previous,...page.filter(item=>!previous.some(old=>old.id===item.id))
         ]);
-        setMessageSearchHasMore(matches.length>DIRECT_MESSAGE_SEARCH_PAGE_SIZE
-          &&offset+DIRECT_MESSAGE_SEARCH_PAGE_SIZE<=600);
+        const pageState=getDirectMessageSearchPageState(offset,matches.length);
+        setMessageSearchHasMore(pageState.hasMore);
+        setMessageSearchLimitReached(pageState.limitReached);
       }).catch(()=>{
         if(belongs())setMessageSearchError(true);
       }).finally(()=>{
@@ -306,6 +310,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
     setMessageSearchOwner(null);
     setMessageSearchError(false);
     setMessageSearchHasMore(false);
+    setMessageSearchLimitReached(false);
     setMessageSearchLoading(false);
   }
   function updateMessageSearch(value:string){
@@ -315,6 +320,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
     setMessageSearchResults([]);
     setMessageSearchOwner(null);
     setMessageSearchHasMore(false);
+    setMessageSearchLimitReached(false);
   }
 
   // iOS Safari's visual viewport shrinks when the keyboard appears.
@@ -1520,7 +1526,9 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
 </FloatingActionMenu></header>{activePartnerBlocked&&<div className="ik-chat-blocked-banner" role="status"><span>Собеседник заблокирован. Отправка сообщений отключена.</span><button type="button" onClick={()=>active.other&&void toggleBlockedUser(active.other)}>Разблокировать</button></div>}{searchInConversation&&<DirectMessageSearchPanel
         query={messageSearch} onQueryChange={updateMessageSearch} onClose={resetMessageSearch}
         results={messageSearchOwner?.chatId===selected&&messageSearchOwner.userId===userId&&messageSearchOwner.query===messageSearch.trim()?messageSearchResults:[]} loading={messageSearchLoading} failed={messageSearchError}
-        hasMore={messageSearchHasMore} onMore={()=>{
+        hasMore={messageSearchHasMore}
+        limitReached={messageSearchOwner?.chatId===selected&&messageSearchOwner.userId===userId&&messageSearchOwner.query===messageSearch.trim()&&messageSearchLimitReached}
+        onMore={()=>{
           if(messageSearchError){setMessageSearchError(false);setMessageSearchRetry(retry=>retry+1);}
           else if(!messageSearchLoading)setMessageSearchPage(page=>page+1);
         }}

@@ -204,6 +204,7 @@ export async function listReplyTargets(token:string,chatId:string,ids:string[]):
  * A 31st match signals that the current 30-result page has more results. */
 export type DirectMessageSearchResult=Pick<ChatMessage,'id'|'sender_id'|'body'|'created_at'>;
 export const DIRECT_MESSAGE_SEARCH_PAGE_SIZE=30;
+export const DIRECT_MESSAGE_SEARCH_MAX_OFFSET=600;
 export async function searchDirectMessages(
  token:string,chatId:string,query:string,offset=0
 ):Promise<DirectMessageSearchResult[]>{
@@ -213,7 +214,7 @@ export async function searchDirectMessages(
   token,method:'POST',body:{
    p_chat_id:chatId,p_query:term,
    p_limit:DIRECT_MESSAGE_SEARCH_PAGE_SIZE+1,
-   p_offset:Math.max(0,Math.min(600,Math.floor(offset)))
+   p_offset:Math.max(0,Math.min(DIRECT_MESSAGE_SEARCH_MAX_OFFSET,Math.floor(offset)))
   }
  });
 }
