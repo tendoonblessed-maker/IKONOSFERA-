@@ -7,6 +7,20 @@ const TIMESTAMP=/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?(?:Z|[+-]\d{2
 export const GROUP_OLDER_PAGE_SIZE=70;
 export const GROUP_HISTORY_MAX_LOADED=1500;
 
+/** Tell readers when the bounded in-memory timeline prevented older pages
+ * from being retained. Exactly reaching the cap is only a limit when another
+ * server page exists; exceeding it means part of the fetched page was trimmed.
+ */
+export function shouldShowGroupHistoryLimitNotice(
+ currentCount:number,incomingCount:number,hasMore:boolean
+):boolean{
+ if(!Number.isSafeInteger(currentCount)||currentCount<0
+    ||!Number.isSafeInteger(incomingCount)||incomingCount<0)return false;
+ const total=currentCount+incomingCount;
+ return total>GROUP_HISTORY_MAX_LOADED
+  ||(total===GROUP_HISTORY_MAX_LOADED&&hasMore);
+}
+
 function subMillisecondFraction(timestamp:string):number{
  const part=/\.(\d{1,6})/.exec(timestamp)?.[1]??'';
  return Number(part.padEnd(6,'0'));
