@@ -3,7 +3,7 @@ import {readFileSync} from 'node:fs';
 import {test} from 'node:test';
 import {truncatePreviewText} from '../lib/text-preview.ts';
 
-const source=(path:string)=>readFileSync(new URL('../'+path,import.meta.url),'utf8');
+const source=(path)=>readFileSync(new URL('../'+path,import.meta.url),'utf8');
 
 test('draft preview truncation never leaves an isolated UTF-16 surrogate',()=>{
  const prefix='a'.repeat(109);
