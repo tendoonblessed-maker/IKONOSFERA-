@@ -156,3 +156,29 @@ test('paged history does not change message schema or database privileges',()=>{
  assert.match(pagination,/const GROUP_/g);
  assert.doesNotMatch(pagination,/service_role|ALTER TABLE|GRANT |dangerouslySetInnerHTML/i);
 });
+
+
+test('bounded group history reports when older messages are hidden by the 1500-row cap',()=>{
+ const {api}=setup();
+ assert.equal(api.shouldShowGroupHistoryLimitNotice(1400,70,true),false,
+  'a remaining capacity below the cap must keep paging normally');
+ assert.equal(api.shouldShowGroupHistoryLimitNotice(1430,70,true),true,
+  'exactly reaching the cap while another page exists must be disclosed');
+ assert.equal(api.shouldShowGroupHistoryLimitNotice(1430,70,false),false,
+  'exactly 1500 rows with no older page means nothing was trimmed');
+ assert.equal(api.shouldShowGroupHistoryLimitNotice(1431,70,false),true,
+  'overflow is disclosed even when the fetched page was the final page');
+ assert.equal(api.shouldShowGroupHistoryLimitNotice(-1,70,true),false);
+ assert.equal(api.shouldShowGroupHistoryLimitNotice(1400,NaN,true),false);
+});
+
+test('group panel explains the history cap and points users to full-history search',()=>{
+ const panel=read('components/GroupPanel.tsx');
+ const css=read('app/globals.css');
+ assert.match(panel,/shouldShowGroupHistoryLimitNotice\(messages\.length,page\.messages\.length,page\.hasMore\)/);
+ assert.match(panel,/historyLimitReached&&<p className="ik-group-history-limit" role="status">/);
+ assert.match(panel,/GROUP_HISTORY_MAX_LOADED\.toLocaleString\('ru-RU'\)/);
+ assert.match(panel,/setHistoryLimitReached\(false\)/);
+ assert.match(panel,/Более ранние можно найти через поиск по истории/);
+ assert.match(css,/\.ik-group-history-limit/);
+});
