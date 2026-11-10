@@ -10,7 +10,7 @@ export function isSafeMediaObjectPath(path: unknown): path is string {
 /** Build a Storage object URL without allowing arbitrary or traversal paths. */
 export function mediaObjectUrl(baseUrl: string, path: unknown): string | null {
   if (!baseUrl.trim() || !isSafeMediaObjectPath(path)) return null;
-  const root = baseUrl.replace(/\\/+$/, "");
+  const root = baseUrl.replace(/\/+$/, "");
   const encodedPath = path.split("/").map(encodeURIComponent).join("/");
   return root + "/storage/v1/object/ikonosfera-media/" + encodedPath;
 }
