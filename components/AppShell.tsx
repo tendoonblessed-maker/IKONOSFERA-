@@ -32,6 +32,7 @@ import {createGroup,listGroups,listGroupOverviews,type Group,type GroupOverview}
 import ChannelsPanel from "@/components/ChannelsPanel";
 import BotsPanel from "@/components/BotsPanel";
 import { REACTION_EMOJIS, type ReactionEmoji, createChannel, imageUrl, listChannels, listMySubscriptions, subscribeChannel, unsubscribeChannel, getChannelSubscriberCounts, type Channel } from "@/lib/social";
+import {createAppBadgeSynchronizer,type AppBadgeApi} from "@/lib/app-badge";
 
 type Tab = 'chats' | 'contacts' | 'channels' | 'profile' | 'settings';
 type Platform = { ios: boolean; standalone: boolean };
@@ -156,6 +157,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
   const composerRef=useRef<HTMLTextAreaElement|null>(null);
   const confirmedMessagesRef=useRef<Map<string,ConfirmedMessage>>(new Map());
   const attachmentDragDepthRef=useRef(0);
+  const appBadgeSyncRef=useRef<((unreadCount:number)=>Promise<void>)|null>(null);
 
   // In-memory edits belong to one signed-in user; never reuse across accounts.
   useEffect(()=>{recentChannelUpdatesRef.current.clear();},[userId]);
@@ -1194,8 +1196,10 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
     groupDraftsOwnerRef.current='';setGroupDraftPreviews({});
     draftsOwnerRef.current='';draftsRef.current={};setDraftPreviews({});setDraft('');
     previewCacheRef.current={ownerId:'',previews:new Map()};
+    // Clear account-scoped inbox snapshots before the next account can render.
+    // In particular, group unread counts must never leak into the next PWA badge.
+    setRows([]);setGroups([]);setGroupOverviews({});setSavedContacts([]);setBlockedUsers([]);setSelected(null);
     setSession(null);setUserId('');setProfile(null);setAnonymous(false);
-    setRows([]);setSavedContacts([]);setBlockedUsers([]);setSelected(null);
     setProfileTarget(null);setSelectedChannel(null);setChannels([]);
     setChatMessages([]);setBusy(false);
     // Remote revocation is best-effort; a late response must never log out
@@ -1244,6 +1248,16 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
   },[session,activePartnerId]);
   const filtered=rows.filter(r=>chatFilter!=='groups'&&chatFilter!=='bots'&&(chatFilter!=='unread'||Number(r.preview?.unread_count||0)>0) && (!search.trim()||`${r.other?.display_name??''} ${r.other?.username??''} ${r.preview?.last_body??''}`.toLowerCase().includes(search.trim().toLowerCase())));
   const unreadTotal=rows.reduce((sum,row)=>sum+Number(row.preview?.unread_count||0),0)+groups.reduce((sum,group)=>sum+Number(groupOverviews[group.id]?.unread_count||0),0);
+  // Keep the installed PWA/browser app icon in sync with the same total shown
+  // in the inbox filter. Unsupported browsers simply ignore this enhancement.
+  useEffect(()=>{
+    const api=typeof navigator==='undefined'?null:navigator as unknown as AppBadgeApi;
+    appBadgeSyncRef.current=createAppBadgeSynchronizer(api);
+    return()=>{appBadgeSyncRef.current=null;};
+  },[]);
+  useEffect(()=>{
+    void appBadgeSyncRef.current?.(userId?unreadTotal:0);
+  },[userId,unreadTotal]);
   const visibleGroups=groups.filter(g=>chatFilter!=='private'&&chatFilter!=='bots'&&(chatFilter!=='unread'||Number(groupOverviews[g.id]?.unread_count||0)>0)&&(!search.trim()||((g.title+' '+(groupOverviews[g.id]?.last_body||'')).toLowerCase().includes(search.trim().toLowerCase()))));
   const inboxItems=[
     ...filtered.map(row=>({kind:'chat' as const,row,pinned:Boolean(row.chat.pinned_for?.includes(userId)),time:Date.parse(row.preview?.last_created_at||row.chat.created_at)})),
