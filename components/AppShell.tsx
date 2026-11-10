@@ -141,6 +141,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
   const conversationHistoryRef=useRef<HTMLDivElement|null>(null);
   const chatAutoScrollRef=useRef(true);
   const loadingOlderRef=useRef(false);
+  const olderHistoryAbortScopeRef=useRef(createAbortableRequestScope());
   const prependScrollRef=useRef<{chatId:string;height:number;top:number}|null>(null);
   const selectedRef=useRef<string|null>(null);
   const searchInputRef=useRef<HTMLInputElement|null>(null);
@@ -597,10 +598,10 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
     // HTTP polling remains a fallback when WebSocket is blocked, offline,
     // rate-limited or disconnected (and it repairs missed Realtime events).
     const stopVisiblePolling=startVisiblePolling(
-      ()=>void sync(),6000,document,window,navigator,()=>void sync(true),()=>{requestGeneration++;requestAbortScope.abort();}
+      ()=>void sync(),6000,document,window,navigator,()=>void sync(true),()=>{requestGeneration++;requestAbortScope.abort();olderHistoryAbortScopeRef.current.abort();}
     );
     return()=>{
-      cancelled=true;requestGeneration++;stopVisiblePolling();requestAbortScope.abort();
+      cancelled=true;requestGeneration++;stopVisiblePolling();requestAbortScope.abort();olderHistoryAbortScopeRef.current.abort();
       if(realtimeTimer!==null)window.clearTimeout(realtimeTimer);
       unsubscribeRealtime();
     };
@@ -870,17 +871,19 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
     const generation=chatContextGenerationRef.current;
     const stillInChat=()=>selectedRef.current===chatId&&chatContextGenerationRef.current===generation;
     const history=conversationHistoryRef.current;
+    const controller=olderHistoryAbortScopeRef.current.begin();
     loadingOlderRef.current=true;
     chatAutoScrollRef.current=false;
     if(history)prependScrollRef.current={chatId,height:history.scrollHeight,top:history.scrollTop};
     setLoadingOlderMessages(true);setOlderMessagesError(false);
     try{
-      const older=(await listOlderMessages(token,chatId,oldest)).reverse();
-      if(!stillInChat())return;
+      const older=(await listOlderMessages(token,chatId,oldest,controller.signal)).reverse();
+      if(!stillInChat()||controller.signal.aborted)return;
       setHasOlderMessages(older.length===CHAT_MESSAGE_PAGE_SIZE);
       if(older.length){
         setChatMessages(current=>prependEarlierPage(current,older));
-        // Older reactions load on demand rather than during every 6s poll.
+        // Older reactions are a separate best-effort read; the page request
+        // itself is lifecycle-owned and cancelled when this chat is paused.
         void listMessageReactions(token,older.map(message=>message.id))
           .then(reactions=>{
             if(stillInChat())setMessageReactions(current=>{
@@ -889,12 +892,15 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
             });
           }).catch(()=>{});
       }else prependScrollRef.current=null;
-    }catch(error){
-      if(stillInChat()){
+    }catch{
+      // Background/offline cancellation is not a failed page load. A timeout
+      // while the chat is visible remains retryable and visible to the user.
+      if(stillInChat()&&document.visibilityState==='visible'&&navigator.onLine){
         prependScrollRef.current=null;
         setOlderMessagesError(true);
       }
     }finally{
+      olderHistoryAbortScopeRef.current.clear(controller);
       // An old chat request must not unlock a newly opened chat's pagination.
       if(stillInChat()){
         loadingOlderRef.current=false;
