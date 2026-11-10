@@ -10,10 +10,10 @@ test('activity API routes every request through the portable 18-second deadline'
  const activity=source('lib/activity.ts');
  const helper=source('lib/fetch-timeout.mjs');
  const executable=helper.replace(/\\/\\*[\\s\\S]*?\\*\\/|\\/\\/.*$/gm,'');
- assert.match(activity,/fetchWithTimeout\\(fetch,apiUrl\\+path/);
- assert.match(activity,/ACTIVITY_REQUEST_TIMEOUT_MS=18000/);
- assert.match(executable,/new AbortController\\(\\)/);
- assert.doesNotMatch(executable,/AbortSignal\\.timeout/);
+ assert.ok(activity.includes('fetchWithTimeout(fetch,apiUrl+path'));
+ assert.ok(activity.includes('ACTIVITY_REQUEST_TIMEOUT_MS=18000'));
+ assert.ok(executable.includes('new AbortController()'));
+ assert.ok(!executable.includes('AbortSignal.timeout'));
 });
 
 test('successful activity requests preserve the response and clear their timeout',async()=>{
