@@ -114,4 +114,5 @@ test('older direct history is cancelled on background/offline pause and chat cle
   assert.match(appShell,/requestAbortScope\.abort\(\);olderHistoryAbortScopeRef\.current\.abort\(\);/);
   assert.match(appShell,/stopVisiblePolling\(\);requestAbortScope\.abort\(\);olderHistoryAbortScopeRef\.current\.abort\(\);/);
   assert.match(appShell,/document\.visibilityState==='visible'&&navigator\.onLine/);
+  assert.match(appShell,/if\(controller\.signal\.aborted\)prependScrollRef\.current=null/);
 });
