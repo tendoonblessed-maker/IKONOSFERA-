@@ -12,7 +12,7 @@ import ChatMessageText from "@/components/ChatMessageText";
 import {subscribeDirectChatChanges} from "@/lib/direct-realtime";
 import {subscribeInboxChanges,type InboxChangeKind} from "@/lib/inbox-realtime";
 import {isLatestAccountSnapshot} from "@/lib/inbox-snapshot";
-import {shouldOpenDirectChatSearch} from "@/lib/chat-shortcuts";
+import {shouldOpenDirectChatSearch,shouldSubmitDirectMessage} from "@/lib/chat-shortcuts";
 import {reconcileRecentChannelUpdates,CHANNEL_UPDATE_GRACE_MS,type RecentChannelUpdate} from "@/lib/channel-sync";
 import ChatAttachmentPreview from "@/components/ChatAttachmentPreview";
 import VoiceRecorder from "@/components/VoiceRecorder";
@@ -1581,7 +1581,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
         // message unexpectedly. Hardware-keyboard users retain Enter-to-send.
         const softKeyboard=/iPhone|iPad|iPod|Android/i.test(navigator.userAgent)
           ||window.matchMedia('(pointer:coarse) and (hover:none)').matches;
-        if(e.key==='Enter'&&!e.shiftKey&&!e.nativeEvent.isComposing&&!softKeyboard){
+        if(shouldSubmitDirectMessage(e.nativeEvent,softKeyboard)){
           e.preventDefault();
           if(draft.trim()&&!sending)e.currentTarget.form?.requestSubmit();
         }
