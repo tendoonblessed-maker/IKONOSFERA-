@@ -15,7 +15,7 @@ const modules=[
  ['lib/inbox-realtime.ts','subscribeInboxChanges']
 ];
 
-function loadRealtimeModule(path,authTimeoutMs=10000){
+function loadRealtimeModule(path,authTimeoutMs=10000,options={}){
  let resolveAuth,rejectAuth;
  let removeCalls=0,disconnectCalls=0,handlerRegistrations=0,subscribeCalls=0;
  const eventCallbacks=[];
@@ -28,6 +28,7 @@ function loadRealtimeModule(path,authTimeoutMs=10000){
   },
   subscribe(callback){
    subscribeCalls++;
+   if(options.throwOnSubscribe)throw new Error('channel subscribe failed synchronously');
    if(typeof callback==='function')statusCallback=callback;
    return this;
   }
@@ -35,7 +36,10 @@ function loadRealtimeModule(path,authTimeoutMs=10000){
  const client={
   channel(){return channel;},
   realtime:{
-   setAuth(){return new Promise((resolve,reject)=>{resolveAuth=resolve;rejectAuth=reject;});},
+   setAuth(){
+    if(options.throwOnSetAuth)throw new Error('setAuth failed synchronously');
+    return new Promise((resolve,reject)=>{resolveAuth=resolve;rejectAuth=reject;});
+   },
    disconnect(){disconnectCalls++;}
   },
   removeChannel(){removeCalls++;return Promise.resolve('ok');}
@@ -213,5 +217,64 @@ test('successful JWT authorization clears its deadline and keeps the channel ali
   await pause();
   assert.equal(loaded.counts().removeCalls,1,path+' cleans up normally');
   assert.equal(loaded.counts().disconnectCalls,1,path+' disconnects normally');
+ }
+});
+
+test('synchronous setAuth exceptions release direct, group and inbox clients',async()=>{
+ for(const [path,exportName] of modules){
+  const loaded=loadRealtimeModule(path,10000,{throwOnSetAuth:true});
+  const stop=loaded.exports[exportName]('invalid-user-jwt',UUID,()=>{});
+
+  await pause();
+  assert.deepEqual(loaded.counts(),{
+   removeCalls:1,
+   disconnectCalls:1,
+   handlerRegistrations:0,
+   subscribeCalls:0
+  },path+' releases its client when setAuth throws before returning a Promise');
+
+  stop();
+  await pause();
+  assert.deepEqual(loaded.counts(),{
+   removeCalls:1,
+   disconnectCalls:1,
+   handlerRegistrations:0,
+   subscribeCalls:0
+  },path+' later cleanup remains idempotent after synchronous auth failure');
+ }
+});
+
+test('synchronous channel subscribe exceptions dispose partially registered direct, group and inbox handlers',async()=>{
+ for(const [path,exportName] of modules){
+  let changed=0;
+  const loaded=loadRealtimeModule(path,10000,{throwOnSubscribe:true});
+  const stop=loaded.exports[exportName]('valid-user-jwt',UUID,()=>{changed++;});
+
+  loaded.resolveAuth();
+  await pause();
+  assert.ok(loaded.counts().handlerRegistrations>0,path+' registers handlers before SDK subscribe');
+  assert.deepEqual({
+   removeCalls:loaded.counts().removeCalls,
+   disconnectCalls:loaded.counts().disconnectCalls,
+   subscribeCalls:loaded.counts().subscribeCalls
+  },{
+   removeCalls:1,
+   disconnectCalls:1,
+   subscribeCalls:1
+  },path+' tears down the partially initialized client after subscribe throws');
+
+  loaded.emitRealtimeEvents();
+  loaded.emitStatus('SUBSCRIBED');
+  assert.equal(changed,0,path+' ignores handlers left behind by failed startup');
+
+  stop();
+  await pause();
+  assert.deepEqual({
+   removeCalls:loaded.counts().removeCalls,
+   disconnectCalls:loaded.counts().disconnectCalls
+  },{
+   removeCalls:1,
+   disconnectCalls:1
+  },path+' remains safe when React cleanup runs after startup failure');
  }
 });
