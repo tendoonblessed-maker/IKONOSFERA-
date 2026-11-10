@@ -866,7 +866,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
     resetMessageSearch();setSelectedMessages([]);setCreateMenuOpen(false);setTab(next);setSelected(null);setSelectedChannel(null);setProfileTarget(next==="profile"&&userId?userId:null);setShowRecommendations(false);setError("");
   }
   async function loadOlderChatMessages(){
-    if(!session||!selected||loadingOlderRef.current||!hasOlderMessages||!chatMessages.length)return;
+    if(!session||!selected||loadingOlderRef.current||!hasOlderMessages||!chatMessages.length||document.visibilityState!=='visible'||!navigator.onLine)return;
     const chatId=selected,token=session.access_token,oldest=chatMessages[0];
     const generation=chatContextGenerationRef.current;
     const stillInChat=()=>selectedRef.current===chatId&&chatContextGenerationRef.current===generation;
