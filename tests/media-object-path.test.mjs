@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
 import {readFileSync} from 'node:fs';
-import {isSafeMediaObjectPath,mediaObjectUrl} from '../lib/media-object-path.ts';
+import {deleteMediaObject,isSafeMediaObjectPath,mediaObjectUrl} from '../lib/media-object-path.ts';
 
 const userId='550e8400-e29b-41d4-a716-446655440000';
 const objectId='123e4567-e89b-12d3-a456-426614174000';
@@ -60,8 +60,8 @@ test('removeUpload validates all supported media paths instead of image-only URL
   assert.notEqual(start,-1);
   assert.notEqual(end,-1);
   const cleanup=social.slice(start,end);
-  assert.match(social,/import \{ mediaObjectUrl \} from "@\\/lib\\/media-object-path";/);
-  assert.match(cleanup,/mediaObjectUrl\(apiUrl,path\)/);
+  assert.match(social,/deleteMediaObject/);
+  assert.match(cleanup,/deleteMediaObject\(apiUrl,path,token,publicKey\)/);
   assert.doesNotMatch(cleanup,/imageUrl\(path\)/);
 });
 
@@ -69,4 +69,52 @@ test('channel post failure and deletion both keep using the shared cleanup path'
   const panel=source('components/ChannelsPanel.tsx');
   assert.match(panel,/if\(path\)await removeUpload\(token,path\)\.catch/);
   assert.match(panel,/if\(p\.attachment_path\)await removeUpload\(token,p\.attachment_path\)\.catch/);
+});
+
+
+test('performs an authenticated DELETE for video and document objects',async()=>{
+  let request;
+  await deleteMediaObject('https://project.supabase.co',objectPath('mp4'),'user-jwt','public-anon-key',async(url,init)=>{
+    request={url:String(url),init};
+    return new Response(null,{status:204});
+  });
+  assert.equal(request.url,'https://project.supabase.co/storage/v1/object/ikonosfera-media/'+objectPath('mp4'));
+  assert.equal(request.init.method,'DELETE');
+  assert.equal(request.init.headers.apikey,'public-anon-key');
+  assert.equal(request.init.headers.Authorization,'Bearer user-jwt');
+});
+
+test('does not send a request for an unsafe Storage path',async()=>{
+  let calls=0;
+  await deleteMediaObject('https://project.supabase.co',userId+'/../secret.pdf','jwt','anon',async()=>{
+    calls++;
+    return new Response(null,{status:204});
+  });
+  assert.equal(calls,0);
+});
+
+test('treats an already-missing Storage object as successful cleanup',async()=>{
+  await assert.doesNotReject(deleteMediaObject('https://project.supabase.co',objectPath('pdf'),'jwt','anon',async()=>{
+    return new Response(null,{status:404});
+  }));
+});
+
+test('surfaces Storage authorization errors without hiding the server message',async()=>{
+  await assert.rejects(
+    deleteMediaObject('https://project.supabase.co',objectPath('webm'),'jwt','anon',async()=>{
+      return new Response(JSON.stringify({message:'storage permission denied'}),{
+        status:403,headers:{'Content-Type':'application/json'}
+      });
+    }),
+    /storage permission denied/
+  );
+});
+
+test('propagates network failures so cleanup callers can report them',async()=>{
+  await assert.rejects(
+    deleteMediaObject('https://project.supabase.co',objectPath('m4a'),'jwt','anon',async()=>{
+      throw new Error('network offline');
+    }),
+    /network offline/
+  );
 });
