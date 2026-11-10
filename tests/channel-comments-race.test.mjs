@@ -67,7 +67,7 @@ test('switching channel context clears the previous feed and discussion snapshot
 test('ChannelsPanel publishes account and channel scope after commit and invalidates old reads before paint',()=>{
  const panel=read('components/ChannelsPanel.tsx');
  assert.match(panel,/useLayoutEffect/);
- assert.match(panel,/commentsRequestGuard\.invalidate\(\);[\\s\\S]*?postsRequestGuard\.invalidate\(\);\\s*discussionRequestGuard\.invalidate\(\)/);
+ assert.match(panel,/commentsRequestGuard\.invalidate\(\);[\s\S]*?postsRequestGuard\.invalidate\(\);\s*discussionRequestGuard\.invalidate\(\)/);
  assert.match(panel,/commentsPostRef\.current=null/);
  assert.match(panel,/olderCommentsLoadingRef\.current=false/);
  assert.equal((panel.match(/channelScopeRef\.current\.userId===userId/g)||[]).length,3);
