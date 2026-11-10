@@ -15,10 +15,16 @@ test('accepts every image, video, audio and document extension used by uploads',
   assert.equal(isSafeMediaObjectPath(objectPath('MP4')),true);
 });
 
+test('preserves legacy image paths while still rejecting traversal and unsupported paths',()=>{
+  assert.equal(isSafeMediaObjectPath('legacy-user/avatar.old.png'),true);
+  assert.equal(isSafeMediaObjectPath('legacy-user/channel-cover.webp'),true);
+});
+
 test('rejects traversal, extra segments, query strings and unsupported extensions',()=>{
   for(const path of [
     '',
     userId+'/../'+objectId+'.mp4',
+    'legacy-user/../avatar.png',
     userId+'/'+objectId+'.mp4/other',
     userId+'/'+objectId+'.mp4?download=1',
     userId+'%2f..%2f'+objectId+'.mp4',
