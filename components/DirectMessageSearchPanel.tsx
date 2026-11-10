@@ -1,6 +1,7 @@
 'use client';
 
 import type {DirectMessageSearchResult} from '@/lib/supabase-rest';
+import {DIRECT_MESSAGE_SEARCH_MAX_RESULTS} from '@/lib/chat-search-pagination';
 
 type Props={
   query:string;
@@ -10,6 +11,7 @@ type Props={
   loading:boolean;
   failed:boolean;
   hasMore:boolean;
+  limitReached:boolean;
   onMore:()=>void;
   onOpen:(id:string)=>void;
   userId:string;
@@ -20,7 +22,7 @@ type Props={
 /** Results are server-scoped to one private chat; never display another
  * account's cached search snippets after switching conversations. */
 export default function DirectMessageSearchPanel({
-  query,onQueryChange,onClose,results,loading,failed,hasMore,onMore,
+  query,onQueryChange,onClose,results,loading,failed,hasMore,limitReached,onMore,
   onOpen,userId,partnerName,locatingId
 }:Props){
   const needle=query.trim();
@@ -56,6 +58,7 @@ export default function DirectMessageSearchPanel({
       {failed&&!loading&&<button type="button" className="ik-direct-search-retry" onClick={onMore}>Не удалось найти сообщения. Повторить</button>}
       {!loading&&!failed&&!results.length&&<p className="ik-direct-search-hint">По этому запросу сообщений не найдено.</p>}
       {!loading&&!failed&&hasMore&&<button type="button" className="ik-direct-search-more" onClick={onMore}>Показать ещё совпадения</button>}
+      {!loading&&!failed&&limitReached&&<p className="ik-direct-search-hint" role="status">Показаны первые {DIRECT_MESSAGE_SEARCH_MAX_RESULTS} совпадений. Уточните запрос, чтобы найти другие сообщения.</p>}
     </div>}
   </section>;
 }
