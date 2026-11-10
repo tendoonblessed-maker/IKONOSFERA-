@@ -15,3 +15,25 @@ export function mediaObjectUrl(baseUrl: string, path: unknown): string | null {
   const encodedPath = path.split("/").map(encodeURIComponent).join("/");
   return root + "/storage/v1/object/ikonosfera-media/" + encodedPath;
 }
+
+
+/** Perform a scoped Storage DELETE and preserve the existing 404-as-success contract. */
+export async function deleteMediaObject(
+  baseUrl: string,
+  path: unknown,
+  token: string,
+  publicKey: string,
+  fetcher: typeof fetch = fetch
+): Promise<void> {
+  const url = mediaObjectUrl(baseUrl, path);
+  if (!url) return;
+
+  const response = await fetcher(url, {
+    method: "DELETE",
+    headers: { apikey: publicKey, Authorization: "Bearer " + token }
+  });
+  if (!response.ok && response.status !== 404) {
+    const payload = await response.json().catch(() => null) as { message?: unknown } | null;
+    throw new Error(typeof payload?.message === "string" ? payload.message : "Не удалось удалить файл");
+  }
+}
