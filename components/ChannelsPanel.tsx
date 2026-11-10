@@ -1,5 +1,6 @@
 'use client';
-import { useCallback, useEffect, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
+import { createSingleFlightGate, sendThenRefresh } from "@/lib/channel-discussion-send";
 import { listProfiles, type Profile } from "@/lib/supabase-rest";
 import StatusEmoji from "@/components/StatusEmoji";
 import {
@@ -39,6 +40,14 @@ export default function ChannelsPanel({token,userId,channel,onBack,onShowProfile
  const [editingCommentId,setEditingCommentId]=useState<string|null>(null);
  const [editingBody,setEditingBody]=useState("");
  const [busy,setBusy]=useState(false);const [error,setError]=useState("");const [notice,setNotice]=useState("");
+ const contentSendGateRef=useRef<ReturnType<typeof createSingleFlightGate>|null>(null);
+ if(!contentSendGateRef.current)contentSendGateRef.current=createSingleFlightGate();
+ async function runContentSend(operation:()=>Promise<void>){
+  const pending=contentSendGateRef.current!.run(operation);
+  if(!pending)return false;
+  setBusy(true);
+  try{await pending;return true;}finally{setBusy(false);}
+ }
  const reload=useCallback(async()=>{const list=await listChannelPosts(token,channel.id);setPosts(list);setReactions(await listPostReactions(token,list.map(p=>p.id)));},[token,channel.id]);
  const loadDiscussion=useCallback(async()=>{
   const [messages,replies]=await Promise.all([listDiscussionMessages(token,channel.id),listDiscussionComments(token,channel.id)]);
@@ -78,9 +87,20 @@ export default function ChannelsPanel({token,userId,channel,onBack,onShowProfile
  }
  async function sendDiscussion(e:FormEvent){
   e.preventDefault();if(!currentChannel.discussion_enabled||busy||!discussionDraft.trim())return;
-  setBusy(true);setError("");
-  try{await sendDiscussionMessage(token,channel.id,userId,discussionDraft);setDiscussionDraft("");await loadDiscussion();}
-  catch(e){setError(readable(e));}finally{setBusy(false);}
+  const draft=discussionDraft;
+  setError("");setNotice("");
+  await runContentSend(async()=>{
+   try{
+    const result=await sendThenRefresh(
+     ()=>sendDiscussionMessage(token,channel.id,userId,draft),
+     ()=>setDiscussionDraft(current=>current===draft?"":current),
+     ()=>loadDiscussion()
+    );
+    setNotice(result.refreshed
+     ?"Сообщение отправлено."
+     :"Сообщение отправлено, но обсуждение не обновилось. Не отправляй его повторно — открой обсуждение ещё раз.");
+   }catch(e){setError(readable(e));}
+  });
  }
  async function eraseDiscussion(id:string){
   if(busy||!window.confirm("Удалить сообщение из обсуждения?"))return;
@@ -119,15 +139,25 @@ export default function ChannelsPanel({token,userId,channel,onBack,onShowProfile
  }
  async function writeComment(e:FormEvent){
   e.preventDefault();if(!openComments||!commentDraft.trim()||busy)return;
-  setBusy(true);setError("");
-  try{
-   await addPostComment(token,openComments,userId,commentDraft);
-   setCommentDraft("");
-   const list=await listPostComments(token,openComments);
-   setComments(list);
-   if(currentChannel.discussion_enabled)await loadDiscussion();
-   if(!authors[userId]){const mine=await listProfiles(token,[userId]);if(mine[0])setAuthors(prev=>({...prev,[userId]:mine[0]}));}
-  }catch(e){setError(readable(e));}finally{setBusy(false);}
+  const postId=openComments,draft=commentDraft;
+  setError("");setNotice("");
+  await runContentSend(async()=>{
+   try{
+    const result=await sendThenRefresh(
+     ()=>addPostComment(token,postId,userId,draft),
+     ()=>setCommentDraft(current=>current===draft?"":current),
+     async()=>{
+      const list=await listPostComments(token,postId);
+      setComments(list);
+      if(currentChannel.discussion_enabled)await loadDiscussion();
+      if(!authors[userId]){const mine=await listProfiles(token,[userId]);if(mine[0])setAuthors(prev=>({...prev,[userId]:mine[0]}));}
+     }
+    );
+    setNotice(result.refreshed
+     ?"Комментарий отправлен."
+     :"Комментарий отправлен, но список не обновился. Не отправляй повторно — обнови комментарии.");
+   }catch(e){setError(readable(e));}
+  });
  }
  async function savePostEdit(id:string){
   if(!mine||busy)return;setBusy(true);setError("");
