@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import {test} from 'node:test';
 import {readFileSync} from 'node:fs';
 import {
- getAttachmentPreviewTabTarget,preferNonTextFocusForAttachment
+ getAttachmentPreviewTabTarget,isAttachmentPreviewTabStop,preferNonTextFocusForAttachment
 } from '../lib/attachment-preview-focus.ts';
 
 const load=path=>readFileSync(new URL('../'+path,import.meta.url),'utf8');
@@ -73,4 +73,31 @@ test('attachment dialog retains focus through busy state and restores it without
 test('iPhone caption font stays large enough to prevent focus zoom after a user tap',()=>{
  const css=load('app/globals.css');
  assert.match(css, /\.ik-attachment-preview-caption textarea\{[^}]*font-size:16px/s);
+});
+
+test('hidden, inert, disabled and negative-tabindex controls are excluded from the tab order',()=>{
+ const candidate=({
+  tabIndex=0,disabled=false,hidden=false,ariaHidden=false,
+  ancestorHidden=false,ancestorInert=false,ancestorAriaHidden=false,visible=true
+ }={})=>({
+  tabIndex,
+  matches:selector=>selector===':disabled,[hidden],[aria-hidden="true"]'
+   &&(disabled||hidden||ariaHidden),
+  closest:selector=>selector==='[hidden],[inert],[aria-hidden="true"]'
+   &&(ancestorHidden||ancestorInert||ancestorAriaHidden)?{}:null,
+  getClientRects:()=>visible?[{}]:[]
+ });
+ assert.equal(isAttachmentPreviewTabStop(candidate()),true);
+ assert.equal(isAttachmentPreviewTabStop(candidate({tabIndex:2})),true);
+ assert.equal(isAttachmentPreviewTabStop(candidate({tabIndex:-2})),false);
+ assert.equal(isAttachmentPreviewTabStop(candidate({disabled:true})),false);
+ assert.equal(isAttachmentPreviewTabStop(candidate({hidden:true})),false);
+ assert.equal(isAttachmentPreviewTabStop(candidate({ariaHidden:true})),false);
+ assert.equal(isAttachmentPreviewTabStop(candidate({ancestorHidden:true})),false);
+ assert.equal(isAttachmentPreviewTabStop(candidate({ancestorInert:true})),false);
+ assert.equal(isAttachmentPreviewTabStop(candidate({ancestorAriaHidden:true})),false);
+ assert.equal(isAttachmentPreviewTabStop(candidate({visible:false})),false);
+ const component=load('components/ChatAttachmentPreview.tsx');
+ assert.match(component,/\)\.filter\(isAttachmentPreviewTabStop\)/);
+ assert.match(component,/\[tabindex\]/);
 });
