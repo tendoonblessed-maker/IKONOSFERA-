@@ -131,8 +131,12 @@ export async function listChannelPostsPage(token:string,channelId:string,before?
  const scoped=rows.filter(post=>post.channel_id===channelId);
  return {posts:scoped.slice(0,CHANNEL_POST_PAGE_SIZE),hasMore:scoped.length>CHANNEL_POST_PAGE_SIZE};
 }
-export async function listChannelPosts(token:string,channelId:string):Promise<ChannelPost[]>{
- return (await listChannelPostsPage(token,channelId)).posts;
+export type ChannelPostList=ChannelPost[] & {hasMore:boolean};
+export async function listChannelPosts(token:string,channelId:string):Promise<ChannelPostList>{
+ const page=await listChannelPostsPage(token,channelId);
+ const list=page.posts as ChannelPostList;
+ list.hasMore=page.hasMore;
+ return list;
 }
 export async function publishPost(token:string,author_id:string,channel_id:string,body:string,image_path:string|null,attachment?:{path:string;type:"image"|"video"|"audio"|"file"}|null):Promise<ChannelPost>{
   const rows=await api<ChannelPost[]>("/rest/v1/channel_posts?select=*",token,"POST",{author_id,channel_id,body:body.trim(),image_path,attachment_path:attachment?.path??null,attachment_type:attachment?.type??null});

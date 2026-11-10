@@ -130,16 +130,18 @@ test('unexpected rows from another channel are never exposed',async()=>{
  assert.equal(page.hasMore,false);
 });
 
-test('legacy listChannelPosts still returns only the newest page array',async()=>{
- const rows=[post(1),post(2)];
+test('legacy listChannelPosts stays an array and exposes whether an older page exists',async()=>{
+ const rows=Array.from({length:101},(_,i)=>post(i+1,timestampAt(i)));
  const {api}=socialHarness(()=>response(rows));
  const result=await api.listChannelPosts('jwt',CHANNEL);
- assert.deepEqual(Array.from(result,p=>p.id),[uuid(1),uuid(2)]);
+ assert.equal(Array.isArray(result),true);
+ assert.equal(result.length,100);
+ assert.equal(result.hasMore,true);
 });
 
 test('ChannelsPanel scopes page requests, preserves current rows and exposes retryable pagination',()=>{
  const panel=read('components/ChannelsPanel.tsx');
- assert.match(panel,/listChannelPostsPage\(token,channel\.id\)/);
+ assert.match(panel,/listChannelPosts\(token,channel\.id\)/);
  assert.match(panel,/listChannelPostsPage\(token,channel\.id,oldest\)/);
  assert.match(panel,/appendOlderChannelPosts\(posts,page\.posts\)/);
  assert.match(panel,/listPostReactions\(token,page\.posts\.map\(p=>p\.id\)\)/);

@@ -5,7 +5,7 @@ import { createRequestEpoch } from "@/lib/request-epoch";
 import { appendOlderChannelPosts } from "@/lib/channel-post-pagination";
 import StatusEmoji from "@/components/StatusEmoji";
 import {
- addPostComment, deletePost, editChannelPost, manageChannelComment, imageUrl, listChannelPostsPage, listPostComments, listPostReactions, setPostReaction, REACTION_EMOJIS, publishPost,
+ addPostComment, deletePost, editChannelPost, manageChannelComment, imageUrl, listChannelPosts, listChannelPostsPage, listPostComments, listPostReactions, setPostReaction, REACTION_EMOJIS, publishPost,
  removeUpload, uploadChannelAttachment, updateChannel, updateChannelAvatar, deleteChannel, getChannelSubscriberCounts, listDiscussionMessages, sendDiscussionMessage, deleteDiscussionMessage, listDiscussionComments,
  type Channel, type ChannelPost, type PostComment, type PostReaction, type ReactionEmoji, type DiscussionMessage
 } from "@/lib/social";
@@ -74,22 +74,24 @@ export default function ChannelsPanel({token,userId,channel,onBack,onShowProfile
   channelScopeRef.current={token,userId,channelId:channel.id};
   commentsRequestGuard.invalidate();
   postsRequestGuard.invalidate();
+  discussionRequestGuard.invalidate();
   cancelOlderPostsLoad();
   reactionsRequestGuard.invalidate();
   postsReloadingRef.current=true;
   setPostsReloading(true);
   setHasOlderPosts(false);
-  discussionRequestGuard.invalidate();
  },[token,userId,channel.id,commentsRequestGuard,postsRequestGuard,cancelOlderPostsLoad,reactionsRequestGuard,discussionRequestGuard]);
  useEffect(()=>()=> {
   commentsRequestGuard.invalidate();
   postsRequestGuard.invalidate();
+  discussionRequestGuard.invalidate();
+ },[commentsRequestGuard,postsRequestGuard,discussionRequestGuard]);
+ useEffect(()=>()=> {
   olderPostsRequestGuard.invalidate();
   olderPostsLoadingRef.current=false;
   postsReloadingRef.current=false;
   reactionsRequestGuard.invalidate();
-  discussionRequestGuard.invalidate();
- },[commentsRequestGuard,postsRequestGuard,olderPostsRequestGuard,reactionsRequestGuard,discussionRequestGuard]);
+ },[olderPostsRequestGuard,reactionsRequestGuard]);
  const reload=useCallback(async()=>{
   const requestId=postsRequestGuard.begin();
   cancelOlderPostsLoad();
@@ -98,14 +100,14 @@ export default function ChannelsPanel({token,userId,channel,onBack,onShowProfile
   setOlderPostsError("");
   const isCurrent=()=>postsRequestGuard.isCurrent(requestId)
    &&channelScopeRef.current.token===token
-   &&channelScopeRef.current.userId===userId
+   &&channelScopeRef.current.userId === userId
    &&channelScopeRef.current.channelId===channel.id;
   try{
-   const page=await listChannelPostsPage(token,channel.id);
+   const list=await listChannelPosts(token,channel.id);
    if(!isCurrent())return false;
-   const nextReactions=await listPostReactions(token,page.posts.map(p=>p.id));
+   const nextReactions=await listPostReactions(token,list.map(p=>p.id));
    if(!isCurrent())return false;
-   setPosts(page.posts);setReactions(nextReactions);setHasOlderPosts(page.hasMore);
+   setPosts(list);setReactions(nextReactions);setHasOlderPosts(list.hasMore);
    return true;
   }catch(e){
    if(isCurrent())throw e;
@@ -121,7 +123,7 @@ export default function ChannelsPanel({token,userId,channel,onBack,onShowProfile
   const requestId=olderPostsRequestGuard.begin();
   const isCurrent=()=>olderPostsRequestGuard.isCurrent(requestId)
    &&channelScopeRef.current.token===token
-   &&channelScopeRef.current.userId===userId
+   &&channelScopeRef.current.userId === userId
    &&channelScopeRef.current.channelId===channel.id;
   setOlderPostsLoading(true);setOlderPostsError("");
   try{
@@ -148,7 +150,7 @@ export default function ChannelsPanel({token,userId,channel,onBack,onShowProfile
   const requestId=discussionRequestGuard.begin();
   const isCurrent=()=>discussionRequestGuard.isCurrent(requestId)
    &&channelScopeRef.current.token===token
-   &&channelScopeRef.current.userId===userId
+   &&channelScopeRef.current.userId === userId
    &&channelScopeRef.current.channelId===channel.id;
   try{
    const [messages,replies]=await Promise.all([listDiscussionMessages(token,channel.id),listDiscussionComments(token,channel.id)]);
@@ -208,7 +210,7 @@ export default function ChannelsPanel({token,userId,channel,onBack,onShowProfile
   const requestId=reactionsRequestGuard.begin();
   const isCurrent=()=>reactionsRequestGuard.isCurrent(requestId)
    &&channelScopeRef.current.token===token
-   &&channelScopeRef.current.userId===userId
+   &&channelScopeRef.current.userId === userId
    &&channelScopeRef.current.channelId===channel.id;
   setBusy(true);setError("");setNotice("");
   const mine=reactions.find(r=>r.post_id===postId&&r.user_id===userId);
@@ -229,12 +231,12 @@ export default function ChannelsPanel({token,userId,channel,onBack,onShowProfile
   }catch(e){if(isCurrent())setError(readable(e));}
   finally{if(isCurrent())setBusy(false);}
  }
- useEffect(()=>{void reload().catch(e=>setError(readable(e)));setOpenComments(null);setComments([]);setBody("");setFile(null);setPosts([]);setHasOlderPosts(false);setOlderPostsError("");setOlderPostsLoading(false);olderPostsLoadingRef.current=false;setReactions([]);setDiscussionMessages([]);setDiscussionComments([]);setDiscussionOpen(false);setBusy(false);},[reload]);
+ useEffect(()=>{void reload().catch(e=>setError(readable(e)));setOpenComments(null);setComments([]);setBody("");setFile(null);setPosts([]);setReactions([]);setDiscussionMessages([]);setDiscussionComments([]);setDiscussionOpen(false);setHasOlderPosts(false);setOlderPostsError("");setOlderPostsLoading(false);olderPostsLoadingRef.current=false;setBusy(false);},[reload]);
  async function showComments(postId:string){
   const requestId=commentsRequestGuard.begin();
   const isCurrent=()=>commentsRequestGuard.isCurrent(requestId)
    &&channelScopeRef.current.token===token
-   &&channelScopeRef.current.userId===userId
+   &&channelScopeRef.current.userId === userId
    &&channelScopeRef.current.channelId===channel.id;
   if(openComments===postId){setOpenComments(null);setComments([]);return;}
   setError("");
@@ -277,7 +279,7 @@ export default function ChannelsPanel({token,userId,channel,onBack,onShowProfile
  async function savePostEdit(id:string){
   if(!mine||busy)return;
   const isCurrent=()=>channelScopeRef.current.token===token
-   &&channelScopeRef.current.userId===userId
+   &&channelScopeRef.current.userId === userId
    &&channelScopeRef.current.channelId===channel.id;
   setBusy(true);setError("");
   try{
@@ -298,7 +300,7 @@ export default function ChannelsPanel({token,userId,channel,onBack,onShowProfile
  async function erasePost(p:ChannelPost){
   if(!mine||busy||!window.confirm("Удалить этот пост?"))return;
   const isCurrent=()=>channelScopeRef.current.token===token
-   &&channelScopeRef.current.userId===userId
+   &&channelScopeRef.current.userId === userId
    &&channelScopeRef.current.channelId===channel.id;
   setBusy(true);setError("");
   try{
