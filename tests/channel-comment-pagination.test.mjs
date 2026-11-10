@@ -42,6 +42,7 @@ function socialHarness(handler){
    if(name==='@/lib/supabase-rest')return {apiUrl:'https://unit.test'};
    if(name==='@/lib/channel-post-pagination')return {};
    if(name==='@/lib/channel-comment-pagination')return pagination;
+   if(name==='@/lib/media-object-path')return {deleteMediaObject:async()=>{}};
    throw Error('Unexpected module '+name);
   }
  };
