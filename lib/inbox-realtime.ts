@@ -2,6 +2,7 @@
 
 import {createClient} from '@supabase/supabase-js';
 import {apiUrl,backendReady} from './supabase-rest';
+import {authorizeRealtimeWithDeadline,removeRealtimeChannelWithDeadline} from './realtime-cleanup';
 
 const publishableKey=process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY??'';
 const UUID=/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
@@ -26,26 +27,35 @@ export function subscribeInboxChanges(
   auth:{persistSession:false,autoRefreshToken:false,detectSessionInUrl:false}
  });
  let disposed=false;
+ let cancelAuthorization=()=>{};
  const channel=client.channel('inbox-db:'+userId);
  const direct=()=>{if(!disposed)onChanged('direct');};
  const group=()=>{if(!disposed)onChanged('group');};
-
- void client.realtime.setAuth(token).then(()=>{
+ const dispose=()=>{
   if(disposed)return;
-  channel
-   .on('postgres_changes',{schema:'public',table:'messages',event:'INSERT'},direct)
-   .on('postgres_changes',{schema:'public',table:'messages',event:'UPDATE'},direct)
-   .on('postgres_changes',{schema:'public',table:'group_messages',event:'INSERT'},group)
-   .subscribe(status=>{
-    // A reconnect can miss inserts while offline: resynchronize both lists.
-    if(status==='SUBSCRIBED'){direct();group();}
-   });
- }).catch(()=>{/* Periodic inbox polling continues without Realtime. */});
-
- return()=>{
   disposed=true;
-  void client.removeChannel(channel)
-   .finally(()=>{client.realtime.disconnect();})
-   .catch(()=>{client.realtime.disconnect();});
+  cancelAuthorization();
+  removeRealtimeChannelWithDeadline(
+   ()=>client.removeChannel(channel),
+   ()=>client.realtime.disconnect()
+  );
  };
+
+ cancelAuthorization=authorizeRealtimeWithDeadline(
+  ()=>client.realtime.setAuth(token),
+  ()=>{
+   if(disposed)return;
+   channel
+    .on('postgres_changes',{schema:'public',table:'messages',event:'INSERT'},direct)
+    .on('postgres_changes',{schema:'public',table:'messages',event:'UPDATE'},direct)
+    .on('postgres_changes',{schema:'public',table:'group_messages',event:'INSERT'},group)
+    .subscribe(status=>{
+     // A reconnect can miss inserts while offline: resynchronize both lists.
+     if(status==='SUBSCRIBED'){direct();group();}
+    });
+  },
+  dispose
+ );
+
+ return dispose;
 }
