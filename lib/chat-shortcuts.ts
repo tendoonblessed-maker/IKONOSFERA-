@@ -15,3 +15,19 @@ export function shouldOpenDirectChatSearch(event:FindKey,directChatVisible:boole
     && !event.shiftKey
     && event.key.toLowerCase()==='f';
 }
+
+
+/** Keep IME confirmation keys and held-key repeats from sending a direct message.
+ * Some iOS Safari/IME sequences report isComposing=false on the final Enter
+ * while retaining the legacy keyCode 229.
+ */
+type DirectComposerKey = Pick<KeyboardEvent,'key'|'shiftKey'|'repeat'|'isComposing'|'keyCode'>;
+
+export function shouldSubmitDirectMessage(event:DirectComposerKey,softKeyboard:boolean):boolean{
+  return event.key==='Enter'
+    && !event.shiftKey
+    && !event.repeat
+    && !event.isComposing
+    && event.keyCode!==229
+    && !softKeyboard;
+}
