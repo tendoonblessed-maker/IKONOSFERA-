@@ -43,8 +43,8 @@ test('older-browser fallback preserves surrogate pairs, flags, modifiers, ZWJ an
 test('direct and group inbox rows both use the shared grapheme-safe draft formatter',()=>{
  const direct=source('components/ChatInboxRow.tsx');
  const group=source('components/GroupInboxRow.tsx');
- assert.match(direct,/inboxDraftPreview\(draft\)/);
- assert.match(group,/inboxDraftPreview\(draft\?\?'\'\)/);
+ assert.ok(direct.includes('inboxDraftPreview(draft)'));
+ assert.ok(group.includes("inboxDraftPreview(draft??'')"));
  assert.doesNotMatch(direct,/draft\.trim\(\)\.replace\([\s\S]*?\)\.slice\(0,110\)/);
  assert.doesNotMatch(group,/draft\?\.trim\(\)[\s\S]*?\.slice\(0,110\)/);
 });
