@@ -1,6 +1,6 @@
 /* IKONOSFERA social API. All writes use the signed-in user's JWT and Supabase RLS. */
 import { apiUrl } from "@/lib/supabase-rest";
-import { mediaObjectUrl } from "@/lib/media-object-path";
+import { deleteMediaObject } from "@/lib/media-object-path";
 import { CHANNEL_POST_PAGE_SIZE, channelPostsPagePath } from "@/lib/channel-post-pagination";
 import { CHANNEL_COMMENT_PAGE_SIZE, channelCommentsPagePath } from "@/lib/channel-comment-pagination";
 const publicKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "";
@@ -38,11 +38,7 @@ export async function uploadPhoto(token:string,userId:string,file:File):Promise<
   return path;
 }
 export async function removeUpload(token:string,path:string):Promise<void>{
-  const url=mediaObjectUrl(apiUrl,path);
-  if(!url)return;
-  const res=await fetch(url,{method:"DELETE",
-    headers:{apikey:publicKey,Authorization:"Bearer "+token}});
-  if(!res.ok&&res.status!==404){const obj=await res.json().catch(()=>null);throw Error(obj?.message||"Не удалось удалить файл");}
+  return deleteMediaObject(apiUrl,path,token,publicKey);
 }
 export async function getFullProfile(token:string,userId:string):Promise<FullProfile|null>{
   const rows=await api<FullProfile[]>("/rest/v1/profiles?select=id,username,display_name,bio,avatar_path,cover_path,featured_channel_id,status_emoji,age_years&id=eq."+encodeURIComponent(userId)+"&limit=1",token);
