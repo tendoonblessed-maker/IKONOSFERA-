@@ -1,7 +1,5 @@
 /* Dependency-free Supabase Auth + PostgREST client.
    Never put a service-role or database password in NEXT_PUBLIC_* variables. */
-import {DIRECT_MESSAGE_SEARCH_MAX_OFFSET,DIRECT_MESSAGE_SEARCH_PAGE_SIZE} from './chat-search-pagination';
-export {DIRECT_MESSAGE_SEARCH_PAGE_SIZE} from './chat-search-pagination';
 export const apiUrl = (process.env.NEXT_PUBLIC_SUPABASE_URL ?? '').replace(/\/$/, '');
 const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? '';
 export const backendReady = Boolean(apiUrl && anonKey);
@@ -205,6 +203,17 @@ export async function listReplyTargets(token:string,chatId:string,ids:string[]):
 /** Text-only matches from the entire RLS-visible chat history, newest first.
  * A 31st match signals that the current 30-result page has more results. */
 export type DirectMessageSearchResult=Pick<ChatMessage,'id'|'sender_id'|'body'|'created_at'>;
+export const DIRECT_MESSAGE_SEARCH_PAGE_SIZE=30;
+export const DIRECT_MESSAGE_SEARCH_MAX_OFFSET=600;
+export const DIRECT_MESSAGE_SEARCH_MAX_RESULTS=DIRECT_MESSAGE_SEARCH_MAX_OFFSET+DIRECT_MESSAGE_SEARCH_PAGE_SIZE;
+export type DirectMessageSearchPageState={hasMore:boolean;limitReached:boolean};
+export function getDirectMessageSearchPageState(offset:number,matchCount:number):DirectMessageSearchPageState{
+ const safeOffset=Number.isFinite(offset)?Math.max(0,Math.floor(offset)):0;
+ const safeCount=Number.isFinite(matchCount)?Math.max(0,Math.floor(matchCount)):0;
+ const hasExtra=safeCount>DIRECT_MESSAGE_SEARCH_PAGE_SIZE;
+ return {hasMore:hasExtra&&safeOffset<DIRECT_MESSAGE_SEARCH_MAX_OFFSET,
+  limitReached:hasExtra&&safeOffset>=DIRECT_MESSAGE_SEARCH_MAX_OFFSET};
+}
 export async function searchDirectMessages(
  token:string,chatId:string,query:string,offset=0
 ):Promise<DirectMessageSearchResult[]>{

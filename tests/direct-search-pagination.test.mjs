@@ -4,7 +4,7 @@ import {readFileSync} from 'node:fs';
 import {
  DIRECT_MESSAGE_SEARCH_MAX_OFFSET,DIRECT_MESSAGE_SEARCH_MAX_RESULTS,
  DIRECT_MESSAGE_SEARCH_PAGE_SIZE,getDirectMessageSearchPageState
-} from '../lib/chat-search-pagination.ts';
+} from '../lib/supabase-rest.ts';
 
 const source=path=>readFileSync(new URL('../'+path,import.meta.url),'utf8');
 

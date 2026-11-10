@@ -1,7 +1,7 @@
 'use client';
 
 import type {DirectMessageSearchResult} from '@/lib/supabase-rest';
-import {DIRECT_MESSAGE_SEARCH_MAX_RESULTS} from '@/lib/chat-search-pagination';
+import {DIRECT_MESSAGE_SEARCH_MAX_RESULTS} from '@/lib/supabase-rest';
 
 type Props={
   query:string;
