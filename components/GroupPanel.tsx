@@ -16,6 +16,7 @@ import {shouldAcknowledgeGroupRead,countNewIncomingBelow} from '@/lib/group-read
 import {fetchOlderGroupMessages,prependOlderGroupMessages,preserveOlderGroupMessages,GROUP_HISTORY_MAX_LOADED} from '@/lib/group-pagination';
 import {startVisiblePolling} from '@/lib/visible-polling';
 import {createAbortableRequestScope} from '@/lib/request-abort-scope';
+import {watchNetworkStatus} from '@/lib/network-status';
 type Props={token:string;userId:string;group:Group;onBack:()=>void;onShowProfile:(id:string)=>void;onDraftChange:(groupId:string,text:string)=>void};
 export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDraftChange}:Props){
  const [messages,setMessages]=useState<GroupMessage[]>([]);
@@ -98,13 +99,7 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
   draftVersionRef.current+=1;
   setDraft(readGroupDrafts(userId)[group.id]??'');
  },[group.id,userId]);
- useEffect(()=>{
-  const update=()=>setOnline(navigator.onLine);
-  update();
-  window.addEventListener('online',update);
-  window.addEventListener('offline',update);
-  return()=>{window.removeEventListener('online',update);window.removeEventListener('offline',update);};
- },[]);
+ useEffect(()=>watchNetworkStatus(setOnline),[]);
  function changeDraft(text:string){
   draftVersionRef.current+=1;
   setDraft(text);
