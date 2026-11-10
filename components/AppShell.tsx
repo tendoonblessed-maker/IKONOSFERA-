@@ -900,6 +900,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
         setOlderMessagesError(true);
       }
     }finally{
+      if(controller.signal.aborted)prependScrollRef.current=null;
       olderHistoryAbortScopeRef.current.clear(controller);
       // An old chat request must not unlock a newly opened chat's pagination.
       if(stillInChat()){
