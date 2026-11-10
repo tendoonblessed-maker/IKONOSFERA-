@@ -57,7 +57,7 @@ test('search queries with quotes, commas and Unicode are quoted/encoded, not ope
  assert.equal(a.get('group_id'),'eq.'+GROUP);
  assert.ok(a.get('body').startsWith('ilike."%'));
  assert.ok(a.get('body').includes('a.b, (текст)'));
- assert.ok(a.get('body').includes('\\"кавычка\\"'));
+ assert.ok(a.get('body').includes('\"кавычка\"'));
  assert.equal(a.get('limit'),'25');
  assert.equal(a.get('offset'),'24');
 });
@@ -66,8 +66,8 @@ test('SQL wildcards are escaped instead of querying every message',()=>{
  const {api}=setup();
  assert.equal(api.normalizeGroupSearch('  два   слова  '),'два слова');
  const filter=params(api.buildGroupSearchPath(GROUP,'a_% test',0)).get('body');
- assert.ok(filter.includes('\\_'));
- assert.ok(filter.includes('\\%'));
+ assert.ok(filter.includes('\_'));
+ assert.ok(filter.includes('\%'));
  assert.throws(()=>api.buildGroupSearchPath(GROUP,'search*',0),/не поддерживается/);
 });
 
@@ -167,6 +167,6 @@ test('group search and every historical-context GET use portable deadlines witho
   assert.ok(call.options.signal instanceof AbortSignal);
  }
  const source=read('lib/group-search.ts');
- assert.match(source,/fetchWithTimeout\\(fetch/);
- assert.doesNotMatch(source,/AbortSignal\\.timeout/);
+ assert.match(source,/fetchWithTimeout\(fetch/);
+ assert.doesNotMatch(source,/AbortSignal\.timeout/);
 });
