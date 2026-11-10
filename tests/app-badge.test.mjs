@@ -78,3 +78,17 @@ test('AppShell mirrors direct and group unread totals without requesting notific
  assert.match(shell,/rows\.reduce\(\(sum,row\)=>sum\+Number\(row\.preview\?\.unread_count\|\|0\),0\)\+groups\.reduce/);
  assert.doesNotMatch(shell,/Notification\.requestPermission/);
 });
+
+test('logout clears account-scoped group unread snapshots before resetting the account',()=>{
+ const logout=shell.match(/async function logout\\(\\)\\{([\\s\\S]*?)\\n  \\}\\n  async function install/);
+ assert.ok(logout,'logout handler should remain discoverable');
+ const body=logout[1];
+ const clearGroups=body.indexOf('setGroups([])');
+ const clearOverviews=body.indexOf('setGroupOverviews({})');
+ const resetAccount=body.indexOf("setUserId('')");
+ assert.ok(clearGroups>=0,'logout must clear the previous account group list');
+ assert.ok(clearOverviews>=0,'logout must clear the previous account unread overview');
+ assert.ok(resetAccount>=0,'logout must reset the signed-in account');
+ assert.ok(clearGroups<resetAccount&&clearOverviews<resetAccount,
+  'account-scoped unread state must be cleared before the account identity changes');
+});
