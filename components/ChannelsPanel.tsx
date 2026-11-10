@@ -1,6 +1,7 @@
 'use client';
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import { createSingleFlightGate, sendThenRefresh } from "@/lib/channel-discussion-send";
+import { applyOwnPostReaction, createChannelPostReactionGate, updateChannelPostReaction } from "@/lib/channel-post-reaction";
 import { listProfiles, type Profile } from "@/lib/supabase-rest";
 import StatusEmoji from "@/components/StatusEmoji";
 import {
@@ -48,6 +49,12 @@ export default function ChannelsPanel({token,userId,channel,onBack,onShowProfile
   setBusy(true);
   try{await pending;return true;}finally{setBusy(false);}
  }
+ const reactionGateRef=useRef<ReturnType<typeof createChannelPostReactionGate>|null>(null);
+ if(!reactionGateRef.current)reactionGateRef.current=createChannelPostReactionGate();
+ const reactionScope=channel.id+":"+userId;
+ const reactionScopeRef=useRef(reactionScope);
+ reactionScopeRef.current=reactionScope;
+ const [pendingReactionKeys,setPendingReactionKeys]=useState<Set<string>>(new Set());
  const reload=useCallback(async()=>{const list=await listChannelPosts(token,channel.id);setPosts(list);setReactions(await listPostReactions(token,list.map(p=>p.id)));},[token,channel.id]);
  const loadDiscussion=useCallback(async()=>{
   const [messages,replies]=await Promise.all([listDiscussionMessages(token,channel.id),listDiscussionComments(token,channel.id)]);
@@ -108,11 +115,34 @@ export default function ChannelsPanel({token,userId,channel,onBack,onShowProfile
   catch(e){setError(readable(e));}finally{setBusy(false);}
  }
   async function react(postId:string,emoji:ReactionEmoji){
-  if(busy)return;setBusy(true);setError("");
+  if(busy)return;
+  const scope=reactionScope;
+  const key=scope+":"+postId;
   const mine=reactions.find(r=>r.post_id===postId&&r.user_id===userId);
-  try{await setPostReaction(token,userId,postId,mine?.emoji===emoji?null:emoji);
-   setReactions(await listPostReactions(token,posts.map(p=>p.id)));setReactionPicker(null);
-  }catch(e){setError(readable(e));}finally{setBusy(false);}
+  const nextEmoji=mine?.emoji===emoji?null:emoji;
+  const pending=reactionGateRef.current!.run(key,()=>updateChannelPostReaction(
+   ()=>setPostReaction(token,userId,postId,nextEmoji),
+   ()=>setReactions(current=>applyOwnPostReaction(current,postId,userId,nextEmoji)),
+   ()=>listPostReactions(token,posts.map(p=>p.id))
+  ));
+  if(!pending)return;
+  setError("");setNotice("");
+  setPendingReactionKeys(current=>new Set(current).add(key));
+  try{
+   const result=await pending;
+   if(reactionScopeRef.current!==scope)return;
+   setReactionPicker(null);
+   if(result.status==="refresh-failed"){
+    setNotice("Реакция сохранена, но список реакций не обновился. Не ставь её повторно — обнови ленту.");
+   }else{
+    setReactions(result.value);
+    setNotice("Реакция обновлена.");
+   }
+  }catch(e){
+   if(reactionScopeRef.current===scope)setError(readable(e));
+  }finally{
+   setPendingReactionKeys(current=>{const next=new Set(current);next.delete(key);return next;});
+  }
  }
  useEffect(()=>{void reload().catch(e=>setError(readable(e)));setOpenComments(null);setComments([]);setBody("");setFile(null);},[reload]);
  async function showComments(postId:string){
@@ -243,9 +273,9 @@ export default function ChannelsPanel({token,userId,channel,onBack,onShowProfile
     {post.attachment_path&&post.attachment_type==="audio"&&<audio className="channel-post-audio" src={imageUrl(post.attachment_path)||""} controls preload="metadata"/>}
     {post.attachment_path&&post.attachment_type==="file"&&<a className="channel-file-link" href={imageUrl(post.attachment_path)||"#"} target="_blank" rel="noreferrer" download>📎 Скачать вложение</a>}
     <div className="reaction-bar channel-reaction-bar">
-     {REACTION_EMOJIS.filter(emoji=>reactions.some(r=>r.post_id===post.id&&r.emoji===emoji)).map(emoji=><button type="button" key={emoji} className={"reaction-pill"+(reactions.some(r=>r.post_id===post.id&&r.user_id===userId&&r.emoji===emoji)?" mine":"")} disabled={busy} onClick={()=>void react(post.id,emoji)}>{emoji} <span>{reactions.filter(r=>r.post_id===post.id&&r.emoji===emoji).length}</span></button>)}
-     <button type="button" className="reaction-add" onClick={()=>setReactionPicker(reactionPicker===post.id?null:post.id)} aria-label="Поставить реакцию">☺ +</button>
-     {reactionPicker===post.id&&<div className="reaction-picker">{REACTION_EMOJIS.map(emoji=><button key={emoji} type="button" disabled={busy} onClick={()=>void react(post.id,emoji)} aria-label={"Реакция "+emoji}>{emoji}</button>)}</div>}
+     {REACTION_EMOJIS.filter(emoji=>reactions.some(r=>r.post_id===post.id&&r.emoji===emoji)).map(emoji=><button type="button" key={emoji} className={"reaction-pill"+(reactions.some(r=>r.post_id===post.id&&r.user_id===userId&&r.emoji===emoji)?" mine":"")} disabled={busy||pendingReactionKeys.has(reactionScope+":"+post.id)} onClick={()=>void react(post.id,emoji)}>{emoji} <span>{reactions.filter(r=>r.post_id===post.id&&r.emoji===emoji).length}</span></button>)}
+     <button type="button" className="reaction-add" disabled={busy||pendingReactionKeys.has(reactionScope+":"+post.id)} onClick={()=>setReactionPicker(reactionPicker===post.id?null:post.id)} aria-label="Поставить реакцию">☺ +</button>
+     {reactionPicker===post.id&&<div className="reaction-picker">{REACTION_EMOJIS.map(emoji=><button key={emoji} type="button" disabled={busy||pendingReactionKeys.has(reactionScope+":"+post.id)} onClick={()=>void react(post.id,emoji)} aria-label={"Реакция "+emoji}>{emoji}</button>)}</div>}
     </div>
     <div className="channel-post-actions"><button type="button" onClick={()=>void showComments(post.id)}>{openComments===post.id?"Скрыть комментарии":"Комментарии"}</button>
     {mine&&<button type="button" disabled={busy} onClick={()=>{setEditingPostId(post.id);setEditingBody(post.body);}}>Редактировать</button>}{mine&&<button type="button" disabled={busy} onClick={()=>void erasePost(post)}>Удалить пост</button>}</div>
