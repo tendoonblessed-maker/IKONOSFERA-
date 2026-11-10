@@ -205,15 +205,6 @@ export async function listReplyTargets(token:string,chatId:string,ids:string[]):
 export type DirectMessageSearchResult=Pick<ChatMessage,'id'|'sender_id'|'body'|'created_at'>;
 export const DIRECT_MESSAGE_SEARCH_PAGE_SIZE=30;
 export const DIRECT_MESSAGE_SEARCH_MAX_OFFSET=600;
-export const DIRECT_MESSAGE_SEARCH_MAX_RESULTS=DIRECT_MESSAGE_SEARCH_MAX_OFFSET+DIRECT_MESSAGE_SEARCH_PAGE_SIZE;
-export type DirectMessageSearchPageState={hasMore:boolean;limitReached:boolean};
-export function getDirectMessageSearchPageState(offset:number,matchCount:number):DirectMessageSearchPageState{
- const safeOffset=Number.isFinite(offset)?Math.max(0,Math.floor(offset)):0;
- const safeCount=Number.isFinite(matchCount)?Math.max(0,Math.floor(matchCount)):0;
- const hasExtra=safeCount>DIRECT_MESSAGE_SEARCH_PAGE_SIZE;
- return {hasMore:hasExtra&&safeOffset<DIRECT_MESSAGE_SEARCH_MAX_OFFSET,
-  limitReached:hasExtra&&safeOffset>=DIRECT_MESSAGE_SEARCH_MAX_OFFSET};
-}
 export async function searchDirectMessages(
  token:string,chatId:string,query:string,offset=0
 ):Promise<DirectMessageSearchResult[]>{

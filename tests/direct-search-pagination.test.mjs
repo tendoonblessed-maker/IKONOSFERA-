@@ -4,7 +4,7 @@ import {readFileSync} from 'node:fs';
 import {
  DIRECT_MESSAGE_SEARCH_MAX_OFFSET,DIRECT_MESSAGE_SEARCH_MAX_RESULTS,
  DIRECT_MESSAGE_SEARCH_PAGE_SIZE,getDirectMessageSearchPageState
-} from '../lib/supabase-rest.ts';
+} from '../lib/chat-search-pagination.ts';
 
 const source=path=>readFileSync(new URL('../'+path,import.meta.url),'utf8');
 
@@ -28,6 +28,8 @@ test('PostgREST requests and the search panel share the documented bounded-page 
  const app=source('components/AppShell.tsx');
  const panel=source('components/DirectMessageSearchPanel.tsx');
  const migration=source('supabase/migrations/20261029_080000_direct_message_full_history_search.sql');
+ assert.match(api,/DIRECT_MESSAGE_SEARCH_PAGE_SIZE=30/);
+ assert.match(api,/DIRECT_MESSAGE_SEARCH_MAX_OFFSET=600/);
  assert.match(api,/p_limit:DIRECT_MESSAGE_SEARCH_PAGE_SIZE\+1/);
  assert.match(api,/Math\.min\(DIRECT_MESSAGE_SEARCH_MAX_OFFSET,Math\.floor\(offset\)\)/);
  assert.match(migration,/offset greatest\(0,least\(coalesce\(p_offset,0\),600\)\)/);
