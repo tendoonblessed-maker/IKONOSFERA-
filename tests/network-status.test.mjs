@@ -59,6 +59,15 @@ test('group connectivity listeners are removed idempotently on unmount',()=>{
  assert.deepEqual(values,[true],'a disposed panel cannot receive queued lifecycle updates');
 });
 
+
+test('AppShell refreshes the direct-chat offline banner and composer on visibility resume',()=>{
+ const shell=readFileSync(new URL('../components/AppShell.tsx',import.meta.url),'utf8');
+ assert.match(shell,/import \{watchNetworkStatus\} from '@\\/lib\\/network-status'/);
+ assert.match(shell,/useEffect\(\(\)=>watchNetworkStatus\(online=>\{/);
+ assert.match(shell,/setNetworkOnline\(online\)/);
+ assert.doesNotMatch(shell,/window\.addEventListener\('online',update\)/);
+});
+
 test('GroupPanel uses the shared network lifecycle helper for its offline composer state',()=>{
  const panel=readFileSync(new URL('../components/GroupPanel.tsx',import.meta.url),'utf8');
  assert.match(panel,/import \{watchNetworkStatus\} from '@\/lib\/network-status'/);
