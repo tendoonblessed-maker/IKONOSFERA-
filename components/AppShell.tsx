@@ -1196,8 +1196,10 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
     groupDraftsOwnerRef.current='';setGroupDraftPreviews({});
     draftsOwnerRef.current='';draftsRef.current={};setDraftPreviews({});setDraft('');
     previewCacheRef.current={ownerId:'',previews:new Map()};
+    // Clear account-scoped inbox snapshots before the next account can render.
+    // In particular, group unread counts must never leak into the next PWA badge.
+    setRows([]);setGroups([]);setGroupOverviews({});setSavedContacts([]);setBlockedUsers([]);setSelected(null);
     setSession(null);setUserId('');setProfile(null);setAnonymous(false);
-    setRows([]);setSavedContacts([]);setBlockedUsers([]);setSelected(null);
     setProfileTarget(null);setSelectedChannel(null);setChannels([]);
     setChatMessages([]);setBusy(false);
     // Remote revocation is best-effort; a late response must never log out
