@@ -100,7 +100,7 @@ export default function ChannelsPanel({token,userId,channel,onBack,onShowProfile
   setOlderPostsError("");
   const isCurrent=()=>postsRequestGuard.isCurrent(requestId)
    &&channelScopeRef.current.token===token
-   &&channelScopeRef.current.userId === userId
+   &&channelScopeRef.current.userId===userId
    &&channelScopeRef.current.channelId===channel.id;
   try{
    const list=await listChannelPosts(token,channel.id);
@@ -123,7 +123,7 @@ export default function ChannelsPanel({token,userId,channel,onBack,onShowProfile
   const requestId=olderPostsRequestGuard.begin();
   const isCurrent=()=>olderPostsRequestGuard.isCurrent(requestId)
    &&channelScopeRef.current.token===token
-   &&channelScopeRef.current.userId === userId
+   &&channelScopeRef.current.userId===userId
    &&channelScopeRef.current.channelId===channel.id;
   setOlderPostsLoading(true);setOlderPostsError("");
   try{
@@ -150,7 +150,7 @@ export default function ChannelsPanel({token,userId,channel,onBack,onShowProfile
   const requestId=discussionRequestGuard.begin();
   const isCurrent=()=>discussionRequestGuard.isCurrent(requestId)
    &&channelScopeRef.current.token===token
-   &&channelScopeRef.current.userId === userId
+   &&channelScopeRef.current.userId===userId
    &&channelScopeRef.current.channelId===channel.id;
   try{
    const [messages,replies]=await Promise.all([listDiscussionMessages(token,channel.id),listDiscussionComments(token,channel.id)]);
