@@ -4,6 +4,7 @@ import {imageUrl} from '@/lib/social';
 import FloatingActionMenu from '@/components/FloatingActionMenu';
 import StatusEmoji from '@/components/StatusEmoji';
 import {directInboxPreviewText,inboxRowLabel,inboxUnreadBadge,inboxUnreadCount} from '@/lib/inbox-row-presentation';
+import {inboxDraftPreview} from '@/lib/inbox-draft-preview';
 import type {ChatPreview,DirectChat,Profile} from '@/lib/supabase-rest';
 
 type Row={chat:DirectChat;other:Profile|null;preview:ChatPreview|null;previewUnavailable?:boolean};
@@ -39,7 +40,7 @@ export default function ChatInboxRow({row,currentUserId,active,selectionMode=fal
  const pinned=Boolean(chat.pinned_for?.includes(currentUserId));
  const unread=inboxUnreadCount(preview?.unread_count);
  const previewText=directInboxPreviewText(preview,row.previewUnavailable);
- const draftText=draft.trim().replace(/\s+/g,' ').slice(0,110);
+ const draftText=inboxDraftPreview(draft);
  const outgoing=preview?.last_sender_id===currentUserId;
  const lastText=outgoing?'Вы: '+previewText:previewText;
  const name=other?.display_name||other?.username||'Собеседник';
