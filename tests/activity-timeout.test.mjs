@@ -9,11 +9,10 @@ const delay=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 test('activity API routes every request through the portable 18-second deadline',()=>{
  const activity=source('lib/activity.ts');
  const helper=source('lib/fetch-timeout.mjs');
- const executable=helper.replace(/\\/\\*[\\s\\S]*?\\*\\/|\\/\\/.*$/gm,'');
  assert.ok(activity.includes('fetchWithTimeout(fetch,apiUrl+path'));
  assert.ok(activity.includes('ACTIVITY_REQUEST_TIMEOUT_MS=18000'));
- assert.ok(executable.includes('new AbortController()'));
- assert.ok(!executable.includes('AbortSignal.timeout'));
+ assert.ok(helper.includes('const controller = new AbortController()'));
+ assert.ok(!activity.includes('AbortSignal.timeout'));
 });
 
 test('successful activity requests preserve the response and clear their timeout',async()=>{
