@@ -42,12 +42,12 @@ test('core Supabase HTTP requests use portable AbortController deadlines',async(
  assert.equal(calls[0].options.headers.Authorization,'Bearer signed-user-jwt');
  assert.equal(calls[0].options.cache,'no-store');
  assert.ok(calls[0].options.signal instanceof AbortSignal);
- assert.match(source,/fetchWithTimeout\\(fetch,/);
- assert.match(source,/SUPABASE_HTTP_TIMEOUT_MS\\s*=\\s*18000/);
+ assert.ok(source.includes('fetchWithTimeout(fetch,'));
+ assert.ok(source.includes('SUPABASE_HTTP_TIMEOUT_MS = 18000'));
  const httpStart=source.indexOf('async function http');
  const httpEnd=source.indexOf('export function loadSession',httpStart);
  assert.ok(httpStart>=0&&httpEnd>httpStart);
- assert.doesNotMatch(source.slice(httpStart,httpEnd),/AbortSignal\\.timeout/);
+ assert.ok(!source.slice(httpStart,httpEnd).includes('AbortSignal.timeout'));
 });
 
 test('core Supabase HTTP deadline also bounds mutating requests without automatic retries',async()=>{
