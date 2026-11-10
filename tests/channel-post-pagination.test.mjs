@@ -38,6 +38,7 @@ function socialHarness(handler){
   require(name){
    if(name==='@/lib/supabase-rest')return {apiUrl:'https://unit.test'};
    if(name==='@/lib/channel-post-pagination')return pagination;
+   if(name==='@/lib/channel-comment-pagination')return {};
    if(name==='@/lib/media-object-path')return {deleteMediaObject:async()=>{}};
    throw Error('Unexpected module '+name);
   }
