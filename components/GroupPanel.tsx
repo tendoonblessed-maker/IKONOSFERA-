@@ -13,7 +13,7 @@ import {getOrCreateGroupSendAttempt,clearGroupSendAttempt} from '@/lib/group-sen
 import {subscribeGroupChanges} from '@/lib/group-realtime';
 import {mergeConfirmedGroupMessages,CONFIRMED_GROUP_MESSAGE_GRACE_MS,type ConfirmedGroupMessage} from '@/lib/group-history';
 import {shouldAcknowledgeGroupRead,countNewIncomingBelow} from '@/lib/group-read-position';
-import {fetchOlderGroupMessages,prependOlderGroupMessages,preserveOlderGroupMessages,GROUP_HISTORY_MAX_LOADED} from '@/lib/group-pagination';
+import {fetchOlderGroupMessages,prependOlderGroupMessages,preserveOlderGroupMessages,shouldShowGroupHistoryLimitNotice,GROUP_HISTORY_MAX_LOADED} from '@/lib/group-pagination';
 type Props={token:string;userId:string;group:Group;onBack:()=>void;onShowProfile:(id:string)=>void;onDraftChange:(groupId:string,text:string)=>void};
 export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDraftChange}:Props){
  const [messages,setMessages]=useState<GroupMessage[]>([]);
@@ -29,6 +29,7 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
  const [retryAvailable,setRetryAvailable]=useState(false);
  const [initialLoading,setInitialLoading]=useState(true);
  const [hasOlder,setHasOlder]=useState(false);
+ const [historyLimitReached,setHistoryLimitReached]=useState(false);
  const [loadingOlder,setLoadingOlder]=useState(false);
  const [olderError,setOlderError]=useState('');
  const [showJumpToLatest,setShowJumpToLatest]=useState(false);
@@ -68,7 +69,7 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
   olderLoadingRef.current=false;
   initialPageLoadedRef.current=false;
   prependScrollRef.current=null;
-  setHasOlder(false);setLoadingOlder(false);setOlderError('');
+  setHasOlder(false);setHistoryLimitReached(false);setLoadingOlder(false);setOlderError('');
   setMessages([]);
   setInitialLoading(true);
   latestGroupMessageRef.current=null;
@@ -291,9 +292,12 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
    if(!page.messages.length){
     prependScrollRef.current=null;
     setHasOlder(false);
+    setHistoryLimitReached(false);
    }else{
+    const totalLoaded=messages.length+page.messages.length;
+    setHistoryLimitReached(shouldShowGroupHistoryLimitNotice(messages.length,page.messages.length,page.hasMore));
     setMessages(current=>prependOlderGroupMessages(current,page.messages));
-    setHasOlder(page.hasMore&&messages.length+page.messages.length<GROUP_HISTORY_MAX_LOADED);
+    setHasOlder(page.hasMore&&totalLoaded<GROUP_HISTORY_MAX_LOADED);
    }
   }catch(e){
    if(requestId===olderRequestRef.current){
@@ -445,6 +449,9 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
    {loadingOlder?'Загружаем старые сообщения…':'Показать более ранние сообщения'}
   </button>
  </div>}
+ {historyLimitReached&&<p className="ik-group-history-limit" role="status">
+  Показаны последние {GROUP_HISTORY_MAX_LOADED.toLocaleString('ru-RU')} сообщений. Более ранние можно найти через поиск по истории.
+ </p>}
  {!initialLoading&&olderError&&<div className="ik-group-older-error" role="alert">
   <span>{olderError}</span>
   <button type="button" onClick={()=>{setOlderError('');void loadOlder();}}>Повторить</button>
