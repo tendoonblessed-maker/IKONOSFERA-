@@ -42,12 +42,12 @@ test('core Supabase HTTP requests use portable AbortController deadlines',async(
  assert.equal(calls[0].options.headers.Authorization,'Bearer signed-user-jwt');
  assert.equal(calls[0].options.cache,'no-store');
  assert.ok(calls[0].options.signal instanceof AbortSignal);
- assert.match(source,/fetchWithTimeout\(fetch,/);
- assert.match(source,/SUPABASE_HTTP_TIMEOUT_MS\s*=\s*18000/);
+ assert.match(source,/fetchWithTimeout\\(fetch,/);
+ assert.match(source,/SUPABASE_HTTP_TIMEOUT_MS\\s*=\\s*18000/);
  const httpStart=source.indexOf('async function http');
  const httpEnd=source.indexOf('export function loadSession',httpStart);
  assert.ok(httpStart>=0&&httpEnd>httpStart);
- assert.doesNotMatch(source.slice(httpStart,httpEnd),/AbortSignal\.timeout/);
+ assert.doesNotMatch(source.slice(httpStart,httpEnd),/AbortSignal\\.timeout/);
 });
 
 test('core Supabase HTTP deadline also bounds mutating requests without automatic retries',async()=>{
@@ -60,4 +60,43 @@ test('core Supabase HTTP deadline also bounds mutating requests without automati
  assert.equal(calls[0].options.method,'POST');
  assert.equal(calls[0].options.headers.Authorization,'Bearer signed-user-jwt');
  assert.ok(calls[0].options.signal instanceof AbortSignal);
+});
+
+test('the same deadline aborts a response whose text body stalls after headers',async()=>{
+ let signal;
+ const pending=fetchWithTimeout(async(_url,init)=>{
+  signal=init.signal;
+  return {text:()=>new Promise(()=>{})};
+ },'/slow-text',{},5,'Тело ответа не завершилось вовремя.').then(response=>response.text());
+ await assert.rejects(pending,/Тело ответа не завершилось вовремя/);
+ assert.equal(signal.aborted,true);
+});
+
+test('the same deadline aborts a response whose JSON body stalls after headers',async()=>{
+ let signal;
+ const pending=fetchWithTimeout(async(_url,init)=>{
+  signal=init.signal;
+  return {json:()=>new Promise(()=>{})};
+ },'/slow-json',{},5,'JSON-ответ не завершился вовремя.').then(response=>response.json());
+ await assert.rejects(pending,/JSON-ответ не завершился вовремя/);
+ assert.equal(signal.aborted,true);
+});
+
+test('a completed response body clears the deadline and preserves ordinary stream errors',async()=>{
+ let signal;
+ const response={text:async()=> 'ok'};
+ const result=await fetchWithTimeout(async(_url,init)=>{
+  signal=init.signal;
+  return response;
+ },'/fast-body',{},5).then(value=>value.text());
+ assert.equal(result,'ok');
+ await new Promise(resolve=>setTimeout(resolve,15));
+ assert.equal(signal.aborted,false);
+
+ const streamError=new TypeError('connection reset while reading body');
+ await assert.rejects(
+  fetchWithTimeout(async()=>({text:()=>Promise.reject(streamError)}),'/broken-body',{},50)
+   .then(value=>value.text()),
+  error=>error===streamError
+ );
 });
