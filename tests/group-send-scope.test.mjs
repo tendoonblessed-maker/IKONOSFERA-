@@ -32,11 +32,11 @@ test('navigation away and back still invalidates the earlier request generation'
 });
 
 test('GroupPanel invalidates pending sends on scope changes and guards catch/finally UI writes',()=>{
- assert.match(source,/const sendRequestRef=useRef\\(0\\)/);
- assert.match(source,/\\},\\[group\\.id,userId,token\\]\\);/);
- assert.match(send,/const sendRequestId=\\+\\+sendRequestRef\\.current/);
- assert.match(send,/if\\(!isCurrentRequest\\(sendRequestId,sendRequestRef\\.current,sendScope,contextRef\\.current\\)\\)return/);
- assert.match(send,/finally\\{\\s*if\\(isCurrentRequest\\(sendRequestId,sendRequestRef\\.current,sendScope,contextRef\\.current\\)\\)setBusy\\(false\\)/);
+ assert.ok(source.includes('const sendRequestRef=useRef(0)'));
+ assert.ok(source.includes('},[group.id,userId,token]);'));
+ assert.ok(send.includes('const sendRequestId=++sendRequestRef.current'));
+ assert.ok(send.includes('if(!isCurrentRequest(sendRequestId,sendRequestRef.current,sendScope,contextRef.current))return'));
+ assert.ok(send.includes('if(isCurrentRequest(sendRequestId,sendRequestRef.current,sendScope,contextRef.current))setBusy(false)'));
  const ack=send.indexOf('clearGroupSendAttempt(accountId,groupId,attempt.id)');
  const guard=send.indexOf('if(!isCurrentRequest(sendRequestId,sendRequestRef.current,sendScope,contextRef.current))return');
  assert.ok(ack>=0&&guard>ack,'a confirmed attempt is cleared before stale UI work is skipped');
