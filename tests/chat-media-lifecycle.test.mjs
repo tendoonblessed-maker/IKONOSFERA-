@@ -6,6 +6,7 @@ import ts from 'typescript';
 
 const helperSource=readFileSync(new URL('../lib/chat-media-lifecycle.ts',import.meta.url),'utf8');
 const componentSource=readFileSync(new URL('../components/ChatMedia.tsx',import.meta.url),'utf8');
+const previewSource=readFileSync(new URL('../components/ChatAttachmentPreview.tsx',import.meta.url),'utf8');
 const compiled=ts.transpileModule(helperSource,{
  compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}
 }).outputText;
@@ -82,4 +83,14 @@ test('ChatMedia pauses its player on page hide and removes lifecycle listeners o
  assert.match(componentSource,/watchChatMediaPageLifecycle\(element,document,window\)/);
  assert.match(componentSource,/mediaLifecycleCleanupRef\.current\?\.\(\)/);
  assert.match(componentSource,/mediaLifecycleCleanupRef\.current=null/);
+});
+
+test('local attachment preview stops audio and video when the modal detaches',()=>{
+ assert.match(previewSource,/import \{pauseChatMediaOnDetach,watchChatMediaPageLifecycle\} from ['"]@\/lib\/chat-media-lifecycle['"]/);
+ assert.match(previewSource,/const bindMediaElement=useCallback\(/);
+ assert.match(previewSource,/mediaLifecycleCleanupRef\.current\?\.\(\)/);
+ assert.match(previewSource,/pauseChatMediaOnDetach\(mediaElementRef\.current\)/);
+ assert.match(previewSource,/watchChatMediaPageLifecycle\(element,document,window\)/);
+ assert.match(previewSource,/<video ref=\{bindMediaElement\}/);
+ assert.match(previewSource,/<audio ref=\{bindMediaElement\}/);
 });

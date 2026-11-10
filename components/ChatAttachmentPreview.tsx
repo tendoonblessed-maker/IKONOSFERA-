@@ -1,6 +1,7 @@
 'use client';
 
-import {useEffect,useRef,useState} from 'react';
+import {useCallback,useEffect,useRef,useState} from 'react';
+import {pauseChatMediaOnDetach,watchChatMediaPageLifecycle} from '@/lib/chat-media-lifecycle';
 import {createPortal} from 'react-dom';
 
 type Props={
@@ -18,6 +19,20 @@ export default function ChatAttachmentPreview({file,caption,sending,online,onCap
  const dialogRef=useRef<HTMLElement|null>(null);
  const captionRef=useRef<HTMLTextAreaElement|null>(null);
  const sendRef=useRef<HTMLButtonElement|null>(null);
+ const mediaElementRef=useRef<HTMLMediaElement|null>(null);
+ const mediaLifecycleCleanupRef=useRef<(()=>void)|null>(null);
+ const bindMediaElement=useCallback((element:HTMLMediaElement|null)=>{
+  if(element){
+   mediaElementRef.current=element;
+   mediaLifecycleCleanupRef.current=watchChatMediaPageLifecycle(element,document,window);
+   return;
+  }
+  // Stop local preview playback before the modal or selected file is removed.
+  mediaLifecycleCleanupRef.current?.();
+  mediaLifecycleCleanupRef.current=null;
+  pauseChatMediaOnDetach(mediaElementRef.current);
+  mediaElementRef.current=null;
+ },[]);
  const closeRef=useRef(onCancel);
  closeRef.current=onCancel;
  const busyRef=useRef(sending);
@@ -77,9 +92,9 @@ export default function ChatAttachmentPreview({file,caption,sending,online,onCap
      {file.type.startsWith('image/')&&src
        ?<img src={src} alt="Предпросмотр фотографии"/>
        :file.type.startsWith('video/')&&src
-         ?<video src={src} controls playsInline preload="metadata" aria-label="Предпросмотр видео"/>
+         ?<video ref={bindMediaElement} src={src} controls playsInline preload="metadata" aria-label="Предпросмотр видео"/>
          :file.type.startsWith('audio/')&&src
-           ?<audio src={src} controls preload="metadata" aria-label="Прослушать запись"/>
+           ?<audio ref={bindMediaElement} src={src} controls preload="metadata" aria-label="Прослушать запись"/>
            :<span className="ik-attachment-preview-file-icon" aria-hidden="true">📎</span>}
     </div>
     <div className="ik-attachment-preview-details">
