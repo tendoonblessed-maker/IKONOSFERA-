@@ -62,7 +62,7 @@ test('group connectivity listeners are removed idempotently on unmount',()=>{
 
 test('AppShell refreshes the direct-chat offline banner and composer on visibility resume',()=>{
  const shell=readFileSync(new URL('../components/AppShell.tsx',import.meta.url),'utf8');
- assert.match(shell,/import \{watchNetworkStatus\} from '@\\/lib\\/network-status'/);
+ assert.ok(shell.includes("import {watchNetworkStatus} from '@/lib/network-status';"));
  assert.match(shell,/useEffect\(\(\)=>watchNetworkStatus\(online=>\{/);
  assert.match(shell,/setNetworkOnline\(online\)/);
  assert.doesNotMatch(shell,/window\.addEventListener\('online',update\)/);
