@@ -3,6 +3,7 @@ import {test} from 'node:test';
 import {readFileSync} from 'node:fs';
 import vm from 'node:vm';
 import ts from 'typescript';
+import {fetchWithTimeout} from '../lib/fetch-timeout.mjs';
 
 const UUID='11111111-1111-4111-8111-111111111111';
 const GROUP='22222222-2222-4222-8222-222222222222';
@@ -21,11 +22,11 @@ function setup(fetchHandler){
  const ctx={
   exports,
   require(name){
-   assert.equal(name,'@/lib/supabase-rest');
-   return {apiUrl:'https://unit-test.invalid'};
+   if(name==='@/lib/supabase-rest')return {apiUrl:'https://unit-test.invalid'};
+   if(name==='@/lib/fetch-timeout.mjs')return {fetchWithTimeout};
+   throw new Error('Unexpected import: '+name);
   },
   process:{env:{NEXT_PUBLIC_SUPABASE_ANON_KEY:'public-anon-test'}},
-  AbortSignal,
   fetch:async(url,options)=>{
    calls.push({url,options});
    return fetchHandler(url,options,calls.length);
