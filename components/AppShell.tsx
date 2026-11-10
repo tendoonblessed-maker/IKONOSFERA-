@@ -11,6 +11,7 @@ import ChatMedia from "@/components/ChatMedia";
 import ChatMessageText from "@/components/ChatMessageText";
 import {subscribeDirectChatChanges} from "@/lib/direct-realtime";
 import {startVisiblePolling} from "@/lib/visible-polling";
+import {watchNetworkStatus} from '@/lib/network-status';
 import {createAbortableRequestScope} from "@/lib/request-abort-scope";
 import {createSingleFlightRefreshGate} from "@/lib/single-flight-refresh";
 import {subscribeInboxChanges,type InboxChangeKind} from "@/lib/inbox-realtime";
@@ -163,24 +164,14 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
   // In-memory edits belong to one signed-in user; never reuse across accounts.
   useEffect(()=>{recentChannelUpdatesRef.current.clear();},[userId]);
 
-  useEffect(()=>{
-    // Browser online/offline is only a connectivity hint, not a guarantee
-    // that Supabase is reachable. Never auto-send unsent chat drafts.
-    const update=()=>{
-      const connected=navigator.onLine;
-      setNetworkOnline(connected);
-      if(connected)setError(previous=>previous.startsWith('Нет соединения с интернетом.')?'':previous);
-    };
-    update();
-    window.addEventListener('online',update);
-    window.addEventListener('offline',update);
-    window.addEventListener('pageshow',update); // iOS Safari back/forward cache
-    return()=>{
-      window.removeEventListener('online',update);
-      window.removeEventListener('offline',update);
-      window.removeEventListener('pageshow',update);
-    };
-  },[]);
+  useEffect(()=>watchNetworkStatus(online=>{
+    // Browser connectivity is only a hint, not proof that Supabase is reachable.
+    // Refresh on visibilitychange too, because mobile browsers may resume a
+    // suspended PWA without delivering a fresh online/pageshow event.
+    // Never auto-send unsent chat drafts after connectivity returns.
+    setNetworkOnline(online);
+    if(online)setError(previous=>previous.startsWith('Нет соединения с интернетом.')?'':previous);
+  }),[]);
 
   useEffect(()=>{confirmedMessagesRef.current.clear();},[userId]);
   // Invalidate every in-flight request when a different account signs in.
