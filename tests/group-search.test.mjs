@@ -3,6 +3,7 @@ import {test} from 'node:test';
 import {readFileSync} from 'node:fs';
 import vm from 'node:vm';
 import ts from 'typescript';
+import {fetchWithTimeout} from '../lib/fetch-timeout.mjs';
 
 const GROUP='11111111-1111-4111-8111-111111111111';
 const OTHER='22222222-2222-4222-8222-222222222222';
@@ -16,12 +17,13 @@ function setup(handler=()=>({ok:true,json:async()=>[]})){
  const calls=[];
  const exports={};
  const ctx={
-  exports,URLSearchParams,URL,AbortSignal,
+  exports,URLSearchParams,URL,
   process:{env:{NEXT_PUBLIC_SUPABASE_ANON_KEY:'test-anon'}},
   fetch:async(url,options)=>{calls.push({url,options});return handler(url,options,calls.length);},
   require(name){
-   assert.equal(name,'./supabase-rest');
-   return {apiUrl:'https://test.invalid'};
+   if(name==='./supabase-rest')return {apiUrl:'https://test.invalid'};
+   if(name==='./fetch-timeout.mjs')return {fetchWithTimeout};
+   throw new Error('Unexpected import: '+name);
   }
  };
  vm.runInNewContext(compiled,ctx,{filename:'group-search.cjs',timeout:2500});
@@ -96,6 +98,8 @@ test('context navigation refetches exact target with membership RLS and bounded 
   const p=params(call.url);
   assert.equal(p.get('group_id'),'eq.'+GROUP);
   assert.equal(call.options.headers.Authorization,'Bearer jwt');
+  assert.equal(call.options.cache,'no-store');
+  assert.ok(call.options.signal instanceof AbortSignal);
   assert.ok(Number(p.get('limit'))<=70);
  }
 });
@@ -144,4 +148,25 @@ test('sending a new post from an archival result restores the current group time
  assert.match(panel,/if\(browsingOlderRef\.current\)\{\n     \/\/ Sending from an archived search result/);
  assert.match(panel,/browsingOlderRef\.current=false;\n     followNewestRef\.current=true;\n     latestGroupMessageRef\.current=null;/);
  assert.match(panel,/void refresh\(\)\.catch\(e=>setError/);
+});
+
+
+test('group search and every historical-context GET use portable deadlines without global AbortSignal',async()=>{
+ const {api,calls}=setup(url=>{
+  const p=params(url);
+  if(p.get('id'))return result([ROW]);
+  if(p.get('order')==='created_at.desc,id.desc')return result([ROW]);
+  return result([ROW]);
+ });
+ await api.searchGroupMessages('jwt',GROUP,'архив',0);
+ await api.getGroupMessageContext('jwt',GROUP,ROW.id,ROW.created_at);
+ assert.equal(calls.length,4);
+ for(const call of calls){
+  assert.equal(call.options.method,'GET');
+  assert.equal(call.options.cache,'no-store');
+  assert.ok(call.options.signal instanceof AbortSignal);
+ }
+ const source=read('lib/group-search.ts');
+ assert.match(source,/fetchWithTimeout\\(fetch/);
+ assert.doesNotMatch(source,/AbortSignal\\.timeout/);
 });
