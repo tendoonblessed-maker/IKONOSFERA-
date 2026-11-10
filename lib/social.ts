@@ -1,5 +1,6 @@
 /* IKONOSFERA social API. All writes use the signed-in user's JWT and Supabase RLS. */
 import { apiUrl } from "@/lib/supabase-rest";
+import { mediaObjectUrl } from "@/lib/media-object-path";
 import { CHANNEL_POST_PAGE_SIZE, channelPostsPagePath } from "@/lib/channel-post-pagination";
 import { CHANNEL_COMMENT_PAGE_SIZE, channelCommentsPagePath } from "@/lib/channel-comment-pagination";
 const publicKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "";
@@ -37,8 +38,9 @@ export async function uploadPhoto(token:string,userId:string,file:File):Promise<
   return path;
 }
 export async function removeUpload(token:string,path:string):Promise<void>{
-  if(!imageUrl(path))return;
-  const res=await fetch(apiUrl+"/storage/v1/object/ikonosfera-media/"+path,{method:"DELETE",
+  const url=mediaObjectUrl(apiUrl,path);
+  if(!url)return;
+  const res=await fetch(url,{method:"DELETE",
     headers:{apikey:publicKey,Authorization:"Bearer "+token}});
   if(!res.ok&&res.status!==404){const obj=await res.json().catch(()=>null);throw Error(obj?.message||"Не удалось удалить файл");}
 }
