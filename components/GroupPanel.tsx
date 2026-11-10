@@ -14,6 +14,7 @@ import {subscribeGroupChanges} from '@/lib/group-realtime';
 import {mergeConfirmedGroupMessages,CONFIRMED_GROUP_MESSAGE_GRACE_MS,type ConfirmedGroupMessage} from '@/lib/group-history';
 import {shouldAcknowledgeGroupRead,countNewIncomingBelow} from '@/lib/group-read-position';
 import {fetchOlderGroupMessages,prependOlderGroupMessages,preserveOlderGroupMessages,GROUP_HISTORY_MAX_LOADED} from '@/lib/group-pagination';
+import {isCurrentRequest,type RequestScope} from '@/lib/request-scope';
 type Props={token:string;userId:string;group:Group;onBack:()=>void;onShowProfile:(id:string)=>void;onDraftChange:(groupId:string,text:string)=>void};
 export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDraftChange}:Props){
  const [messages,setMessages]=useState<GroupMessage[]>([]);
@@ -25,6 +26,7 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
  const [online,setOnline]=useState(true);
  const draftVersionRef=useRef(0);
  const [busy,setBusy]=useState(false);
+ const sendRequestRef=useRef(0);
  const [error,setError]=useState('');
  const [retryAvailable,setRetryAvailable]=useState(false);
  const [initialLoading,setInitialLoading]=useState(true);
@@ -62,6 +64,13 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
  const confirmedGroupMessagesRef=useRef<Map<string,ConfirmedGroupMessage>>(new Map());
  const contextRef=useRef({groupId:group.id,userId,token});
  contextRef.current={groupId:group.id,userId,token};
+ // A completion from a previous group/account/token must not unlock or overwrite
+ // the composer currently displayed after navigation or token rotation.
+ useEffect(()=>{
+  sendRequestRef.current++;
+  setBusy(false);setError('');setRetryAvailable(false);
+  return()=>{sendRequestRef.current++;};
+ },[group.id,userId,token]);
  useEffect(()=>{
   confirmedGroupMessagesRef.current.clear();
   olderRequestRef.current++;
@@ -357,21 +366,21 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
  if(!online||!navigator.onLine){setError('Нет интернета. Сообщение осталось в черновике.');return;}
  const body=draft.trim(),groupId=group.id,accountId=userId,requestToken=token;
  const sentDraftVersion=draftVersionRef.current;
+ const sendRequestId=++sendRequestRef.current;
+ const sendScope:RequestScope={groupId,userId:accountId,token:requestToken};
  setBusy(true);setError('');setRetryAvailable(false);
  try{
    // A network timeout does not tell us whether the POST committed. Reuse a
    // UUID stored for this exact draft until the server confirms its row.
    const attempt=getOrCreateGroupSendAttempt(accountId,groupId,body);
    const sent=await sendGroupMessage(requestToken,groupId,accountId,body,attempt.id);
-   // Use the actual server-returned message instead of waiting for another
-   // network request. Ignore results after account/group navigation.
-   if(contextRef.current.groupId!==groupId||contextRef.current.userId!==accountId
-      ||contextRef.current.token!==requestToken)return;
+   // The server acknowledged this exact idempotency key. Clear only that
+   // attempt even if the user has navigated away; never update another view.
+   clearGroupSendAttempt(accountId,groupId,attempt.id);
+   if(!isCurrentRequest(sendRequestId,sendRequestRef.current,sendScope,contextRef.current))return;
    confirmedGroupMessagesRef.current.set(sent.id,{
      message:sent,expiresAt:Date.now()+CONFIRMED_GROUP_MESSAGE_GRACE_MS
    });
-   // Clear the attempt only after DB acknowledgment and account/group guard.
-   clearGroupSendAttempt(accountId,groupId,attempt.id);
    if(browsingOlderRef.current){
      // Sending from an archived search result should return to the current
      // conversation rather than append a new post to historical context.
@@ -400,12 +409,13 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
      onDraftChange(groupId,'');
    }
  }catch(e){
-   if(contextRef.current.groupId!==groupId||contextRef.current.userId!==accountId
-      ||contextRef.current.token!==requestToken)return;
+   if(!isCurrentRequest(sendRequestId,sendRequestRef.current,sendScope,contextRef.current))return;
    setRetryAvailable(true);
    setError((e instanceof Error?e.message:'Ошибка отправки')+' · Черновик сохранён.');
  }
- finally{setBusy(false);}
+ finally{
+   if(isCurrentRequest(sendRequestId,sendRequestRef.current,sendScope,contextRef.current))setBusy(false);
+ }
  }
  const names=Object.fromEntries(members.map(p=>[p.id,p.display_name||p.username]));
  const memberById=new Map(members.map(p=>[p.id,p]));
