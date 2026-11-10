@@ -80,9 +80,10 @@ test('AppShell mirrors direct and group unread totals without requesting notific
 });
 
 test('logout clears account-scoped group unread snapshots before resetting the account',()=>{
- const logout=shell.match(/async function logout\\(\\)\\{([\\s\\S]*?)\\n  \\}\\n  async function install/);
- assert.ok(logout,'logout handler should remain discoverable');
- const body=logout[1];
+ const start=shell.indexOf('async function logout(){');
+ const end=shell.indexOf('async function install()',start);
+ assert.ok(start>=0&&end>start,'logout handler should remain discoverable');
+ const body=shell.slice(start,end);
  const clearGroups=body.indexOf('setGroups([])');
  const clearOverviews=body.indexOf('setGroupOverviews({})');
  const resetAccount=body.indexOf("setUserId('')");
