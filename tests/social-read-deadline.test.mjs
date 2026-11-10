@@ -44,8 +44,8 @@ function setup(fetchHandler,timeoutMs=25){
 test('social read deadline is a portable 18-second AbortController timeout',()=>{
  assert.equal(SOCIAL_READ_TIMEOUT_MS,18_000);
  const helper=readFileSync(new URL('../lib/social-read-deadline.mjs',import.meta.url),'utf8');
- assert.match(helper,/new AbortController\(\)/);
- assert.doesNotMatch(helper,/AbortSignal\.timeout/);
+ assert.match(helper,/new AbortController\\(\\)/);
+ assert.doesNotMatch(helper,/AbortSignal\\.timeout/);
 });
 
 test('successful social reads clear their deadline timer',async()=>{
@@ -74,6 +74,19 @@ test('late results are rejected even when an operation ignores the abort signal'
   withSocialReadDeadline(()=>delay(15).then(()=>({stale:true})),5),
   error=>error.name==='TimeoutError'
  );
+});
+
+test('a non-cooperative operation that never settles cannot outlive the read deadline',async()=>{
+ let signal;
+ let settled=false;
+ const pending=withSocialReadDeadline(current=>{
+  signal=current;
+  return new Promise(()=>{});
+ },5).finally(()=>{settled=true;});
+ const guard=delay(50).then(()=>{throw new Error('read deadline did not reject the pending operation');});
+ await assert.rejects(Promise.race([pending,guard]),error=>error.name==='TimeoutError');
+ assert.equal(signal.aborted,true);
+ assert.equal(settled,true);
 });
 
 test('ordinary social network errors are preserved and do not become timeout errors',async()=>{
