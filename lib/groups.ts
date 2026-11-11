@@ -20,7 +20,10 @@ async function request<T>(
  const res=method==='GET'||timeoutMs!==undefined||signal!==undefined
   ?await fetchWithTimeout(fetch,url,init,timeoutMs??GROUP_REQUEST_TIMEOUT_MS,'Запрос группы не завершился вовремя. Проверь подключение и повтори попытку.')
   :await fetch(url,init);
- const data=await res.json().catch(()=>null);if(!res.ok)throw Error(data?.message||'Ошибка группы');return data as T;
+ const data=await res.json().catch(error=>{
+  if(signal?.aborted || (error instanceof Error && (error.name==='AbortError'||error.name==='TimeoutError')))throw error;
+  return null;
+ });if(!res.ok)throw Error(data?.message||'Ошибка группы');return data as T;
 }
 export async function createGroup(token:string,title:string,ids:string[]){return request<string>(token,'/rest/v1/rpc/create_group_chat','POST',{p_title:title,p_members:ids});}
 export async function listGroups(token:string){return request<Group[]>(token,'/rest/v1/group_chats?select=*&order=created_at.desc&limit=100');}
