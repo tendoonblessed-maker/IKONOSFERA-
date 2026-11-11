@@ -519,7 +519,7 @@ test('group conversations always fetch newest messages and show real loading/err
  assert.match(ui,/Не удалось загрузить сообщения группы/);
  assert.match(ui,/Попробовать снова/);
  assert.match(ui,/startVisiblePolling\(sync,6000,document,window,navigator,undefined,\(\)=>\{/);
- assert.match(ui,/window\.setInterval\(updateMembers,120000\)/);
+ assert.match(ui,/startVisiblePolling\(\(\)=>updateMembers\(\),120000,document,window,navigator,/);
 });
 test('stories do not download on every inbox refresh and open newest uploaded story',()=>{
  const s=load('components/StoriesStrip.tsx');
