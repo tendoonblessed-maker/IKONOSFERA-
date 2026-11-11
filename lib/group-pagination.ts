@@ -45,7 +45,10 @@ export async function fetchOlderGroupMessages(
   cache:'no-store',
   signal
  },GROUP_HISTORY_REQUEST_TIMEOUT_MS,'Не удалось загрузить ранние сообщения вовремя. Проверь подключение и повтори попытку.');
- const data:unknown=await response.json().catch(()=>null);
+ const data:unknown=await response.json().catch(error=>{
+  if(signal?.aborted || (error instanceof Error && (error.name==='AbortError'||error.name==='TimeoutError')))throw error;
+  return null;
+ });
  if(!response.ok||!Array.isArray(data))throw Error('Не удалось загрузить ранние сообщения.');
  const rows=(data as GroupMessage[]).filter(item=>item.group_id===groupId);
  // The extra result is a has-more sentinel; it must be fetched next time.
