@@ -37,6 +37,22 @@ test('JS, data, file, ftp and non-URL strings are never auto-linked',()=>{
  assert.equal(reconstructed(input),input);
 });
 
+test('HTTP(S) candidates nested immediately after another URI scheme remain plain text',()=>{
+ for(const input of [
+  'javascript:https://evil.example/path',
+  'mailto:www.example.com',
+  'custom+scheme.1:https://evil.example/path'
+ ]){
+  assert.equal(links(input).length,0,'a nested URL must not become a misleading clickable target');
+  assert.equal(reconstructed(input),input,'the original message must remain unchanged');
+ }
+ const ordinary='Ссылка: https://example.com/path';
+ assert.deepEqual(links(ordinary),[
+  {text:'https://example.com/path',href:'https://example.com/path'}
+ ]);
+ assert.equal(reconstructed(ordinary),ordinary);
+});
+
 test('trailing punctuation, Russian quotes and balanced parentheses do not corrupt URL or text',()=>{
  const input='Смотри (https://example.com/wiki/Function_(math)), потом www.example.com/test!?';
  assert.deepEqual(links(input),[
