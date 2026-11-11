@@ -195,12 +195,13 @@ test('internationalized hostnames stay plain to prevent IDN homograph links',()=
 });
 
 
+
 test('Unicode and percent-encoded hostnames stay plain when WHATWG URL normalizes them',()=>{
  for(const text of [
-  'https://example\\u3002com/path',
-  'https://example\\uFF0Ecom/path',
-  'https://example\\uFF61com/path',
-  'https://\\uFF45xample.com/path',
+  'https://example\u3002com/path',
+  'https://example\uFF0Ecom/path',
+  'https://example\uFF61com/path',
+  'https://\uFF45xample.com/path',
   'https://%65xample.com/path',
   'https://%77ww.example.com/path'
  ]){
