@@ -47,6 +47,7 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
  const prependScrollRef=useRef<{groupId:string;userId:string;height:number;top:number}|null>(null);
  const olderLoadingRef=useRef(false);
  const olderRequestRef=useRef(0);
+ const olderAbortRef=useRef<AbortController|null>(null);
  const initialPageLoadedRef=useRef(false);
  const composerFormRef=useRef<HTMLFormElement|null>(null);
  const followNewestRef=useRef(true);
@@ -62,6 +63,19 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
  const confirmedGroupMessagesRef=useRef<Map<string,ConfirmedGroupMessage>>(new Map());
  const contextRef=useRef({groupId:group.id,userId,token});
  contextRef.current={groupId:group.id,userId,token};
+ // Older-page reads belong to exactly one group, account and access token.
+ // Abort on context replacement or unmount; never let an old page hold the
+ // loading lock for the newly selected conversation.
+ useEffect(()=>{
+  setLoadingOlder(false);
+  setOlderError('');
+  return()=>{
+   olderRequestRef.current++;
+   olderLoadingRef.current=false;
+   olderAbortRef.current?.abort();
+   olderAbortRef.current=null;
+  };
+ },[token,group.id,userId]);
  useEffect(()=>{
   confirmedGroupMessagesRef.current.clear();
   olderRequestRef.current++;
@@ -272,10 +286,18 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
  // Explicit cursor paging protects equally timestamped messages from loss.
  // Stale pages from another group/account or a search jump are discarded.
  async function loadOlder(){
-  if(olderLoadingRef.current||!hasOlder||initialLoading||!online||!messages.length)return;
+  if(olderLoadingRef.current||!hasOlder||initialLoading||!online||!navigator.onLine
+     ||document.visibilityState==='hidden'||!messages.length)return;
   const history=historyRef.current,oldest=messages[0];
   const groupId=group.id,ownerId=userId,requestToken=token;
   const requestId=++olderRequestRef.current;
+  const controller=new AbortController();
+  olderAbortRef.current=controller;
+  const abortOlderOnPause=()=>{
+   if(document.visibilityState==='hidden'||!navigator.onLine)controller.abort();
+  };
+  document.addEventListener('visibilitychange',abortOlderOnPause);
+  window.addEventListener('offline',abortOlderOnPause);
   olderLoadingRef.current=true;
   setLoadingOlder(true);setOlderError('');
   if(history)prependScrollRef.current={
@@ -283,7 +305,7 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
   };
   followNewestRef.current=false;
   try{
-   const page=await fetchOlderGroupMessages(requestToken,groupId,oldest);
+   const page=await fetchOlderGroupMessages(requestToken,groupId,oldest,controller.signal);
    if(requestId!==olderRequestRef.current
       ||contextRef.current.groupId!==groupId
       ||contextRef.current.userId!==ownerId
@@ -298,9 +320,14 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
   }catch(e){
    if(requestId===olderRequestRef.current){
     prependScrollRef.current=null;
-    setOlderError(e instanceof Error?e.message:'Ошибка загрузки истории группы');
+    if(!controller.signal.aborted){
+     setOlderError(e instanceof Error?e.message:'Ошибка загрузки истории группы');
+    }
    }
   }finally{
+   document.removeEventListener('visibilitychange',abortOlderOnPause);
+   window.removeEventListener('offline',abortOlderOnPause);
+   if(olderAbortRef.current===controller)olderAbortRef.current=null;
    if(requestId===olderRequestRef.current){
     olderLoadingRef.current=false;
     setLoadingOlder(false);
