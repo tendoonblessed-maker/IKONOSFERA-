@@ -351,7 +351,7 @@ test('a permission prompt that never resolves is invalidated after a bounded wai
  assert.equal(h.button(h.render(),'Отменить'),null,'a timed-out prompt returns the composer to idle');
  assert.equal(h.recorders.length,0);
  assert.equal(h.errors.length,1);
- assert.match(h.errors[0],/заняло слишком много времени/);
+ assert.match(h.errors[0],/занял слишком много времени/);
  assert.equal(h.timers.size,0);
  h.document.visibilityState='hidden';
  h.emitDocument('visibilitychange');
