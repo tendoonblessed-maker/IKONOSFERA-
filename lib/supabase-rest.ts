@@ -281,14 +281,20 @@ export async function sendDirectMedia(token:string,chatId:string,userId:string,f
   if(!messages[0])throw Error("Медиа не отправлено");
   return messages[0];
  }catch(e){
-  // The message POST may already have been rejected after the upload. Keep
-  // best-effort cleanup bounded, but never replace the original send error.
-  try{
-   const cleanup=await fetchWithTimeout(fetch,apiUrl+"/storage/v1/object/ikonosfera-direct-media/"+path,{
-    method:"DELETE",headers:{apikey:anonKey,Authorization:"Bearer "+token}
-   },timeoutMs,"Очистка неиспользованного вложения не завершилась вовремя.");
-   await cleanup.text();
-  }catch{}
+  // Only a definitive client rejection proves that no message row was stored.
+  // A timeout/network error or 5xx may arrive after the server committed the
+  // message; deleting its object then would leave a broken attachment in chat.
+  const definitelyRejected=e instanceof SupabaseHttpError
+   &&e.status>=400&&e.status<500&&e.status!==408&&e.status!==429;
+  if(definitelyRejected){
+   // Keep best-effort cleanup bounded and never replace the original send error.
+   try{
+    const cleanup=await fetchWithTimeout(fetch,apiUrl+"/storage/v1/object/ikonosfera-direct-media/"+path,{
+     method:"DELETE",headers:{apikey:anonKey,Authorization:"Bearer "+token}
+    },timeoutMs,"Очистка неиспользованного вложения не завершилась вовремя.");
+    await cleanup.text();
+   }catch{}
+  }
   throw e;
  }
 }
