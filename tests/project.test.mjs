@@ -929,10 +929,14 @@ test('reply fetching never leaks old-account previews or unbounded PostgREST ID 
  assert.match(shell,/selectedRef\.current===chatId&&chatContextGenerationRef\.current===generation/);
  assert.match(shell,/const requestId=\+\+replyJumpRequestRef\.current/);
  assert.match(shell,/replyJumpRequestRef\.current===requestId/);
- assert.match(shell,/const source=replyTargets\[id\]\?\?\(await listReplyTargets\(token,chatId,\[id\]\)\)\[0\]/);
+ assert.match(shell,/let source=replyTargets\[id\]/);
+ assert.match(shell,/listReplyTargets\(token,chatId,\[id\],controller\.signal\)/);
+ assert.match(shell,/replyTargetController\?\.signal\.aborted/);
  assert.match(shell,/if\(!source\)\{/);
  assert.match(shell,/for\(let start=0;start<missing\.length;start\+=100\)/);
- assert.match(shell,/Promise\.all\(batches\.map\(ids=>listReplyTargets/);
+ assert.match(shell,/const requests=batches\.map\(async ids=>/);
+ assert.match(shell,/Promise\.all\(requests\)/);
+ assert.match(shell,/filterReplyTargetsForCurrentVersion/);
  assert.match(shell,/for\(let offset=0;offset<loaded\.length;offset\+=CHAT_MESSAGE_PAGE_SIZE\)/);
  assert.match(api,/const unique=\[\.\.\.new Set\(ids\)\]/);
  assert.match(shell,/if\(stillInChat\(\)\)/);
