@@ -56,7 +56,7 @@ function externalHref(candidate:string):string|null{
 function canBeginLink(text:string,index:number):boolean{
  if(index===0)return true;
  // Don't link inside emails, identifiers or already-open URI schemes.
- return !/[\p{L}\p{N}_@/.-]/u.test(text[index-1]);
+ return !/[\p{L}\p{N}_@/:.-]/u.test(text[index-1]);
 }
 
 /**
