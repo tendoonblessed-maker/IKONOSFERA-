@@ -85,7 +85,7 @@ test("a successful probe is same-origin, uncached and bounded to response header
 });
 
 test("a BFCache restore probes the origin only when the browser reports a network", async () => {
-  const page = bootOfflinePage({ onLine: true, fetcher: async () => ({ ok: true, url: ORIGIN + "/" }) });
+  const page = bootOfflinePage({ onLine: true });
   const pageshow = listener(page, "pageshow");
 
   await pageshow.callback({ persisted: false });
@@ -141,11 +141,13 @@ test("a stalled reachability probe is aborted after the short deadline", async (
     fetcher: (_url, options) => {
       receivedSignal = options.signal;
       return new Promise((_resolve, reject) => {
-        options.signal.addEventListener("abort", () => {
+        const abort = () => {
           const error = new Error("probe timed out");
           error.name = "AbortError";
           reject(error);
-        }, { once: true });
+        };
+        if (options.signal.aborted) abort();
+        else options.signal.addEventListener("abort", abort, { once: true });
       });
     },
     scheduleTimeout(callback, delay) {
