@@ -100,3 +100,50 @@ test('a completed response body clears the deadline and preserves ordinary strea
   error=>error===streamError
  );
 });
+
+test('a caller abort cancels a pending request and preserves its AbortError reason',async()=>{
+ const owner=new AbortController();
+ const reason=Object.assign(new Error('chat changed'),{name:'AbortError'});
+ let requestSignal;
+ const pending=fetchWithTimeout((_url,init)=>{
+  requestSignal=init.signal;
+  return new Promise((_resolve,reject)=>{
+   requestSignal.addEventListener('abort',()=>reject(requestSignal.reason),{once:true});
+  });
+ },'/pending-headers',{signal:owner.signal},1000,'deadline exceeded');
+ owner.abort(reason);
+ await assert.rejects(pending,error=>error===reason);
+ assert.equal(requestSignal.aborted,true);
+});
+
+test('a caller abort also cancels a response body after headers have arrived',async()=>{
+ const owner=new AbortController();
+ const reason=Object.assign(new Error('chat hidden'),{name:'AbortError'});
+ let requestSignal;
+ const response=await fetchWithTimeout((_url,init)=>{
+  requestSignal=init.signal;
+  return Promise.resolve({text:()=>new Promise(()=>{})});
+ },'/pending-body',{signal:owner.signal},1000,'deadline exceeded');
+ const body=response.text();
+ owner.abort(reason);
+ await assert.rejects(body,error=>error===reason);
+ assert.equal(requestSignal.aborted,true);
+});
+
+test('a pre-aborted caller signal prevents a hanging fetcher from blocking the caller',async()=>{
+ const owner=new AbortController();
+ const reason=Object.assign(new Error('account changed'),{name:'AbortError'});
+ owner.abort(reason);
+ const pending=fetchWithTimeout(()=>new Promise(()=>{}),'/pre-aborted',{signal:owner.signal},1000);
+ await assert.rejects(pending,error=>error===reason);
+});
+
+test('caller cancellation is not rewritten as a request timeout',async()=>{
+ const owner=new AbortController();
+ const reason=Object.assign(new Error('chat closed'),{name:'AbortError'});
+ const pending=fetchWithTimeout((_url,init)=>new Promise((_resolve,reject)=>{
+  init.signal.addEventListener('abort',()=>reject(init.signal.reason),{once:true});
+ }),'/cancelled',{signal:owner.signal},1000,'this is a timeout');
+ owner.abort(reason);
+ await assert.rejects(pending,error=>error===reason&&error.message!=='this is a timeout');
+});
