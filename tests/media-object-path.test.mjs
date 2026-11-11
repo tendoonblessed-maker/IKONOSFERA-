@@ -7,6 +7,7 @@ const userId='550e8400-e29b-41d4-a716-446655440000';
 const objectId='123e4567-e89b-12d3-a456-426614174000';
 const objectPath=extension=>userId+'/'+objectId+'.'+extension;
 const source=path=>readFileSync(new URL('../'+path,import.meta.url),'utf8');
+const pause=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 
 test('accepts every image, video, audio and document extension used by uploads',()=>{
   for(const extension of ['jpg','png','webp','mp4','webm','mov','mp3','m4a','wav','ogg','pdf','txt','zip','doc','docx','xls','xlsx']){
@@ -71,7 +72,6 @@ test('channel post failure and deletion both keep using the shared cleanup path'
   assert.match(panel,/if\(p\.attachment_path\)await removeUpload\(token,p\.attachment_path\)\.catch/);
 });
 
-
 test('performs an authenticated DELETE for video and document objects',async()=>{
   let request;
   await deleteMediaObject('https://project.supabase.co',objectPath('mp4'),'user-jwt','public-anon-key',async(url,init)=>{
@@ -116,5 +116,53 @@ test('propagates network failures so cleanup callers can report them',async()=>{
       throw new Error('network offline');
     }),
     /network offline/
+  );
+});
+
+test('aborts a stalled Storage DELETE and reports a distinct timeout',async()=>{
+  let signal;
+  await assert.rejects(
+    deleteMediaObject('https://project.supabase.co',objectPath('mp4'),'jwt','anon',async(_url,init)=>{
+      signal=init.signal;
+      return new Promise(()=>{});
+    },8),
+    error=>error?.name==='TimeoutError'&&/не завершилось вовремя/i.test(error.message)
+  );
+  assert.equal(signal.aborted,true);
+});
+
+test('keeps the same deadline active while reading an error response body',async()=>{
+  let signal;
+  await assert.rejects(
+    deleteMediaObject('https://project.supabase.co',objectPath('pdf'),'jwt','anon',async(_url,init)=>{
+      signal=init.signal;
+      return {
+        ok:false,
+        status:403,
+        json:()=>new Promise(()=>{})
+      };
+    },8),
+    error=>error?.name==='TimeoutError'
+  );
+  assert.equal(signal.aborted,true);
+});
+
+test('clears the Storage deadline after a successful response',async()=>{
+  let signal;
+  await deleteMediaObject('https://project.supabase.co',objectPath('webm'),'jwt','anon',async(_url,init)=>{
+    signal=init.signal;
+    return new Response(null,{status:204});
+  },8);
+  await pause(20);
+  assert.equal(signal.aborted,false);
+});
+
+test('preserves the original network error when it occurs before the deadline',async()=>{
+  const networkError=new Error('network offline');
+  await assert.rejects(
+    deleteMediaObject('https://project.supabase.co',objectPath('m4a'),'jwt','anon',async()=>{
+      throw networkError;
+    },100),
+    error=>error===networkError
   );
 });
