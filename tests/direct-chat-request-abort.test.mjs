@@ -202,6 +202,9 @@ test('aborting a reply-target lifecycle signal cancels the underlying fetch',asy
 
 test('reply-target preview and quote-jump reads are cancelled on chat pause and retried on resume',()=>{
   assert.match(appShell,/replyTargetAbortScopesRef=useRef<Set<ReturnType<typeof createAbortableRequestScope>>>\(new Set\(\)\)/);
+  assert.match(appShell,/replyTargetsGenerationRef=useRef\(0\)/);
+  assert.match(appShell,/replyTargetsGenerationRef\.current\+\+/);
+  assert.match(appShell,/replyTargetsGenerationRef\.current===requestGeneration/);
   assert.match(appShell,/listReplyTargets\(session\.access_token,chatId,ids,controller\.signal\)/);
   assert.match(appShell,/listReplyTargets\(token,chatId,\[id\],controller\.signal\)/);
   assert.match(appShell,/document\.visibilityState!=='visible'\|\|!navigator\.onLine\)return/);
