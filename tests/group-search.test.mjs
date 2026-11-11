@@ -3,6 +3,7 @@ import {test} from 'node:test';
 import {readFileSync} from 'node:fs';
 import vm from 'node:vm';
 import ts from 'typescript';
+import {slicePreviewText,truncatePreviewText} from '../lib/text-preview.ts';
 
 const GROUP='11111111-1111-4111-8111-111111111111';
 const OTHER='22222222-2222-4222-8222-222222222222';
@@ -20,8 +21,9 @@ function setup(handler=()=>({ok:true,json:async()=>[]})){
   process:{env:{NEXT_PUBLIC_SUPABASE_ANON_KEY:'test-anon'}},
   fetch:async(url,options)=>{calls.push({url,options});return handler(url,options,calls.length);},
   require(name){
-   assert.equal(name,'./supabase-rest');
-   return {apiUrl:'https://test.invalid'};
+   if(name==='./supabase-rest')return {apiUrl:'https://test.invalid'};
+   if(name==='./text-preview')return {slicePreviewText,truncatePreviewText};
+   throw new Error('Unexpected dependency: '+name);
   }
  };
  vm.runInNewContext(compiled,ctx,{filename:'group-search.cjs',timeout:2500});
@@ -144,4 +146,62 @@ test('sending a new post from an archival result restores the current group time
  assert.match(panel,/if\(browsingOlderRef\.current\)\{\n     \/\/ Sending from an archived search result/);
  assert.match(panel,/browsingOlderRef\.current=false;\n     followNewestRef\.current=true;\n     latestGroupMessageRef\.current=null;/);
  assert.match(panel,/void refresh\(\)\.catch\(e=>setError/);
+});
+
+
+function assertWellFormedUnicode(value){
+ for(let i=0;i<value.length;i++){
+  const code=value.charCodeAt(i);
+  if(code>=0xD800&&code<=0xDBFF){
+   assert.ok(i+1<value.length,'high surrogate must have a following low surrogate');
+   const next=value.charCodeAt(i+1);
+   assert.ok(next>=0xDC00&&next<=0xDFFF,'high surrogate must be paired');
+   i++;
+  }else{
+   assert.ok(code<0xDC00||code>0xDFFF,'low surrogate must have a preceding high surrogate');
+  }
+ }
+}
+
+test('group search query limits and excerpts preserve complete emoji graphemes',()=>{
+ const {api}=setup();
+ const family='👨‍👩‍👧‍👦';
+ assert.equal(api.normalizeGroupSearch('x'.repeat(109)+family),'x'.repeat(109)+family);
+ assert.equal(api.normalizeGroupSearch('x'.repeat(110)+family),'x'.repeat(110));
+
+ const body='x'.repeat(44)+family+'y'.repeat(35)+'needle'+'z'.repeat(240);
+ const excerpt=api.groupSearchExcerpt(body,'NEEDLE');
+ assert.ok(excerpt.startsWith('…'+family),'excerpt start must not detach the family emoji');
+ assert.ok(excerpt.includes('needle'),'search match remains in the excerpt');
+ assert.ok(excerpt.endsWith('…'),'long messages still disclose omitted trailing text');
+ assertWellFormedUnicode(excerpt);
+
+ const end='needle'+'x'.repeat(173)+'😀'+'tail';
+ assert.equal(api.groupSearchExcerpt(end,'needle'),'needle'+'x'.repeat(173)+'…',
+  'the 180-unit excerpt limit must stop before an emoji that does not fit');
+});
+
+test('group search excerpt maps locale-lowercase offsets back to original Unicode text',()=>{
+ const {api}=setup();
+ const body='a'.repeat(50)+'İ'+'b'.repeat(40)+'Needle'+'c'.repeat(220);
+ const excerpt=api.groupSearchExcerpt(body,'needle');
+ assert.ok(excerpt.startsWith('…'+'a'.repeat(4)+'İ'),
+  'case folding that expands one character must not shift the original excerpt offset');
+ assert.ok(excerpt.includes('Needle'));
+});
+
+test('group search truncation fallback preserves code points without Intl.Segmenter',()=>{
+ const descriptor=Object.getOwnPropertyDescriptor(Intl,'Segmenter');
+ assert.ok(descriptor,'test runtime should expose Intl.Segmenter for fallback simulation');
+ const original=Intl.Segmenter;
+ try{
+  Object.defineProperty(Intl,'Segmenter',{...descriptor,value:undefined});
+  const {api}=setup();
+  assert.equal(api.normalizeGroupSearch('x'.repeat(119)+'😀'),'x'.repeat(119));
+  const body='x'.repeat(44)+'👨‍👩‍👧‍👦'+'y'.repeat(44)+'needle'+'z'.repeat(220);
+  const excerpt=api.groupSearchExcerpt(body,'needle');
+  assertWellFormedUnicode(excerpt);
+ }finally{
+  Object.defineProperty(Intl,'Segmenter',{...descriptor,value:original});
+ }
 });
