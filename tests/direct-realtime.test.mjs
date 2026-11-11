@@ -44,7 +44,7 @@ test('Realtime wakes server-authoritative read, preserves offline fallback and c
  const quote=load('components/ReplyQuote.tsx');
  const rest=load('lib/supabase-rest.ts');
  assert.match(quote,/hidden\?:boolean/);
- assert.match(quote,/hidden\?'Исходное сообщение скрыто'/);
+ assert.match(quote,/hidden\\s*\\?\\s*'Исходное сообщение скрыто'/);
  assert.match(rest,/select=id,sender_id,body,deleted_for,deleted_for_everyone,media_type/);
  assert.match(section,/if\(cancelled\|\|document\.visibilityState==='hidden'\|\|!navigator\.onLine\)return;/);
  assert.match(section,/window\.setTimeout\(\(\)=>\{/);
