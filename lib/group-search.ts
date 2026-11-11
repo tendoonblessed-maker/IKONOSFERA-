@@ -1,5 +1,6 @@
 import {apiUrl} from './supabase-rest';
 import type {GroupMessage} from './groups';
+import {slicePreviewText,truncatePreviewText} from './text-preview';
 
 const anonKey=process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY??'';
 const UUID=/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
@@ -12,7 +13,35 @@ const MESSAGE_FIELDS='id,group_id,sender_id,body,created_at';
  * RLS on group_messages. No service_role key or privileged SQL RPC.
  */
 export function normalizeGroupSearch(query:string):string{
- return query.trim().replace(/\s+/g,' ').slice(0,120);
+ return truncatePreviewText(query.trim().replace(/\s+/g,' '),120);
+}
+
+function localeInsensitiveIndex(value:string,query:string):number{
+ const needle=query.toLocaleLowerCase('ru');
+ if(!needle)return -1;
+ let folded='';
+ const originalOffsets:number[]=[];
+ let offset=0;
+ for(const point of value){
+  const lower=point.toLocaleLowerCase('ru');
+  folded+=lower;
+  for(let i=0;i<lower.length;i++)originalOffsets.push(offset);
+  offset+=point.length;
+ }
+ const match=folded.indexOf(needle);
+ return match<0?-1:originalOffsets[match]??-1;
+}
+
+/** Build a bounded search excerpt without splitting an emoji or grapheme. */
+export function groupSearchExcerpt(body:string,query:string):string{
+ const flat=body.replace(/\s+/g,' ').trim();
+ if(!flat)return '';
+ const index=localeInsensitiveIndex(flat,normalizeGroupSearch(query));
+ const targetStart=index<0?0:Math.max(0,index-45);
+ const prefix=truncatePreviewText(flat,targetStart);
+ const start=prefix.length;
+ const excerpt=slicePreviewText(flat,start,180);
+ return (start>0?'…':'')+excerpt+(start+excerpt.length<flat.length?'…':'');
 }
 
 export function buildGroupSearchPath(groupId:string,query:string,offset:number):string{
