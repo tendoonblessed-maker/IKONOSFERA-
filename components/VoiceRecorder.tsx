@@ -1,7 +1,7 @@
 'use client';
 
 import {useEffect,useRef,useState} from 'react';
-import {chooseVoiceMimeType,normalizeVoiceMimeType,createVoiceFile,formatVoiceTime,VOICE_RECORD_MAX_MS,VOICE_RECORD_MAX_BYTES,VOICE_FINALIZE_TIMEOUT_MS} from '@/lib/voice-notes';
+import {chooseVoiceMimeType,normalizeVoiceMimeType,createVoiceFile,formatVoiceTime,VOICE_RECORD_MAX_MS,VOICE_RECORD_MAX_BYTES,VOICE_FINALIZE_TIMEOUT_MS,VOICE_PERMISSION_TIMEOUT_MS} from '@/lib/voice-notes';
 import {stopMediaStreamTracks} from '@/lib/media-stream-lifecycle';
 
 type Props={
@@ -40,6 +40,7 @@ export default function VoiceRecorder({disabled,onRecorded,onError}:Props){
  const [elapsed,setElapsed]=useState(0);
  const captureRef=useRef<Capture|null>(null);
  const requestRef=useRef(0);
+ const permissionTimerRef=useRef<{generation:number;id:number}|null>(null);
  const sessionActiveRef=useRef(false);
  const liveRef=useRef(true);
  const errorRef=useRef(onError);
@@ -47,9 +48,19 @@ export default function VoiceRecorder({disabled,onRecorded,onError}:Props){
  errorRef.current=onError;
  recordedRef.current=onRecorded;
 
+ // A browser permission prompt cannot be aborted. Invalidate it after a
+ // bounded wait and stop any stream that the browser grants later.
+ const clearPermissionTimer=(generation?:number)=>{
+  const pending=permissionTimerRef.current;
+  if(!pending||(generation!==undefined&&pending.generation!==generation))return;
+  window.clearTimeout(pending.id);
+  permissionTimerRef.current=null;
+ };
+
  // Cancel an in-flight permission prompt and stop all microphone tracks on
  // navigation, account switch, blocking, unmount, or explicit cancellation.
  const dispose=(discard:boolean)=>{
+  clearPermissionTimer();
   requestRef.current+=1;
   sessionActiveRef.current=false;
   const capture=captureRef.current;
@@ -147,11 +158,21 @@ export default function VoiceRecorder({disabled,onRecorded,onError}:Props){
   sessionActiveRef.current=true;
   setPhase('requesting');
   setElapsed(0);
+  const permissionTimer=window.setTimeout(()=>{
+   if(requestRef.current!==generation)return;
+   permissionTimerRef.current=null;
+   requestRef.current+=1; // getUserMedia has no AbortSignal; late grants become stale.
+   sessionActiveRef.current=false;
+   setPhase('idle');setElapsed(0);
+   errorRef.current('Запрос доступа к микрофону занял слишком много времени. Проверь разрешение браузера и попробуй ещё раз.');
+  },VOICE_PERMISSION_TIMEOUT_MS);
+  permissionTimerRef.current={generation,id:permissionTimer};
   let stream:MediaStream|null=null;
   try{
    stream=await navigator.mediaDevices.getUserMedia({
     audio:{echoCancellation:true,noiseSuppression:true,autoGainControl:true},video:false
    });
+   clearPermissionTimer(generation);
    // Permission may have been granted after the user left the chat.
    if(requestRef.current!==generation||!liveRef.current||disabled){
     stopMediaStreamTracks(stream);
@@ -236,6 +257,7 @@ export default function VoiceRecorder({disabled,onRecorded,onError}:Props){
    },VOICE_RECORD_MAX_MS);
    setPhase('recording');
   }catch(error){
+   clearPermissionTimer(generation);
    // A stale permission prompt can reject after a newer recording request starts.
    // Only the generation that still owns this request may clear shared session state.
    if(requestRef.current===generation){
