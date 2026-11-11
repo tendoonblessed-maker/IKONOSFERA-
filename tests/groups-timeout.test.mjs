@@ -64,6 +64,20 @@ test('group history reads preserve caller cancellation through the portable dead
  assert.equal(calls[0].options.signal.aborted,true);
 });
 
+test('group history reads preserve caller cancellation during response body parsing',async()=>{
+ const owner=new AbortController();
+ const reason=Object.assign(new Error('group hidden'),{name:'AbortError'});
+ let bodyStarted;
+ const started=new Promise(resolve=>{bodyStarted=resolve;});
+ const {api,calls}=setup(()=>({ok:true,json:()=>{bodyStarted();return new Promise(()=>{});}}));
+ const pending=api.groupMessages('signed-user-jwt',GROUP,owner.signal);
+ await started;
+ owner.abort(reason);
+ await assert.rejects(pending,error=>error===reason);
+ assert.equal(calls[0].options.signal.aborted,true);
+ assert.match(read('lib/groups.ts'),/error\.name==='AbortError'\|\|error\.name==='TimeoutError'/);
+});
+
 test('read-only group overview RPC POST has a portable deadline too',async()=>{
  const {api,calls}=setup(()=>ok([]));
  const overviews=await api.listGroupOverviews('signed-user-jwt');
