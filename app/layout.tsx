@@ -3,6 +3,7 @@ import { Inter } from "next/font/google";
 import "./globals.css";
 import "./light-telegram-theme.css";
 import "./inbox-unread-polish.css";
+import "./inbox-keyboard-focus.css";
 
 const inter = Inter({ subsets: ["latin", "cyrillic"], display: "swap", variable:"--font-inter" });
 

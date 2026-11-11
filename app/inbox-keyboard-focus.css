@@ -1,0 +1,18 @@
+/* Visible keyboard focus for Telegram-style conversation navigation.
+   :focus-visible avoids rings on ordinary touch and mouse taps. */
+.messenger.is-authenticated .chat-list .chat-item:focus-visible {
+  outline: 2px solid #2787e7;
+  outline-offset: -3px;
+  border-radius: 12px;
+}
+.messenger.is-authenticated .chat-list .ik-chat-row-trigger:focus-visible {
+  outline: 2px solid #2787e7;
+  outline-offset: 2px;
+  border-radius: 8px;
+}
+@media (forced-colors: active) {
+  .messenger.is-authenticated .chat-list .chat-item:focus-visible,
+  .messenger.is-authenticated .chat-list .ik-chat-row-trigger:focus-visible {
+    outline-color: Highlight;
+  }
+}
