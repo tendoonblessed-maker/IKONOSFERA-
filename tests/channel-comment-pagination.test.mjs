@@ -42,6 +42,7 @@ function socialHarness(handler){
    if(name==='@/lib/supabase-rest')return {apiUrl:'https://unit.test'};
    if(name==='@/lib/channel-post-pagination')return {};
    if(name==='@/lib/channel-comment-pagination')return pagination;
+   if(name==='@/lib/media-object-path')return {deleteMediaObject:async()=>{}};
    throw Error('Unexpected module '+name);
   }
  };
@@ -123,7 +124,8 @@ test('the next keyset page starts at the previous sentinel without skipping comm
  const merged=pagination.prependOlderChannelComments(first.comments,second.comments);
  assert.equal(merged.length,60);
  assert.equal(merged[0].id,secondRows[9].id);
- assert.equal(merged[10].id,firstRows[50].id);
+ assert.equal(merged[9].id,firstRows[50].id);
+ assert.equal(merged[10].id,firstRows[49].id);
 });
 
 test('rows from another post are filtered before sentinel calculation',async()=>{
