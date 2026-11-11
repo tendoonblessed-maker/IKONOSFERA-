@@ -1,5 +1,7 @@
 /** Browser-native voice recordings: no new codec dependency or server API. */
 export const VOICE_RECORD_MAX_MS=120_000;
+/** Permission prompts cannot be aborted; invalidate late grants after this deadline. */
+export const VOICE_PERMISSION_TIMEOUT_MS=30_000;
 /** Bound a browser's missing MediaRecorder.onstop event (especially on mobile). */
 export const VOICE_FINALIZE_TIMEOUT_MS=8_000;
 export const VOICE_RECORD_MAX_BYTES=25*1024*1024;
