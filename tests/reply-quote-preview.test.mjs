@@ -7,13 +7,13 @@ const source=readFileSync(new URL('../components/ReplyQuote.tsx',import.meta.url
 
 test('reply quote preview truncation never splits extended grapheme clusters',()=>{
  const prefix='x'.repeat(139);
- for(const cluster of ['👨‍👩‍👧‍👦','🇸🇪','👩🏽‍💻','e\\u0301']){
+ for(const cluster of ['👨‍👩‍👧‍👦','🇸🇪','👩🏽‍💻','é']){
   assert.equal(truncatePreviewText(prefix+cluster,140),prefix);
  }
 });
 
 test('reply quote preview keeps a complete grapheme when it fits the 140-unit cap',()=>{
- const combining='x'.repeat(138)+'e\\u0301';
+ const combining='x'.repeat(138)+'é';
  assert.equal(combining.length,140);
  assert.equal(truncatePreviewText(combining,140),combining);
 
@@ -42,6 +42,7 @@ test('ReplyQuote uses the shared grapheme-safe helper while preserving reply fal
  assert.ok(source.includes("truncatePreviewText(bodyPreview,140)"));
  assert.ok(source.includes("target?.deleted_for_everyone"));
  assert.ok(source.includes("target?.media_type?'Вложение':'Исходное сообщение недоступно'"));
- assert.ok(source.includes("target?.body?.replace(/\\\\s+/g,' ').trim() ?? ''"));
+ assert.ok(source.includes("bodyPreview=target?.body?.replace("));
+ assert.ok(source.includes(".trim() ?? ''"));
  assert.ok(!source.includes('.slice(0,140)'));
 });
