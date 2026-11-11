@@ -1,7 +1,8 @@
 'use client';
 
 import {useEffect,useRef,useState} from 'react';
-import {chooseVoiceMimeType,createVoiceFile,formatVoiceTime,VOICE_RECORD_MAX_MS,VOICE_RECORD_MAX_BYTES} from '@/lib/voice-notes';
+import {chooseVoiceMimeType,normalizeVoiceMimeType,createVoiceFile,formatVoiceTime,VOICE_RECORD_MAX_MS,VOICE_RECORD_MAX_BYTES,VOICE_FINALIZE_TIMEOUT_MS,VOICE_PERMISSION_TIMEOUT_MS} from '@/lib/voice-notes';
+import {stopMediaStreamTracks} from '@/lib/media-stream-lifecycle';
 
 type Props={
  disabled:boolean;
@@ -11,22 +12,27 @@ type Props={
 type Capture={
  recorder:MediaRecorder;
  stream:MediaStream;
+ audioTrack:MediaStreamTrack;
+ trackEnded:(()=>void)|null;
  chunks:Blob[];
  bytes:number;
  startedAt:number;
  discard:boolean;
  clock:number|null;
  limit:number|null;
+ finalize:number|null;
 };
 type Phase='idle'|'requesting'|'recording'|'finalizing';
 
-function stopTracks(stream:MediaStream){
- stream.getTracks().forEach(track=>track.stop());
-}
-function clearCaptureTimers(capture:Capture){
+function clearCaptureResources(capture:Capture){
  if(capture.clock!==null)window.clearInterval(capture.clock);
  if(capture.limit!==null)window.clearTimeout(capture.limit);
- capture.clock=null;capture.limit=null;
+ if(capture.finalize!==null)window.clearTimeout(capture.finalize);
+ capture.clock=null;capture.limit=null;capture.finalize=null;
+ if(capture.trackEnded){
+  capture.audioTrack.removeEventListener('ended',capture.trackEnded);
+  capture.trackEnded=null;
+ }
 }
 
 export default function VoiceRecorder({disabled,onRecorded,onError}:Props){
@@ -34,33 +40,64 @@ export default function VoiceRecorder({disabled,onRecorded,onError}:Props){
  const [elapsed,setElapsed]=useState(0);
  const captureRef=useRef<Capture|null>(null);
  const requestRef=useRef(0);
+ const permissionTimerRef=useRef<{generation:number;id:number}|null>(null);
+ const sessionActiveRef=useRef(false);
  const liveRef=useRef(true);
  const errorRef=useRef(onError);
  const recordedRef=useRef(onRecorded);
  errorRef.current=onError;
  recordedRef.current=onRecorded;
 
+ // A browser permission prompt cannot be aborted. Invalidate it after a
+ // bounded wait and stop any stream that the browser grants later.
+ const clearPermissionTimer=(generation?:number)=>{
+  const pending=permissionTimerRef.current;
+  if(!pending||(generation!==undefined&&pending.generation!==generation))return;
+  window.clearTimeout(pending.id);
+  permissionTimerRef.current=null;
+ };
+
  // Cancel an in-flight permission prompt and stop all microphone tracks on
  // navigation, account switch, blocking, unmount, or explicit cancellation.
  const dispose=(discard:boolean)=>{
+  clearPermissionTimer();
   requestRef.current+=1;
+  sessionActiveRef.current=false;
   const capture=captureRef.current;
   captureRef.current=null;
   if(capture){
    capture.discard=discard;
-   clearCaptureTimers(capture);
+   clearCaptureResources(capture);
    capture.recorder.ondataavailable=null;
    capture.recorder.onstop=null;
    capture.recorder.onerror=null;
    if(capture.recorder.state!=='inactive'){
     try{capture.recorder.stop();}catch{}
    }
-   stopTracks(capture.stream);
+   stopMediaStreamTracks(capture.stream);
   }
  };
  useEffect(()=>{
   liveRef.current=true;
   return()=>{liveRef.current=false;dispose(true);};
+ },[]);
+ useEffect(()=>{
+  const cancelForBackground=()=>{
+   if(!sessionActiveRef.current)return;
+   dispose(true);
+   setElapsed(0);
+   setPhase('idle');
+   errorRef.current('Запись отменена, потому что приложение перешло в фон. Вернись в чат и начни запись заново.');
+  };
+  const onVisibilityChange=()=>{
+   if(document.visibilityState==='hidden')cancelForBackground();
+  };
+  document.addEventListener('visibilitychange',onVisibilityChange);
+  window.addEventListener('pagehide',cancelForBackground);
+  return()=>{
+   document.removeEventListener('visibilitychange',onVisibilityChange);
+   window.removeEventListener('pagehide',cancelForBackground);
+  };
  },[]);
  useEffect(()=>{
   if(disabled&&phase!=='idle'){
@@ -81,6 +118,15 @@ export default function VoiceRecorder({disabled,onRecorded,onError}:Props){
   const capture=captureRef.current;
   if(!capture||capture.discard||capture.recorder.state!=='recording')return;
   setPhase('finalizing');
+  // Safari and some Android browsers can leave a MediaRecorder in a pending
+  // stop state without delivering onstop. Keep cancellation available and
+  // release the microphone if finalization does not complete.
+  // Arm before stop(): a synchronous onstop must clear this timer too.
+  capture.finalize=window.setTimeout(()=>{
+   if(captureRef.current!==capture||capture.discard)return;
+   cancel();
+   errorRef.current('Браузер не завершил запись. Попробуй ещё раз.');
+  },VOICE_FINALIZE_TIMEOUT_MS);
   try{capture.recorder.stop();}
   catch{cancel();errorRef.current('Не удалось завершить запись. Попробуй ещё раз.');}
  };
@@ -91,29 +137,71 @@ export default function VoiceRecorder({disabled,onRecorded,onError}:Props){
    errorRef.current('Запись с микрофона недоступна в этом браузере или без HTTPS.');
    return;
   }
-  const mime=typeof MediaRecorder.isTypeSupported==='function'
-   ?chooseVoiceMimeType(type=>MediaRecorder.isTypeSupported(type)):null;
-  if(!mime){
+  // Prefer an explicitly supported MIME. Older/embedded implementations may
+  // omit or throw from isTypeSupported(); in that case let the browser choose
+  // its default and validate recorder.mimeType before capturing any audio.
+  let mime:string|null=null;
+  let mimeDetectionAvailable=false;
+  if(typeof MediaRecorder.isTypeSupported==='function'){
+   try{
+    mime=chooseVoiceMimeType(type=>MediaRecorder.isTypeSupported(type));
+    mimeDetectionAvailable=true;
+   }catch{
+    // Fall back to the browser-selected default MIME below.
+   }
+  }
+  if(mimeDetectionAvailable&&!mime){
    errorRef.current('Браузер не поддерживает доступные форматы голосовых сообщений.');
    return;
   }
   const generation=++requestRef.current;
+  sessionActiveRef.current=true;
   setPhase('requesting');
   setElapsed(0);
+  const permissionTimer=window.setTimeout(()=>{
+   if(requestRef.current!==generation)return;
+   permissionTimerRef.current=null;
+   requestRef.current+=1; // getUserMedia has no AbortSignal; late grants become stale.
+   sessionActiveRef.current=false;
+   setPhase('idle');setElapsed(0);
+   errorRef.current('Запрос доступа к микрофону занял слишком много времени. Проверь разрешение браузера и попробуй ещё раз.');
+  },VOICE_PERMISSION_TIMEOUT_MS);
+  permissionTimerRef.current={generation,id:permissionTimer};
   let stream:MediaStream|null=null;
   try{
    stream=await navigator.mediaDevices.getUserMedia({
     audio:{echoCancellation:true,noiseSuppression:true,autoGainControl:true},video:false
    });
+   clearPermissionTimer(generation);
    // Permission may have been granted after the user left the chat.
    if(requestRef.current!==generation||!liveRef.current||disabled){
-    stopTracks(stream);
+    stopMediaStreamTracks(stream);
     return;
    }
-   const recorder=new MediaRecorder(stream,{mimeType:mime,audioBitsPerSecond:64000});
+   const recorderOptions:MediaRecorderOptions=mime
+    ?{mimeType:mime,audioBitsPerSecond:64000}
+    :{audioBitsPerSecond:64000};
+   const recorder=new MediaRecorder(stream,recorderOptions);
+   const recorderMime=recorder.mimeType||mime||'';
+   const normalizedMime=normalizeVoiceMimeType(recorderMime);
+   if(!normalizedMime){
+    sessionActiveRef.current=false;
+    stopMediaStreamTracks(stream);
+    setPhase('idle');
+    errorRef.current('Браузер выбрал неподдерживаемый формат голосовых сообщений.');
+    return;
+   }
+   const audioTrack=stream.getTracks().find(track=>track.kind==='audio');
+   if(!audioTrack){
+    sessionActiveRef.current=false;
+    stopMediaStreamTracks(stream);
+    setPhase('idle');
+    errorRef.current('Браузер не предоставил аудиодорожку микрофона.');
+    return;
+   }
    const capture:Capture={
-    recorder,stream,chunks:[],bytes:0,startedAt:Date.now(),
-    discard:false,clock:null,limit:null
+    recorder,stream,audioTrack,trackEnded:null,chunks:[],bytes:0,startedAt:Date.now(),
+    discard:false,clock:null,limit:null,finalize:null
    };
    captureRef.current=capture;
    recorder.ondataavailable=event=>{
@@ -133,32 +221,50 @@ export default function VoiceRecorder({disabled,onRecorded,onError}:Props){
    };
    recorder.onstop=()=>{
     if(capture.discard||captureRef.current!==capture)return;
-    clearCaptureTimers(capture);
-    stopTracks(capture.stream);
+    clearCaptureResources(capture);
+    stopMediaStreamTracks(capture.stream);
     captureRef.current=null;
+    sessionActiveRef.current=false;
     if(!liveRef.current)return;
     setPhase('idle');setElapsed(0);
     try{
-     const file=createVoiceFile(capture.chunks,recorder.mimeType||mime);
+     const file=createVoiceFile(capture.chunks,recorder.mimeType||mime||normalizedMime);
      recordedRef.current(file); // Existing media preview asks before upload.
     }catch(error){
      errorRef.current(error instanceof Error?error.message:'Не удалось подготовить голосовое сообщение.');
     }
    };
+   // A permission revocation or unplugged microphone can end its audio track
+   // while MediaRecorder still appears active. Cancel rather than previewing
+   // a truncated/silent recording, and detach this listener on every cleanup.
+   const trackEnded=()=>{
+    if(capture.discard||captureRef.current!==capture)return;
+    cancel();
+    errorRef.current('Соединение с микрофоном прервано. Запись отменена; проверь микрофон и попробуй ещё раз.');
+   };
+   capture.trackEnded=trackEnded;
+   audioTrack.addEventListener('ended',trackEnded,{once:true});
+   if(audioTrack.readyState==='ended'){
+    trackEnded();
+    return;
+   }
    recorder.start(1000);
    capture.clock=window.setInterval(()=>{
     if(captureRef.current===capture)setElapsed(Math.min(120,Math.floor((Date.now()-capture.startedAt)/1000)));
    },250);
    capture.limit=window.setTimeout(()=>{
-    if(captureRef.current===capture&&capture.recorder.state==='recording'){
-     setPhase('finalizing');
-     capture.recorder.stop();
-    }
+    if(captureRef.current===capture)finish();
    },VOICE_RECORD_MAX_MS);
    setPhase('recording');
   }catch(error){
-   if(stream)stopTracks(stream);
-   if(captureRef.current?.stream===stream)captureRef.current=null;
+   clearPermissionTimer(generation);
+   // A stale permission prompt can reject after a newer recording request starts.
+   // Only the generation that still owns this request may clear shared session state.
+   if(requestRef.current===generation){
+    sessionActiveRef.current=false;
+    if(captureRef.current?.stream===stream)captureRef.current=null;
+   }
+   if(stream)stopMediaStreamTracks(stream);
    if(requestRef.current!==generation||!liveRef.current)return;
    setPhase('idle');
    const denial=error instanceof Error&&(error.name==='NotAllowedError'||error.name==='PermissionDeniedError');
@@ -186,8 +292,7 @@ export default function VoiceRecorder({disabled,onRecorded,onError}:Props){
    </div>
    <span className="ik-voice-help">Не более 2 минут · перед отправкой можно прослушать</span>
    <div className="ik-voice-actions">
-    <button type="button" className="ik-voice-cancel" onClick={cancel}
-     disabled={phase==='finalizing'}>Отменить</button>
+    <button type="button" className="ik-voice-cancel" onClick={cancel}>Отменить</button>
     <button type="button" className="ik-voice-stop" onClick={finish}
      disabled={phase!=='recording'}>Готово</button>
    </div>
