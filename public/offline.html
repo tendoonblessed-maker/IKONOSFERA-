@@ -1,2 +1,83 @@
 <!doctype html>
-<html lang="ru"><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/><meta name="theme-color" content="#ffffff"/><title>IKONOSFERA — нет подключения</title><style>html,body{margin:0;min-height:100%;background:#fff;color:#111111;font-family:system-ui,-apple-system,sans-serif}main{min-height:100dvh;display:grid;place-content:center;text-align:center;padding:24px}p{max-width:340px;color:#696969;line-height:1.5;font-size:16px}a{color:#111111;min-height:44px;display:inline-flex;align-items:center;justify-content:center}</style></head><body><main><img src="/branding/ikonosfera.svg" alt="IKONOSFERA © BY TENDO888" style="display:block;width:min(250px,70vw);height:auto;margin:0 auto 24px"/><h1>Нет подключения</h1><p>IKONOSFERA не может связаться с сервером. Проверь интернет и попробуй снова. Сообщения не сохраняются на этом экране.</p><a href="/">Повторить</a></main></body></html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/>
+  <meta name="theme-color" content="#ffffff"/>
+  <title>IKONOSFERA — нет подключения</title>
+  <style>
+    html,body{margin:0;min-height:100%;background:#fff;color:#111111;font-family:system-ui,-apple-system,sans-serif}
+    main{min-height:100dvh;display:grid;place-content:center;text-align:center;padding:24px}
+    p{max-width:340px;color:#696969;line-height:1.5;font-size:16px}
+    a{color:#111111;min-height:44px;display:inline-flex;align-items:center;justify-content:center}
+  </style>
+</head>
+<body>
+  <main>
+    <img src="/branding/ikonosfera.svg" alt="IKONOSFERA © BY TENDO888" style="display:block;width:min(250px,70vw);height:auto;margin:0 auto 24px"/>
+    <h1>Нет подключения</h1>
+    <p role="status" aria-live="polite">IKONOSFERA не может связаться с сервером. Проверь интернет и попробуй снова. Сообщения не сохраняются на этом экране.</p>
+    <a id="retry-app" href="/">Повторить</a>
+    <p>Когда соединение восстановится, страница попробует открыть мессенджер автоматически.</p>
+  </main>
+  <script>
+    // navigator.onLine only reports a network interface state; it does not
+    // prove that the IKONOSFERA origin is reachable. Probe the origin before
+    // navigating so a cached offline shell cannot cause an automatic reload loop.
+    const RECONNECT_PROBE_TIMEOUT_MS = 5000;
+    let recoveryStarted = false;
+    let probeInFlight = false;
+    const retryApp = async () => {
+      if (recoveryStarted || probeInFlight) return;
+      probeInFlight = true;
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), RECONNECT_PROBE_TIMEOUT_MS);
+      try {
+        // A non-navigation fetch is deliberately not handled by the offline
+        // navigation fallback in sw.js. Cache bypass makes this a real origin
+        // reachability check; abort after headers to avoid downloading the page.
+        const response = await fetch("/", {
+          method: "GET",
+          cache: "no-store",
+          credentials: "same-origin",
+          signal: controller.signal
+        });
+        const sameOrigin = !response.url || new URL(response.url, window.location.href).origin === window.location.origin;
+        const reachable = !controller.signal.aborted && response.ok && sameOrigin;
+        controller.abort();
+        if (reachable) {
+          recoveryStarted = true;
+          window.location.replace("/");
+        }
+      } catch {
+        // Keep the offline page visible; the manual retry remains available.
+      } finally {
+        clearTimeout(timeoutId);
+        controller.abort();
+        probeInFlight = false;
+      }
+    };
+    // Keep listening: a failed probe must not consume the only future online event.
+    window.addEventListener("online", retryApp);
+    // A BFCache restore may have missed the online event while frozen.
+    // navigator.onLine is only a cheap gate; retryApp still verifies the origin.
+    window.addEventListener("pageshow", (event) => {
+      if (event.persisted && navigator.onLine) return retryApp();
+    });
+    // The browser may already report online when the service worker serves the
+    // offline shell for a transient 502/503/504. Probe once on initial display.
+    if (navigator.onLine) retryApp();
+    // Also retry when a suspended PWA/tab becomes visible after the origin recovers
+    // without a network-interface transition (which would not emit another online event).
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "visible" && navigator.onLine) return retryApp();
+    });
+    // Keep the anchor as a no-JavaScript fallback, but route normal clicks through
+    // the same bounded origin probe instead of navigating straight into the SW fallback.
+    document.getElementById("retry-app")?.addEventListener("click", (event) => {
+      event.preventDefault();
+      return retryApp();
+    });
+  </script>
+</body>
+</html>
