@@ -17,7 +17,7 @@ function setup(handler=()=>({ok:true,json:async()=>[]})){
  const calls=[];
  const exports={};
  const ctx={
-  exports,URLSearchParams,URL,AbortSignal,
+  exports,URLSearchParams,URL,AbortSignal,AbortController,setTimeout,clearTimeout,
   process:{env:{NEXT_PUBLIC_SUPABASE_ANON_KEY:'test-anon'}},
   fetch:async(url,options)=>{calls.push({url,options});return handler(url,options,calls.length);},
   require(name){
@@ -109,6 +109,58 @@ test('context navigation rejects deleted or foreign message before fetching any 
  await assert.rejects(api.getGroupMessageContext('jwt','bad',ROW.id,ROW.created_at),/Некорректное/);
 });
 
+
+test('group search physically aborts its in-flight GET when the caller cancels',async()=>{
+ let observedSignal=null;
+ const {api,calls}=setup((url,options)=>new Promise((resolve,reject)=>{
+  observedSignal=options.signal;
+  options.signal.addEventListener('abort',()=>{
+   const error=new Error('aborted');error.name='AbortError';reject(error);
+  },{once:true});
+ }));
+ const controller=new AbortController();
+ const pending=api.searchGroupMessages('jwt',GROUP,'привет',0,controller.signal);
+ await new Promise(resolve=>setImmediate(resolve));
+ assert.equal(calls.length,1);
+ controller.abort();
+ await assert.rejects(pending,error=>error.name==='AbortError');
+ assert.ok(observedSignal?.aborted,'the actual fetch signal must be aborted');
+});
+
+test('context navigation aborts both parallel timeline GETs when the owner cancels',async()=>{
+ const {api,calls}=setup((url,options,index)=>{
+  if(index===1)return result([ROW]);
+  return new Promise((resolve,reject)=>{
+   options.signal.addEventListener('abort',()=>{
+    const error=new Error('aborted');error.name='AbortError';reject(error);
+   },{once:true});
+  });
+ });
+ const controller=new AbortController();
+ const pending=api.getGroupMessageContext('jwt',GROUP,ROW.id,ROW.created_at,controller.signal);
+ await new Promise(resolve=>setImmediate(resolve));
+ assert.equal(calls.length,3,'target and both bounded context windows should have started');
+ controller.abort();
+ await assert.rejects(pending,error=>error.name==='AbortError');
+ assert.ok(calls[1].options.signal.aborted);
+ assert.ok(calls[2].options.signal.aborted);
+});
+
+test('a failed context window aborts its still-running sibling request',async()=>{
+ const {api,calls}=setup((url,options,index)=>{
+  if(index===1)return result([ROW]);
+  if(index===2)return Promise.reject(new Error('temporary failure'));
+  return new Promise((resolve,reject)=>{
+   options.signal.addEventListener('abort',()=>{
+    const error=new Error('aborted');error.name='AbortError';reject(error);
+   },{once:true});
+  });
+ });
+ await assert.rejects(api.getGroupMessageContext('jwt',GROUP,ROW.id,ROW.created_at),/temporary failure/);
+ assert.equal(calls.length,3);
+ assert.ok(calls[2].options.signal.aborted,'the sibling GET must not outlive the failed context load');
+});
+
 test('search panel is account scoped, shows complete history results and never executes HTML',()=>{
  const ui=read('components/GroupSearchPanel.tsx');
  const panel=read('components/GroupPanel.tsx');
@@ -119,11 +171,17 @@ test('search panel is account scoped, shows complete history results and never e
  assert.match(ui,/onClick=\{onMore\}/);
  assert.match(ui,/onClick=\{onClose\}/);
  assert.doesNotMatch(ui,/dangerouslySetInnerHTML|innerHTML|service_role/);
- assert.match(panel,/searchGroupMessages\(token,group\.id,term,searchPage\*GROUP_SEARCH_PAGE_SIZE\)/);
+ assert.match(panel,/searchGroupMessages\(token,group\.id,term,searchPage\*GROUP_SEARCH_PAGE_SIZE,controller\.signal\)/);
+ assert.match(panel,/searchAbortRef\.current\?\.abort\(\)/);
+ assert.match(panel,/searchJumpAbortRef\.current\?\.abort\(\)/);
+ assert.match(panel,/document\.addEventListener\('visibilitychange',abortOnPause\)/);
+ assert.match(panel,/window\.addEventListener\('offline',abortOnPause\)/);
  assert.match(panel,/contextRef\.current\.groupId!==requestGroup/);
  assert.match(panel,/contextRef\.current\.userId!==requestOwner/);
  assert.match(panel,/contextRef\.current\.token!==requestToken/);
- assert.match(panel,/getGroupMessageContext\(token,groupId,message\.id,message\.created_at\)/);
+ assert.match(panel,/getGroupMessageContext\(\n    token,groupId,message\.id,message\.created_at,controller\.signal\n   \)/);
+ assert.match(panel,/searchJumpRequestRef\.current\+\+/);
+ assert.match(panel,/Поиск приостановлен/);
  assert.match(panel,/browsingOlderRef\.current=true/);
  assert.match(panel,/if\(cancelled\|\|document\.visibilityState==='hidden'\|\|!navigator\.onLine\|\|browsingOlderRef\.current\)return/);
  assert.match(panel,/data-group-message-id=\{m\.id\}/);
