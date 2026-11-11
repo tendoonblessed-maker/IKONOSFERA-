@@ -12,6 +12,7 @@ import ChatMessageText from "@/components/ChatMessageText";
 import {subscribeDirectChatChanges} from "@/lib/direct-realtime";
 import {startVisiblePolling} from "@/lib/visible-polling";
 import {createAbortableRequestScope} from "@/lib/request-abort-scope";
+import {bumpReplyTargetVersion,snapshotReplyTargetVersions,isReplyTargetVersionCurrent,filterReplyTargetsForCurrentVersion} from "@/lib/reply-target-cache";
 import {createSingleFlightRefreshGate} from "@/lib/single-flight-refresh";
 import {subscribeInboxChanges,type InboxChangeKind} from "@/lib/inbox-realtime";
 import {isLatestAccountSnapshot} from "@/lib/inbox-snapshot";
@@ -157,6 +158,10 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
   const draftsOwnerRef=useRef('');
   const groupDraftsOwnerRef=useRef('');
   const replyTargetsQueriedRef=useRef<Set<string>>(new Set());
+  const replyTargetsRefreshIdsRef=useRef<Set<string>>(new Set());
+  const replyTargetVersionsRef=useRef<Map<string,number>>(new Map());
+  const replyReferenceIdsRef=useRef<Set<string>>(new Set());
+  const chatMessagesRef=useRef<ChatMessage[]>([]);
   const replyTargetsGenerationRef=useRef(0);
   const replyJumpRequestRef=useRef(0);
   const chatContextGenerationRef=useRef(0);
@@ -173,6 +178,26 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
     for(const scope of replyTargetAbortScopesRef.current)scope.abort();
     replyTargetAbortScopesRef.current.clear();
     replyTargetsQueriedRef.current.clear();
+  };
+  // Realtime carries only a row ID as a wake-up hint. The authoritative quote
+  // is always re-read through the existing chat-scoped PostgREST/RLS query.
+  const invalidateReplyTarget=(messageId:string)=>{
+    if(!replyReferenceIdsRef.current.has(messageId)&&!replyTargetsQueriedRef.current.has(messageId))return;
+    bumpReplyTargetVersion(replyTargetVersionsRef.current,messageId);
+    replyTargetsQueriedRef.current.delete(messageId);
+    replyTargetsRefreshIdsRef.current.add(messageId);
+    setReplyTargets(current=>({
+      ...current,
+      [messageId]:{
+        id:messageId,
+        sender_id:current[messageId]?.sender_id??chatMessagesRef.current.find(message=>message.id===messageId)?.sender_id??'',
+        body:'',
+        deleted_for_everyone:false,
+        media_type:null,
+        refreshing:true
+      }
+    }));
+    setReplyTargetsRetryNonce(n=>n+1);
   };
 
   // In-memory edits belong to one signed-in user; never reuse across accounts.
@@ -247,7 +272,19 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
     attachmentDragDepthRef.current=0;setAttachmentDragActive(false);
     resetMessageSearch();
   },[selected,userId]);
-  useEffect(()=>{replyTargetsQueriedRef.current.clear();setReplyTargets({});},[selected,userId]);
+  useEffect(()=>{
+    chatMessagesRef.current=chatMessages;
+    replyReferenceIdsRef.current=new Set(chatMessages.map(message=>message.reply_to_message_id)
+      .filter((id):id is string=>Boolean(id)));
+  },[chatMessages]);
+  useEffect(()=>{
+    replyTargetsQueriedRef.current.clear();
+    replyTargetsRefreshIdsRef.current.clear();
+    replyTargetVersionsRef.current.clear();
+    replyReferenceIdsRef.current.clear();
+    chatMessagesRef.current=[];
+    setReplyTargets({});
+  },[selected,userId]);
   // Quotations may refer to messages outside the newest page. Fetch only those
   // target IDs, under normal Supabase RLS; never cache quotes between accounts.
   useEffect(()=>{
@@ -258,10 +295,15 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
     const requestGeneration=replyTargetsGenerationRef.current;
     const inChat=chatMessages.filter(message=>message.chat_id===chatId);
     const loaded=new Set(inChat.map(message=>message.id));
-    const missing=[...new Set(inChat.map(message=>message.reply_to_message_id).filter((id):id is string=>Boolean(id)))]
-      .filter(id=>!loaded.has(id)&&!replyTargets[id]&&!replyTargetsQueriedRef.current.has(id));
+    const referenced=[...new Set(inChat.map(message=>message.reply_to_message_id).filter((id):id is string=>Boolean(id)))];
+    const missing=referenced.filter(id=>replyTargetsRefreshIdsRef.current.has(id)
+      ||(!loaded.has(id)&&!replyTargets[id]&&!replyTargetsQueriedRef.current.has(id)));
     if(!missing.length)return;
-    for(const id of missing)replyTargetsQueriedRef.current.add(id);
+    for(const id of missing){
+      replyTargetsQueriedRef.current.add(id);
+      replyTargetsRefreshIdsRef.current.delete(id);
+    }
+    const requestVersions=snapshotReplyTargetVersions(missing,replyTargetVersionsRef.current);
     // Keep each PostgREST URL bounded; every batch has an independent abort
     // scope so pausing the chat cancels all quote lookups without coupling them.
     const batches:Array<string[]>= [];
@@ -269,12 +311,16 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
     const stillInChat=()=>selectedRef.current===chatId&&chatContextGenerationRef.current===generation
       &&replyTargetsGenerationRef.current===requestGeneration;
     const requests=batches.map(async ids=>{
+      const batchVersions=snapshotReplyTargetVersions(ids,requestVersions);
       const scope=createAbortableRequestScope();
       const controller=scope.begin();
       replyTargetAbortScopesRef.current.add(scope);
       try{
         const targets=await listReplyTargets(session.access_token,chatId,ids,controller.signal);
-        return controller.signal.aborted?[]:targets;
+        return controller.signal.aborted?{ids,targets:[]}:{
+          ids,
+          targets:filterReplyTargetsForCurrentVersion(targets,replyTargetVersionsRef.current,batchVersions)
+        };
       }finally{
         scope.clear(controller);
         replyTargetAbortScopesRef.current.delete(scope);
@@ -283,13 +329,37 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
     void Promise.all(requests)
       .then(results=>{
         if(!stillInChat()||document.visibilityState!=='visible'||!navigator.onLine)return;
-        const targets=results.flat();
-        setReplyTargets(current=>({...current,...Object.fromEntries(targets.map(target=>[target.id,target]))}));
+        const byId=new Map(results.flatMap(result=>result.targets).map(target=>[target.id,target]));
+        const updates:Record<string,ReplyTarget>={};
+        for(const id of missing){
+          if(!isReplyTargetVersionCurrent(id,replyTargetVersionsRef.current,requestVersions))continue;
+          updates[id]=byId.get(id)??{
+            id,
+            sender_id:replyTargets[id]?.sender_id??chatMessagesRef.current.find(message=>message.id===id)?.sender_id??'',
+            body:'',
+            deleted_for_everyone:false,
+            media_type:null,
+            unavailable:true
+          };
+        }
+        if(Object.keys(updates).length)setReplyTargets(current=>({...current,...updates}));
       })
       .catch(()=>{
-        // A pause clears the query set and aborts requests; transient failures
-        // also release IDs so the next chat refresh can retry them.
-        if(stillInChat())for(const id of missing)replyTargetsQueriedRef.current.delete(id);
+        if(!stillInChat())return;
+        const unavailable:Record<string,ReplyTarget>={};
+        for(const id of missing){
+          if(!isReplyTargetVersionCurrent(id,replyTargetVersionsRef.current,requestVersions))continue;
+          replyTargetsQueriedRef.current.delete(id);
+          unavailable[id]={
+            id,
+            sender_id:replyTargets[id]?.sender_id??chatMessagesRef.current.find(message=>message.id===id)?.sender_id??'',
+            body:'',
+            deleted_for_everyone:false,
+            media_type:null,
+            unavailable:true
+          };
+        }
+        if(Object.keys(unavailable).length)setReplyTargets(current=>({...current,...unavailable}));
       });
   },[chatMessages,chatLoad?.id,chatLoad?.status,replyTargets,replyTargetsRetryNonce,selected,session?.access_token]);
   // Full-history search uses a scoped, security-invoker database RPC.
@@ -617,8 +687,9 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
     void sync(true);
     // Debounce bursts of read receipts and inserts. The returned rows always
     // pass ordinary RLS and message filtering, even on a Realtime signal.
-    const onRealtimeChange=()=>{
+    const onRealtimeChange=(messageId?:string)=>{
       if(cancelled||document.visibilityState==='hidden'||!navigator.onLine)return;
+      if(messageId)invalidateReplyTarget(messageId);
       if(realtimeTimer!==null)window.clearTimeout(realtimeTimer);
       realtimeTimer=window.setTimeout(()=>{
         realtimeTimer=null;
@@ -629,7 +700,11 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
     // HTTP polling remains a fallback when WebSocket is blocked, offline,
     // rate-limited or disconnected (and it repairs missed Realtime events).
     const stopVisiblePolling=startVisiblePolling(
-      ()=>void sync(),6000,document,window,navigator,()=>{void sync(true);setReplyTargetsRetryNonce(n=>n+1);},()=>{requestGeneration++;requestAbortScope.abort();olderHistoryAbortScopeRef.current.abort();abortOlderReactionScopes();abortReplyTargetScopes();}
+      ()=>void sync(),6000,document,window,navigator,()=>{
+        void sync(true);
+        for(const id of replyReferenceIdsRef.current)replyTargetsRefreshIdsRef.current.add(id);
+        setReplyTargetsRetryNonce(n=>n+1);
+      },()=>{requestGeneration++;requestAbortScope.abort();olderHistoryAbortScopeRef.current.abort();abortOlderReactionScopes();abortReplyTargetScopes();}
     );
     return()=>{
       cancelled=true;requestGeneration++;stopVisiblePolling();requestAbortScope.abort();olderHistoryAbortScopeRef.current.abort();abortOlderReactionScopes();abortReplyTargetScopes();
@@ -972,8 +1047,18 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
     // Search results remain available when a distant match requires another
     // bounded page fetch. Close the panel only once the source is found.
     if(!fromSearch)resetMessageSearch();
-    if(chatMessages.some(message=>message.id===id)){
-      const hidden=chatMessages.some(message=>message.id===id&&message.deleted_for?.includes(userId));
+    const cachedTarget=replyTargets[id];
+    const loadedTarget=chatMessages.find(message=>message.id===id);
+    if(cachedTarget?.refreshing){
+      setNotice('Обновляем оригинал цитаты. Попробуй ещё раз через мгновение.');
+      return;
+    }
+    if(cachedTarget?.unavailable||cachedTarget?.deleted_for_everyone||loadedTarget?.deleted_for_everyone){
+      setNotice('Исходное сообщение удалено или больше недоступно.');
+      return;
+    }
+    if(loadedTarget){
+      const hidden=loadedTarget.deleted_for?.includes(userId);
       if(hidden){setNotice('Исходное сообщение скрыто в твоей истории.');return;}
       if(fromSearch)resetMessageSearch();
       setPendingReplyJump({chatId,id});
@@ -1189,6 +1274,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
     const chatId=selected,token=session.access_token;
     try{
       await manageMessage(token,messageId,action,body);
+      invalidateReplyTarget(messageId);
       // An edit/delete must not be reverted by a still-pending send overlay.
       confirmedMessagesRef.current.delete(messageId);
       if(selectedRef.current===chatId){
@@ -1627,10 +1713,10 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
         onReply={()=>replyToMessage(message)}
         onOpenMenu={!message.deleted_for_everyone?()=>{setMessageMenuId(message.id);setMessageReactionPicker(null);}:undefined}><div id={'ik-chat-message-'+message.id} className={`bubble ${message.sender_id===userId?'mine':'theirs'}`}>
           {!message.deleted_for_everyone&&message.reply_to_message_id&&<ReplyQuote
-            target={messageById.get(message.reply_to_message_id)??replyTargets[message.reply_to_message_id]??null}
-            senderName={!(messageById.get(message.reply_to_message_id)??replyTargets[message.reply_to_message_id])?'Исходное сообщение':((messageById.get(message.reply_to_message_id)??replyTargets[message.reply_to_message_id])?.sender_id===userId)?'Вы':active?.other?.display_name||active?.other?.username||'Собеседник'}
+            target={replyTargets[message.reply_to_message_id]??messageById.get(message.reply_to_message_id)??null}
+            senderName={!(replyTargets[message.reply_to_message_id]??messageById.get(message.reply_to_message_id))?'Исходное сообщение':((replyTargets[message.reply_to_message_id]??messageById.get(message.reply_to_message_id))?.sender_id===userId)?'Вы':active?.other?.display_name||active?.other?.username||'Собеседник'}
             onJump={()=>void jumpToOriginalMessage(message.reply_to_message_id!)}
-            loading={locatingReply===message.reply_to_message_id}
+            loading={locatingReply===message.reply_to_message_id||Boolean(replyTargets[message.reply_to_message_id]?.refreshing)}
           />}{!message.deleted_for_everyone&&message.media_path&&message.media_type&&session&&<ChatMedia token={session.access_token} path={message.media_path} type={message.media_type}/>} {message.deleted_for_everyone?<span className="message-deleted">Сообщение удалено</span>:editingMessageId===message.id?<MessageEditForm
             value={editingMessageBody} onChange={setEditingMessageBody}
             onSave={body=>messageAction(message.id,'edit',body)}

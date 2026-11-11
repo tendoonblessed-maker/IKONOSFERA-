@@ -14,6 +14,9 @@ test('private Realtime attaches only to the selected chat and existing JWT',()=>
  assert.match(helper,/schema:'public' as const,table:'messages'/);
  assert.match(helper,/event:'INSERT'/);
  assert.match(helper,/event:'UPDATE'/);
+ assert.match(helper,/payload\.new\?\.id/);
+ assert.match(helper,/onChanged:\(messageId\?:string\)=>void/);
+ assert.doesNotMatch(helper,/payload\.new\.body|payload\.new\.deleted_for_everyone/);
  assert.doesNotMatch(helper,/process\.env\.(?:SUPABASE_SERVICE_ROLE_KEY|SUPABASE_SECRET_KEY)|client\.from\('messages'\)/i);
  assert.match(shell,/subscribeDirectChatChanges\(token,chatId,onRealtimeChange\)/);
  assert.match(shell,/\},\[selected,session\?\.access_token,userId,chatReloadNonce\]\)/);
@@ -32,7 +35,11 @@ test('Realtime wakes server-authoritative read, preserves offline fallback and c
  assert.match(section,/if\(queuedSync&&!cancelled\)\{queuedSync=false;void sync\(\);\}/);
  assert.match(section,/const messages=\(await listMessages\(token,chatId,controller\.signal\)\)\.reverse\(\)/);
  assert.match(section,/mergeConfirmedRecentPage\(/);
- assert.match(section,/const onRealtimeChange=\(\)=>\{/);
+ assert.match(section,/const onRealtimeChange=\(messageId\?:string\)=>\{/);
+ assert.match(section,/if\(messageId\)invalidateReplyTarget\(messageId\)/);
+ assert.match(shell,/replyTargetsRefreshIdsRef/);
+ assert.match(shell,/filterReplyTargetsForCurrentVersion/);
+ assert.match(shell,/target\?\.refreshing/);
  assert.match(section,/if\(cancelled\|\|document\.visibilityState==='hidden'\|\|!navigator\.onLine\)return;/);
  assert.match(section,/window\.setTimeout\(\(\)=>\{/);
  assert.match(section,/},150\)/);
@@ -43,6 +50,7 @@ test('Realtime wakes server-authoritative read, preserves offline fallback and c
  assert.doesNotMatch(section,/window\.addEventListener\('online',onConnected\)/);
  assert.doesNotMatch(section,/document\.addEventListener\('visibilitychange',onVisible\)/);
  assert.match(helper,/status==='SUBSCRIBED'\)changed\(\)/);
+ assert.match(shell,/for\(const id of replyReferenceIdsRef\.current\)replyTargetsRefreshIdsRef\.current\.add\(id\)/);
  assert.doesNotMatch(helper,/setChatMessages|JSON\.parse\(payload/);
 });
 
