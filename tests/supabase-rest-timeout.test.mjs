@@ -131,12 +131,17 @@ test('a caller abort also cancels a response body after headers have arrived',as
  assert.equal(requestSignal.aborted,true);
 });
 
-test('a pre-aborted caller signal prevents a hanging fetcher from blocking the caller',async()=>{
+test('a pre-aborted caller signal never invokes the transport',async()=>{
  const owner=new AbortController();
  const reason=Object.assign(new Error('account changed'),{name:'AbortError'});
  owner.abort(reason);
- const pending=fetchWithTimeout(()=>new Promise(()=>{}),'/pre-aborted',{signal:owner.signal},1000);
+ let calls=0;
+ const pending=fetchWithTimeout(()=>{
+  calls++;
+  return new Promise(()=>{});
+ },'/pre-aborted',{signal:owner.signal},1000);
  await assert.rejects(pending,error=>error===reason);
+ assert.equal(calls,0,'a canceled mutation must not reach the transport');
 });
 
 test('caller cancellation is not rewritten as a request timeout',async()=>{
