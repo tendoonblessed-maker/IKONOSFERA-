@@ -30,13 +30,15 @@ async function settleBackground(handle){
 }
 
 function lifecycleHandler({
- open=async()=>({add:async()=>{}}),
+ open=async()=>({add:async()=>{},match:async()=>({source:'offline-shell'})}),
  keys=async()=>[],
+ deleteCache=async()=>true,
  scheduleTimeout=(callback,delay)=>setTimeout(callback,delay),
  cancelTimeout=id=>clearTimeout(id)
 }={}){
  const handlers=new Map();
  let skipped=0,claimed=0;
+ const deleted=[];
  const self={
   location:{origin:'https://ikonosfera.test'},
   clients:{claim:async()=>{claimed++;}},
@@ -44,7 +46,10 @@ function lifecycleHandler({
   skipWaiting:()=>{skipped++;}
  };
  vm.runInNewContext(source,{
-  self,caches:{open,keys,delete:async()=>true},URL,Response,
+  self,caches:{
+   open,keys,
+   delete:async name=>{deleted.push(name);return deleteCache(name);}
+  },URL,Response,
   setTimeout:scheduleTimeout,clearTimeout:cancelTimeout
  },{timeout:1000});
  return {
@@ -59,7 +64,8 @@ function lifecycleHandler({
    await completion;
   },
   skipped:()=>skipped,
-  claimed:()=>claimed
+  claimed:()=>claimed,
+  deleted:()=>deleted
  };
 }
 
@@ -171,6 +177,36 @@ test('activation still claims clients when cache cleanup is unavailable',async()
  assert.equal(worker.claimed(),1);
 });
 
+test('activation preserves the previous offline shell when the new cache is incomplete',async()=>{
+ const worker=lifecycleHandler({
+  open:async()=>({match:async()=>undefined}),
+  keys:async()=>['ikonosfera-shell-v5','ikonosfera-shell-v6']
+ });
+ await assert.doesNotReject(worker.activate());
+ assert.deepEqual(worker.deleted(),[]);
+ assert.equal(worker.claimed(),1);
+});
+
+test('activation deletes old caches only after the current offline shell is present',async()=>{
+ const worker=lifecycleHandler({
+  open:async()=>({match:async asset=>asset==='/offline.html'?{source:'current-offline-shell'}:undefined}),
+  keys:async()=>['ikonosfera-shell-v5','ikonosfera-shell-v6','unrelated-cache']
+ });
+ await assert.doesNotReject(worker.activate());
+ assert.deepEqual(worker.deleted(),['ikonosfera-shell-v5']);
+ assert.equal(worker.claimed(),1);
+});
+
+test('Cache Storage denial during activation preserves old caches and still claims clients',async()=>{
+ const worker=lifecycleHandler({
+  open:async()=>{throw Error('SecurityError');},
+  keys:async()=>['ikonosfera-shell-v5','ikonosfera-shell-v6']
+ });
+ await assert.doesNotReject(worker.activate());
+ assert.deepEqual(worker.deleted(),[]);
+ assert.equal(worker.claimed(),1);
+});
+
 test('offline navigation fails closed when the offline cache lookup is denied',async()=>{
  const handle=fetchHandler({
   match:async()=>{throw Error('CacheStorage disabled');},
@@ -179,7 +215,6 @@ test('offline navigation fails closed when the offline cache lookup is denied',a
  const response=await handle({method:'GET',mode:'navigate',url:'https://ikonosfera.test/private-chat'});
  assert.equal(response.type,'error');
 });
-
 
 const navigationRequest={method:'GET',mode:'navigate',url:'https://ikonosfera.test/private-chat'};
 
