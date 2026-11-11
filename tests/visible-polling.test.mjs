@@ -320,3 +320,17 @@ test('pagehide does not report a second pause after the document is already hidd
   assert.equal(harness.intervals.size, 0);
   stop();
 });
+
+
+test('GroupPanel membership and member-presence polls pause offline and coalesce resume refreshes', () => {
+  const panel = readFileSync(new URL('../components/GroupPanel.tsx', import.meta.url), 'utf8');
+  assert.match(panel, /createSingleFlightRefreshGate/);
+  assert.match(panel, /startVisiblePolling\(\(\)=>updateMembers\(\),120000,document,window,navigator,/);
+  assert.match(panel, /startVisiblePolling\(\(\)=>load\(\),40000,document,window,navigator,/);
+  assert.match(panel, /if\(cancelled\|\|document\.visibilityState!=='visible'\|\|!navigator\.onLine\)return/);
+  assert.match(panel, /if\(gone\|\|document\.visibilityState!=='visible'\|\|!navigator\.onLine\)return/);
+  assert.equal((panel.match(/createSingleFlightRefreshGate\(\)/g) || []).length, 2);
+  assert.match(panel, /const queued=gate\.leave\(\)/);
+  assert.match(panel, /gate\.dispose\(\);stopPolling\(\)/);
+  assert.doesNotMatch(panel, /setInterval\(updateMembers,120000\)|setInterval\(load,40000\)/);
+});
