@@ -41,16 +41,29 @@ self.addEventListener("install", (event) => {
 
 self.addEventListener("activate", (event) => {
   event.waitUntil((async () => {
-    // Keep activation usable when Cache Storage is denied by the browser.
+    // Keep the previous cache until this version has its own offline shell.
+    // A failed/timed-out precache must not remove the last working fallback.
+    let currentShellReady = false;
     try {
-      const names = await caches.keys();
-      await Promise.all(
-        names
-          .filter((name) => name.startsWith("ikonosfera-") && name !== CACHE_NAME)
-          .map((name) => caches.delete(name).catch(() => false))
-      );
+      const currentCache = await caches.open(CACHE_NAME);
+      currentShellReady = Boolean(await currentCache.match(OFFLINE_URL));
     } catch {
-      // Skip cache cleanup; it is not required to serve the app online.
+      // Without proof of a replacement shell, preserve all previous caches.
+    }
+
+    if (currentShellReady) {
+      // Cache Storage is optional. Cleanup is best-effort and must not prevent
+      // the worker from claiming clients when an old cache cannot be removed.
+      try {
+        const names = await caches.keys();
+        await Promise.all(
+          names
+            .filter((name) => name.startsWith("ikonosfera-") && name !== CACHE_NAME)
+            .map((name) => caches.delete(name).catch(() => false))
+        );
+      } catch {
+        // Skip cache cleanup; it is not required to serve the app online.
+      }
     }
     await self.clients.claim();
   })());
