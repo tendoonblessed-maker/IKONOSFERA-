@@ -190,7 +190,7 @@ test('group search excerpt maps locale-lowercase offsets back to original Unicod
  assert.ok(excerpt.includes('Needle'));
 });
 
-test('group search truncation fallback preserves code points without Intl.Segmenter',()=>{
+test('group search truncation fallback preserves common graphemes without Intl.Segmenter',()=>{
  const descriptor=Object.getOwnPropertyDescriptor(Intl,'Segmenter');
  assert.ok(descriptor,'test runtime should expose Intl.Segmenter for fallback simulation');
  const original=Intl.Segmenter;
@@ -198,9 +198,16 @@ test('group search truncation fallback preserves code points without Intl.Segmen
   Object.defineProperty(Intl,'Segmenter',{...descriptor,value:undefined});
   const {api}=setup();
   assert.equal(api.normalizeGroupSearch('x'.repeat(119)+'😀'),'x'.repeat(119));
+  assert.equal(api.normalizeGroupSearch('x'.repeat(118)+'👨‍👩‍👧‍👦'),'x'.repeat(118),
+   'query truncation must not keep only the first code point of a family emoji');
   const body='x'.repeat(44)+'👨‍👩‍👧‍👦'+'y'.repeat(44)+'needle'+'z'.repeat(220);
   const excerpt=api.groupSearchExcerpt(body,'needle');
   assertWellFormedUnicode(excerpt);
+  const familyEnd='needle'+'x'.repeat(172)+'👨‍👩‍👧‍👦'+'tail';
+  assert.equal(api.groupSearchExcerpt(familyEnd,'needle'),'needle'+'x'.repeat(172)+'…',
+   'excerpt truncation must not keep a partial family emoji');
+  assert.equal(slicePreviewText('a'+'👨‍👩‍👧‍👦'+'b',2,20),'b',
+   'a requested offset inside a grapheme must skip that entire grapheme');
  }finally{
   Object.defineProperty(Intl,'Segmenter',{...descriptor,value:original});
  }
