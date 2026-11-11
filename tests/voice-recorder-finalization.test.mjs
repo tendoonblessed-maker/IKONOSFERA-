@@ -3,7 +3,7 @@ import {test} from 'node:test';
 import {readFileSync} from 'node:fs';
 import vm from 'node:vm';
 import ts from 'typescript';
-import {VOICE_FINALIZE_TIMEOUT_MS,VOICE_RECORD_MAX_MS} from '../lib/voice-notes.ts';
+import {VOICE_FINALIZE_TIMEOUT_MS,VOICE_RECORD_MAX_MS,VOICE_PERMISSION_TIMEOUT_MS} from '../lib/voice-notes.ts';
 
 const source=readFileSync(new URL('../components/VoiceRecorder.tsx',import.meta.url),'utf8');
 const compiled=ts.transpileModule(source,{
@@ -116,7 +116,7 @@ function harness({
     }
    };
    if(name==='@/lib/voice-notes')return {
-    VOICE_FINALIZE_TIMEOUT_MS,VOICE_RECORD_MAX_MS,VOICE_RECORD_MAX_BYTES:25*1024*1024,
+    VOICE_FINALIZE_TIMEOUT_MS,VOICE_RECORD_MAX_MS,VOICE_PERMISSION_TIMEOUT_MS,VOICE_RECORD_MAX_BYTES:25*1024*1024,
     chooseVoiceMimeType:check=>check('audio/webm')?'audio/webm':null,
     normalizeVoiceMimeType:mime=>{
      const base=(mime||'').split(';',1)[0].trim().toLowerCase();
@@ -150,6 +150,14 @@ function harness({
  const button=(tree,text)=>find(tree,node=>
   node.type==='button'&&node.props?.children===text);
  const pending=(ms)=>Array.from(timers.values()).filter(timer=>timer.ms===ms);
+ const fireTimeout=ms=>{
+  const entry=Array.from(timers.entries()).find(([,timer])=>timer.ms===ms);
+  if(!entry)return false;
+  const [id,timer]=entry;
+  timers.delete(id);
+  timer.fn();
+  return true;
+ };
  const clickStart=()=>{
   const trigger=find(render(),node=>node.props?.['aria-label']==='Записать голосовое сообщение');
   assert.ok(trigger);
@@ -165,7 +173,7 @@ function harness({
   assert.equal(recorders[0].state,recording?'recording':'inactive');
  };
  return {
-  render,button,pending,start,clickStart,flush,errors,recorded,tracks,recorders,timers,intervals,
+  render,button,pending,fireTimeout,start,clickStart,flush,errors,recorded,tracks,recorders,timers,intervals,
   document:doc,
   emitDocument:name=>documentEvents.get(name)?.(),
   emitWindow:name=>windowEvents.get(name)?.()
@@ -330,6 +338,70 @@ test('pagehide during finalization discards the incomplete recording and ignores
 });
 
 
+
+test('a permission prompt that never resolves is invalidated after a bounded wait',async()=>{
+ let rejectPermission;
+ const h=harness({
+  getUserMedia:()=>new Promise((_,reject)=>{rejectPermission=reject;})
+ });
+ h.clickStart();
+ await h.flush();
+ assert.equal(h.pending(VOICE_PERMISSION_TIMEOUT_MS).length,1);
+ assert.equal(h.fireTimeout(VOICE_PERMISSION_TIMEOUT_MS),true);
+ assert.equal(h.button(h.render(),'Отменить'),null,'a timed-out prompt returns the composer to idle');
+ assert.equal(h.recorders.length,0);
+ assert.equal(h.errors.length,1);
+ assert.match(h.errors[0],/заняло слишком много времени/);
+ assert.equal(h.timers.size,0);
+ h.document.visibilityState='hidden';
+ h.emitDocument('visibilitychange');
+ assert.equal(h.errors.length,1,'an expired prompt no longer owns the recording session');
+ rejectPermission?.(new Error('late permission denial'));
+ await h.flush();
+ assert.equal(h.errors.length,1,'a stale rejection is ignored');
+});
+
+test('a microphone stream granted after the permission deadline is immediately stopped',async()=>{
+ let resolvePermission;
+ const h=harness({
+  getUserMedia:()=>new Promise(resolve=>{resolvePermission=resolve;})
+ });
+ const lateTrack={stopped:false,stop(){this.stopped=true;}};
+ h.clickStart();
+ await h.flush();
+ assert.equal(h.fireTimeout(VOICE_PERMISSION_TIMEOUT_MS),true);
+ resolvePermission({getTracks:()=>[lateTrack]});
+ await h.flush();
+ assert.equal(lateTrack.stopped,true,'late permission grants must release every track');
+ assert.equal(h.recorders.length,0,'a stale permission grant never starts MediaRecorder');
+ assert.equal(h.recorded.length,0);
+ assert.equal(h.errors.length,1);
+});
+
+test('a stale permission rejection cannot clear a newer permission deadline',async()=>{
+ const requests=[];
+ const h=harness({
+  getUserMedia:()=>new Promise((resolve,reject)=>requests.push({resolve,reject}))
+ });
+ h.clickStart();
+ await h.flush();
+ assert.equal(h.fireTimeout(VOICE_PERMISSION_TIMEOUT_MS),true);
+ h.clickStart();
+ await h.flush();
+ assert.equal(requests.length,2);
+ assert.equal(h.pending(VOICE_PERMISSION_TIMEOUT_MS).length,1);
+ requests[0].reject(new Error('late permission denial from first prompt'));
+ await h.flush();
+ assert.equal(h.pending(VOICE_PERMISSION_TIMEOUT_MS).length,1,
+  'the stale request must not clear the newer request timer');
+ h.document.visibilityState='hidden';
+ h.emitDocument('visibilitychange');
+ assert.equal(h.pending(VOICE_PERMISSION_TIMEOUT_MS).length,0,
+  'background cleanup clears the current permission timer');
+ assert.equal(h.errors.length,2);
+ assert.match(h.errors[1],/приложение перешло в фон/);
+});
+
 test('a stale permission rejection cannot disable background cleanup for a newer microphone request',async()=>{
  const requests=[];
  const h=harness({
@@ -340,10 +412,12 @@ test('a stale permission rejection cannot disable background cleanup for a newer
  h.clickStart();
  await h.flush();
  assert.equal(requests.length,1);
+ assert.equal(h.pending(VOICE_PERMISSION_TIMEOUT_MS).length,1);
  h.document.visibilityState='hidden';
  h.emitDocument('visibilitychange');
  assert.equal(h.errors.length,1);
  assert.match(h.errors[0],/приложение перешло в фон/);
+ assert.equal(h.pending(VOICE_PERMISSION_TIMEOUT_MS).length,0,'background cleanup clears the permission deadline');
 
  // A second request starts after returning to the app.
  h.document.visibilityState='visible';
