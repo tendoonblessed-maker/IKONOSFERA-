@@ -51,6 +51,19 @@ test('group GET requests use the portable deadline without a global AbortSignal'
  assert.doesNotMatch(source,/AbortSignal\.timeout/);
 });
 
+test('group history reads preserve caller cancellation through the portable deadline',async()=>{
+ const owner=new AbortController();
+ const reason=Object.assign(new Error('group changed'),{name:'AbortError'});
+ const {api,calls}=setup((_url,options)=>new Promise((_resolve,reject)=>{
+  options.signal.addEventListener('abort',()=>reject(options.signal.reason),{once:true});
+ }));
+ const pending=api.groupMessages('signed-user-jwt',GROUP,owner.signal);
+ assert.equal(calls.length,1);
+ owner.abort(reason);
+ await assert.rejects(pending,error=>error===reason);
+ assert.equal(calls[0].options.signal.aborted,true);
+});
+
 test('read-only group overview RPC POST has a portable deadline too',async()=>{
  const {api,calls}=setup(()=>ok([]));
  const overviews=await api.listGroupOverviews('signed-user-jwt');
@@ -85,6 +98,6 @@ test('idempotent group POST and read-after-write GET both use portable deadlines
 test('group API no longer evaluates AbortSignal.timeout on any path',()=>{
  const source=read('lib/groups.ts');
  assert.doesNotMatch(source,/AbortSignal\.timeout/);
- assert.match(source,/method==='GET'\|\|timeoutMs!==undefined/);
+ assert.match(source,/method==='GET'\|\|timeoutMs!==undefined\|\|signal!==undefined/);
  assert.match(source,/GROUP_REQUEST_TIMEOUT_MS\);/);
 });
