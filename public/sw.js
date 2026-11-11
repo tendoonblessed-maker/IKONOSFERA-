@@ -36,7 +36,11 @@ self.addEventListener("install", (event) => {
     }
     await Promise.all(PRECACHE_URLS.map(asset => addPrecacheAsset(cache, asset)));
   })());
-  self.skipWaiting();
+  // On first install there is no previous worker to protect. During an
+  // update, keep the old worker in control until the browser has no remaining
+  // clients for it (including other open chat tabs and BFCache-held pages).
+  // The default waiting lifecycle avoids switching active conversations mid-session.
+  if (!self.registration?.active) self.skipWaiting();
 });
 
 self.addEventListener("activate", (event) => {
