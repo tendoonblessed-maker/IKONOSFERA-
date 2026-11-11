@@ -142,6 +142,8 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
   const conversationHistoryRef=useRef<HTMLDivElement|null>(null);
   const chatAutoScrollRef=useRef(true);
   const loadingOlderRef=useRef(false);
+  const olderHistoryAbortScopeRef=useRef(createAbortableRequestScope());
+  const olderReactionAbortScopesRef=useRef<Set<ReturnType<typeof createAbortableRequestScope>>>(new Set());
   const prependScrollRef=useRef<{chatId:string;height:number;top:number}|null>(null);
   const selectedRef=useRef<string|null>(null);
   const searchInputRef=useRef<HTMLInputElement|null>(null);
@@ -160,6 +162,10 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
   const composerRef=useRef<HTMLTextAreaElement|null>(null);
   const confirmedMessagesRef=useRef<Map<string,ConfirmedMessage>>(new Map());
   const attachmentDragDepthRef=useRef(0);
+  const abortOlderReactionScopes=()=>{
+    for(const scope of olderReactionAbortScopesRef.current)scope.abort();
+    olderReactionAbortScopesRef.current.clear();
+  };
 
   // In-memory edits belong to one signed-in user; never reuse across accounts.
   useEffect(()=>{recentChannelUpdatesRef.current.clear();},[userId]);
@@ -588,10 +594,10 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
     // HTTP polling remains a fallback when WebSocket is blocked, offline,
     // rate-limited or disconnected (and it repairs missed Realtime events).
     const stopVisiblePolling=startVisiblePolling(
-      ()=>void sync(),6000,document,window,navigator,()=>void sync(true),()=>{requestGeneration++;requestAbortScope.abort();}
+      ()=>void sync(),6000,document,window,navigator,()=>void sync(true),()=>{requestGeneration++;requestAbortScope.abort();olderHistoryAbortScopeRef.current.abort();abortOlderReactionScopes();}
     );
     return()=>{
-      cancelled=true;requestGeneration++;stopVisiblePolling();requestAbortScope.abort();
+      cancelled=true;requestGeneration++;stopVisiblePolling();requestAbortScope.abort();olderHistoryAbortScopeRef.current.abort();abortOlderReactionScopes();
       if(realtimeTimer!==null)window.clearTimeout(realtimeTimer);
       unsubscribeRealtime();
     };
@@ -856,36 +862,49 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
     resetMessageSearch();setSelectedMessages([]);setCreateMenuOpen(false);setTab(next);setSelected(null);setSelectedChannel(null);setProfileTarget(next==="profile"&&userId?userId:null);setShowRecommendations(false);setError("");
   }
   async function loadOlderChatMessages(){
-    if(!session||!selected||loadingOlderRef.current||!hasOlderMessages||!chatMessages.length)return;
+    if(!session||!selected||loadingOlderRef.current||!hasOlderMessages||!chatMessages.length||document.visibilityState!=='visible'||!navigator.onLine)return;
     const chatId=selected,token=session.access_token,oldest=chatMessages[0];
     const generation=chatContextGenerationRef.current;
     const stillInChat=()=>selectedRef.current===chatId&&chatContextGenerationRef.current===generation;
     const history=conversationHistoryRef.current;
+    const controller=olderHistoryAbortScopeRef.current.begin();
     loadingOlderRef.current=true;
     chatAutoScrollRef.current=false;
     if(history)prependScrollRef.current={chatId,height:history.scrollHeight,top:history.scrollTop};
     setLoadingOlderMessages(true);setOlderMessagesError(false);
     try{
-      const older=(await listOlderMessages(token,chatId,oldest)).reverse();
-      if(!stillInChat())return;
+      const older=(await listOlderMessages(token,chatId,oldest,controller.signal)).reverse();
+      if(!stillInChat()||controller.signal.aborted)return;
       setHasOlderMessages(older.length===CHAT_MESSAGE_PAGE_SIZE);
       if(older.length){
         setChatMessages(current=>prependEarlierPage(current,older));
-        // Older reactions load on demand rather than during every 6s poll.
-        void listMessageReactions(token,older.map(message=>message.id))
+        // Keep each older-page reaction read independently abortable so a
+        // later page can load without abandoning reactions for this page.
+        const reactionScope=createAbortableRequestScope();
+        const reactionController=reactionScope.begin();
+        olderReactionAbortScopesRef.current.add(reactionScope);
+        void listMessageReactions(token,older.map(message=>message.id),reactionController.signal)
           .then(reactions=>{
-            if(stillInChat())setMessageReactions(current=>{
+            if(!stillInChat()||reactionController.signal.aborted)return;
+            setMessageReactions(current=>{
               const ids=new Set(older.map(message=>message.id));
               return [...current.filter(reaction=>!ids.has(reaction.message_id)),...reactions];
             });
-          }).catch(()=>{});
+          }).catch(()=>{}).finally(()=>{
+            reactionScope.clear(reactionController);
+            olderReactionAbortScopesRef.current.delete(reactionScope);
+          });
       }else prependScrollRef.current=null;
-    }catch(error){
-      if(stillInChat()){
+    }catch{
+      // Background/offline cancellation is not a failed page load. A timeout
+      // while the chat is visible remains retryable and visible to the user.
+      if(stillInChat()&&document.visibilityState==='visible'&&navigator.onLine){
         prependScrollRef.current=null;
         setOlderMessagesError(true);
       }
     }finally{
+      if(controller.signal.aborted)prependScrollRef.current=null;
+      olderHistoryAbortScopeRef.current.clear(controller);
       // An old chat request must not unlock a newly opened chat's pagination.
       if(stillInChat()){
         loadingOlderRef.current=false;

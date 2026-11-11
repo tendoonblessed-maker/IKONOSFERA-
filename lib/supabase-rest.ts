@@ -189,10 +189,10 @@ export async function listMessages(token:string,chatId:string,signal?:AbortSigna
   return http<ChatMessage[]>(`/rest/v1/messages?select=${CHAT_MESSAGE_COLUMNS}&chat_id=eq.${encodeURIComponent(chatId)}&order=created_at.desc,id.desc&limit=${CHAT_MESSAGE_PAGE_SIZE}`,{token,signal});
 }
 /** Older than the earliest loaded message; server RLS still checks membership. */
-export async function listOlderMessages(token:string,chatId:string,before:Pick<ChatMessage,'id'|'created_at'>):Promise<ChatMessage[]>{
+export async function listOlderMessages(token:string,chatId:string,before:Pick<ChatMessage,'id'|'created_at'>,signal?:AbortSignal):Promise<ChatMessage[]>{
   const time=encodeURIComponent(before.created_at),id=encodeURIComponent(before.id);
   const cursor=`or=(created_at.lt.${time},and(created_at.eq.${time},id.lt.${id}))`;
-  return http<ChatMessage[]>(`/rest/v1/messages?select=${CHAT_MESSAGE_COLUMNS}&chat_id=eq.${encodeURIComponent(chatId)}&${cursor}&order=created_at.desc,id.desc&limit=${CHAT_MESSAGE_PAGE_SIZE}`,{token});
+  return http<ChatMessage[]>(`/rest/v1/messages?select=${CHAT_MESSAGE_COLUMNS}&chat_id=eq.${encodeURIComponent(chatId)}&${cursor}&order=created_at.desc,id.desc&limit=${CHAT_MESSAGE_PAGE_SIZE}`,{token,signal});
 }
 /** Load original messages referenced by older replies, subject to normal chat RLS. */
 export type ReplyTarget=Pick<ChatMessage,'id'|'sender_id'|'body'|'deleted_for_everyone'|'media_type'>;
