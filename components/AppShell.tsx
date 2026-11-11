@@ -157,6 +157,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
   const draftsOwnerRef=useRef('');
   const groupDraftsOwnerRef=useRef('');
   const replyTargetsQueriedRef=useRef<Set<string>>(new Set());
+  const replyTargetsGenerationRef=useRef(0);
   const replyJumpRequestRef=useRef(0);
   const chatContextGenerationRef=useRef(0);
   const messageSearchRequestRef=useRef(0);
@@ -168,6 +169,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
     olderReactionAbortScopesRef.current.clear();
   };
   const abortReplyTargetScopes=()=>{
+    replyTargetsGenerationRef.current++;
     for(const scope of replyTargetAbortScopesRef.current)scope.abort();
     replyTargetAbortScopesRef.current.clear();
     replyTargetsQueriedRef.current.clear();
@@ -253,6 +255,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
     if(!session||!chatId||chatLoad?.id!==chatId||chatLoad.status!=='ready'
       ||document.visibilityState!=='visible'||!navigator.onLine)return;
     const generation=chatContextGenerationRef.current;
+    const requestGeneration=replyTargetsGenerationRef.current;
     const inChat=chatMessages.filter(message=>message.chat_id===chatId);
     const loaded=new Set(inChat.map(message=>message.id));
     const missing=[...new Set(inChat.map(message=>message.reply_to_message_id).filter((id):id is string=>Boolean(id)))]
@@ -263,7 +266,8 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
     // scope so pausing the chat cancels all quote lookups without coupling them.
     const batches:Array<string[]>= [];
     for(let start=0;start<missing.length;start+=100)batches.push(missing.slice(start,start+100));
-    const stillInChat=()=>selectedRef.current===chatId&&chatContextGenerationRef.current===generation;
+    const stillInChat=()=>selectedRef.current===chatId&&chatContextGenerationRef.current===generation
+      &&replyTargetsGenerationRef.current===requestGeneration;
     const requests=batches.map(async ids=>{
       const scope=createAbortableRequestScope();
       const controller=scope.begin();
