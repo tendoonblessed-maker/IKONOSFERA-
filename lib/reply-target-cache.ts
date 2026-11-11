@@ -31,3 +31,23 @@ export function filterReplyTargetsForCurrentVersion<T extends {id:string}>(
 ):T[]{
   return targets.filter(target=>isReplyTargetVersionCurrent(target.id,versions,snapshot));
 }
+
+
+/** Identity captured by a reply-target read. A chat ID alone is not an owner:
+ * the same conversation can be visible under two accounts or after token rotation. */
+export type ReplyTargetOwner = {
+  chatId:string|null;
+  userId:string;
+  accessToken:string;
+};
+
+/** Reject a response as soon as the committed chat/account/session changes. */
+export function isReplyTargetOwnerCurrent(
+  expected:ReplyTargetOwner,
+  current:ReplyTargetOwner
+):boolean{
+  return Boolean(expected.chatId&&expected.userId&&expected.accessToken)
+    &&expected.chatId===current.chatId
+    &&expected.userId===current.userId
+    &&expected.accessToken===current.accessToken;
+}
