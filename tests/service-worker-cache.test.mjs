@@ -34,13 +34,15 @@ function lifecycleHandler({
  keys=async()=>[],
  deleteCache=async()=>true,
  scheduleTimeout=(callback,delay)=>setTimeout(callback,delay),
- cancelTimeout=id=>clearTimeout(id)
+ cancelTimeout=id=>clearTimeout(id),
+ activeWorker=false
 }={}){
  const handlers=new Map();
  let skipped=0,claimed=0;
  const deleted=[];
  const self={
   location:{origin:'https://ikonosfera.test'},
+  registration:{active:activeWorker?{state:'activated'}:null},
   clients:{claim:async()=>{claimed++;}},
   addEventListener:(name,handler)=>handlers.set(name,handler),
   skipWaiting:()=>{skipped++;}
@@ -245,4 +247,15 @@ test('a gateway response is preserved when the offline cache is unavailable',asy
   network:async()=>gatewayError
  });
  assert.equal(await handle(navigationRequest),gatewayError);
+});
+
+
+test('an update does not force a new worker over tabs controlled by the active worker',async()=>{
+ const worker=lifecycleHandler({activeWorker:true});
+ await worker.install();
+ assert.equal(worker.skipped(),0,'an existing active worker keeps control while its tabs remain open');
+ assert.equal(worker.claimed(),0,'the new worker cannot claim those tabs during install');
+ // The browser performs activation after the old worker has no remaining clients.
+ await worker.activate();
+ assert.equal(worker.claimed(),1,'clients are claimed only after browser-managed activation');
 });
