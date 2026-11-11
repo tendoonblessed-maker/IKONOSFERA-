@@ -6,7 +6,7 @@ import {shouldAcknowledgeGroupRead,countNewIncomingBelow} from '../lib/group-rea
 const GROUP='11111111-1111-4111-8111-111111111111';
 const A='22222222-2222-4222-8222-222222222222';
 const B='33333333-3333-4333-8333-333333333333';
-const message=(id,sender_id=B)=>({id,sender_id,group_id:GROUP,body:'Привет',created_at:'2026-10-29T08:00:00Z'});
+const message=(id,sender_id=B,created_at='2026-10-29T08:00:00.000000Z')=>({id,sender_id,group_id:GROUP,body:'Привет',created_at});
 const file=(path)=>readFileSync(new URL('../'+path,import.meta.url),'utf8');
 
 test('only mark group messages read while the latest row is visible',()=>{
@@ -21,16 +21,16 @@ test('only mark group messages read while the latest row is visible',()=>{
 test('new incoming messages are counted only while reading older group history',()=>{
  const prev=new Set(['1','2']);
  const next=[message('1'),message('2'),message('3'),message('4',A)];
- assert.equal(countNewIncomingBelow(next,prev,A,false),1);
- assert.equal(countNewIncomingBelow(next,prev,A,true),0);
- assert.equal(countNewIncomingBelow(next,new Set(),A,false),0,'first page is not all new');
- assert.equal(countNewIncomingBelow(next,prev,B,false),1,'a different owner only counts other participants');
+ assert.equal(countNewIncomingBelow(next,prev,A,false,message('2')) ,1);
+ assert.equal(countNewIncomingBelow(next,prev,A,true,message('2')),0);
+ assert.equal(countNewIncomingBelow(next,new Set(),A,false,message('2')),0,'first page is not all new');
+ assert.equal(countNewIncomingBelow(next,prev,B,false,message('2')),1,'a different owner only counts other participants');
 });
 
 test('message count handles simultaneous new replies, deletions and background merges',()=>{
- const ids=new Set(['one','two','three']);
- const next=[message('one'),message('four'),message('five'),message('six',A)];
- assert.equal(countNewIncomingBelow(next,ids,A,false),2);
+ const ids=new Set(['a','b','c']);
+ const next=[message('a'),message('d'),message('e'),message('f',A)];
+ assert.equal(countNewIncomingBelow(next,ids,A,false,message('c')),2);
 });
 
 test('group read RPC is called from visibility-safe and bottom-safe action, not unconditional HTTP polling',()=>{
@@ -57,7 +57,7 @@ test('group jumping to latest does not scroll entire iPhone page and retains old
  assert.match(panel,/setShowJumpToLatest\(!nearBottom\)/);
  assert.match(panel,/history\.scrollTop=history\.scrollHeight/);
  assert.match(panel,/setNewMessagesBelow\(0\)/);
- assert.match(panel,/countNewIncomingBelow\(messages,previous\.ids,userId,followNewestRef\.current\)/);
+ assert.match(panel,/countNewIncomingBelow\(messages,previous\.ids,userId,followNewestRef\.current,previous\.newest\)/);
  assert.doesNotMatch(panel,/scrollIntoView/);
  assert.match(css,/\.group-view \.ik-group-history-wrap/);
  assert.match(css,/min-height:0/);
@@ -66,9 +66,41 @@ test('group jumping to latest does not scroll entire iPhone page and retains old
 
 test('group jump is scoped to group/account and new message badge saturates at 99',()=>{
  const panel=file('components/GroupPanel.tsx');
- assert.match(panel,/previousMessageIdsRef\.current=\{groupId:group\.id,ownerId:userId,ids:new Set\(\)\}/);
+ assert.match(panel,/previousMessageIdsRef\.current=\{groupId:group\.id,ownerId:userId,ids:new Set\(\),newest:null\}/);
+ assert.doesNotMatch(panel.slice(panel.indexOf('useEffect(()=>{'),panel.indexOf(' // Mounting or switching accounts')),/previousMessageIdsRef\.current=/,
+  'group reset must let the snapshot effect clear old-group rows without counting them');
  assert.match(panel,/if\(previous\.groupId!==group\.id\|\|previous\.ownerId!==userId\)/);
  assert.match(panel,/setNewMessagesBelow\(n=>Math\.min\(99,n\+newBelow\)\)/);
  assert.match(panel,/newMessagesBelow<99\?newMessagesBelow:'99\+'/);
  assert.match(panel,/aria-label=\{newMessagesBelow>0/);
+});
+
+test('prepending older history rows does not inflate the new-messages-below badge',()=>{
+ const newest=message('m100',B,'2026-11-11T08:00:00.000000Z');
+ const previousIds=new Set(['m098','m099','m100']);
+ const older=[
+  message('m001',B,'2026-11-11T07:00:00.000000Z'),
+  message('m050',B,'2026-11-11T07:30:00.000000Z'),
+  message('m098',B,'2026-11-11T07:59:00.000000Z'),
+  message('m099',B,'2026-11-11T07:59:30.000000Z'),
+  newest
+ ];
+ assert.equal(countNewIncomingBelow(older,previousIds,A,false,newest),0);
+});
+
+test('only messages ordered after the previous newest row count as new below',()=>{
+ const newest=message('m100',B,'2026-11-11T08:00:00.000000Z');
+ const sameTimeOlder=message('m099',B,'2026-11-11T08:00:00.000000Z');
+ const sameTimeNewer=message('m101',B,'2026-11-11T08:00:00.000000Z');
+ const microsecondNewer=message('m102',B,'2026-11-11T08:00:00.000001Z');
+ const own=message('m103',A,'2026-11-11T08:00:00.000002Z');
+ const latest=[newest,sameTimeOlder,sameTimeNewer,microsecondNewer,own];
+ assert.equal(countNewIncomingBelow(latest,new Set([newest.id]),A,false,newest),2);
+});
+
+test('group/account replacement clears the unread-below snapshot before a new timeline is counted',()=>{
+ const panel=file('components/GroupPanel.tsx');
+ assert.match(panel,/previousMessageIdsRef\.current=\{groupId:group\.id,ownerId:userId,ids:new Set\(\),newest:null\}/);
+ assert.match(panel,/const newBelow=countNewIncomingBelow\(messages,previous\.ids,userId,followNewestRef\.current,previous\.newest\)/);
+ assert.match(panel,/previous\.newest=newest\?\{created_at:newest\.created_at,id:newest\.id\}:null/);
 });
