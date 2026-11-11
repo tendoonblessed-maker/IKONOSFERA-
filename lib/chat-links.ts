@@ -10,7 +10,7 @@ const TRAILING_PUNCTUATION=/[.,!?;:…。，！？；：»”’›]$/u;
 // disappear during rendering. Keep such candidates literal, not clickable.
 const UNSAFE_LINK_FORMATTING=/[\p{Cf}\p{Default_Ignorable_Code_Point}]/u;
 // WHATWG URL normalizes raw backslashes and can percent-encode control bytes.
-// Percent-encoded text remains visible and is intentionally still supported.
+// Percent-encoded path text remains supported; raw host encoding is rejected below.
 const UNSAFE_LINK_SYNTAX=/[\\\p{Cc}]/u;
 const MAX_URL_LENGTH=2048;
 const MAX_LINKS=40;
