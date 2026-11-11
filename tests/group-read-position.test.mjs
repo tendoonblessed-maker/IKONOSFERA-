@@ -28,9 +28,9 @@ test('new incoming messages are counted only while reading older group history',
 });
 
 test('message count handles simultaneous new replies, deletions and background merges',()=>{
- const ids=new Set(['one','two','three']);
- const next=[message('one'),message('four'),message('five'),message('six',A)];
- assert.equal(countNewIncomingBelow(next,ids,A,false,message('three')),2);
+ const ids=new Set(['a','b','c']);
+ const next=[message('a'),message('d'),message('e'),message('f',A)];
+ assert.equal(countNewIncomingBelow(next,ids,A,false,message('c')),2);
 });
 
 test('group read RPC is called from visibility-safe and bottom-safe action, not unconditional HTTP polling',()=>{
