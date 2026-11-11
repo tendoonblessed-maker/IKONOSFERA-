@@ -195,7 +195,7 @@ export async function listOlderMessages(token:string,chatId:string,before:Pick<C
   return http<ChatMessage[]>(`/rest/v1/messages?select=${CHAT_MESSAGE_COLUMNS}&chat_id=eq.${encodeURIComponent(chatId)}&${cursor}&order=created_at.desc,id.desc&limit=${CHAT_MESSAGE_PAGE_SIZE}`,{token,signal});
 }
 /** Load original messages referenced by older replies, subject to normal chat RLS. */
-export type ReplyTarget=Pick<ChatMessage,'id'|'sender_id'|'body'|'deleted_for_everyone'|'media_type'> & {
+export type ReplyTarget=Pick<ChatMessage,'id'|'sender_id'|'body'|'deleted_for'|'deleted_for_everyone'|'media_type'> & {
   /** Client-only states; never read from or written to Supabase. */
   unavailable?:boolean;
   refreshing?:boolean;
@@ -203,7 +203,7 @@ export type ReplyTarget=Pick<ChatMessage,'id'|'sender_id'|'body'|'deleted_for_ev
 export async function listReplyTargets(token:string,chatId:string,ids:string[],signal?:AbortSignal):Promise<ReplyTarget[]>{
   const unique=[...new Set(ids)].filter(id=>/^[a-f0-9-]{36}$/i.test(id)).slice(0,100);
   if(!unique.length)return [];
-  return http<ReplyTarget[]>('/rest/v1/messages?select=id,sender_id,body,deleted_for_everyone,media_type&chat_id=eq.'+encodeURIComponent(chatId)+'&id=in.('+unique.map(encodeURIComponent).join(',')+')',{token,signal});
+  return http<ReplyTarget[]>('/rest/v1/messages?select=id,sender_id,body,deleted_for,deleted_for_everyone,media_type&chat_id=eq.'+encodeURIComponent(chatId)+'&id=in.('+unique.map(encodeURIComponent).join(',')+')',{token,signal});
 }
 
 /** Text-only matches from the entire RLS-visible chat history, newest first.

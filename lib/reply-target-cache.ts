@@ -10,7 +10,9 @@ export function snapshotReplyTargetVersions(
   ids:readonly string[],
   versions:ReadonlyMap<string,number>
 ):Map<string,number>{
-  return new Map(ids.map(id=>[id,versions.get(id)??0]));
+  const snapshot=new Map<string,number>();
+  for(const id of ids)snapshot.set(id,versions.get(id)??0);
+  return snapshot;
 }
 
 export function isReplyTargetVersionCurrent(

@@ -192,6 +192,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
         id:messageId,
         sender_id:current[messageId]?.sender_id??chatMessagesRef.current.find(message=>message.id===messageId)?.sender_id??'',
         body:'',
+        deleted_for:current[messageId]?.deleted_for??chatMessagesRef.current.find(message=>message.id===messageId)?.deleted_for??[],
         deleted_for_everyone:false,
         media_type:null,
         refreshing:true
@@ -329,14 +330,16 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
     void Promise.all(requests)
       .then(results=>{
         if(!stillInChat()||document.visibilityState!=='visible'||!navigator.onLine)return;
-        const byId=new Map(results.flatMap(result=>result.targets).map(target=>[target.id,target]));
+        const byId:Record<string,ReplyTarget>={};
+        for(const result of results)for(const target of result.targets)byId[target.id]=target;
         const updates:Record<string,ReplyTarget>={};
         for(const id of missing){
           if(!isReplyTargetVersionCurrent(id,replyTargetVersionsRef.current,requestVersions))continue;
-          updates[id]=byId.get(id)??{
+          updates[id]=byId[id]??{
             id,
             sender_id:replyTargets[id]?.sender_id??chatMessagesRef.current.find(message=>message.id===id)?.sender_id??'',
             body:'',
+            deleted_for:replyTargets[id]?.deleted_for??chatMessagesRef.current.find(message=>message.id===id)?.deleted_for??[],
             deleted_for_everyone:false,
             media_type:null,
             unavailable:true
@@ -354,6 +357,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
             id,
             sender_id:replyTargets[id]?.sender_id??chatMessagesRef.current.find(message=>message.id===id)?.sender_id??'',
             body:'',
+            deleted_for:replyTargets[id]?.deleted_for??chatMessagesRef.current.find(message=>message.id===id)?.deleted_for??[],
             deleted_for_everyone:false,
             media_type:null,
             unavailable:true
@@ -1053,6 +1057,10 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
       setNotice('Обновляем оригинал цитаты. Попробуй ещё раз через мгновение.');
       return;
     }
+    if(cachedTarget?.deleted_for?.includes(userId)||loadedTarget?.deleted_for?.includes(userId)){
+      setNotice('Исходное сообщение скрыто в твоей истории.');
+      return;
+    }
     if(cachedTarget?.unavailable||cachedTarget?.deleted_for_everyone||loadedTarget?.deleted_for_everyone){
       setNotice('Исходное сообщение удалено или больше недоступно.');
       return;
@@ -1716,6 +1724,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
             target={replyTargets[message.reply_to_message_id]??messageById.get(message.reply_to_message_id)??null}
             senderName={!(replyTargets[message.reply_to_message_id]??messageById.get(message.reply_to_message_id))?'Исходное сообщение':((replyTargets[message.reply_to_message_id]??messageById.get(message.reply_to_message_id))?.sender_id===userId)?'Вы':active?.other?.display_name||active?.other?.username||'Собеседник'}
             onJump={()=>void jumpToOriginalMessage(message.reply_to_message_id!)}
+            hidden={Boolean((replyTargets[message.reply_to_message_id]??messageById.get(message.reply_to_message_id))?.deleted_for?.includes(userId))}
             loading={locatingReply===message.reply_to_message_id||Boolean(replyTargets[message.reply_to_message_id]?.refreshing)}
           />}{!message.deleted_for_everyone&&message.media_path&&message.media_type&&session&&<ChatMedia token={session.access_token} path={message.media_path} type={message.media_type}/>} {message.deleted_for_everyone?<span className="message-deleted">Сообщение удалено</span>:editingMessageId===message.id?<MessageEditForm
             value={editingMessageBody} onChange={setEditingMessageBody}
