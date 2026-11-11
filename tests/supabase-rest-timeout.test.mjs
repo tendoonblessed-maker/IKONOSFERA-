@@ -16,6 +16,7 @@ function setup(handler){
  const context={
   exports,
   process:{env:{NEXT_PUBLIC_SUPABASE_URL:'https://unit.test',NEXT_PUBLIC_SUPABASE_ANON_KEY:'public-anon'}},
+  crypto:{randomUUID:()=> 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'},
   fetch:async(url,options)=>{
    calls.push({url,options});
    return handler(url,options);
@@ -146,4 +147,80 @@ test('caller cancellation is not rewritten as a request timeout',async()=>{
  }),'/cancelled',{signal:owner.signal},1000,'this is a timeout');
  owner.abort(reason);
  await assert.rejects(pending,error=>error===reason&&error.message!=='this is a timeout');
+});
+
+
+const MEDIA_CHAT='11111111-1111-4111-8111-111111111111';
+const MEDIA_USER='22222222-2222-4222-8222-222222222222';
+const MEDIA_FILE={type:'image/png',size:1024};
+
+test('direct media uploads use the portable request deadline and consume the response body',async()=>{
+ const {api,calls}=setup(async()=>({ok:true,status:200,text:async()=>''}));
+ const uploaded=await api.uploadDirectMedia('signed-user-jwt',MEDIA_CHAT,MEDIA_USER,MEDIA_FILE,100);
+ assert.equal(uploaded.path,MEDIA_CHAT+'/'+MEDIA_USER+'/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa.png');
+ assert.equal(uploaded.type,'image');
+ assert.equal(calls.length,1);
+ assert.equal(calls[0].options.method,'POST');
+ assert.equal(calls[0].options.headers.Authorization,'Bearer signed-user-jwt');
+ assert.ok(calls[0].options.signal instanceof AbortSignal);
+ assert.match(calls[0].url,/\/storage\/v1\/object\/ikonosfera-direct-media\//);
+});
+
+test('direct media upload times out while waiting for Storage response headers',async()=>{
+ let signal;
+ const {api}=setup((_url,options)=>{
+  signal=options.signal;
+  return new Promise(()=>{});
+ });
+ await assert.rejects(
+  api.uploadDirectMedia('signed-user-jwt',MEDIA_CHAT,MEDIA_USER,MEDIA_FILE,5),
+  error=>error instanceof Error&&error.name==='TimeoutError'
+ );
+ assert.equal(signal.aborted,true);
+});
+
+test('direct media upload deadline remains active while reading the Storage response body',async()=>{
+ let signal;
+ const {api}=setup((_url,options)=>{
+  signal=options.signal;
+  return {ok:true,status:200,text:()=>new Promise(()=>{})};
+ });
+ await assert.rejects(
+  api.uploadDirectMedia('signed-user-jwt',MEDIA_CHAT,MEDIA_USER,MEDIA_FILE,5),
+  error=>error instanceof Error&&error.name==='TimeoutError'
+ );
+ assert.equal(signal.aborted,true);
+});
+
+test('Storage error responses retain their server message after bounded body parsing',async()=>{
+ const {api}=setup(async()=>({
+  ok:false,status:413,text:async()=>JSON.stringify({message:'File too large'})
+ }));
+ await assert.rejects(
+  api.uploadDirectMedia('signed-user-jwt',MEDIA_CHAT,MEDIA_USER,MEDIA_FILE,100),
+  /File too large/
+ );
+});
+
+test('failed direct-message insertion keeps its original error when bounded Storage cleanup stalls',async()=>{
+ let cleanupSignal;
+ const {api,calls}=setup(async(url,options)=>{
+  if(options.method==='POST'&&url.includes('/storage/v1/object/'))return {ok:true,status:200,text:async()=>''};
+  if(options.method==='POST'&&url.includes('/rest/v1/messages'))return {
+   ok:false,status:403,text:async()=>JSON.stringify({message:'RLS denied'})
+  };
+  if(options.method==='DELETE'){
+   cleanupSignal=options.signal;
+   return {ok:true,status:200,text:()=>new Promise(()=>{})};
+  }
+  throw new Error('Unexpected request '+options.method+' '+url);
+ });
+ await assert.rejects(
+  api.sendDirectMedia('signed-user-jwt',MEDIA_CHAT,MEDIA_USER,MEDIA_FILE,'caption',5),
+  /RLS denied/
+ );
+ assert.equal(calls.filter(call=>call.options.method==='POST'&&call.url.includes('/storage/v1/object/')).length,1,
+  'uploads are never retried automatically');
+ assert.equal(calls.filter(call=>call.options.method==='DELETE').length,1);
+ assert.equal(cleanupSignal.aborted,true,'cleanup is also bounded by a deadline');
 });
