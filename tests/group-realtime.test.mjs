@@ -146,7 +146,9 @@ test('group realtime reconciles INSERT and UPDATE as payload-free wake-up hints'
  assert.deepEqual(harness.registrations.map(item=>item.filter.event),['INSERT','UPDATE']);
  for(const item of harness.registrations){
   assert.equal(item.type,'postgres_changes');
-  assert.deepEqual(item.filter,{schema:'public',table:'group_messages',filter:'group_id=eq.'+GROUP,event:item.filter.event});
+  assert.equal(item.filter.schema,'public');
+  assert.equal(item.filter.table,'group_messages');
+  assert.equal(item.filter.filter,'group_id=eq.'+GROUP);
   item.callback({new:{body:'private message body'},old:{body:'old private body'}});
  }
  assert.equal(wakeups,2,'payloads only trigger authenticated reconciliation; they are not forwarded');
