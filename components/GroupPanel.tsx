@@ -257,7 +257,6 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
   controller.abort();
   searchJumpAbortRef.current=null;
   setSearchLocating(null);
-  browsingOlderRef.current=false;
  }
  function closeSearch(){
   searchRequestRef.current++;
@@ -287,11 +286,6 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
   document.addEventListener('visibilitychange',abortOnPause);
   window.addEventListener('offline',abortOnPause);
   setSearchLocating(message.id);
-  // Pause recent-page polling so it cannot overwrite a historical jump.
-  browsingOlderRef.current=true;
-  followNewestRef.current=false;
-  setShowJumpToLatest(true);
-  setNewMessagesBelow(0);
   try{
    const current=messages.some(row=>row.id===message.id);
    const around=current?messages:await getGroupMessageContext(
@@ -302,6 +296,11 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
       ||contextRef.current.userId!==ownerId
       ||contextRef.current.token!==requestToken)return;
    if(!around.some(row=>row.id===message.id))throw Error('Сообщение больше недоступно.');
+   // Pause recent-page polling only after the historical context is ready.
+   browsingOlderRef.current=true;
+   followNewestRef.current=false;
+   setShowJumpToLatest(true);
+   setNewMessagesBelow(0);
    olderRequestRef.current++;
    olderLoadingRef.current=false;
    prependScrollRef.current=null;
@@ -317,7 +316,6 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
    closeSearch();
   }catch(e){
    if(requestId===searchJumpRequestRef.current){
-    browsingOlderRef.current=false;
     setSearchError(controller.signal.aborted
      ?'Переход к сообщению приостановлен. Повтори попытку.'
      :(e instanceof Error?e.message:'Не удалось открыть сообщение'));
