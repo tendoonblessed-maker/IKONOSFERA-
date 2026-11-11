@@ -24,6 +24,10 @@ export function subscribeGroupChanges(token:string,groupId:string,onChanged:()=>
   if(disposed)return;
   channel
    .on('postgres_changes',{...scope,event:'INSERT'},changed)
+   // Edits and soft-delete updates must reconcile through authenticated GETs too.
+   .on('postgres_changes',{...scope,event:'UPDATE'},changed)
+   // DELETE is left to the bounded HTTPS poll: Postgres Changes cannot
+   // reliably filter DELETE by the non-primary-key group_id column here.
    .subscribe(status=>{
     if(status==='SUBSCRIBED')changed(); // reconcile events missed during join
    });

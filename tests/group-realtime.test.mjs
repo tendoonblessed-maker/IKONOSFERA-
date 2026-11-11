@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
 import {readFileSync} from 'node:fs';
+import vm from 'node:vm';
+import ts from 'typescript';
 import {
  mergeConfirmedGroupMessages,
  CONFIRMED_GROUP_MESSAGE_GRACE_MS
@@ -72,6 +74,8 @@ test('group realtime never renders WebSocket payload or stores another user sess
  assert.match(rt,/client\.realtime\.setAuth\(token\)/);
  assert.match(rt,/table:'group_messages',filter:'group_id=eq\.'\+groupId/);
  assert.match(rt,/event:'INSERT'/);
+ assert.match(rt,/event:'UPDATE'/);
+ assert.doesNotMatch(rt,/event:'DELETE'/);
  assert.match(rt,/status==='SUBSCRIBED'\)changed\(\)/);
  assert.match(rt,/client\.removeChannel\(channel\)/);
  assert.match(rt,/client\.realtime\.disconnect\(\)/);
@@ -93,4 +97,67 @@ test('migration only adds group messages to existing publication, retaining memb
  assert.match(sql,/ALTER PUBLICATION supabase_realtime ADD TABLE public\.group_messages/);
  assert.match(sql,/pg_publication_tables/);
  assert.doesNotMatch(sql,/drop publication|replica identity full|disable row level security|grant all/i);
+});
+
+async function realtimeHarness(){
+ const source=readFileSync(new URL('../lib/group-realtime.ts',import.meta.url),'utf8');
+ const compiled=ts.transpileModule(source,{
+  compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}
+ }).outputText;
+ const registrations=[];
+ let subscribeCallback=null,authToken='',channelName='';
+ let removed=0,disconnects=0;
+ const channel={
+  on(type,filter,callback){registrations.push({type,filter,callback});return channel;},
+  subscribe(callback){subscribeCallback=callback;return channel;}
+ };
+ const client={
+  channel(name){channelName=name;return channel;},
+  realtime:{
+   setAuth:async token=>{authToken=token;},
+   disconnect(){disconnects++;}
+  },
+  removeChannel:async value=>{assert.equal(value,channel);removed++;return 'ok';}
+ };
+ const exports={};
+ vm.runInNewContext(compiled,{
+  exports,
+  process:{env:{NEXT_PUBLIC_SUPABASE_ANON_KEY:'public-test'}},
+  window:{},
+  Promise,
+  require(name){
+   if(name==='@supabase/supabase-js')return {createClient:()=>client};
+   if(name==='./supabase-rest')return {apiUrl:'https://unit.test',backendReady:true};
+   throw Error('Unexpected module: '+name);
+  }
+ },{timeout:2000,filename:'group-realtime.cjs'});
+ return {api:exports,registrations,client,channel,get authToken(){return authToken;},
+  get channelName(){return channelName;},get subscribeCallback(){return subscribeCallback;},
+  get removed(){return removed;},get disconnects(){return disconnects;}};
+}
+
+test('group realtime reconciles INSERT and UPDATE as payload-free wake-up hints',async()=>{
+ const harness=await realtimeHarness();
+ let wakeups=0;
+ const unsubscribe=harness.api.subscribeGroupChanges('signed-user-jwt',GROUP,()=>{wakeups++;});
+ await new Promise(resolve=>setImmediate(resolve));
+ assert.equal(harness.authToken,'signed-user-jwt');
+ assert.equal(harness.channelName,'group-db:'+GROUP);
+ assert.deepEqual(harness.registrations.map(item=>item.filter.event),['INSERT','UPDATE']);
+ for(const item of harness.registrations){
+  assert.equal(item.type,'postgres_changes');
+  assert.equal(item.filter.schema,'public');
+  assert.equal(item.filter.table,'group_messages');
+  assert.equal(item.filter.filter,'group_id=eq.'+GROUP);
+  item.callback({new:{body:'private message body'},old:{body:'old private body'}});
+ }
+ assert.equal(wakeups,2,'payloads only trigger authenticated reconciliation; they are not forwarded');
+ harness.subscribeCallback('SUBSCRIBED');
+ assert.equal(wakeups,3,'subscription readiness reconciles any missed events');
+ unsubscribe();
+ await new Promise(resolve=>setImmediate(resolve));
+ assert.equal(harness.removed,1);
+ assert.equal(harness.disconnects,1);
+ harness.registrations[0].callback({new:{body:'late event'}});
+ assert.equal(wakeups,3,'disposed subscriptions ignore late callbacks');
 });
