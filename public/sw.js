@@ -38,7 +38,7 @@ self.addEventListener("install", (event) => {
   })());
   // On first install there is no previous worker to protect. During an
   // update, keep the old worker in control until the browser has no remaining
-  // clients for it (including other open chat tabs and BFCache-held pages).
+  // clients for it (for example, other open chat tabs and windows).
   // The default waiting lifecycle avoids switching active conversations mid-session.
   if (!self.registration?.active) self.skipWaiting();
 });
