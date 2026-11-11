@@ -124,6 +124,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
   const [showJumpToLatest,setShowJumpToLatest]=useState(false);
   const [replyingTo,setReplyingTo]=useState<{chatId:string;id:string;text:string;name:string}|null>(null);
   const [replyTargets,setReplyTargets]=useState<Record<string,ReplyTarget>>({});
+  const [replyTargetsRetryNonce,setReplyTargetsRetryNonce]=useState(0);
   const [locatingReply,setLocatingReply]=useState<string|null>(null);
   const [pendingReplyJump,setPendingReplyJump]=useState<{chatId:string;id:string}|null>(null);
   const [email,setEmail]=useState('');
@@ -143,6 +144,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
   const loadingOlderRef=useRef(false);
   const olderHistoryAbortScopeRef=useRef(createAbortableRequestScope());
   const olderReactionAbortScopesRef=useRef<Set<ReturnType<typeof createAbortableRequestScope>>>(new Set());
+  const replyTargetAbortScopesRef=useRef<Set<ReturnType<typeof createAbortableRequestScope>>>(new Set());
   const prependScrollRef=useRef<{chatId:string;height:number;top:number}|null>(null);
   const selectedRef=useRef<string|null>(null);
   const searchInputRef=useRef<HTMLInputElement|null>(null);
@@ -164,6 +166,11 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
   const abortOlderReactionScopes=()=>{
     for(const scope of olderReactionAbortScopesRef.current)scope.abort();
     olderReactionAbortScopesRef.current.clear();
+  };
+  const abortReplyTargetScopes=()=>{
+    for(const scope of replyTargetAbortScopesRef.current)scope.abort();
+    replyTargetAbortScopesRef.current.clear();
+    replyTargetsQueriedRef.current.clear();
   };
 
   // In-memory edits belong to one signed-in user; never reuse across accounts.
@@ -243,29 +250,44 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
   // target IDs, under normal Supabase RLS; never cache quotes between accounts.
   useEffect(()=>{
     const chatId=selected;
-    if(!session||!chatId||chatLoad?.id!==chatId||chatLoad.status!=='ready')return;
+    if(!session||!chatId||chatLoad?.id!==chatId||chatLoad.status!=='ready'
+      ||document.visibilityState!=='visible'||!navigator.onLine)return;
     const generation=chatContextGenerationRef.current;
     const inChat=chatMessages.filter(message=>message.chat_id===chatId);
     const loaded=new Set(inChat.map(message=>message.id));
-    const missing=[...new Set(inChat.map(message=>message.reply_to_message_id).filter((id):id is string=>Boolean(id)))].filter(id=>!loaded.has(id)&&!replyTargetsQueriedRef.current.has(id));
+    const missing=[...new Set(inChat.map(message=>message.reply_to_message_id).filter((id):id is string=>Boolean(id)))]
+      .filter(id=>!loaded.has(id)&&!replyTargets[id]&&!replyTargetsQueriedRef.current.has(id));
     if(!missing.length)return;
     for(const id of missing)replyTargetsQueriedRef.current.add(id);
-    // Every request has a bounded PostgREST URL; quote previews from earlier
-    // pages are not silently discarded after the first 100 IDs.
-    const batches:Array<string[]>=[];
+    // Keep each PostgREST URL bounded; every batch has an independent abort
+    // scope so pausing the chat cancels all quote lookups without coupling them.
+    const batches:Array<string[]>= [];
     for(let start=0;start<missing.length;start+=100)batches.push(missing.slice(start,start+100));
     const stillInChat=()=>selectedRef.current===chatId&&chatContextGenerationRef.current===generation;
-    void Promise.all(batches.map(ids=>listReplyTargets(session.access_token,chatId,ids)))
+    const requests=batches.map(async ids=>{
+      const scope=createAbortableRequestScope();
+      const controller=scope.begin();
+      replyTargetAbortScopesRef.current.add(scope);
+      try{
+        const targets=await listReplyTargets(session.access_token,chatId,ids,controller.signal);
+        return controller.signal.aborted?[]:targets;
+      }finally{
+        scope.clear(controller);
+        replyTargetAbortScopesRef.current.delete(scope);
+      }
+    });
+    void Promise.all(requests)
       .then(results=>{
-        if(!stillInChat())return;
+        if(!stillInChat()||document.visibilityState!=='visible'||!navigator.onLine)return;
         const targets=results.flat();
         setReplyTargets(current=>({...current,...Object.fromEntries(targets.map(target=>[target.id,target]))}));
       })
       .catch(()=>{
-        // Permit a later chat refresh to retry a transient network failure.
+        // A pause clears the query set and aborts requests; transient failures
+        // also release IDs so the next chat refresh can retry them.
         if(stillInChat())for(const id of missing)replyTargetsQueriedRef.current.delete(id);
       });
-  },[chatMessages,chatLoad?.id,chatLoad?.status,selected,session?.access_token]);
+  },[chatMessages,chatLoad?.id,chatLoad?.status,replyTargets,replyTargetsRetryNonce,selected,session?.access_token]);
   // Full-history search uses a scoped, security-invoker database RPC.
   // Debounce typing and ignore every stale response when the query, chat,
   // account, or tab changes. Never cache search results across accounts.
@@ -603,10 +625,10 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
     // HTTP polling remains a fallback when WebSocket is blocked, offline,
     // rate-limited or disconnected (and it repairs missed Realtime events).
     const stopVisiblePolling=startVisiblePolling(
-      ()=>void sync(),6000,document,window,navigator,()=>void sync(true),()=>{requestGeneration++;requestAbortScope.abort();olderHistoryAbortScopeRef.current.abort();abortOlderReactionScopes();}
+      ()=>void sync(),6000,document,window,navigator,()=>{void sync(true);setReplyTargetsRetryNonce(n=>n+1);},()=>{requestGeneration++;requestAbortScope.abort();olderHistoryAbortScopeRef.current.abort();abortOlderReactionScopes();abortReplyTargetScopes();}
     );
     return()=>{
-      cancelled=true;requestGeneration++;stopVisiblePolling();requestAbortScope.abort();olderHistoryAbortScopeRef.current.abort();abortOlderReactionScopes();
+      cancelled=true;requestGeneration++;stopVisiblePolling();requestAbortScope.abort();olderHistoryAbortScopeRef.current.abort();abortOlderReactionScopes();abortReplyTargetScopes();
       if(realtimeTimer!==null)window.clearTimeout(realtimeTimer);
       unsubscribeRealtime();
     };
@@ -964,11 +986,24 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
     const history=conversationHistoryRef.current;
     if(history)prependScrollRef.current={chatId,height:history.scrollHeight,top:history.scrollTop};
     const stillInChat=()=>selectedRef.current===chatId&&replyJumpRequestRef.current===requestId;
+    let replyTargetController:AbortController|null=null;
     try{
       // First confirm that the original is still visible under the user's
       // normal database RLS. Never search a different chat or hidden content.
-      const source=replyTargets[id]??(await listReplyTargets(token,chatId,[id]))[0];
-      if(!stillInChat())return;
+      let source=replyTargets[id];
+      if(!source){
+        if(document.visibilityState!=='visible'||!navigator.onLine){
+          setNotice('Нет подключения к интернету. Вернись в чат после восстановления сети.');
+          return;
+        }
+        const scope=createAbortableRequestScope();
+        const controller=scope.begin();
+        replyTargetController=controller;
+        replyTargetAbortScopesRef.current.add(scope);
+        try{source=(await listReplyTargets(token,chatId,[id],controller.signal))[0];}
+        finally{scope.clear(controller);replyTargetAbortScopesRef.current.delete(scope);}
+      }
+      if(!stillInChat()||replyTargetController?.signal.aborted)return;
       if(!source){
         prependScrollRef.current=null;
         setNotice('Исходное сообщение удалено или больше недоступно.');
@@ -1017,8 +1052,12 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
     }catch{
       if(stillInChat()){
         prependScrollRef.current=null;
-        setOlderMessagesError(true);
-        setNotice('Не удалось загрузить старые сообщения. Нажми на цитату ещё раз.');
+        if(replyTargetController?.signal.aborted){
+          setOlderMessagesError(false);
+        }else{
+          setOlderMessagesError(true);
+          setNotice('Не удалось загрузить старые сообщения. Нажми на цитату ещё раз.');
+        }
       }
     }finally{
       if(stillInChat()){
