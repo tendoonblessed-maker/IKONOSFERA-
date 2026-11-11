@@ -68,7 +68,7 @@ test('the same deadline aborts a response whose text body stalls after headers',
   signal=init.signal;
   return {text:()=>new Promise(()=>{})};
  },'/slow-text',{},5,'Тело ответа не завершилось вовремя.').then(response=>response.text());
- await assert.rejects(pending,/Тело ответа не завершилось вовремя/);
+ await assert.rejects(pending,error=>error instanceof Error&&error.name==='TimeoutError'&&/Тело ответа не завершилось вовремя/.test(error.message));
  assert.equal(signal.aborted,true);
 });
 
@@ -78,7 +78,7 @@ test('the same deadline aborts a response whose JSON body stalls after headers',
   signal=init.signal;
   return {json:()=>new Promise(()=>{})};
  },'/slow-json',{},5,'JSON-ответ не завершился вовремя.').then(response=>response.json());
- await assert.rejects(pending,/JSON-ответ не завершился вовремя/);
+ await assert.rejects(pending,error=>error instanceof Error&&error.name==='TimeoutError'&&/JSON-ответ не завершился вовремя/.test(error.message));
  assert.equal(signal.aborted,true);
 });
 
