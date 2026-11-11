@@ -37,12 +37,13 @@ export function olderGroupMessagesPath(groupId:string,oldest:Pick<GroupMessage,'
 }
 export type OlderGroupPage={messages:GroupMessage[];hasMore:boolean};
 export async function fetchOlderGroupMessages(
- token:string,groupId:string,oldest:Pick<GroupMessage,'created_at'|'id'>
+ token:string,groupId:string,oldest:Pick<GroupMessage,'created_at'|'id'>,signal?:AbortSignal
 ):Promise<OlderGroupPage>{
  const response=await fetchWithTimeout(fetch,apiUrl+olderGroupMessagesPath(groupId,oldest),{
   method:'GET',
   headers:{apikey:anonKey,Authorization:'Bearer '+token},
-  cache:'no-store'
+  cache:'no-store',
+  signal
  },GROUP_HISTORY_REQUEST_TIMEOUT_MS,'Не удалось загрузить ранние сообщения вовремя. Проверь подключение и повтори попытку.');
  const data:unknown=await response.json().catch(()=>null);
  if(!response.ok||!Array.isArray(data))throw Error('Не удалось загрузить ранние сообщения.');
