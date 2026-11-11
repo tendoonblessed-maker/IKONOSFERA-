@@ -37,14 +37,18 @@ export function olderGroupMessagesPath(groupId:string,oldest:Pick<GroupMessage,'
 }
 export type OlderGroupPage={messages:GroupMessage[];hasMore:boolean};
 export async function fetchOlderGroupMessages(
- token:string,groupId:string,oldest:Pick<GroupMessage,'created_at'|'id'>
+ token:string,groupId:string,oldest:Pick<GroupMessage,'created_at'|'id'>,signal?:AbortSignal
 ):Promise<OlderGroupPage>{
  const response=await fetchWithTimeout(fetch,apiUrl+olderGroupMessagesPath(groupId,oldest),{
   method:'GET',
   headers:{apikey:anonKey,Authorization:'Bearer '+token},
-  cache:'no-store'
+  cache:'no-store',
+  signal
  },GROUP_HISTORY_REQUEST_TIMEOUT_MS,'Не удалось загрузить ранние сообщения вовремя. Проверь подключение и повтори попытку.');
- const data:unknown=await response.json().catch(()=>null);
+ const data:unknown=await response.json().catch(error=>{
+  if(signal?.aborted || (error instanceof Error && (error.name==='AbortError'||error.name==='TimeoutError')))throw error;
+  return null;
+ });
  if(!response.ok||!Array.isArray(data))throw Error('Не удалось загрузить ранние сообщения.');
  const rows=(data as GroupMessage[]).filter(item=>item.group_id===groupId);
  // The extra result is a has-more sentinel; it must be fetched next time.

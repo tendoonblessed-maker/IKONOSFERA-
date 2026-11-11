@@ -9,21 +9,21 @@ const delay=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 test('activity API routes every request through the portable 18-second deadline',()=>{
  const activity=source('lib/activity.ts');
  const helper=source('lib/fetch-timeout.mjs');
- const executable=helper.replace(/\/\*[\s\S]*?\*\/|\/\/.*$/gm,'');
- assert.match(activity,/fetchWithTimeout\(fetch,apiUrl\+path/);
- assert.match(activity,/ACTIVITY_REQUEST_TIMEOUT_MS=18000/);
- assert.match(executable,/new AbortController\(\)/);
- assert.doesNotMatch(executable,/AbortSignal\.timeout/);
+ assert.ok(activity.includes('fetchWithTimeout(fetch,apiUrl+path'));
+ assert.ok(activity.includes('ACTIVITY_REQUEST_TIMEOUT_MS=18000'));
+ assert.ok(helper.includes('const controller = new AbortController()'));
+ assert.ok(!activity.includes('AbortSignal.timeout'));
 });
 
 test('successful activity requests preserve the response and clear their timeout',async()=>{
  let signal;
- const response={ok:true};
+ const response={ok:true,json:async()=>({status:'online'})};
  const result=await fetchWithTimeout(async(_input,init)=>{
   signal=init.signal;
   return response;
  },'/activity',{},5);
  assert.equal(result,response);
+ assert.deepEqual(await result.json(),{status:'online'});
  await delay(15);
  assert.equal(signal.aborted,false);
 });

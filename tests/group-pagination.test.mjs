@@ -95,6 +95,34 @@ test('group history request remains usable when AbortSignal.timeout is not expos
  assert.ok(calls[0].options.signal instanceof AbortSignal);
 });
 
+test('older group history preserves caller cancellation through the portable deadline',async()=>{
+ const owner=new AbortController();
+ const reason=Object.assign(new Error('group history left'),{name:'AbortError'});
+ const {api,calls}=setup((_url,options)=>new Promise((_resolve,reject)=>{
+  options.signal.addEventListener('abort',()=>reject(options.signal.reason),{once:true});
+ }));
+ const pending=api.fetchOlderGroupMessages('jwt',GROUP,row(id(5)),owner.signal);
+ assert.equal(calls.length,1);
+ owner.abort(reason);
+ await assert.rejects(pending,error=>error===reason);
+ assert.equal(calls[0].options.signal.aborted,true);
+ assert.match(read('lib/group-pagination.ts'),/fetchWithTimeout\(fetch,apiUrl\+olderGroupMessagesPath\(groupId,oldest\),\{[\s\S]*signal/);
+});
+
+test('older history propagates caller cancellation while parsing the response body',async()=>{
+ const owner=new AbortController();
+ const reason=Object.assign(new Error('group history hidden'),{name:'AbortError'});
+ let bodyStarted;
+ const started=new Promise(resolve=>{bodyStarted=resolve;});
+ const {api,calls}=setup(()=>({ok:true,json:()=>{bodyStarted();return new Promise(()=>{});}}));
+ const pending=api.fetchOlderGroupMessages('jwt',GROUP,row(id(5)),owner.signal);
+ await started;
+ owner.abort(reason);
+ await assert.rejects(pending,error=>error===reason);
+ assert.equal(calls[0].options.signal.aborted,true);
+ assert.match(read('lib/group-pagination.ts'),/error\.name==='AbortError'\|\|error\.name==='TimeoutError'/);
+});
+
 test('extra row establishes hasMore but never overlaps next page boundary',async()=>{
  const many=Array.from({length:71},(_,i)=>row(id(80-i)));
  const {api}=setup(()=>success(many));

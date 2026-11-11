@@ -246,19 +246,33 @@ export function validateDirectMediaFile(file:Pick<File,'type'|'size'>):string|nu
  return null;
 }
 
-export async function uploadDirectMedia(token:string,chatId:string,userId:string,file:File):Promise<{path:string;type:"image"|"video"|"audio"|"file"}>{
+export async function uploadDirectMedia(
+ token:string,chatId:string,userId:string,file:File,timeoutMs=SUPABASE_HTTP_TIMEOUT_MS
+):Promise<{path:string;type:"image"|"video"|"audio"|"file"}>{
  const problem=validateDirectMediaFile(file);
  if(problem)throw Error(problem);
  const ext=DIRECT_MEDIA_FORMATS[file.type];
  const path=chatId+"/"+userId+"/"+crypto.randomUUID()+"."+ext;
- const res=await fetch(apiUrl+"/storage/v1/object/ikonosfera-direct-media/"+path,{
+ const res=await fetchWithTimeout(fetch,apiUrl+"/storage/v1/object/ikonosfera-direct-media/"+path,{
   method:"POST",headers:{apikey:anonKey,Authorization:"Bearer "+token,"Content-Type":file.type,"x-upsert":"false"},body:file
- });
- if(!res.ok){const err=await res.json().catch(()=>null);throw Error(err?.message||err?.error||"Не удалось загрузить файл");}
+ },timeoutMs,"Загрузка вложения не завершилась вовремя. Проверь подключение и попробуй ещё раз.");
+ // Consume the body even on success: the shared deadline covers slow response
+ // streams as well as request headers, and Storage errors remain readable.
+ const raw=await res.text();
+ let value:unknown=null;
+ try{value=raw?JSON.parse(raw):null;}catch{}
+ if(!res.ok){
+  const detail=value&&typeof value==="object"
+   ?(value as {message?:string;error?:string;error_description?:string}).message
+    ??(value as {error?:string}).error
+    ??(value as {error_description?:string}).error_description
+   :null;
+  throw Error(detail||"Не удалось загрузить файл");
+ }
  return {path,type:file.type.startsWith("image/")?"image":file.type.startsWith("video/")?"video":file.type.startsWith("audio/")?"audio":"file"};
 }
-export async function sendDirectMedia(token:string,chatId:string,userId:string,file:File,caption=""){
- const {path,type}=await uploadDirectMedia(token,chatId,userId,file);
+export async function sendDirectMedia(token:string,chatId:string,userId:string,file:File,caption="",timeoutMs=SUPABASE_HTTP_TIMEOUT_MS){
+ const {path,type}=await uploadDirectMedia(token,chatId,userId,file,timeoutMs);
  try{
   const messages=await http<ChatMessage[]>('/rest/v1/messages?select=id,chat_id,sender_id,body,created_at,media_path,media_type,read_at,reply_to_message_id',{
    token,method:"POST",body:{chat_id:chatId,sender_id:userId,body:caption.trim().slice(0,4000),media_path:path,media_type:type},
@@ -267,7 +281,20 @@ export async function sendDirectMedia(token:string,chatId:string,userId:string,f
   if(!messages[0])throw Error("Медиа не отправлено");
   return messages[0];
  }catch(e){
-  await fetch(apiUrl+"/storage/v1/object/ikonosfera-direct-media/"+path,{method:"DELETE",headers:{apikey:anonKey,Authorization:"Bearer "+token}}).catch(()=>{});
+  // Only a definitive client rejection proves that no message row was stored.
+  // A timeout/network error or 5xx may arrive after the server committed the
+  // message; deleting its object then would leave a broken attachment in chat.
+  const definitelyRejected=e instanceof SupabaseHttpError
+   &&e.status>=400&&e.status<500&&e.status!==408&&e.status!==429;
+  if(definitelyRejected){
+   // Keep best-effort cleanup bounded and never replace the original send error.
+   try{
+    const cleanup=await fetchWithTimeout(fetch,apiUrl+"/storage/v1/object/ikonosfera-direct-media/"+path,{
+     method:"DELETE",headers:{apikey:anonKey,Authorization:"Bearer "+token}
+    },timeoutMs,"Очистка неиспользованного вложения не завершилась вовремя.");
+    await cleanup.text();
+   }catch{}
+  }
   throw e;
  }
 }
