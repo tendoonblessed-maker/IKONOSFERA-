@@ -17,7 +17,7 @@
     <img src="/branding/ikonosfera.svg" alt="IKONOSFERA © BY TENDO888" style="display:block;width:min(250px,70vw);height:auto;margin:0 auto 24px"/>
     <h1>Нет подключения</h1>
     <p role="status" aria-live="polite">IKONOSFERA не может связаться с сервером. Проверь интернет и попробуй снова. Сообщения не сохраняются на этом экране.</p>
-    <a href="/">Повторить</a>
+    <a id="retry-app" href="/">Повторить</a>
     <p>Когда соединение восстановится, страница попробует открыть мессенджер автоматически.</p>
   </main>
   <script>
@@ -63,6 +63,20 @@
     // navigator.onLine is only a cheap gate; retryApp still verifies the origin.
     window.addEventListener("pageshow", (event) => {
       if (event.persisted && navigator.onLine) return retryApp();
+    });
+    // The browser may already report online when the service worker serves the
+    // offline shell for a transient 502/503/504. Probe once on initial display.
+    if (navigator.onLine) retryApp();
+    // Also retry when a suspended PWA/tab becomes visible after the origin recovers
+    // without a network-interface transition (which would not emit another online event).
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "visible" && navigator.onLine) return retryApp();
+    });
+    // Keep the anchor as a no-JavaScript fallback, but route normal clicks through
+    // the same bounded origin probe instead of navigating straight into the SW fallback.
+    document.getElementById("retry-app")?.addEventListener("click", (event) => {
+      event.preventDefault();
+      return retryApp();
     });
   </script>
 </body>
