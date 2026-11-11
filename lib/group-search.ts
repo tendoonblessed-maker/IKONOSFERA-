@@ -7,6 +7,31 @@ const UUID=/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
 export const GROUP_SEARCH_PAGE_SIZE=24;
 export const GROUP_SEARCH_MAX_OFFSET=480;
 const MESSAGE_FIELDS='id,group_id,sender_id,body,created_at';
+const REQUEST_TIMEOUT_MS=18000;
+
+type RequestScope={signal:AbortSignal;cleanup:()=>void};
+
+/** Keep the existing deadline while allowing a screen lifecycle to cancel the GET. */
+function createRequestScope(parent?:AbortSignal):RequestScope{
+ const controller=new AbortController();
+ const abort=()=>controller.abort();
+ if(parent?.aborted)controller.abort();
+ else parent?.addEventListener('abort',abort,{once:true});
+ const timer=setTimeout(abort,REQUEST_TIMEOUT_MS);
+ return {
+  signal:controller.signal,
+  cleanup:()=>{
+   clearTimeout(timer);
+   parent?.removeEventListener('abort',abort);
+  }
+ };
+}
+
+function createAbortError():Error{
+ const error=new Error('Запрос отменён.');
+ error.name='AbortError';
+ return error;
+}
 
 /**
  * Searches the complete group history with the existing member-only SELECT
@@ -66,30 +91,46 @@ export function buildGroupSearchPath(groupId:string,query:string,offset:number):
  return '/rest/v1/group_messages?'+params;
 }
 
-async function getRows(token:string,params:URLSearchParams):Promise<GroupMessage[]>{
- const response=await fetch(apiUrl+'/rest/v1/group_messages?'+params,{
-  method:'GET',
-  headers:{apikey:anonKey,Authorization:'Bearer '+token},
-  cache:'no-store',signal:AbortSignal.timeout(18000)
- });
- const data=await response.json().catch(()=>null);
- if(!response.ok||!Array.isArray(data))
-  throw Error('Не удалось загрузить историю группы. Проверь соединение.');
- return data as GroupMessage[];
+async function getRows(token:string,params:URLSearchParams,signal?:AbortSignal):Promise<GroupMessage[]>{
+ const request=createRequestScope(signal);
+ try{
+  const response=await fetch(apiUrl+'/rest/v1/group_messages?'+params,{
+   method:'GET',
+   headers:{apikey:anonKey,Authorization:'Bearer '+token},
+   cache:'no-store',signal:request.signal
+  });
+  let data:unknown;
+  try{data=await response.json();}
+  catch(error){if(request.signal.aborted)throw error;data=null;}
+  if(request.signal.aborted)throw createAbortError();
+  if(!response.ok||!Array.isArray(data))
+   throw Error('Не удалось загрузить историю группы. Проверь соединение.');
+  return data as GroupMessage[];
+ }finally{
+  request.cleanup();
+ }
 }
 
 export async function searchGroupMessages(
- token:string,groupId:string,query:string,offset:number
+ token:string,groupId:string,query:string,offset:number,signal?:AbortSignal
 ):Promise<GroupMessage[]>{
  const path=buildGroupSearchPath(groupId,query,offset);
- const res=await fetch(apiUrl+path,{
-  method:'GET',
-  headers:{apikey:anonKey,Authorization:'Bearer '+token},
-  cache:'no-store',signal:AbortSignal.timeout(18000)
- });
- const data=await res.json().catch(()=>null);
- if(!res.ok||!Array.isArray(data))throw Error('Не удалось выполнить поиск по группе.');
- return data as GroupMessage[];
+ const request=createRequestScope(signal);
+ try{
+  const res=await fetch(apiUrl+path,{
+   method:'GET',
+   headers:{apikey:anonKey,Authorization:'Bearer '+token},
+   cache:'no-store',signal:request.signal
+  });
+  let data:unknown;
+  try{data=await res.json();}
+  catch(error){if(request.signal.aborted)throw error;data=null;}
+  if(request.signal.aborted)throw createAbortError();
+  if(!res.ok||!Array.isArray(data))throw Error('Не удалось выполнить поиск по группе.');
+  return data as GroupMessage[];
+ }finally{
+  request.cleanup();
+ }
 }
 
 /** Returns a bounded, chronologically sorted window around a search hit.
@@ -97,22 +138,37 @@ export async function searchGroupMessages(
  * The target is checked again in case membership has been revoked.
  */
 export async function getGroupMessageContext(
- token:string,groupId:string,targetId:string,createdAt:string
+ token:string,groupId:string,targetId:string,createdAt:string,signal?:AbortSignal
 ):Promise<GroupMessage[]>{
  if(!UUID.test(groupId)||!UUID.test(targetId)||
     !Number.isFinite(Date.parse(createdAt)))throw Error('Некорректное сообщение.');
- const base={select:MESSAGE_FIELDS,group_id:'eq.'+groupId};
- const exact=new URLSearchParams({...base,id:'eq.'+targetId,limit:'1'});
- const target=(await getRows(token,exact))[0];
- if(!target||target.id!==targetId||target.group_id!==groupId)
-  throw Error('Сообщение удалено или больше недоступно.');
- const older=new URLSearchParams({...base,created_at:'lte.'+target.created_at,order:'created_at.desc,id.desc',limit:'70'});
- const newer=new URLSearchParams({...base,created_at:'gte.'+target.created_at,order:'created_at.asc,id.asc',limit:'70'});
- const [before,after]=await Promise.all([getRows(token,older),getRows(token,newer)]);
- const map=new Map<string,GroupMessage>();
- for(const message of [...before,...after,target]){
-  if(message.group_id===groupId)map.set(message.id,message);
+ const controller=new AbortController();
+ const abort=()=>controller.abort();
+ if(signal?.aborted)controller.abort();
+ else signal?.addEventListener('abort',abort,{once:true});
+ try{
+  const base={select:MESSAGE_FIELDS,group_id:'eq.'+groupId};
+  const exact=new URLSearchParams({...base,id:'eq.'+targetId,limit:'1'});
+  const target=(await getRows(token,exact,controller.signal))[0];
+  if(!target||target.id!==targetId||target.group_id!==groupId)
+   throw Error('Сообщение удалено или больше недоступно.');
+  const older=new URLSearchParams({...base,created_at:'lte.'+target.created_at,order:'created_at.desc,id.desc',limit:'70'});
+  const newer=new URLSearchParams({...base,created_at:'gte.'+target.created_at,order:'created_at.asc,id.asc',limit:'70'});
+  // If either side fails, abort its sibling instead of leaving a background GET.
+  const [before,after]=await Promise.all([
+   getRows(token,older,controller.signal),
+   getRows(token,newer,controller.signal)
+  ]);
+  const map=new Map<string,GroupMessage>();
+  for(const message of [...before,...after,target]){
+   if(message.group_id===groupId)map.set(message.id,message);
+  }
+  return Array.from(map.values()).sort((a,b)=>
+   Date.parse(a.created_at)-Date.parse(b.created_at)||a.id.localeCompare(b.id));
+ }catch(error){
+  controller.abort();
+  throw error;
+ }finally{
+  signal?.removeEventListener('abort',abort);
  }
- return Array.from(map.values()).sort((a,b)=>
-  Date.parse(a.created_at)-Date.parse(b.created_at)||a.id.localeCompare(b.id));
 }

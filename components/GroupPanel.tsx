@@ -52,7 +52,9 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
  const followNewestRef=useRef(true);
  const browsingOlderRef=useRef(false);
  const searchRequestRef=useRef(0);
+ const searchAbortRef=useRef<AbortController|null>(null);
  const searchJumpRequestRef=useRef(0);
+ const searchJumpAbortRef=useRef<AbortController|null>(null);
  const lastReadRef=useRef<string|null>(null);
  const latestGroupMessageRef=useRef<string|null>(null);
  const previousMessageIdsRef=useRef<{groupId:string;ownerId:string;ids:Set<string>}>({
@@ -62,6 +64,16 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
  const confirmedGroupMessagesRef=useRef<Map<string,ConfirmedGroupMessage>>(new Map());
  const contextRef=useRef({groupId:group.id,userId,token});
  contextRef.current={groupId:group.id,userId,token};
+ // Search and historical-context GETs belong to this exact chat session.
+ useEffect(()=>()=> {
+  searchRequestRef.current++;
+  searchAbortRef.current?.abort();
+  searchAbortRef.current=null;
+  searchJumpRequestRef.current++;
+  searchJumpAbortRef.current?.abort();
+  searchJumpAbortRef.current=null;
+  browsingOlderRef.current=false;
+ },[token,group.id,userId]);
  useEffect(()=>{
   confirmedGroupMessagesRef.current.clear();
   olderRequestRef.current++;
@@ -187,10 +199,24 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
   const term=normalizeGroupSearch(searchQuery);
   if(!searchOpen||term.length<2){setSearchLoading(false);setSearchError('');return;}
   let cancelled=false;
+  let controller:AbortController|null=null;
   setSearchLoading(true);setSearchError('');
   const timeout=window.setTimeout(()=>{
+   if(cancelled)return;
+   if(document.visibilityState==='hidden'||!navigator.onLine){
+    setSearchLoading(false);
+    setSearchError('Поиск приостановлен. Повтори после возвращения в приложение.');
+    return;
+   }
+   controller=new AbortController();
+   searchAbortRef.current=controller;
+   const abortOnPause=()=>{
+    if(document.visibilityState==='hidden'||!navigator.onLine)controller?.abort();
+   };
+   document.addEventListener('visibilitychange',abortOnPause);
+   window.addEventListener('offline',abortOnPause);
    const requestGroup=group.id,requestOwner=userId,requestToken=token;
-   void searchGroupMessages(token,group.id,term,searchPage*GROUP_SEARCH_PAGE_SIZE)
+   void searchGroupMessages(token,group.id,term,searchPage*GROUP_SEARCH_PAGE_SIZE,controller.signal)
     .then(rows=>{
      if(cancelled||id!==searchRequestRef.current
         ||contextRef.current.groupId!==requestGroup
@@ -204,25 +230,62 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
       &&(searchPage+1)*GROUP_SEARCH_PAGE_SIZE<=GROUP_SEARCH_MAX_OFFSET);
     })
     .catch(e=>{
-     if(!cancelled&&id===searchRequestRef.current)
-       setSearchError(e instanceof Error?e.message:'Ошибка поиска');
+     if(cancelled||id!==searchRequestRef.current)return;
+     setSearchError(controller?.signal.aborted
+      ?'Поиск приостановлен. Повтори после возвращения в приложение.'
+      :(e instanceof Error?e.message:'Ошибка поиска'));
     })
     .finally(()=>{
+     document.removeEventListener('visibilitychange',abortOnPause);
+     window.removeEventListener('offline',abortOnPause);
+     if(searchAbortRef.current===controller)searchAbortRef.current=null;
      if(!cancelled&&id===searchRequestRef.current)setSearchLoading(false);
     });
   },searchPage===0?320:0);
-  return()=>{cancelled=true;searchRequestRef.current++;window.clearTimeout(timeout);};
+  return()=>{
+   cancelled=true;
+   searchRequestRef.current++;
+   window.clearTimeout(timeout);
+   if(controller)controller.abort();
+   if(searchAbortRef.current===controller)searchAbortRef.current=null;
+  };
  },[searchOpen,searchQuery,searchPage,searchRetry,group.id,userId,token]);
- function closeSearch(){searchRequestRef.current++;setSearchOpen(false);setSearchQuery('');
+ function cancelPendingSearchJump(){
+  const controller=searchJumpAbortRef.current;
+  if(!controller)return;
+  searchJumpRequestRef.current++;
+  controller.abort();
+  searchJumpAbortRef.current=null;
+  setSearchLocating(null);
+  browsingOlderRef.current=false;
+ }
+ function closeSearch(){
+  searchRequestRef.current++;
+  searchAbortRef.current?.abort();
+  searchAbortRef.current=null;
+  cancelPendingSearchJump();
+  setSearchOpen(false);setSearchQuery('');
   setSearchResults([]);setSearchPage(0);setSearchError('');setSearchHasMore(false);
  }
- function changeSearch(query:string){setSearchQuery(query);setSearchPage(0);setSearchRetry(0);
+ function changeSearch(query:string){
+  searchRequestRef.current++;
+  searchAbortRef.current?.abort();
+  searchAbortRef.current=null;
+  cancelPendingSearchJump();
+  setSearchQuery(query);setSearchPage(0);setSearchRetry(0);
   setSearchResults([]);setSearchError('');setSearchHasMore(false);
  }
  async function openSearchResult(message:GroupMessage){
   if(searchLocating)return;
   const groupId=group.id,ownerId=userId,requestToken=token;
   const requestId=++searchJumpRequestRef.current;
+  const controller=new AbortController();
+  searchJumpAbortRef.current=controller;
+  const abortOnPause=()=>{
+   if(document.visibilityState==='hidden'||!navigator.onLine)controller.abort();
+  };
+  document.addEventListener('visibilitychange',abortOnPause);
+  window.addEventListener('offline',abortOnPause);
   setSearchLocating(message.id);
   // Pause recent-page polling so it cannot overwrite a historical jump.
   browsingOlderRef.current=true;
@@ -231,7 +294,9 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
   setNewMessagesBelow(0);
   try{
    const current=messages.some(row=>row.id===message.id);
-   const around=current?messages:await getGroupMessageContext(token,groupId,message.id,message.created_at);
+   const around=current?messages:await getGroupMessageContext(
+    token,groupId,message.id,message.created_at,controller.signal
+   );
    if(requestId!==searchJumpRequestRef.current
       ||contextRef.current.groupId!==groupId
       ||contextRef.current.userId!==ownerId
@@ -246,13 +311,21 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
    previousMessageIdsRef.current={groupId,ownerId,ids:new Set(around.map(row=>row.id))};
    if(!current)setMessages(around);
    setPendingSearchJump(message.id);
+   // The context request has completed; closing search must not cancel the
+   // newly selected historical window.
+   if(searchJumpAbortRef.current===controller)searchJumpAbortRef.current=null;
    closeSearch();
   }catch(e){
    if(requestId===searchJumpRequestRef.current){
     browsingOlderRef.current=false;
-    setSearchError(e instanceof Error?e.message:'Не удалось открыть сообщение');
+    setSearchError(controller.signal.aborted
+     ?'Переход к сообщению приостановлен. Повтори попытку.'
+     :(e instanceof Error?e.message:'Не удалось открыть сообщение'));
    }
   }finally{
+   document.removeEventListener('visibilitychange',abortOnPause);
+   window.removeEventListener('offline',abortOnPause);
+   if(searchJumpAbortRef.current===controller)searchJumpAbortRef.current=null;
    if(requestId===searchJumpRequestRef.current)setSearchLocating(null);
   }
  }
