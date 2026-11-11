@@ -1,6 +1,7 @@
 'use client';
 
 import type {ReplyTarget} from '@/lib/supabase-rest';
+import {truncatePreviewText} from '@/lib/text-preview';
 
 type Props={
   target:ReplyTarget|null;
@@ -11,9 +12,10 @@ type Props={
 
 /** Compact, keyboard-accessible reference within the reply bubble. */
 export default function ReplyQuote({target,senderName,onJump,loading=false}:Props){
+  const bodyPreview=target?.body?.replace(/\s+/g,' ').trim() ?? '';
   const preview=loading?'Ищем сообщение в истории…':target?.deleted_for_everyone
     ? 'Сообщение удалено'
-    : target?.body?.replace(/\s+/g,' ').trim().slice(0,140)
+    : truncatePreviewText(bodyPreview,140)
       || (target?.media_type?'Вложение':'Исходное сообщение недоступно');
 
   return <button type="button" className="ik-message-reply-reference"
