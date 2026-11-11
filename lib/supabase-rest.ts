@@ -196,10 +196,10 @@ export async function listOlderMessages(token:string,chatId:string,before:Pick<C
 }
 /** Load original messages referenced by older replies, subject to normal chat RLS. */
 export type ReplyTarget=Pick<ChatMessage,'id'|'sender_id'|'body'|'deleted_for_everyone'|'media_type'>;
-export async function listReplyTargets(token:string,chatId:string,ids:string[]):Promise<ReplyTarget[]>{
+export async function listReplyTargets(token:string,chatId:string,ids:string[],signal?:AbortSignal):Promise<ReplyTarget[]>{
   const unique=[...new Set(ids)].filter(id=>/^[a-f0-9-]{36}$/i.test(id)).slice(0,100);
   if(!unique.length)return [];
-  return http<ReplyTarget[]>('/rest/v1/messages?select=id,sender_id,body,deleted_for_everyone,media_type&chat_id=eq.'+encodeURIComponent(chatId)+'&id=in.('+unique.map(encodeURIComponent).join(',')+')',{token});
+  return http<ReplyTarget[]>('/rest/v1/messages?select=id,sender_id,body,deleted_for_everyone,media_type&chat_id=eq.'+encodeURIComponent(chatId)+'&id=in.('+unique.map(encodeURIComponent).join(',')+')',{token,signal});
 }
 
 /** Text-only matches from the entire RLS-visible chat history, newest first.
