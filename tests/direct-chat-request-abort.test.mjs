@@ -117,3 +117,35 @@ test('older direct history is cancelled on background/offline pause and chat cle
   assert.match(appShell,/document\.visibilityState==='visible'&&navigator\.onLine/);
   assert.match(appShell,/if\(controller\.signal\.aborted\)prependScrollRef\.current=null/);
 });
+
+
+test('aborting a lifecycle-scoped older-page reaction GET cancels the underlying fetch',async()=>{
+  const originalFetch=globalThis.fetch;
+  let receivedSignal;
+  globalThis.fetch=(_url,options)=>new Promise((_resolve,reject)=>{
+    receivedSignal=options.signal;
+    options.signal.addEventListener('abort',()=>{
+      const error=new Error('The operation was aborted');
+      error.name='AbortError';
+      reject(error);
+    },{once:true});
+  });
+  try{
+    const controller=new AbortController();
+    const pending=listMessageReactions('test-access-token',['22222222-2222-4222-8222-222222222222'],controller.signal);
+    assert.equal(receivedSignal,controller.signal);
+    controller.abort();
+    await assert.rejects(pending,error=>error?.name==='AbortError');
+  }finally{
+    globalThis.fetch=originalFetch;
+  }
+});
+
+test('older-page reaction reads have independent scopes and are aborted on chat pause and cleanup',()=>{
+  assert.match(appShell,/olderReactionAbortScopesRef=useRef<Set<ReturnType<typeof createAbortableRequestScope>>>\(new Set\(\)\)/);
+  assert.match(appShell,/const reactionScope=createAbortableRequestScope\(\)/);
+  assert.match(appShell,/listMessageReactions\(token,older\.map\(message=>message\.id\),reactionController\.signal\)/);
+  assert.match(appShell,/if\(!stillInChat\(\)\|\|reactionController\.signal\.aborted\)return/);
+  assert.match(appShell,/reactionScope\.clear\(reactionController\)/);
+  assert.match(appShell,/olderHistoryAbortScopeRef\.current\.abort\(\);abortOlderReactionScopes\(\);/);
+});
