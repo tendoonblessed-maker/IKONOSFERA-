@@ -127,7 +127,7 @@ async function realtimeHarness(){
   Promise,
   require(name){
    if(name==='@supabase/supabase-js')return {createClient:()=>client};
-   if(name==='@/lib/supabase-rest')return {apiUrl:'https://unit.test',backendReady:true};
+   if(name==='./supabase-rest')return {apiUrl:'https://unit.test',backendReady:true};
    throw Error('Unexpected module: '+name);
   }
  },{timeout:2000,filename:'group-realtime.cjs'});
