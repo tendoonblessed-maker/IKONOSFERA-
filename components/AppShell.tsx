@@ -12,7 +12,7 @@ import ChatMessageText from "@/components/ChatMessageText";
 import {subscribeDirectChatChanges} from "@/lib/direct-realtime";
 import {startVisiblePolling} from "@/lib/visible-polling";
 import {createAbortableRequestScope} from "@/lib/request-abort-scope";
-import {bumpReplyTargetVersion,snapshotReplyTargetVersions,isReplyTargetVersionCurrent,filterReplyTargetsForCurrentVersion} from "@/lib/reply-target-cache";
+import {bumpReplyTargetVersion,snapshotReplyTargetVersions,isReplyTargetVersionCurrent,filterReplyTargetsForCurrentVersion,isReplyTargetOwnerCurrent,type ReplyTargetOwner} from "@/lib/reply-target-cache";
 import {createSingleFlightRefreshGate} from "@/lib/single-flight-refresh";
 import {subscribeInboxChanges,type InboxChangeKind} from "@/lib/inbox-realtime";
 import {isLatestAccountSnapshot} from "@/lib/inbox-snapshot";
@@ -160,6 +160,12 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
   const replyTargetsQueriedRef=useRef<Set<string>>(new Set());
   const replyTargetsRefreshIdsRef=useRef<Set<string>>(new Set());
   const replyTargetVersionsRef=useRef<Map<string,number>>(new Map());
+  const replyTargetOwnerRef=useRef<ReplyTargetOwner>({chatId:null,userId:'',accessToken:''});
+  // Layout effects publish the committed auth/chat owner before any pending
+  // promise continuation can apply a result from the previous render.
+  useLayoutEffect(()=>{
+    replyTargetOwnerRef.current={chatId:selected,userId,accessToken:session?.access_token??''};
+  },[selected,userId,session?.access_token]);
   const replyReferenceIdsRef=useRef<Set<string>>(new Set());
   const chatMessagesRef=useRef<ChatMessage[]>([]);
   const replyTargetsGenerationRef=useRef(0);
@@ -292,6 +298,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
     const chatId=selected;
     if(!session||!chatId||chatLoad?.id!==chatId||chatLoad.status!=='ready'
       ||document.visibilityState!=='visible'||!navigator.onLine)return;
+    const requestOwner:ReplyTargetOwner={chatId,userId,accessToken:session.access_token};
     const generation=chatContextGenerationRef.current;
     const requestGeneration=replyTargetsGenerationRef.current;
     const inChat=chatMessages.filter(message=>message.chat_id===chatId);
@@ -309,7 +316,8 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
     // scope so pausing the chat cancels all quote lookups without coupling them.
     const batches:Array<string[]>= [];
     for(let start=0;start<missing.length;start+=100)batches.push(missing.slice(start,start+100));
-    const stillInChat=()=>selectedRef.current===chatId&&chatContextGenerationRef.current===generation
+    const stillInChat=()=>isReplyTargetOwnerCurrent(requestOwner,replyTargetOwnerRef.current)
+      &&selectedRef.current===chatId&&chatContextGenerationRef.current===generation
       &&replyTargetsGenerationRef.current===requestGeneration;
     const requests=batches.map(async ids=>{
       const batchVersions=snapshotReplyTargetVersions(ids,requestVersions);
@@ -345,7 +353,9 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
             unavailable:true
           };
         }
-        if(Object.keys(updates).length)setReplyTargets(current=>({...current,...updates}));
+        if(Object.keys(updates).length)setReplyTargets(current=>
+          isReplyTargetOwnerCurrent(requestOwner,replyTargetOwnerRef.current)?{...current,...updates}:current
+        );
       })
       .catch(()=>{
         if(!stillInChat())return;
@@ -363,9 +373,11 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
             unavailable:true
           };
         }
-        if(Object.keys(unavailable).length)setReplyTargets(current=>({...current,...unavailable}));
+        if(Object.keys(unavailable).length)setReplyTargets(current=>
+          isReplyTargetOwnerCurrent(requestOwner,replyTargetOwnerRef.current)?{...current,...unavailable}:current
+        );
       });
-  },[chatMessages,chatLoad?.id,chatLoad?.status,replyTargets,replyTargetsRetryNonce,selected,session?.access_token]);
+  },[chatMessages,chatLoad?.id,chatLoad?.status,replyTargets,replyTargetsRetryNonce,selected,session?.access_token,userId]);
   // Full-history search uses a scoped, security-invoker database RPC.
   // Debounce typing and ignore every stale response when the query, chat,
   // account, or tab changes. Never cache search results across accounts.
