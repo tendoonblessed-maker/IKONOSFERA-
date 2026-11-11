@@ -193,3 +193,26 @@ test('internationalized hostnames stay plain to prevent IDN homograph links',()=
  ],'Unicode path segments on an ASCII hostname remain supported');
  assert.equal(reconstructed(unicodePath),unicodePath);
 });
+
+
+test('Unicode and percent-encoded hostnames stay plain when WHATWG URL normalizes them',()=>{
+ for(const text of [
+  'https://example\\u3002com/path',
+  'https://example\\uFF0Ecom/path',
+  'https://example\\uFF61com/path',
+  'https://\\uFF45xample.com/path',
+  'https://%65xample.com/path',
+  'https://%77ww.example.com/path'
+ ]){
+  assert.equal(links(text).length,0,'a normalized or encoded raw hostname must not become a misleading link');
+  assert.equal(reconstructed(text),text,'the original hostname must remain unchanged');
+ }
+ const ipv6='https://[2001:db8::1]:8443/status';
+ assert.deepEqual(links(ipv6),[{text:ipv6,href:ipv6}],
+  'ASCII IPv6 literals and explicit ports remain supported');
+ const unicodePath='https://example.com/привет';
+ assert.deepEqual(links(unicodePath),[
+  {text:unicodePath,href:'https://example.com/%D0%BF%D1%80%D0%B8%D0%B2%D0%B5%D1%82'}
+ ],'Unicode path segments on an ASCII hostname remain supported');
+ assert.equal(reconstructed(unicodePath),unicodePath);
+});
