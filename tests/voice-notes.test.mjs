@@ -3,7 +3,7 @@ import {test} from 'node:test';
 import {readFileSync} from 'node:fs';
 import {
  chooseVoiceMimeType,normalizeVoiceMimeType,createVoiceFile,formatVoiceTime,
- VOICE_RECORD_MAX_MS,VOICE_RECORD_MAX_BYTES,VOICE_MIME_CANDIDATES
+ VOICE_RECORD_MAX_MS,VOICE_PERMISSION_TIMEOUT_MS,VOICE_RECORD_MAX_BYTES,VOICE_MIME_CANDIDATES
 } from '../lib/voice-notes.ts';
 const load=path=>readFileSync(new URL('../'+path,import.meta.url),'utf8');
 
@@ -37,6 +37,11 @@ test('recorded audio normalizes codec parameters to strict private Storage MIME'
  assert.equal(firefox.name,'voice-456.ogg');
 });
 
+test('microphone permission prompts have a bounded 30-second wait',()=>{
+ assert.equal(VOICE_PERMISSION_TIMEOUT_MS,30_000);
+ assert.ok(VOICE_PERMISSION_TIMEOUT_MS>0&&VOICE_PERMISSION_TIMEOUT_MS<VOICE_RECORD_MAX_MS);
+});
+
 test('unsupported MIME, empty data and oversized recordings are rejected',()=>{
  assert.throws(()=>createVoiceFile([new Blob(['x'])],'video/webm'),/неподдерживаемом формате/);
  assert.throws(()=>createVoiceFile([new Blob([])],'audio/webm'),/пустое или превышает/);
@@ -54,6 +59,10 @@ test('voice recorder uses only microphone, stops tracks on cancel, unmount and p
  assert.match(ui,/stopMediaStreamTracks\(stream\)/);
  assert.match(ui,/stopMediaStreamTracks\(capture\.stream\)/);
  assert.match(ui,/requestRef\.current\+=1/);
+ assert.match(ui,/permissionTimerRef=useRef/);
+ assert.match(ui,/clearPermissionTimer\(generation\)/);
+ assert.match(ui,/VOICE_PERMISSION_TIMEOUT_MS/);
+ assert.match(ui,/late grants become stale/);
  assert.match(ui,/capture\.recorder\.onstop=null/);
  assert.match(ui,/if\(capture\.recorder\.state!=='inactive'\)/);
  assert.match(ui,/liveRef\.current=false;dispose\(true\)/);
