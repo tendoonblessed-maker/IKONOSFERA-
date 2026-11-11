@@ -21,17 +21,46 @@
     <p>Когда соединение восстановится, страница попробует открыть мессенджер автоматически.</p>
   </main>
   <script>
-    // The offline fallback is a separate document; recover without requiring
-    // the user to discover and tap the manual retry link after reconnecting.
+    // navigator.onLine only reports a network interface state; it does not
+    // prove that the IKONOSFERA origin is reachable. Probe the origin before
+    // navigating so a cached offline shell cannot cause an automatic reload loop.
+    const RECONNECT_PROBE_TIMEOUT_MS = 5000;
     let recoveryStarted = false;
-    const retryApp = () => {
-      if (recoveryStarted) return;
-      recoveryStarted = true;
-      window.location.replace("/");
+    let probeInFlight = false;
+    const retryApp = async () => {
+      if (recoveryStarted || probeInFlight) return;
+      probeInFlight = true;
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), RECONNECT_PROBE_TIMEOUT_MS);
+      try {
+        // A non-navigation fetch is deliberately not handled by the offline
+        // navigation fallback in sw.js. Cache bypass makes this a real origin
+        // reachability check; abort after headers to avoid downloading the page.
+        const response = await fetch("/", {
+          method: "GET",
+          cache: "no-store",
+          credentials: "same-origin",
+          signal: controller.signal
+        });
+        const sameOrigin = !response.url || new URL(response.url, window.location.href).origin === window.location.origin;
+        const reachable = !controller.signal.aborted && response.ok && sameOrigin;
+        controller.abort();
+        if (reachable) {
+          recoveryStarted = true;
+          window.location.replace("/");
+        }
+      } catch {
+        // Keep the offline page visible; the manual retry remains available.
+      } finally {
+        clearTimeout(timeoutId);
+        controller.abort();
+        probeInFlight = false;
+      }
     };
-    window.addEventListener("online", retryApp, { once: true });
-    // A page restored from BFCache may have missed the online event while
-    // frozen. Retry only on a persisted restore; never loop on initial load.
+    // Keep listening: a failed probe must not consume the only future online event.
+    window.addEventListener("online", retryApp);
+    // A BFCache restore may have missed the online event while frozen.
+    // navigator.onLine is only a cheap gate; retryApp still verifies the origin.
     window.addEventListener("pageshow", (event) => {
       if (event.persisted && navigator.onLine) retryApp();
     });
