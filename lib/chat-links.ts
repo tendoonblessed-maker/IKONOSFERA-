@@ -4,14 +4,14 @@
  * escaping: strings like "a < b", code, and literal tags stay literal text.
  */
 export type ChatTextPart={text:string;href?:string};
-const LINK_CANDIDATE=/(?:https?:\\/\\/|www\\.)[^\\s<>"'\\u0060]+/gi;
+const LINK_CANDIDATE=/(?:https?:\/\/|www\.)[^\s<>"'\u0060]+/gi;
 const TRAILING_PUNCTUATION=/[.,!?;:…。，！？；：»”’›]$/u;
 // Unicode format and default-ignorable code points can change visual order or
 // disappear during rendering. Keep such candidates literal, not clickable.
-const UNSAFE_LINK_FORMATTING=/[\\p{Cf}\\p{Default_Ignorable_Code_Point}]/u;
+const UNSAFE_LINK_FORMATTING=/[\p{Cf}\p{Default_Ignorable_Code_Point}]/u;
 // WHATWG URL normalizes raw backslashes and can percent-encode control bytes.
 // Percent-encoded text remains visible and is intentionally still supported.
-const UNSAFE_LINK_SYNTAX=/[\\\\\\p{Cc}]/u;
+const UNSAFE_LINK_SYNTAX=/[\\\p{Cc}]/u;
 const MAX_URL_LENGTH=2048;
 const MAX_LINKS=40;
 
@@ -40,7 +40,7 @@ function splitEnding(candidate:string):{url:string;ending:string}{
 
 function externalHref(candidate:string):string|null{
  if(candidate.length>MAX_URL_LENGTH||UNSAFE_LINK_FORMATTING.test(candidate)||UNSAFE_LINK_SYNTAX.test(candidate))return null;
- const prefixed=/^www\\./i.test(candidate)?'https://'+candidate:candidate;
+ const prefixed=/^www\./i.test(candidate)?'https://'+candidate:candidate;
  try{
   const parsed=new URL(prefixed);
   if(parsed.protocol!=='http:'&&parsed.protocol!=='https:')return null;
@@ -48,18 +48,18 @@ function externalHref(candidate:string):string|null{
   if(parsed.username||parsed.password)return null;
   if(!parsed.hostname||parsed.hostname.startsWith('.')||parsed.hostname.endsWith('.'))return null;
   if(parsed.hostname.includes('%'))return null;
-  if(/^www\\./i.test(candidate)&&!parsed.hostname.includes('.'))return null;
+  if(/^www\./i.test(candidate)&&!parsed.hostname.includes('.'))return null;
   // WHATWG URL applies IDNA mapping before exposing hostname: Unicode dot
   // separators, full-width ASCII and percent-encoded host bytes can become
   // an apparently ordinary ASCII hostname. Inspect the original authority
   // before normalization so the visible text and actual destination agree.
-  const authority=prefixed.match(/^https?:\\/\\/([^/?#]*)/i)?.[1];
+  const authority=prefixed.match(/^https?:\/\/([^/?#]*)/i)?.[1];
   if(!authority)return null;
   const hostPort=authority.slice(authority.lastIndexOf('@')+1);
   const rawHostname=hostPort.startsWith('[')
    ?hostPort.slice(0,hostPort.indexOf(']')+1)
-   :hostPort.replace(/:\\d*$/,'');
-  if(!rawHostname||/[^\\x00-\\x7f]/.test(rawHostname)||rawHostname.includes('%'))return null;
+   :hostPort.replace(/:\d*$/,'');
+  if(!rawHostname||/[^\x00-\x7f]/.test(rawHostname)||rawHostname.includes('%'))return null;
   // The bubble renders the original hostname verbatim. IDN homographs can
   // resemble trusted ASCII domains while resolving to a different punycode host.
   // Keep internationalized hostnames literal until the UI can show a safe label.
@@ -71,7 +71,7 @@ function externalHref(candidate:string):string|null{
 function canBeginLink(text:string,index:number):boolean{
  if(index===0)return true;
  // Don't link inside emails, identifiers or already-open URI schemes.
- return !/[\\p{L}\\p{N}_@/:.-]/u.test(text[index-1]);
+ return !/[\p{L}\p{N}_@/:.-]/u.test(text[index-1]);
 }
 
 /**
