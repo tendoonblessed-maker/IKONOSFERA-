@@ -62,7 +62,7 @@
     // A BFCache restore may have missed the online event while frozen.
     // navigator.onLine is only a cheap gate; retryApp still verifies the origin.
     window.addEventListener("pageshow", (event) => {
-      if (event.persisted && navigator.onLine) retryApp();
+      if (event.persisted && navigator.onLine) return retryApp();
     });
   </script>
 </body>
