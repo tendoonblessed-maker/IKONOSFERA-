@@ -12,7 +12,7 @@ import {readGroupDrafts} from '@/lib/group-drafts';
 import {getOrCreateGroupSendAttempt,clearGroupSendAttempt} from '@/lib/group-send-attempts';
 import {subscribeGroupChanges} from '@/lib/group-realtime';
 import {mergeConfirmedGroupMessages,CONFIRMED_GROUP_MESSAGE_GRACE_MS,type ConfirmedGroupMessage} from '@/lib/group-history';
-import {shouldAcknowledgeGroupRead,countNewIncomingBelow} from '@/lib/group-read-position';
+import {shouldAcknowledgeGroupRead,countNewIncomingBelow,type GroupMessageOrder} from '@/lib/group-read-position';
 import {fetchOlderGroupMessages,prependOlderGroupMessages,preserveOlderGroupMessages,GROUP_HISTORY_MAX_LOADED} from '@/lib/group-pagination';
 type Props={token:string;userId:string;group:Group;onBack:()=>void;onShowProfile:(id:string)=>void;onDraftChange:(groupId:string,text:string)=>void};
 export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDraftChange}:Props){
@@ -56,8 +56,8 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
  const searchJumpRequestRef=useRef(0);
  const lastReadRef=useRef<string|null>(null);
  const latestGroupMessageRef=useRef<string|null>(null);
- const previousMessageIdsRef=useRef<{groupId:string;ownerId:string;ids:Set<string>}>({
-  groupId:group.id,ownerId:userId,ids:new Set()
+ const previousMessageIdsRef=useRef<{groupId:string;ownerId:string;ids:Set<string>;newest:GroupMessageOrder|null}>({
+  groupId:group.id,ownerId:userId,ids:new Set(),newest:null
  });
  const requestSequenceRef=useRef(0);
  const confirmedGroupMessagesRef=useRef<Map<string,ConfirmedGroupMessage>>(new Map());
@@ -94,7 +94,6 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
   setSearchOpen(false);setSearchQuery('');setSearchPage(0);setSearchRetry(0);
   setSearchResults([]);setSearchLoading(false);setSearchError('');setSearchHasMore(false);
   setSearchLocating(null);setPendingSearchJump(null);
-  previousMessageIdsRef.current={groupId:group.id,ownerId:userId,ids:new Set()};
   setShowJumpToLatest(false);
   setNewMessagesBelow(0);
  },[group.id,userId]);
@@ -257,7 +256,9 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
    setLoadingOlder(false);setOlderError('');
    // This is a historical window, so older pages are available on demand.
    if(!current)setHasOlder(true);
-   previousMessageIdsRef.current={groupId,ownerId,ids:new Set(around.map(row=>row.id))};
+   const newest=around[around.length-1]??null;
+   previousMessageIdsRef.current={groupId,ownerId,ids:new Set(around.map(row=>row.id)),
+    newest:newest?{created_at:newest.created_at,id:newest.id}:null};
    if(!current)setMessages(around);
    setPendingSearchJump(message.id);
    closeSearch();
@@ -367,12 +368,14 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
  useEffect(()=>{
   const previous=previousMessageIdsRef.current;
   if(previous.groupId!==group.id||previous.ownerId!==userId){
-    previousMessageIdsRef.current={groupId:group.id,ownerId:userId,ids:new Set(messages.map(m=>m.id))};
+    previousMessageIdsRef.current={groupId:group.id,ownerId:userId,ids:new Set(),newest:null};
     setNewMessagesBelow(0);
     return;
   }
-  const newBelow=countNewIncomingBelow(messages,previous.ids,userId,followNewestRef.current);
+  const newBelow=countNewIncomingBelow(messages,previous.ids,userId,followNewestRef.current,previous.newest);
   previous.ids=new Set(messages.map(m=>m.id));
+  const newest=messages[messages.length-1]??null;
+  previous.newest=newest?{created_at:newest.created_at,id:newest.id}:null;
   if(newBelow>0)setNewMessagesBelow(n=>Math.min(99,n+newBelow));
  },[messages,group.id,userId]);
  useEffect(()=>{if(!membersOpen)return;const onKey=(event:KeyboardEvent)=>{if(event.key==='Escape')setMembersOpen(false);};window.addEventListener('keydown',onKey);return()=>window.removeEventListener('keydown',onKey);},[membersOpen]);
