@@ -22,7 +22,7 @@ function setup(handler=()=>({ok:true,json:async()=>[]})){
  const calls=[];
  const exports={};
  const context={
-  exports,URLSearchParams,URL,AbortSignal,
+  exports,URLSearchParams,URL,AbortSignal,AbortController,
   process:{env:{NEXT_PUBLIC_SUPABASE_ANON_KEY:'public-test'}},
   fetch:async(url,options)=>{
    calls.push({url,options});
@@ -77,6 +77,23 @@ test('older page uses signed-in user JWT, strict no-store, bounded limit and ser
  assert.ok(calls[0].options.signal instanceof AbortSignal);
  assert.deepEqual(Array.from(page.messages,x=>x.id),[id(2),id(3),id(4)]);
  assert.equal(page.hasMore,false);
+});
+
+test('caller abort cancels an in-flight older group page request',async()=>{
+ let requestSignal;
+ const {api,calls}=setup((url,options)=>new Promise((resolve,reject)=>{
+  requestSignal=options.signal;
+  requestSignal.addEventListener('abort',()=>reject(requestSignal.reason),{once:true});
+ }));
+ const controller=new AbortController();
+ const pending=api.fetchOlderGroupMessages('signed-jwt',GROUP,row(id(5)),controller.signal);
+ await Promise.resolve();
+ assert.ok(requestSignal instanceof AbortSignal);
+ assert.notEqual(requestSignal,controller.signal,'the request combines caller cancellation with its own deadline');
+ controller.abort();
+ await assert.rejects(pending,error=>error?.name==='AbortError');
+ assert.equal(requestSignal.aborted,true);
+ assert.equal(calls.length,1);
 });
 
 test('extra row establishes hasMore but never overlaps next page boundary',async()=>{
@@ -134,7 +151,12 @@ test('realtime latest page retains paged earlier messages but removes deleted la
 test('group pagination UI restores the history scroll anchor and avoids account crossover',()=>{
  const panel=read('components/GroupPanel.tsx');
  const css=read('app/globals.css');
- assert.match(panel,/fetchOlderGroupMessages\(requestToken,groupId,oldest\)/);
+ assert.match(panel,/fetchOlderGroupMessages\(requestToken,groupId,oldest,controller\.signal\)/);
+ assert.match(panel,/olderAbortRef\.current\?\.abort\(\)/);
+ assert.match(panel,/document\.addEventListener\('visibilitychange',abortOlderOnPause\)/);
+ assert.match(panel,/window\.addEventListener\('offline',abortOlderOnPause\)/);
+ assert.match(panel,/if\(!controller\.signal\.aborted\)/);
+ assert.match(panel,/\},\[token,group\.id,userId\]\)/);
  assert.match(panel,/prependOlderGroupMessages\(current,page.messages\)/);
  assert.match(panel,/preserveOlderGroupMessages\(current,msgs\)/);
  assert.match(panel,/snapshot\.top\+growth/);
