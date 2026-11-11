@@ -15,6 +15,7 @@ import {mergeConfirmedGroupMessages,CONFIRMED_GROUP_MESSAGE_GRACE_MS,type Confir
 import {shouldAcknowledgeGroupRead,countNewIncomingBelow} from '@/lib/group-read-position';
 import {fetchOlderGroupMessages,prependOlderGroupMessages,preserveOlderGroupMessages,GROUP_HISTORY_MAX_LOADED} from '@/lib/group-pagination';
 import {startVisiblePolling} from '@/lib/visible-polling';
+import {createSingleFlightRefreshGate} from '@/lib/single-flight-refresh';
 import {createAbortableRequestScope} from '@/lib/request-abort-scope';
 import {watchNetworkStatus} from '@/lib/network-status';
 type Props={token:string;userId:string;group:Group;onBack:()=>void;onShowProfile:(id:string)=>void;onDraftChange:(groupId:string,text:string)=>void};
@@ -345,18 +346,30 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
   history.scrollTop=Math.max(0,snapshot.top+growth);
  },[messages,group.id,userId]);
 
- // Group membership and profiles change much less often than chat messages.
+ // Membership and profile reads are low-frequency auxiliary polls too.
+ // Pause them offline/background and coalesce a forced refresh on resume.
  useEffect(()=>{
   let cancelled=false;
-  const updateMembers=()=>{
-    if(document.visibilityState==='hidden')return;
+  let generation=0;
+  const gate=createSingleFlightRefreshGate();
+  const updateMembers=(forceFull=false)=>{
+    if(cancelled||document.visibilityState!=='visible'||!navigator.onLine)return;
+    const entered=gate.enter(forceFull);
+    if(!entered.accepted)return;
+    const requestGeneration=++generation;
     void groupMembers(token,group.id).then(memberships=>
       listProfiles(token,memberships.map(member=>member.user_id))
-    ).then(profiles=>{if(!cancelled)setMembers(profiles);}).catch(()=>{});
+    ).then(profiles=>{
+      if(!cancelled&&requestGeneration===generation)setMembers(profiles);
+    }).catch(()=>{}).finally(()=>{
+      const queued=gate.leave();
+      if(queued&&!cancelled&&document.visibilityState==='visible'&&navigator.onLine)updateMembers(true);
+    });
   };
-  updateMembers();
-  const timer=window.setInterval(updateMembers,120000);
-  return()=>{cancelled=true;window.clearInterval(timer);};
+  updateMembers(true);
+  const stopPolling=startVisiblePolling(()=>updateMembers(),120000,document,window,navigator,
+    ()=>updateMembers(true),()=>{generation++;});
+  return()=>{cancelled=true;generation++;gate.dispose();stopPolling();};
  },[token,group.id]);
  useLayoutEffect(()=>{
   const history=historyRef.current;
@@ -378,7 +391,29 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
   if(newBelow>0)setNewMessagesBelow(n=>Math.min(99,n+newBelow));
  },[messages,group.id,userId]);
  useEffect(()=>{if(!membersOpen)return;const onKey=(event:KeyboardEvent)=>{if(event.key==='Escape')setMembersOpen(false);};window.addEventListener('keydown',onKey);return()=>window.removeEventListener('keydown',onKey);},[membersOpen]);
-  useEffect(()=>{if(!membersOpen||!members.length)return;let gone=false;const load=()=>{if(document.visibilityState==='visible')void getUserActivities(token,members.map(m=>m.id)).then(value=>{if(!gone)setPresence(value);}).catch(()=>{});};load();const t=setInterval(load,40000);return()=>{gone=true;clearInterval(t);};},[token,membersOpen,members]);
+ useEffect(()=>{
+  if(!membersOpen||!members.length)return;
+  let gone=false;
+  let generation=0;
+  const gate=createSingleFlightRefreshGate();
+  const load=(forceFull=false)=>{
+    if(gone||document.visibilityState!=='visible'||!navigator.onLine)return;
+    const entered=gate.enter(forceFull);
+    if(!entered.accepted)return;
+    const requestGeneration=++generation;
+    const memberIds=members.map(member=>member.id);
+    void getUserActivities(token,memberIds).then(value=>{
+      if(!gone&&requestGeneration===generation)setPresence(value);
+    }).catch(()=>{}).finally(()=>{
+      const queued=gate.leave();
+      if(queued&&!gone&&document.visibilityState==='visible'&&navigator.onLine)load(true);
+    });
+  };
+  load(true);
+  const stopPolling=startVisiblePolling(()=>load(),40000,document,window,navigator,
+    ()=>load(true),()=>{generation++;});
+  return()=>{gone=true;generation++;gate.dispose();stopPolling();};
+ },[token,membersOpen,members]);
  async function send(e:FormEvent){
  e.preventDefault();
  if(busy||!draft.trim())return;
