@@ -9,78 +9,165 @@ const scriptEnd = html.indexOf("</script>", scriptStart);
 const script = scriptStart >= 0 && scriptEnd > scriptStart
   ? html.slice(scriptStart + "<script>".length, scriptEnd)
   : "";
+const ORIGIN = "https://ikonosfera.test";
 
-function bootOfflinePage({ onLine = false } = {}) {
+function bootOfflinePage({
+  onLine = false,
+  fetcher = async () => ({ ok: true, url: ORIGIN + "/" }),
+  scheduleTimeout = setTimeout,
+  cancelTimeout = clearTimeout
+} = {}) {
   const listeners = [];
   const replacements = [];
+  const calls = [];
   const window = {
-    addEventListener(type, callback, options) {
-      listeners.push({ type, callback, options });
-    },
     location: {
+      href: ORIGIN + "/offline.html",
+      origin: ORIGIN,
       replace(path) {
         replacements.push(path);
-      },
+      }
     },
+    addEventListener(type, callback, options) {
+      listeners.push({ type, callback, options });
+    }
   };
   const navigator = { onLine };
-  runInNewContext(script, { window, navigator });
-  return { listeners, replacements, window, navigator };
+  const fetch = (url, options) => {
+    calls.push({ url, options });
+    return fetcher(url, options);
+  };
+  runInNewContext(script, {
+    window,
+    navigator,
+    fetch,
+    AbortController,
+    URL,
+    setTimeout: scheduleTimeout,
+    clearTimeout: cancelTimeout
+  });
+  return { listeners, replacements, calls, window, navigator };
 }
 
-test("offline fallback retries the app once when the browser reports connectivity", () => {
-  assert.equal(html.split("<script>").length - 1, 1, "expected one small inline recovery script");
+function listener(page, type) {
+  const found = page.listeners.find((entry) => entry.type === type);
+  assert.ok(found, `expected ${type} listener`);
+  return found;
+}
+
+test("online recovery verifies the origin before navigating", async () => {
+  const responses = [
+    { ok: false, status: 503, url: ORIGIN + "/" },
+    { ok: true, status: 200, url: ORIGIN + "/" }
+  ];
+  const page = bootOfflinePage({ fetcher: async () => responses.shift() });
+  const online = listener(page, "online");
+
+  await online.callback();
+  assert.deepEqual(page.replacements, [], "a browser online signal alone must not reload the app");
+
+  await online.callback();
+  assert.deepEqual(page.replacements, ["/"], "a reachable origin permits one recovery navigation");
+  assert.equal(page.calls.length, 2, "a failed probe must not consume future online events");
+});
+
+test("a successful probe is same-origin, uncached and bounded to response headers", async () => {
+  const page = bootOfflinePage();
+  await listener(page, "online").callback();
+
+  assert.deepEqual(page.replacements, ["/"]);
+  assert.equal(page.calls.length, 1);
+  assert.equal(page.calls[0].url, "/");
+  assert.equal(page.calls[0].options.method, "GET");
+  assert.equal(page.calls[0].options.cache, "no-store");
+  assert.equal(page.calls[0].options.credentials, "same-origin");
+  assert.equal(page.calls[0].options.signal.aborted, true, "unused HTML body is aborted after headers");
+});
+
+test("a BFCache restore probes the origin only when the browser reports a network", async () => {
+  const page = bootOfflinePage({ onLine: true, fetcher: async () => ({ ok: true, url: ORIGIN + "/" }) });
+  const pageshow = listener(page, "pageshow");
+
+  await pageshow.callback({ persisted: false });
+  assert.equal(page.calls.length, 0, "initial pageshow does not start a recovery probe");
+
+  await pageshow.callback({ persisted: true });
+  assert.equal(page.calls.length, 1);
+  assert.deepEqual(page.replacements, ["/"]);
+});
+
+test("online and BFCache signals share one in-flight reachability probe", async () => {
+  let resolveProbe;
+  const page = bootOfflinePage({
+    onLine: true,
+    fetcher: () => new Promise((resolve) => { resolveProbe = resolve; })
+  });
+
+  const online = listener(page, "online").callback();
+  const restored = listener(page, "pageshow").callback({ persisted: true });
+  await Promise.resolve();
+  assert.equal(page.calls.length, 1, "overlapping lifecycle signals must not duplicate the request");
+
+  resolveProbe({ ok: true, url: ORIGIN + "/" });
+  await Promise.all([online, restored]);
+  assert.deepEqual(page.replacements, ["/"]);
+});
+
+test("network failures and non-success responses keep the offline page visible", async () => {
+  const page = bootOfflinePage({
+    fetcher: async () => { throw new TypeError("network unavailable"); }
+  });
+  await listener(page, "online").callback();
+  assert.deepEqual(page.replacements, []);
+
+  const serverError = bootOfflinePage({
+    fetcher: async () => ({ ok: false, status: 504, url: ORIGIN + "/" })
+  });
+  await listener(serverError, "online").callback();
+  assert.deepEqual(serverError.replacements, []);
+});
+
+test("a successful cross-origin redirect is not treated as app recovery", async () => {
+  const page = bootOfflinePage({
+    fetcher: async () => ({ ok: true, status: 200, url: "https://other.example/" })
+  });
+  await listener(page, "online").callback();
+  assert.deepEqual(page.replacements, []);
+});
+
+test("a stalled reachability probe is aborted after the short deadline", async () => {
+  let receivedSignal;
+  const page = bootOfflinePage({
+    fetcher: (_url, options) => {
+      receivedSignal = options.signal;
+      return new Promise((_resolve, reject) => {
+        options.signal.addEventListener("abort", () => {
+          const error = new Error("probe timed out");
+          error.name = "AbortError";
+          reject(error);
+        }, { once: true });
+      });
+    },
+    scheduleTimeout(callback, delay) {
+      assert.equal(delay, 5000);
+      callback();
+      return 1;
+    },
+    cancelTimeout() {}
+  });
+
+  await listener(page, "online").callback();
+  assert.equal(receivedSignal.aborted, true);
+  assert.deepEqual(page.replacements, []);
+});
+
+test("manual retry remains available and recovery does not poll or store data", () => {
+  assert.equal(html.split("<script>").length - 1, 1);
   assert.equal(html.split("</script>").length - 1, 1);
-
-  const { listeners, replacements } = bootOfflinePage();
-  const online = listeners.find((listener) => listener.type === "online");
-
-  assert.ok(online, "expected an online recovery listener");
-  assert.equal(online.options.once, true);
-  online.callback();
-  assert.deepEqual(replacements, ["/"]);
-});
-
-test("a BFCache restore retries when connectivity returned while the page was frozen", () => {
-  const { listeners, replacements, navigator } = bootOfflinePage();
-  const pageshow = listeners.find((listener) => listener.type === "pageshow");
-
-  assert.ok(pageshow, "expected a pageshow recovery listener");
-  navigator.onLine = true;
-  pageshow.callback({ persisted: true });
-  assert.deepEqual(replacements, ["/"]);
-});
-
-test("initial page show and offline BFCache restore do not trigger a navigation", () => {
-  const { listeners, replacements } = bootOfflinePage();
-  const pageshow = listeners.find((listener) => listener.type === "pageshow");
-
-  assert.ok(pageshow);
-  pageshow.callback({ persisted: false });
-  pageshow.callback({ persisted: true });
-  assert.deepEqual(replacements, []);
-});
-
-test("online and BFCache signals cannot trigger duplicate navigation", () => {
-  const { listeners, replacements, navigator } = bootOfflinePage();
-  const online = listeners.find((listener) => listener.type === "online");
-  const pageshow = listeners.find((listener) => listener.type === "pageshow");
-
-  assert.ok(online);
-  assert.ok(pageshow);
-  online.callback();
-  navigator.onLine = true;
-  pageshow.callback({ persisted: true });
-  assert.deepEqual(replacements, ["/"]);
-});
-
-test("offline fallback keeps manual retry and explains that messages are not stored here", () => {
   assert.ok(html.includes('<a href="/">Повторить</a>'));
   assert.ok(html.includes('aria-live="polite"'));
   assert.ok(html.includes("Сообщения не сохраняются на этом экране"));
   assert.ok(html.includes("страница попробует открыть мессенджер автоматически"));
-});
-
-test("offline recovery does not add polling or browser storage", () => {
-  assert.doesNotMatch(script, /setInterval|setTimeout|localStorage|sessionStorage/);
+  assert.doesNotMatch(script, /setInterval|localStorage|sessionStorage/);
+  assert.match(script, /RECONNECT_PROBE_TIMEOUT_MS\s*=\s*5000/);
 });
