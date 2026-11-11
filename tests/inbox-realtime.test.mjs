@@ -73,9 +73,9 @@ test('both the full and lightweight inbox discard older responses and avoid stal
 
 test('inbox Realtime never replaces six-second conversation and twelve-second inbox fallbacks',()=>{
  const shell=load('components/AppShell.tsx');
- assert.match(shell,/window\.setInterval\(\(\)=>void sync\(\),6000\)/);
- assert.match(shell,/window\.setInterval\(\(\)=>void run\(\),12000\)/);
- assert.match(shell,/document\.addEventListener\('visibilitychange',onVisible\)/);
- assert.match(shell,/window\.addEventListener\('online',onConnected\)/);
+ assert.match(shell,/startVisiblePolling\(/);assert.doesNotMatch(shell,/window\.setInterval\(\(\)=>void sync\(\),6000\)/);
+ assert.match(shell,/startVisiblePolling\(\s*\(\)=>void run\(\),12000,document,window,navigator,\(\)=>void run\(true\)\s*\)/);
+ assert.match(shell,/createSingleFlightRefreshGate\(\)/);
+ assert.doesNotMatch(shell,/window\.addEventListener\('online',onConnected\)/);
  assert.match(load('lib/inbox-realtime.ts'),/return\(\)=>\{\};/);
 });

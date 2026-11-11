@@ -14,6 +14,10 @@ import {subscribeGroupChanges} from '@/lib/group-realtime';
 import {mergeConfirmedGroupMessages,CONFIRMED_GROUP_MESSAGE_GRACE_MS,type ConfirmedGroupMessage} from '@/lib/group-history';
 import {shouldAcknowledgeGroupRead,countNewIncomingBelow} from '@/lib/group-read-position';
 import {fetchOlderGroupMessages,prependOlderGroupMessages,preserveOlderGroupMessages,GROUP_HISTORY_MAX_LOADED} from '@/lib/group-pagination';
+import {startVisiblePolling} from '@/lib/visible-polling';
+import {createSingleFlightRefreshGate} from '@/lib/single-flight-refresh';
+import {createAbortableRequestScope} from '@/lib/request-abort-scope';
+import {watchNetworkStatus} from '@/lib/network-status';
 type Props={token:string;userId:string;group:Group;onBack:()=>void;onShowProfile:(id:string)=>void;onDraftChange:(groupId:string,text:string)=>void};
 export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDraftChange}:Props){
  const [messages,setMessages]=useState<GroupMessage[]>([]);
@@ -59,10 +63,17 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
   groupId:group.id,ownerId:userId,ids:new Set()
  });
  const requestSequenceRef=useRef(0);
+ const requestAbortScopeRef=useRef<ReturnType<typeof createAbortableRequestScope>|null>(null);
+ if(!requestAbortScopeRef.current)requestAbortScopeRef.current=createAbortableRequestScope();
+ const requestAbortScope=requestAbortScopeRef.current;
+ const olderRequestAbortScopeRef=useRef<ReturnType<typeof createAbortableRequestScope>|null>(null);
+ if(!olderRequestAbortScopeRef.current)olderRequestAbortScopeRef.current=createAbortableRequestScope();
+ const olderRequestAbortScope=olderRequestAbortScopeRef.current;
  const confirmedGroupMessagesRef=useRef<Map<string,ConfirmedGroupMessage>>(new Map());
  const contextRef=useRef({groupId:group.id,userId,token});
  contextRef.current={groupId:group.id,userId,token};
  useEffect(()=>{
+  olderRequestAbortScope.abort();
   confirmedGroupMessagesRef.current.clear();
   olderRequestRef.current++;
   olderLoadingRef.current=false;
@@ -89,13 +100,7 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
   draftVersionRef.current+=1;
   setDraft(readGroupDrafts(userId)[group.id]??'');
  },[group.id,userId]);
- useEffect(()=>{
-  const update=()=>setOnline(navigator.onLine);
-  update();
-  window.addEventListener('online',update);
-  window.addEventListener('offline',update);
-  return()=>{window.removeEventListener('online',update);window.removeEventListener('offline',update);};
- },[]);
+ useEffect(()=>watchNetworkStatus(setOnline),[]);
  function changeDraft(text:string){
   draftVersionRef.current+=1;
   setDraft(text);
@@ -115,9 +120,9 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
   });
  },[token,group.id]);
 
- const refresh=useCallback(async()=>{
+ const refresh=useCallback(async(signal?:AbortSignal)=>{
   const requestId=++requestSequenceRef.current;
-  const msgs=await groupMessages(token,group.id);
+  const msgs=await groupMessages(token,group.id,signal);
   // When a slower poll finishes after a newer one, do not replace the newer
   // messages. The same guard applies after a quick group-switch/unmount.
   if(requestId!==requestSequenceRef.current
@@ -141,15 +146,24 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
   let cancelled=false;
   let inFlight=false;
   let queuedSync=false;
+  let requestGeneration=0;
   let realtimeTimer:number|null=null;
   setInitialLoading(true);
   const sync=()=>{
     if(cancelled||document.visibilityState==='hidden'||!navigator.onLine||browsingOlderRef.current)return;
     if(inFlight){queuedSync=true;return;}
     inFlight=true;
-    void refresh().then(()=>{if(!cancelled)setError('');}).catch(e=>{
-      if(!cancelled){setInitialLoading(false);setError(e instanceof Error?e.message:'Не удалось загрузить сообщения группы');}
+    const generation=requestGeneration;
+    const controller=requestAbortScope.begin();
+    void refresh(controller.signal).then(()=>{
+      if(!cancelled&&generation===requestGeneration)setError('');
+    }).catch(e=>{
+      if(!cancelled&&generation===requestGeneration){
+        setInitialLoading(false);
+        setError(e instanceof Error?e.message:'Не удалось загрузить сообщения группы');
+      }
     }).finally(()=>{
+      requestAbortScope.clear(controller);
       inFlight=false;
       // A Realtime event arriving during an older GET must not be discarded.
       if(queuedSync&&!cancelled){queuedSync=false;sync();}
@@ -166,20 +180,33 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
   };
   const unsubscribeRealtime=subscribeGroupChanges(token,group.id,onRealtimeChanged);
   // Polling is a fallback and heals any missed WebSocket notifications.
-  const timer=window.setInterval(sync,6000);
-  const onOnline=()=>sync();
-  document.addEventListener('visibilitychange',sync);
-  window.addEventListener('online',onOnline);
+  // Pause also invalidates a request already in flight, so its late result
+  // cannot replace the timeline after the app has gone into the background.
+  const stopVisiblePolling=startVisiblePolling(sync,6000,document,window,navigator,undefined,()=>{
+    requestGeneration++;
+    requestSequenceRef.current++;
+    queuedSync=false;
+    requestAbortScope.abort();
+    olderRequestRef.current++;
+    olderLoadingRef.current=false;
+    prependScrollRef.current=null;
+    setLoadingOlder(false);
+    olderRequestAbortScope.abort();
+  });
   return()=>{
     cancelled=true;
+    requestGeneration++;
     requestSequenceRef.current++;
-    window.clearInterval(timer);
+    requestAbortScope.abort();
+    olderRequestRef.current++;
+    olderLoadingRef.current=false;
+    prependScrollRef.current=null;
+    olderRequestAbortScope.abort();
+    stopVisiblePolling();
     if(realtimeTimer!==null)window.clearTimeout(realtimeTimer);
     unsubscribeRealtime();
-    document.removeEventListener('visibilitychange',sync);
-    window.removeEventListener('online',onOnline);
   };
- },[refresh,token,group.id]);
+ },[refresh,token,group.id,requestAbortScope]);
  // Search runs against the full group history via the existing RLS-filtered
  // PostgREST table. Old responses cannot cross a changed query/account/group.
  useEffect(()=>{
@@ -238,6 +265,7 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
       ||contextRef.current.token!==requestToken)return;
    if(!around.some(row=>row.id===message.id))throw Error('Сообщение больше недоступно.');
    olderRequestRef.current++;
+   olderRequestAbortScope.abort();
    olderLoadingRef.current=false;
    prependScrollRef.current=null;
    setLoadingOlder(false);setOlderError('');
@@ -276,6 +304,7 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
   const history=historyRef.current,oldest=messages[0];
   const groupId=group.id,ownerId=userId,requestToken=token;
   const requestId=++olderRequestRef.current;
+  const controller=olderRequestAbortScope.begin();
   olderLoadingRef.current=true;
   setLoadingOlder(true);setOlderError('');
   if(history)prependScrollRef.current={
@@ -283,7 +312,7 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
   };
   followNewestRef.current=false;
   try{
-   const page=await fetchOlderGroupMessages(requestToken,groupId,oldest);
+   const page=await fetchOlderGroupMessages(requestToken,groupId,oldest,controller.signal);
    if(requestId!==olderRequestRef.current
       ||contextRef.current.groupId!==groupId
       ||contextRef.current.userId!==ownerId
@@ -296,11 +325,12 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
     setHasOlder(page.hasMore&&messages.length+page.messages.length<GROUP_HISTORY_MAX_LOADED);
    }
   }catch(e){
-   if(requestId===olderRequestRef.current){
+   if(requestId===olderRequestRef.current&&!controller.signal.aborted){
     prependScrollRef.current=null;
     setOlderError(e instanceof Error?e.message:'Ошибка загрузки истории группы');
    }
   }finally{
+   olderRequestAbortScope.clear(controller);
    if(requestId===olderRequestRef.current){
     olderLoadingRef.current=false;
     setLoadingOlder(false);
@@ -316,18 +346,30 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
   history.scrollTop=Math.max(0,snapshot.top+growth);
  },[messages,group.id,userId]);
 
- // Group membership and profiles change much less often than chat messages.
+ // Membership and profile reads are low-frequency auxiliary polls too.
+ // Pause them offline/background and coalesce a forced refresh on resume.
  useEffect(()=>{
   let cancelled=false;
-  const updateMembers=()=>{
-    if(document.visibilityState==='hidden')return;
+  let generation=0;
+  const gate=createSingleFlightRefreshGate();
+  const updateMembers=(forceFull=false)=>{
+    if(cancelled||document.visibilityState!=='visible'||!navigator.onLine)return;
+    const entered=gate.enter(forceFull);
+    if(!entered.accepted)return;
+    const requestGeneration=++generation;
     void groupMembers(token,group.id).then(memberships=>
       listProfiles(token,memberships.map(member=>member.user_id))
-    ).then(profiles=>{if(!cancelled)setMembers(profiles);}).catch(()=>{});
+    ).then(profiles=>{
+      if(!cancelled&&requestGeneration===generation)setMembers(profiles);
+    }).catch(()=>{}).finally(()=>{
+      const queued=gate.leave();
+      if(queued&&!cancelled&&document.visibilityState==='visible'&&navigator.onLine)updateMembers(true);
+    });
   };
-  updateMembers();
-  const timer=window.setInterval(updateMembers,120000);
-  return()=>{cancelled=true;window.clearInterval(timer);};
+  updateMembers(true);
+  const stopPolling=startVisiblePolling(()=>updateMembers(),120000,document,window,navigator,
+    ()=>updateMembers(true),()=>{generation++;});
+  return()=>{cancelled=true;generation++;gate.dispose();stopPolling();};
  },[token,group.id]);
  useLayoutEffect(()=>{
   const history=historyRef.current;
@@ -349,7 +391,29 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
   if(newBelow>0)setNewMessagesBelow(n=>Math.min(99,n+newBelow));
  },[messages,group.id,userId]);
  useEffect(()=>{if(!membersOpen)return;const onKey=(event:KeyboardEvent)=>{if(event.key==='Escape')setMembersOpen(false);};window.addEventListener('keydown',onKey);return()=>window.removeEventListener('keydown',onKey);},[membersOpen]);
-  useEffect(()=>{if(!membersOpen||!members.length)return;let gone=false;const load=()=>{if(document.visibilityState==='visible')void getUserActivities(token,members.map(m=>m.id)).then(value=>{if(!gone)setPresence(value);}).catch(()=>{});};load();const t=setInterval(load,40000);return()=>{gone=true;clearInterval(t);};},[token,membersOpen,members]);
+ useEffect(()=>{
+  if(!membersOpen||!members.length)return;
+  let gone=false;
+  let generation=0;
+  const gate=createSingleFlightRefreshGate();
+  const load=(forceFull=false)=>{
+    if(gone||document.visibilityState!=='visible'||!navigator.onLine)return;
+    const entered=gate.enter(forceFull);
+    if(!entered.accepted)return;
+    const requestGeneration=++generation;
+    const memberIds=members.map(member=>member.id);
+    void getUserActivities(token,memberIds).then(value=>{
+      if(!gone&&requestGeneration===generation)setPresence(value);
+    }).catch(()=>{}).finally(()=>{
+      const queued=gate.leave();
+      if(queued&&!gone&&document.visibilityState==='visible'&&navigator.onLine)load(true);
+    });
+  };
+  load(true);
+  const stopPolling=startVisiblePolling(()=>load(),40000,document,window,navigator,
+    ()=>load(true),()=>{generation++;});
+  return()=>{gone=true;generation++;gate.dispose();stopPolling();};
+ },[token,membersOpen,members]);
  async function send(e:FormEvent){
  e.preventDefault();
  if(busy||!draft.trim())return;
@@ -381,6 +445,7 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
      initialPageLoadedRef.current=false;
      prependScrollRef.current=null;
      olderRequestRef.current++;
+     olderRequestAbortScope.abort();
      olderLoadingRef.current=false;
      setHasOlder(false);setLoadingOlder(false);setOlderError('');
      setMessages([]);

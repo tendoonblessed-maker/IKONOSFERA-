@@ -415,9 +415,9 @@ test('direct chats show loading, retry, and empty state only after completed req
 test('inbox polling does not reread channels or messages every few seconds',()=>{
  const shell=load('components/AppShell.tsx');
  assert.match(shell,/const refreshInbox=useCallback/);
- assert.match(shell,/window\.setInterval\(\(\)=>void run\(\),12000\)/);
+ assert.match(shell,/startVisiblePolling\(\s*\(\)=>void run\(\),12000,document,window,navigator,\(\)=>void run\(true\)\s*\)/);
  assert.match(shell,/cycles%6===0/);
- assert.match(shell,/window\.setInterval\(\(\)=>void sync\(\),6000\)/);
+ assert.match(shell,/startVisiblePolling\(/);assert.match(shell,/stopVisiblePolling\(\)/);assert.doesNotMatch(shell,/window\.setInterval\(\(\)=>void sync\(\),6000\)/);
  const body=shell.slice(shell.indexOf('const refresh=useCallback'),shell.indexOf('const refreshInbox=useCallback'));
  assert.ok(!body.includes('setChatMessages(ordered)'));
 });
@@ -518,8 +518,8 @@ test('group conversations always fetch newest messages and show real loading/err
  assert.match(ui,/!initialLoading&&!error&&messages\.length===0/);
  assert.match(ui,/Не удалось загрузить сообщения группы/);
  assert.match(ui,/Попробовать снова/);
- assert.match(ui,/window\.setInterval\(sync,6000\)/);
- assert.match(ui,/window\.setInterval\(updateMembers,120000\)/);
+ assert.match(ui,/startVisiblePolling\(sync,6000,document,window,navigator,undefined,\(\)=>\{/);
+ assert.match(ui,/startVisiblePolling\(\(\)=>updateMembers\(\),120000,document,window,navigator,/);
 });
 test('stories do not download on every inbox refresh and open newest uploaded story',()=>{
  const s=load('components/StoriesStrip.tsx');
@@ -553,7 +553,7 @@ test('opening and polling group chats avoids overlapping requests and stale resp
  assert.match(group,/if\(cancelled\|\|document\.visibilityState==='hidden'\|\|!navigator\.onLine\)return/);
  assert.match(group,/if\(inFlight\)\{queuedSync=true;return;\}/);
  assert.match(group,/requestSequenceRef\.current\+\+;/);
- assert.match(group,/window\.clearInterval\(timer\)/);
+ assert.match(group,/stopVisiblePolling\(\)/);
  assert.match(group,/unsubscribeRealtime\(\)/);
  assert.match(group,/lastReadRef\.current===last/);
 });
@@ -1079,17 +1079,23 @@ test('offline direct chats preserve drafts and resume polling immediately on rec
  const drafts=load('lib/chat-drafts.ts');
  const css=load('app/globals.css');
  assert.match(shell,/networkOnline,setNetworkOnline\]=useState\(true\)/);
- assert.match(shell,/const connected=navigator\.onLine/);
- assert.match(shell,/window\.addEventListener\('offline',update\)/);
- assert.match(shell,/window\.addEventListener\('online',update\)/);
- assert.match(shell,/window\.addEventListener\('pageshow',update\)/);
- assert.match(shell,/window\.removeEventListener\('offline',update\)/);
- assert.match(shell,/window\.removeEventListener\('online',update\)/);
+ assert.ok(shell.includes("import {watchNetworkStatus} from '@/lib/network-status';"));
+ assert.match(shell,/useEffect\(\(\)=>watchNetworkStatus\(online=>\{/);
+ assert.match(shell,/setNetworkOnline\(online\)/);
+ assert.doesNotMatch(shell,/const connected=navigator\.onLine/);
+ const network=load('lib/network-status.ts');
+ assert.match(network,/windowRef\.addEventListener\('offline',update\)/);
+ assert.match(network,/windowRef\.addEventListener\('online',update\)/);
+ assert.match(network,/windowRef\.addEventListener\('pageshow',update\)/);
+ assert.match(network,/documentRef\.addEventListener\('visibilitychange',update\)/);
+ assert.match(network,/windowRef\.removeEventListener\('offline',update\)/);
+ assert.match(network,/windowRef\.removeEventListener\('online',update\)/);
  assert.equal((shell.match(/if\(!navigator\.onLine\)return;/g)||[]).length,2);
- assert.equal((shell.match(/window\.addEventListener\('online',onConnected\)/g)||[]).length,2);
- assert.equal((shell.match(/window\.removeEventListener\('online',onConnected\)/g)||[]).length,2);
+ assert.doesNotMatch(shell,/window\.addEventListener\('online',onConnected\)/);
+ assert.doesNotMatch(shell,/window\.removeEventListener\('online',onConnected\)/);
  assert.match(shell,/void sync\(true\)/);
  assert.match(shell,/void run\(true\)/);
+ assert.match(shell,/startVisiblePolling\(/);
  assert.match(shell,/bootstrapRetryNonce,setBootstrapRetryNonce/);
  assert.match(shell,/if\(session\)return;\s*const retryBootstrap=/);
  assert.match(shell,/setBootstrapRetryNonce\(count=>count\+1\)/);

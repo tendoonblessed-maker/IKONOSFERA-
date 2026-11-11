@@ -1,0 +1,58 @@
+import assert from 'node:assert/strict';
+import {test} from 'node:test';
+import {readFileSync} from 'node:fs';
+import ts from 'typescript';
+
+process.env.NEXT_PUBLIC_SUPABASE_URL='https://ikonosfera-test.supabase.co';
+process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY='public-test-key';
+const source=readFileSync(new URL('../lib/supabase-rest.ts',import.meta.url),'utf8');
+assert.doesNotMatch(source,/^import\s/m,'the REST module stays dependency-free for this isolated contract test');
+const compiled=ts.transpileModule(source,{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.ES2022}}).outputText;
+const {listMessages,listMessageReactions}=await import('data:text/javascript;base64,'+Buffer.from(compiled).toString('base64'));
+
+test('private history and reaction GETs forward their lifecycle AbortSignal to fetch',async()=>{
+  const originalFetch=globalThis.fetch;
+  const calls=[];
+  globalThis.fetch=async(url,options)=>{
+    calls.push({url:String(url),options});
+    return new Response('[]',{status:200,headers:{'Content-Type':'application/json'}});
+  };
+  try{
+    const historyController=new AbortController();
+    const reactionsController=new AbortController();
+    await listMessages('test-access-token','11111111-1111-4111-8111-111111111111',historyController.signal);
+    await listMessageReactions('test-access-token',['22222222-2222-4222-8222-222222222222'],reactionsController.signal);
+
+    assert.equal(calls.length,2);
+    assert.equal(calls[0].options.signal,historyController.signal);
+    assert.equal(calls[1].options.signal,reactionsController.signal);
+    assert.match(calls[0].url,/\/rest\/v1\/messages\?/);
+    assert.match(calls[1].url,/\/rest\/v1\/message_reactions\?/);
+    assert.equal(calls[0].options.headers.Authorization,'Bearer test-access-token');
+    assert.equal(calls[1].options.headers.Authorization,'Bearer test-access-token');
+  }finally{
+    globalThis.fetch=originalFetch;
+  }
+});
+
+test('aborting a private history lifecycle signal cancels the underlying fetch',async()=>{
+  const originalFetch=globalThis.fetch;
+  let receivedSignal;
+  globalThis.fetch=(_url,options)=>new Promise((_resolve,reject)=>{
+    receivedSignal=options.signal;
+    options.signal.addEventListener('abort',()=>{
+      const error=new Error('The operation was aborted');
+      error.name='AbortError';
+      reject(error);
+    },{once:true});
+  });
+  try{
+    const controller=new AbortController();
+    const pending=listMessages('test-access-token','11111111-1111-4111-8111-111111111111',controller.signal);
+    assert.equal(receivedSignal,controller.signal);
+    controller.abort();
+    await assert.rejects(pending,error=>error?.name==='AbortError');
+  }finally{
+    globalThis.fetch=originalFetch;
+  }
+});

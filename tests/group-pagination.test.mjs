@@ -134,7 +134,10 @@ test('realtime latest page retains paged earlier messages but removes deleted la
 test('group pagination UI restores the history scroll anchor and avoids account crossover',()=>{
  const panel=read('components/GroupPanel.tsx');
  const css=read('app/globals.css');
- assert.match(panel,/fetchOlderGroupMessages\(requestToken,groupId,oldest\)/);
+ assert.match(panel,/fetchOlderGroupMessages\(requestToken,groupId,oldest,controller\.signal\)/);
+ assert.match(panel,/const olderRequestAbortScope=olderRequestAbortScopeRef\.current/);
+ assert.match(panel,/olderRequestAbortScope\.abort\(\)/);
+ assert.match(panel,/!controller\.signal\.aborted/);
  assert.match(panel,/prependOlderGroupMessages\(current,page.messages\)/);
  assert.match(panel,/preserveOlderGroupMessages\(current,msgs\)/);
  assert.match(panel,/snapshot\.top\+growth/);
@@ -155,4 +158,17 @@ test('paged history does not change message schema or database privileges',()=>{
  assert.match(groups,/order=created_at\.desc,id\.desc&limit=150/);
  assert.match(pagination,/const GROUP_/g);
  assert.doesNotMatch(pagination,/service_role|ALTER TABLE|GRANT |dangerouslySetInnerHTML/i);
+});
+
+
+test('older history passes its lifecycle signal to fetch and rejects when the chat pauses',async()=>{
+ const controller=new AbortController();
+ const {api,calls}=setup((_url,options)=>new Promise((_resolve,reject)=>{
+  options.signal.addEventListener('abort',()=>reject(Object.assign(new Error('aborted'),{name:'AbortError'})),{once:true});
+ }));
+ const pending=api.fetchOlderGroupMessages('signed-jwt',GROUP,row(id(5)),controller.signal);
+ assert.equal(calls.length,1);
+ assert.equal(calls[0].options.signal,controller.signal);
+ controller.abort();
+ await assert.rejects(pending,error=>error?.name==='AbortError');
 });

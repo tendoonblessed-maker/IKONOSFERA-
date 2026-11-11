@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { changeProfile, explainProfileError, validateUsername } from "@/lib/supabase-rest";
 import {getUserActivities,activityLabel,type UserActivity} from "@/lib/activity";
+import {startVisiblePolling} from "@/lib/visible-polling";
+import {scopedProfileActivity} from "@/lib/profile-activity-scope";
 import {useStoryProgress} from "@/lib/use-story-progress";
 import StatusEmoji from "@/components/StatusEmoji";
 import StatusEmojiPicker from "@/components/StatusEmojiPicker";
@@ -18,7 +20,8 @@ type Props={token:string;userId:string;targetId:string;onBack:()=>void;onOwnProf
 export default function ProfilePanel({token,userId,targetId,onBack,onOwnProfileChange,onMessage,onOpenChannel,isBlocked=false,onBlockUser}:Props){
  const mine=targetId===userId;
  const [profile,setProfile]=useState<FullProfile|null>(null);
- const [userActivity,setUserActivity]=useState<UserActivity|null>(null);
+ const [activitySnapshot,setActivitySnapshot]=useState<{ownerId:string;targetId:string;value:UserActivity|null}|null>(null);
+ const userActivity=scopedProfileActivity(activitySnapshot,userId,targetId);
  const [photos,setPhotos]=useState<ProfilePhoto[]>([]);
  const [stories,setStories]=useState<Story[]>([]);
  const [ownedChannels,setOwnedChannels]=useState<Channel[]>([]);
@@ -53,7 +56,23 @@ export default function ProfilePanel({token,userId,targetId,onBack,onOwnProfileC
   setAgeInput(p?.age_years==null?"":String(p.age_years));
  },[token,targetId]);
  useEffect(()=>{let mounted=true;void reload().catch(e=>{if(mounted)setError(readableError(e));});return()=>{mounted=false;};},[reload]);
- useEffect(()=>{let mounted=true;const poll=()=>{if(document.visibilityState!=='visible')return;void getUserActivities(token,[targetId]).then(rows=>{if(mounted)setUserActivity(rows[targetId]||null);}).catch(()=>{});};poll();const timer=window.setInterval(poll,30000);return()=>{mounted=false;window.clearInterval(timer);};},[token,targetId]);
+ useEffect(()=>{
+  let mounted=true;
+  let requestGeneration=0;
+  const poll=()=>{
+   if(!mounted||document.visibilityState!=='visible'||!navigator.onLine)return;
+   const generation=requestGeneration;
+   void getUserActivities(token,[targetId]).then(rows=>{
+    if(mounted&&generation===requestGeneration
+      &&document.visibilityState==='visible'&&navigator.onLine){
+      setActivitySnapshot({ownerId:userId,targetId,value:rows[targetId]||null});
+    }
+   }).catch(()=>{});
+  };
+  poll();
+  const stopPolling=startVisiblePolling(poll,30000,document,window,navigator,poll,()=>{requestGeneration++;});
+  return()=>{mounted=false;requestGeneration++;stopPolling();};
+ },[token,userId,targetId]);
  const run=async(action:()=>Promise<void>)=>{
   if(busy)return;setBusy(true);setError("");setNotice("");
   try{await action();await reload();}

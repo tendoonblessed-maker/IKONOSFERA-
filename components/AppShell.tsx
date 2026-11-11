@@ -10,6 +10,10 @@ import {clearAllGroupSendAttempts} from "@/lib/group-send-attempts";
 import ChatMedia from "@/components/ChatMedia";
 import ChatMessageText from "@/components/ChatMessageText";
 import {subscribeDirectChatChanges} from "@/lib/direct-realtime";
+import {startVisiblePolling} from "@/lib/visible-polling";
+import {watchNetworkStatus} from '@/lib/network-status';
+import {createAbortableRequestScope} from "@/lib/request-abort-scope";
+import {createSingleFlightRefreshGate} from "@/lib/single-flight-refresh";
 import {subscribeInboxChanges,type InboxChangeKind} from "@/lib/inbox-realtime";
 import {isLatestAccountSnapshot} from "@/lib/inbox-snapshot";
 import {shouldOpenDirectChatSearch} from "@/lib/chat-shortcuts";
@@ -160,24 +164,14 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
   // In-memory edits belong to one signed-in user; never reuse across accounts.
   useEffect(()=>{recentChannelUpdatesRef.current.clear();},[userId]);
 
-  useEffect(()=>{
-    // Browser online/offline is only a connectivity hint, not a guarantee
-    // that Supabase is reachable. Never auto-send unsent chat drafts.
-    const update=()=>{
-      const connected=navigator.onLine;
-      setNetworkOnline(connected);
-      if(connected)setError(previous=>previous.startsWith('Нет соединения с интернетом.')?'':previous);
-    };
-    update();
-    window.addEventListener('online',update);
-    window.addEventListener('offline',update);
-    window.addEventListener('pageshow',update); // iOS Safari back/forward cache
-    return()=>{
-      window.removeEventListener('online',update);
-      window.removeEventListener('offline',update);
-      window.removeEventListener('pageshow',update);
-    };
-  },[]);
+  useEffect(()=>watchNetworkStatus(online=>{
+    // Browser connectivity is only a hint, not proof that Supabase is reachable.
+    // Refresh on visibilitychange too, because mobile browsers may resume a
+    // suspended PWA without delivering a fresh online/pageshow event.
+    // Never auto-send unsent chat drafts after connectivity returns.
+    setNetworkOnline(online);
+    if(online)setError(previous=>previous.startsWith('Нет соединения с интернетом.')?'':previous);
+  }),[]);
 
   useEffect(()=>{confirmedMessagesRef.current.clear();},[userId]);
   // Invalidate every in-flight request when a different account signs in.
@@ -516,6 +510,8 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
     let cancelled=false;
     let inFlight=false;
     let queuedSync=false;
+    let requestGeneration=0;
+    const requestAbortScope=createAbortableRequestScope();
     let realtimeTimer:number|null=null;
     const chatId=selected;
     const token=session.access_token;
@@ -536,30 +532,41 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
       // The 'online' listener below triggers an immediate retry.
       if(!navigator.onLine)return;
       inFlight=true;
+      const generation=requestGeneration;
+      const controller=requestAbortScope.begin();
       try{
-        const messages=(await listMessages(token,chatId)).reverse();
-        if(cancelled)return;
+        const messages=(await listMessages(token,chatId,controller.signal)).reverse();
+        requestAbortScope.clear(controller);
+        // A response started before backgrounding/offline must not update the
+        // timeline or acknowledge reads after the user has left the app.
+        if(cancelled||generation!==requestGeneration
+          ||document.visibilityState!=='visible'||!navigator.onLine)return;
         setChatMessages(current=>mergeConfirmedRecentPage(
           current,messages,CHAT_MESSAGE_PAGE_SIZE,confirmedMessagesRef.current,chatId,userId
         ));
         if(first)setHasOlderMessages(messages.length===CHAT_MESSAGE_PAGE_SIZE);
         setChatLoad({id:chatId,status:'ready'});
         // Reactions must not block displaying text and attachments.
-        void listMessageReactions(token,messages.map(message=>message.id))
-          .then(reactions=>{if(!cancelled)setMessageReactions(current=>{
+        const reactionController=requestAbortScope.begin();
+        void listMessageReactions(token,messages.map(message=>message.id),reactionController.signal)
+          .then(reactions=>{if(!cancelled&&generation===requestGeneration
+            &&document.visibilityState==='visible'&&navigator.onLine)setMessageReactions(current=>{
             const recentIds=new Set(messages.map(message=>message.id));
             return [...current.filter(reaction=>!recentIds.has(reaction.message_id)),...reactions];
           });})
-          .catch(()=>{});
-        if(messages.some(message=>message.sender_id!==userId&&!message.read_at)){
+          .catch(()=>{})
+          .finally(()=>requestAbortScope.clear(reactionController));
+        if(messages.some(message=>message.sender_id!==userId&&!message.read_at)
+          &&generation===requestGeneration&&document.visibilityState==='visible'&&navigator.onLine){
           void markChatRead(token,chatId).catch(()=>{});
         }
       }catch(e){
-        if(!cancelled&&first){
+        if(!cancelled&&generation===requestGeneration&&document.visibilityState==='visible'&&navigator.onLine&&first){
           setChatLoad({id:chatId,status:'error'});
           setError(userFacingError(e));
         }
       }finally{
+        requestAbortScope.clear(controller);
         inFlight=false;
         // Never drop a Realtime hint just because an earlier GET is still
         // in flight. One extra request is enough for any number of hints.
@@ -580,17 +587,13 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
     const unsubscribeRealtime=subscribeDirectChatChanges(token,chatId,onRealtimeChange);
     // HTTP polling remains a fallback when WebSocket is blocked, offline,
     // rate-limited or disconnected (and it repairs missed Realtime events).
-    const timer=window.setInterval(()=>void sync(),6000);
-    const onVisible=()=>{if(document.visibilityState==='visible')void sync();};
-    const onConnected=()=>{if(document.visibilityState==='visible')void sync(true);};
-    document.addEventListener('visibilitychange',onVisible);
-    window.addEventListener('online',onConnected);
+    const stopVisiblePolling=startVisiblePolling(
+      ()=>void sync(),6000,document,window,navigator,()=>void sync(true),()=>{requestGeneration++;requestAbortScope.abort();}
+    );
     return()=>{
-      cancelled=true;window.clearInterval(timer);
+      cancelled=true;requestGeneration++;stopVisiblePolling();requestAbortScope.abort();
       if(realtimeTimer!==null)window.clearTimeout(realtimeTimer);
       unsubscribeRealtime();
-      document.removeEventListener('visibilitychange',onVisible);
-      window.removeEventListener('online',onConnected);
     };
   },[selected,session?.access_token,userId,chatReloadNonce]);
 
@@ -645,14 +648,16 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
   useEffect(()=>{
     if(!session||!userId)return;
     let cancelled=false;
-    let inFlight=false;
     let cycles=0;
+    const refreshGate=createSingleFlightRefreshGate();
     const run=async(forceFull=false)=>{
-      if(cancelled||inFlight||document.visibilityState==='hidden')return;
+      if(cancelled||document.visibilityState==='hidden')return;
       // Offline detection avoids pointless 18-second fetch timeouts.
-      // The 'online' listener below triggers an immediate retry.
       if(!navigator.onLine)return;
-      inFlight=true;
+      // A resume can happen while a previous HTTPS request is still settling.
+      // Queue one authoritative full refresh instead of dropping that signal.
+      const admission=refreshGate.enter(forceFull);
+      if(!admission.accepted)return;
       try{
         const valid=await validSession();
         if(cancelled)return;
@@ -670,21 +675,22 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
           setSession(valid);
         }
         // Only every ~72 seconds refresh large data (channels/groups/subscriptions).
-        // The lightweight inbox refresh is enough to keep badges and new chats fresh.
-        if(forceFull||++cycles%6===0)await refresh(valid.access_token,userId,null);
+        // A queued resume always requests the full authoritative snapshot.
+        if(admission.forceFull||++cycles%6===0)await refresh(valid.access_token,userId,null);
         else await refreshInbox(valid.access_token,userId);
       }catch{ /* transient network failure; retry on the next poll */ }
-      finally{inFlight=false;}
+      finally{
+        const queuedFull=refreshGate.leave();
+        if(queuedFull&&!cancelled&&document.visibilityState==='visible'&&navigator.onLine)void run(true);
+      }
     };
-    const onVisible=()=>{if(document.visibilityState==='visible')void run(true);};
-    const onConnected=()=>{if(document.visibilityState==='visible')void run(true);};
-    const timer=window.setInterval(()=>void run(),12000);
-    document.addEventListener('visibilitychange',onVisible);
-    window.addEventListener('online',onConnected);
+    const stopPolling=startVisiblePolling(
+      ()=>void run(),12000,document,window,navigator,()=>void run(true)
+    );
     return()=>{
-      cancelled=true;window.clearInterval(timer);
-      document.removeEventListener('visibilitychange',onVisible);
-      window.removeEventListener('online',onConnected);
+      cancelled=true;
+      refreshGate.dispose();
+      stopPolling();
     };
   },[session,userId,refresh,refreshInbox]);
 
