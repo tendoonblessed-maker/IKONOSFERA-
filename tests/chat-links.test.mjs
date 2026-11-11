@@ -174,3 +174,22 @@ test('React rendering uses escaped text and safe external links instead of HTML 
  assert.match(css,/white-space:pre-wrap/);
  assert.match(css,/overflow-wrap:anywhere/);
 });
+
+
+test('internationalized hostnames stay plain to prevent IDN homograph links',()=>{
+ for(const text of [
+  'https://раураl.com/path',
+  'https://пример.рф',
+  'www.пример.рф/help',
+  'https://xn--l-7sba6dbr.com/path',
+  'https://xn--e1afmkfd.xn--p1ai/'
+ ]){
+  assert.equal(links(text).length,0,'IDN hostname must not be rendered as an unverified clickable label');
+  assert.equal(reconstructed(text),text,'the original hostname must remain visible and unchanged');
+ }
+ const unicodePath='https://example.com/привет';
+ assert.deepEqual(links(unicodePath),[
+  {text:unicodePath,href:'https://example.com/%D0%BF%D1%80%D0%B8%D0%B2%D0%B5%D1%82'}
+ ],'Unicode path segments on an ASCII hostname remain supported');
+ assert.equal(reconstructed(unicodePath),unicodePath);
+});
