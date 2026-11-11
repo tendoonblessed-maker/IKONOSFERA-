@@ -18,6 +18,8 @@ function bootOfflinePage({
   cancelTimeout = clearTimeout
 } = {}) {
   const listeners = [];
+  const documentListeners = [];
+  const retryListeners = [];
   const replacements = [];
   const calls = [];
   const window = {
@@ -33,6 +35,20 @@ function bootOfflinePage({
     }
   };
   const navigator = { onLine };
+  const retryLink = {
+    addEventListener(type, callback) {
+      retryListeners.push({ type, callback });
+    }
+  };
+  const document = {
+    visibilityState: "visible",
+    addEventListener(type, callback, options) {
+      documentListeners.push({ type, callback, options });
+    },
+    getElementById(id) {
+      return id === "retry-app" ? retryLink : null;
+    }
+  };
   const fetch = (url, options) => {
     calls.push({ url, options });
     return fetcher(url, options);
@@ -40,18 +56,31 @@ function bootOfflinePage({
   runInNewContext(script, {
     window,
     navigator,
+    document,
     fetch,
     AbortController,
     URL,
     setTimeout: scheduleTimeout,
     clearTimeout: cancelTimeout
   });
-  return { listeners, replacements, calls, window, navigator };
+  return { listeners, documentListeners, retryListeners, replacements, calls, window, navigator, document };
 }
 
 function listener(page, type) {
   const found = page.listeners.find((entry) => entry.type === type);
   assert.ok(found, `expected ${type} listener`);
+  return found;
+}
+
+function documentListener(page, type) {
+  const found = page.documentListeners.find((entry) => entry.type === type);
+  assert.ok(found, `expected document ${type} listener`);
+  return found;
+}
+
+function retryClick(page) {
+  const found = page.retryListeners.find((entry) => entry.type === "click");
+  assert.ok(found, "expected manual retry click listener");
   return found;
 }
 
@@ -71,6 +100,18 @@ test("online recovery verifies the origin before navigating", async () => {
   assert.equal(page.calls.length, 2, "a failed probe must not consume future online events");
 });
 
+test("an initially online browser probes the origin when the offline shell is first shown", async () => {
+  const page = bootOfflinePage({
+    onLine: true,
+    fetcher: async () => ({ ok: false, status: 503, url: ORIGIN + "/" })
+  });
+
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(page.calls.length, 1, "initial display must not wait for a future online event");
+  assert.deepEqual(page.replacements, [], "a transient origin failure keeps the offline shell visible");
+  assert.equal(page.calls[0].options.signal.aborted, true);
+});
+
 test("a successful probe is same-origin, uncached and bounded to response headers", async () => {
   const page = bootOfflinePage();
   await listener(page, "online").callback();
@@ -85,32 +126,65 @@ test("a successful probe is same-origin, uncached and bounded to response header
 });
 
 test("a BFCache restore probes the origin only when the browser reports a network", async () => {
-  const page = bootOfflinePage({ onLine: true });
+  const page = bootOfflinePage();
   const pageshow = listener(page, "pageshow");
 
   await pageshow.callback({ persisted: false });
-  assert.equal(page.calls.length, 0, "initial pageshow does not start a recovery probe");
+  assert.equal(page.calls.length, 0, "initial pageshow is covered by the initial probe gate");
 
+  page.navigator.onLine = true;
   await pageshow.callback({ persisted: true });
   assert.equal(page.calls.length, 1);
   assert.deepEqual(page.replacements, ["/"]);
 });
 
-test("online and BFCache signals share one in-flight reachability probe", async () => {
+test("a visible tab retries after the origin recovers without another online event", async () => {
+  const page = bootOfflinePage();
+  page.navigator.onLine = true;
+  page.document.visibilityState = "hidden";
+
+  await documentListener(page, "visibilitychange").callback();
+  assert.equal(page.calls.length, 0, "hidden pages must not start recovery requests");
+
+  page.document.visibilityState = "visible";
+  await documentListener(page, "visibilitychange").callback();
+  assert.equal(page.calls.length, 1);
+  assert.deepEqual(page.replacements, ["/"]);
+});
+
+test("online, BFCache and visibility signals share one in-flight reachability probe", async () => {
   let resolveProbe;
   const page = bootOfflinePage({
-    onLine: true,
     fetcher: () => new Promise((resolve) => { resolveProbe = resolve; })
   });
+  page.navigator.onLine = true;
 
   const online = listener(page, "online").callback();
   const restored = listener(page, "pageshow").callback({ persisted: true });
+  const visible = documentListener(page, "visibilitychange").callback();
   await Promise.resolve();
   assert.equal(page.calls.length, 1, "overlapping lifecycle signals must not duplicate the request");
 
   resolveProbe({ ok: true, url: ORIGIN + "/" });
-  await Promise.all([online, restored]);
+  await Promise.all([online, restored, visible]);
   assert.deepEqual(page.replacements, ["/"]);
+});
+
+test("manual retry uses the bounded origin probe instead of bypassing the offline fallback", async () => {
+  const responses = [
+    { ok: false, status: 503, url: ORIGIN + "/" },
+    { ok: true, status: 200, url: ORIGIN + "/" }
+  ];
+  const page = bootOfflinePage({ fetcher: async () => responses.shift() });
+  let prevented = false;
+
+  await retryClick(page).callback({ preventDefault() { prevented = true; } });
+  assert.equal(prevented, true, "the anchor's direct navigation is intercepted when JavaScript is available");
+  assert.deepEqual(page.replacements, [], "a failed probe must keep the offline page visible");
+
+  await retryClick(page).callback({ preventDefault() { prevented = true; } });
+  assert.deepEqual(page.replacements, ["/"], "manual retry navigates only after the origin responds");
+  assert.equal(page.calls.length, 2);
 });
 
 test("network failures and non-success responses keep the offline page visible", async () => {
@@ -166,7 +240,7 @@ test("a stalled reachability probe is aborted after the short deadline", async (
 test("manual retry remains available and recovery does not poll or store data", () => {
   assert.equal(html.split("<script>").length - 1, 1);
   assert.equal(html.split("</script>").length - 1, 1);
-  assert.ok(html.includes('<a href="/">Повторить</a>'));
+  assert.ok(html.includes('<a id="retry-app" href="/">Повторить</a>'));
   assert.ok(html.includes('aria-live="polite"'));
   assert.ok(html.includes("Сообщения не сохраняются на этом экране"));
   assert.ok(html.includes("страница попробует открыть мессенджер автоматически"));
