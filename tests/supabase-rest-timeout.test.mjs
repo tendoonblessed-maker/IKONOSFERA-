@@ -224,3 +224,36 @@ test('failed direct-message insertion keeps its original error when bounded Stor
  assert.equal(calls.filter(call=>call.options.method==='DELETE').length,1);
  assert.equal(cleanupSignal.aborted,true,'cleanup is also bounded by a deadline');
 });
+
+
+test('ambiguous network failure after message POST does not delete the uploaded media object',async()=>{
+ const {api,calls}=setup(async(url,options)=>{
+  if(options.method==='POST'&&url.includes('/storage/v1/object/'))return {ok:true,status:200,text:async()=>''};
+  if(options.method==='POST'&&url.includes('/rest/v1/messages'))
+   throw new TypeError('connection reset after request may have reached the server');
+  throw new Error('Unexpected request '+options.method+' '+url);
+ });
+ await assert.rejects(
+  api.sendDirectMedia('signed-user-jwt',MEDIA_CHAT,MEDIA_USER,MEDIA_FILE,'caption',5),
+  /connection reset/
+ );
+ assert.equal(calls.filter(call=>call.options.method==='POST'&&call.url.includes('/storage/v1/object/')).length,1);
+ assert.equal(calls.filter(call=>call.options.method==='DELETE').length,0,
+  'a network error cannot prove that the message row was not committed');
+});
+
+test('server 5xx after message POST preserves the media object because commit outcome is uncertain',async()=>{
+ const {api,calls}=setup(async(url,options)=>{
+  if(options.method==='POST'&&url.includes('/storage/v1/object/'))return {ok:true,status:200,text:async()=>''};
+  if(options.method==='POST'&&url.includes('/rest/v1/messages'))return {
+   ok:false,status:500,text:async()=>JSON.stringify({message:'Internal server error'})
+  };
+  throw new Error('Unexpected request '+options.method+' '+url);
+ });
+ await assert.rejects(
+  api.sendDirectMedia('signed-user-jwt',MEDIA_CHAT,MEDIA_USER,MEDIA_FILE,'caption',5),
+  /Internal server error/
+ );
+ assert.equal(calls.filter(call=>call.options.method==='DELETE').length,0,
+  'a server error may be reported after the transaction outcome became uncertain');
+});
