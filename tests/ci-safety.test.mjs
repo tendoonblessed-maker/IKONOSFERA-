@@ -32,8 +32,19 @@ test('CI jobs cannot override read-only token permissions', () => {
   assert.doesNotMatch(workflow, /^\s+permissions\s*:/m);
 });
 
-test('CI continues to run on pushes and pull requests targeting main or dev', () => {
-  assert.match(workflow, /^on:\s*\n\s{2}push:\s*\n\s{2}pull_request:\s*\n\s{4}branches:\s*\[main, dev\]\s*$/m);
+test('CI runs on pushes and pull requests targeting any branch', () => {
+  const lines = workflow.split(/\r?\n/);
+  const triggerIndex = lines.findIndex((line) => /^  pull_request:\s*$/.test(line));
+  assert.ok(triggerIndex >= 0, 'CI must include the pull_request trigger');
+
+  const nextTopLevel = lines.slice(triggerIndex + 1).findIndex((line) => /^[^\s#]/.test(line));
+  const section = lines.slice(
+    triggerIndex + 1,
+    nextTopLevel < 0 ? undefined : triggerIndex + 1 + nextTopLevel,
+  );
+  assert.doesNotMatch(section.join('\n'), /^\s{4}branches(?:-ignore)?:/m,
+    'stacked pull requests must receive the same verification as main/dev pull requests');
+  assert.match(workflow, /^on:\s*\n\s{2}push:\s*$/m, 'push CI must remain enabled');
 });
 
 test('CI installs dependencies before running all verification commands', () => {
