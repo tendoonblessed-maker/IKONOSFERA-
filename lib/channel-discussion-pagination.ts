@@ -162,6 +162,23 @@ export function removeDiscussionComments(
  return items.filter(item=>item.kind!=='comment'||!normalizedIds.has(item.id.toLowerCase()));
 }
 
+/** Patch an edited comment in the currently loaded combined feed without resetting its cursor or scroll position. */
+export function updateDiscussionCommentBody(
+ items:DiscussionFeedItem[],
+ commentId:string,
+ body:string
+):DiscussionFeedItem[]{
+ if(!UUID.test(commentId))return items;
+ const normalizedId=commentId.toLowerCase();
+ let changed=false;
+ const next=items.map(item=>{
+  if(item.kind!=='comment'||item.id.toLowerCase()!==normalizedId||item.body===body)return item;
+  changed=true;
+  return {...item,body};
+ });
+ return changed?next:items;
+}
+
 async function requestRows<T>(path:string,token:string,signal:AbortSignal):Promise<T[]>{
  const response=await fetch(apiUrl+path,{
   method:'GET',
