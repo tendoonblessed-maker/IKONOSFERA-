@@ -19,6 +19,25 @@ export async function groupMessages(token:string,id:string){
  return latest.reverse();
 }
 const UUID=/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
+/**
+ * Read one message through authenticated PostgREST. Both identifiers are
+ * explicit filters and the existing group-member RLS remains authoritative.
+ */
+export async function getGroupMessageById(token:string,groupId:string,messageId:string):Promise<GroupMessage|null>{
+ if(!UUID.test(groupId)||!UUID.test(messageId))throw Error('Неверные параметры сообщения группы.');
+ const normalizedGroupId=groupId.toLowerCase();
+ const normalizedMessageId=messageId.toLowerCase();
+ const path='/rest/v1/group_messages?select=*&group_id=eq.'+encodeURIComponent(normalizedGroupId)
+  +'&id=eq.'+encodeURIComponent(normalizedMessageId)+'&limit=1';
+ const rows=await request<GroupMessage[]>(token,path);
+ const row=rows[0];
+ if(!row)return null;
+ if(typeof row.id!=='string'||typeof row.group_id!=='string'
+    ||row.id.toLowerCase()!==normalizedMessageId
+    ||row.group_id.toLowerCase()!==normalizedGroupId)
+  throw Error('Не удалось подтвердить актуальное сообщение группы.');
+ return row;
+}
 function assertGroupMessage(row:GroupMessage|undefined,groupId:string,userId:string,body:string,messageId:string):GroupMessage{
  if(!row||row.id!==messageId||row.group_id!==groupId||row.sender_id!==userId||row.body!==body)
   throw Error('Не удалось подтвердить отправку именно этого сообщения.');
