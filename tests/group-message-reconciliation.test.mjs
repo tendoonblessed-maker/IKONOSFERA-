@@ -163,10 +163,22 @@ test('a stale completion cannot clear a replacement request for the same message
  const currentController=new AbortController();
  const requests=new Map([[MESSAGE,{controller:currentController,timeoutId:23}]]);
  const cleared=[];
- finishGroupMessageRead(requests,MESSAGE,oldController,id=>cleared.push(id));
+ assert.equal(finishGroupMessageRead(requests,MESSAGE,oldController,id=>cleared.push(id)),false);
  assert.equal(requests.get(MESSAGE).controller,currentController);
  assert.deepEqual(cleared,[]);
- finishGroupMessageRead(requests,MESSAGE,currentController,id=>cleared.push(id));
+ assert.equal(finishGroupMessageRead(requests,MESSAGE,currentController,id=>cleared.push(id)),true);
  assert.equal(requests.has(MESSAGE),false);
  assert.deepEqual(cleared,[23]);
+});
+
+
+test('a Realtime UPDATE queued during a successful read is eligible for an immediate follow-up read',()=>{
+ const controller=new AbortController();
+ const requests=new Map([[MESSAGE,{controller,timeoutId:31}]]);
+ const pending=new Set([MESSAGE]);
+ const cleared=[];
+ const finished=finishGroupMessageRead(requests,MESSAGE,controller,id=>cleared.push(id));
+ assert.equal(finished,true);
+ assert.equal(finished&&pending.has(MESSAGE),true);
+ assert.deepEqual(cleared,[31]);
 });
