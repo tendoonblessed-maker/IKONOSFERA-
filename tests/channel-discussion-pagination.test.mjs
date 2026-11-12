@@ -103,7 +103,7 @@ test('exactly one page has no false older-page affordance and foreign rows are d
  const page=await api.listDiscussionFeedPage('jwt',CHANNEL);
  assert.equal(page.items.length,2);
  assert.equal(page.hasMore,false);
- assert.deepEqual(page.items.map(item=>item.kind),['message','comment']);
+ assert.deepEqual(Array.from(page.items,item=>item.kind),['message','comment']);
 });
 
 test('microsecond timestamps and UUID ties have deterministic order',()=>{
