@@ -1,22 +1,13 @@
 import {apiUrl} from '@/lib/supabase-rest';
 import type {GroupMessage} from '@/lib/groups';
+import {compareGroupMessages} from './group-message-order';
+export {compareGroupMessages} from './group-message-order';
 
 const anonKey=process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY||'';
 const UUID=/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
-const TIMESTAMP=/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?(?:Z|[+-]\d{2}:\d{2})$/;
+const TIMESTAMP=/^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d{1,6})?(?:Z|[+-]\\d{2}:\\d{2})$/;
 export const GROUP_OLDER_PAGE_SIZE=70;
 export const GROUP_HISTORY_MAX_LOADED=1500;
-
-function subMillisecondFraction(timestamp:string):number{
- const part=/\.(\d{1,6})/.exec(timestamp)?.[1]??'';
- return Number(part.padEnd(6,'0'));
-}
-export function compareGroupMessages(a:GroupMessage,b:GroupMessage):number{
- const milli=Date.parse(a.created_at)-Date.parse(b.created_at);
- if(milli!==0)return milli;
- const fraction=subMillisecondFraction(a.created_at)-subMillisecondFraction(b.created_at);
- return fraction||a.id.localeCompare(b.id);
-}
 /** A stable cursor includes ID: many messages can have the same timestamp. */
 export function olderGroupMessagesPath(groupId:string,oldest:Pick<GroupMessage,'created_at'|'id'>):string{
  if(!UUID.test(groupId)||!UUID.test(oldest.id)||!TIMESTAMP.test(oldest.created_at)
