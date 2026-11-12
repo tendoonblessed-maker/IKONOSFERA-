@@ -13,6 +13,12 @@ export function isDirectChatAtLatest(
  return scrollHeight-scrollTop-clientHeight<threshold;
 }
 
+export function isDirectChatReadSnapshotCurrent(snapshotRevision:number,currentRevision:number):boolean{
+ return Number.isSafeInteger(snapshotRevision)&&snapshotRevision>=0
+  &&Number.isSafeInteger(currentRevision)&&currentRevision>=0
+  &&snapshotRevision===currentRevision;
+}
+
 export function shouldAcknowledgeDirectChatRead(
  hasUnreadIncoming:boolean,
  atLatest:boolean,
