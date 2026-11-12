@@ -136,10 +136,10 @@ async function realtimeHarness(){
   get removed(){return removed;},get disconnects(){return disconnects;}};
 }
 
-test('group realtime reconciles INSERT and UPDATE as payload-free wake-up hints',async()=>{
+test('group realtime forwards only a validated UPDATE id, never message content',async()=>{
  const harness=await realtimeHarness();
- let wakeups=0;
- const unsubscribe=harness.api.subscribeGroupChanges('signed-user-jwt',GROUP,()=>{wakeups++;});
+ const wakeups=[];
+ const unsubscribe=harness.api.subscribeGroupChanges('signed-user-jwt',GROUP,id=>{wakeups.push(id);});
  await new Promise(resolve=>setImmediate(resolve));
  assert.equal(harness.authToken,'signed-user-jwt');
  assert.equal(harness.channelName,'group-db:'+GROUP);
@@ -149,15 +149,22 @@ test('group realtime reconciles INSERT and UPDATE as payload-free wake-up hints'
   assert.equal(item.filter.schema,'public');
   assert.equal(item.filter.table,'group_messages');
   assert.equal(item.filter.filter,'group_id=eq.'+GROUP);
-  item.callback({new:{body:'private message body'},old:{body:'old private body'}});
  }
- assert.equal(wakeups,2,'payloads only trigger authenticated reconciliation; they are not forwarded');
+ harness.registrations.find(item=>item.filter.event==='INSERT').callback({
+  new:{id:'55555555-5555-4555-8555-555555555555',body:'private message body'}
+ });
+ harness.registrations.find(item=>item.filter.event==='UPDATE').callback({
+  new:{id:'55555555-5555-4555-8555-555555555555',body:'private message body'},
+  old:{body:'old private body'}
+ });
+ assert.deepEqual(wakeups,[undefined,'55555555-5555-4555-8555-555555555555']);
  harness.subscribeCallback('SUBSCRIBED');
- assert.equal(wakeups,3,'subscription readiness reconciles any missed events');
+ assert.deepEqual(wakeups,[undefined,'55555555-5555-4555-8555-555555555555',undefined],
+  'subscription readiness reconciles events missed during join');
  unsubscribe();
  await new Promise(resolve=>setImmediate(resolve));
  assert.equal(harness.removed,1);
  assert.equal(harness.disconnects,1);
- harness.registrations[0].callback({new:{body:'late event'}});
- assert.equal(wakeups,3,'disposed subscriptions ignore late callbacks');
+ harness.registrations[0].callback({new:{id:'55555555-5555-4555-8555-555555555555'}});
+ assert.equal(wakeups.length,3,'disposed subscriptions ignore late callbacks');
 });
