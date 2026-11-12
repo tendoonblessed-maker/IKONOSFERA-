@@ -4,7 +4,7 @@ import { listProfiles, type Profile } from "@/lib/supabase-rest";
 import { createRequestEpoch } from "@/lib/request-epoch";
 import { appendOlderChannelPosts } from "@/lib/channel-post-pagination";
 import { prependOlderChannelComments } from "@/lib/channel-comment-pagination";
-import {listDiscussionFeedPage,mergeDiscussionFeedItems,removeDiscussionPostComments,removeDiscussionComments,type DiscussionFeedCursor,type DiscussionFeedItem} from "@/lib/channel-discussion-pagination";
+import {listDiscussionFeedPage,mergeDiscussionFeedItems,removeDiscussionPostComments,removeDiscussionComments,updateDiscussionCommentBody,type DiscussionFeedCursor,type DiscussionFeedItem} from "@/lib/channel-discussion-pagination";
 import StatusEmoji from "@/components/StatusEmoji";
 import {
  addPostComment, deletePost, editChannelPost, manageChannelComment, imageUrl, listChannelPosts, listChannelPostsPage, listPostComments, listPostCommentsPage, listPostReactions, setPostReaction, REACTION_EMOJIS, publishPost,
@@ -425,11 +425,23 @@ export default function ChannelsPanel({token,userId,channel,onBack,onShowProfile
   finally{if(isCurrent())setBusy(false);}
  }
  async function saveCommentEdit(id:string){
-  if(busy||olderCommentsLoadingRef.current)return;setBusy(true);setError("");
-  try{await manageChannelComment(token,id,"edit",editingBody);setEditingCommentId(null);
-   setComments(current=>current.map(comment=>comment.id===id?{...comment,body:editingBody}:comment));
-   if(currentChannel.discussion_enabled)await loadDiscussion();
-  }catch(e){setError(readable(e));}finally{setBusy(false);}
+  if(busy||olderCommentsLoadingRef.current)return;
+  const isCurrent=()=>channelScopeRef.current.token===token
+   &&channelScopeRef.current.userId===userId
+   &&channelScopeRef.current.channelId===channel.id;
+  setBusy(true);setError("");
+  try{
+   await manageChannelComment(token,id,"edit",editingBody);
+   if(!isCurrent())return;
+   setEditingCommentId(null);
+   const normalizedId=id.toLowerCase();
+   setComments(current=>current.map(comment=>comment.id.toLowerCase()===normalizedId?{...comment,body:editingBody}:comment));
+   if(currentChannel.discussion_enabled){
+    // Patch only the loaded row: a full reload would discard the older-page cursor
+    // and jump the reader to the bottom of a long discussion.
+    setDiscussionItems(current=>updateDiscussionCommentBody(current,id,editingBody));
+   }
+  }catch(e){if(isCurrent())setError(readable(e));}finally{setBusy(false);}
  }
  async function erasePost(p:ChannelPost){
   if(!mine||busy||!window.confirm("Удалить этот пост?"))return;
