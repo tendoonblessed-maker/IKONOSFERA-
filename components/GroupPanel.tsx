@@ -155,6 +155,7 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
     const controller=new AbortController();
     const timeoutId=window.setTimeout(()=>controller.abort(),18000);
     messageUpdateRequests.set(id,{controller,timeoutId});
+    let completedSuccessfully=false;
     void getGroupMessageById(requestToken,requestGroup,id,controller.signal).then(updated=>{
       if(cancelled||contextRef.current.groupId!==requestGroup
          ||contextRef.current.userId!==requestOwner
@@ -166,12 +167,19 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
         confirmedGroupMessagesRef.current.delete(id);
       }
       setMessages(current=>reconcileLoadedGroupMessage(current,requestGroup,id,updated));
+      completedSuccessfully=true;
     }).catch(()=>{
       // Paused/failed reads remain queued for the next visible sync.
       if(!cancelled&&contextRef.current.groupId===requestGroup
          &&contextRef.current.userId===requestOwner
          &&contextRef.current.token===requestToken)pendingMessageUpdates.add(id);
-    }).finally(()=>finishGroupMessageRead(messageUpdateRequests,id,controller));
+    }).finally(()=>{
+      const finished=finishGroupMessageRead(messageUpdateRequests,id,controller);
+      // If another UPDATE arrived during this GET, immediately read the
+      // canonical row again. Failed reads stay queued for the next sync,
+      // avoiding a tight retry loop on an unavailable network.
+      if(finished&&completedSuccessfully&&pendingMessageUpdates.has(id))flushPendingMessageUpdates();
+    });
   };
   const flushPendingMessageUpdates=()=>{
     if(cancelled||document.visibilityState==='hidden'||!navigator.onLine)return;
