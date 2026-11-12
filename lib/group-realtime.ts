@@ -7,8 +7,8 @@ const publishableKey=process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY??'';
 const UUID=/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
 
 /**
- * Live updates are untrusted wake-up hints only; groupMessages() re-reads
- * authoritative rows through authenticated PostgREST + group-member RLS.
+ * Live updates are untrusted wake-up hints only. Callers re-read rows through
+ * authenticated PostgREST + group-member RLS; UPDATE forwards only a validated ID.
  * Keep a separate socket only for the currently opened group.
  */
 export function subscribeGroupChanges(token:string,groupId:string,onChanged:(messageId?:string)=>void):()=>void{
