@@ -75,7 +75,7 @@ test('group realtime never renders WebSocket payload or stores another user sess
  assert.match(rt,/table:'group_messages',filter:'group_id=eq\.'\+groupId/);
  assert.match(rt,/event:'INSERT'/);
  assert.match(rt,/event:'UPDATE'/);
- assert.doesNotMatch(rt,/event:'DELETE'/);
+ assert.match(rt,/event:'DELETE'/);
  assert.match(rt,/status==='SUBSCRIBED'\)changed\(\)/);
  assert.match(rt,/client\.removeChannel\(channel\)/);
  assert.match(rt,/client\.realtime\.disconnect\(\)/);
@@ -136,39 +136,59 @@ async function realtimeHarness(){
   get removed(){return removed;},get disconnects(){return disconnects;}};
 }
 
-test('group realtime forwards only a validated UPDATE id, never message content',async()=>{
+test('group realtime forwards validated UPDATE and DELETE ids only as scoped read hints',async()=>{
  const harness=await realtimeHarness();
  const wakeups=[];
  const unsubscribe=harness.api.subscribeGroupChanges('signed-user-jwt',GROUP,id=>{wakeups.push(id);});
  await new Promise(resolve=>setImmediate(resolve));
  assert.equal(harness.authToken,'signed-user-jwt');
  assert.equal(harness.channelName,'group-db:'+GROUP);
- assert.deepEqual(harness.registrations.map(item=>item.filter.event),['INSERT','UPDATE']);
+ const byEvent=new Map(harness.registrations.map(item=>[item.filter.event,item]));
+ assert.deepEqual(Array.from(byEvent.keys()),['INSERT','UPDATE','DELETE']);
  for(const item of harness.registrations){
   assert.equal(item.type,'postgres_changes');
   assert.equal(item.filter.schema,'public');
   assert.equal(item.filter.table,'group_messages');
-  assert.equal(item.filter.filter,'group_id=eq.'+GROUP);
  }
- harness.registrations.find(item=>item.filter.event==='INSERT').callback({
+ assert.equal(byEvent.get('INSERT').filter.filter,'group_id=eq.'+GROUP);
+ assert.equal(byEvent.get('UPDATE').filter.filter,'group_id=eq.'+GROUP);
+ assert.equal(byEvent.get('DELETE').filter.filter,undefined,
+  'DELETE has no group filter because Postgres Changes cannot reliably filter it');
+ byEvent.get('INSERT').callback({
   new:{id:'55555555-5555-4555-8555-555555555555',body:'private message body'}
  });
- harness.registrations.find(item=>item.filter.event==='UPDATE').callback({
+ byEvent.get('UPDATE').callback({
   new:{id:'55555555-5555-4555-8555-555555555555',body:'private message body'},
   old:{body:'old private body'}
  });
- harness.registrations.find(item=>item.filter.event==='UPDATE').callback({
-  new:{id:'not-a-uuid',body:'must not be forwarded'}
+ byEvent.get('UPDATE').callback({new:{id:'not-a-uuid',body:'must not be forwarded'}});
+ byEvent.get('DELETE').callback({
+  old:{id:'55555555-5555-4555-8555-555555555555',group_id:OTHER_GROUP,body:'another group'}
  });
- assert.deepEqual(wakeups,[undefined,'55555555-5555-4555-8555-555555555555',undefined],
-  'INSERT and malformed UPDATE fall back to a payload-free refresh');
+ byEvent.get('DELETE').callback({
+  old:{id:'55555555-5555-4555-8555-555555555555',group_id:GROUP,body:'private delete payload'}
+ });
+ byEvent.get('DELETE').callback({
+  old:{id:'55555555-5555-4555-8555-555555555555',body:'default replica identity may expose only the PK'}
+ });
+ byEvent.get('DELETE').callback({old:{id:'not-a-uuid',group_id:GROUP,body:'invalid ID'}});
+ assert.deepEqual(wakeups,[
+  undefined,
+  '55555555-5555-4555-8555-555555555555',
+  undefined,
+  '55555555-5555-4555-8555-555555555555',
+  '55555555-5555-4555-8555-555555555555',
+  undefined
+ ]);
+ assert.ok(wakeups.every(value=>value===undefined||value==='55555555-5555-4555-8555-555555555555'),
+  'only a validated message UUID or an empty refresh hint may leave the callback');
  harness.subscribeCallback('SUBSCRIBED');
- assert.deepEqual(wakeups,[undefined,'55555555-5555-4555-8555-555555555555',undefined,undefined],
-  'subscription readiness reconciles events missed during join');
+ assert.equal(wakeups.length,7);
+ assert.equal(wakeups[6],undefined,'subscription readiness reconciles any missed events');
  unsubscribe();
  await new Promise(resolve=>setImmediate(resolve));
  assert.equal(harness.removed,1);
  assert.equal(harness.disconnects,1);
- harness.registrations[0].callback({new:{id:'55555555-5555-4555-8555-555555555555'}});
- assert.equal(wakeups.length,4,'disposed subscriptions ignore late callbacks');
+ byEvent.get('DELETE').callback({old:{id:'55555555-5555-4555-8555-555555555555'}});
+ assert.equal(wakeups.length,7,'disposed subscriptions ignore late DELETE callbacks');
 });
