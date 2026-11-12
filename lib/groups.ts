@@ -23,13 +23,13 @@ const UUID=/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
  * Read one message through authenticated PostgREST. Both identifiers are
  * explicit filters and the existing group-member RLS remains authoritative.
  */
-export async function getGroupMessageById(token:string,groupId:string,messageId:string):Promise<GroupMessage|null>{
+export async function getGroupMessageById(token:string,groupId:string,messageId:string,signal?:AbortSignal):Promise<GroupMessage|null>{
  if(!UUID.test(groupId)||!UUID.test(messageId))throw Error('Неверные параметры сообщения группы.');
  const normalizedGroupId=groupId.toLowerCase();
  const normalizedMessageId=messageId.toLowerCase();
  const path='/rest/v1/group_messages?select=*&group_id=eq.'+encodeURIComponent(normalizedGroupId)
   +'&id=eq.'+encodeURIComponent(normalizedMessageId)+'&limit=1';
- const rows=await request<GroupMessage[]>(token,path);
+ const rows=await request<GroupMessage[]>(token,path,'GET',undefined,{},signal);
  const row=rows[0];
  if(!row)return null;
  if(typeof row.id!=='string'||typeof row.group_id!=='string'
