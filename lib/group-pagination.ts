@@ -3,7 +3,19 @@ import type {GroupMessage} from '@/lib/groups';
 
 const anonKey=process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY||'';
 const UUID=/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
-const TIMESTAMP=/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?(?:Z|[+-]\d{2}:\d{2})$/;
+const TIMESTAMP=/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.(\d{1,6}))?(Z|([+-])(\d{2}):(\d{2}))$/;
+function isValidGroupTimestamp(value:string):boolean{
+ const match=TIMESTAMP.exec(value);
+ if(!match)return false;
+ const year=Number(match[1]),month=Number(match[2]),day=Number(match[3]);
+ const hour=Number(match[4]),minute=Number(match[5]),second=Number(match[6]);
+ if(year===0||month<1||month>12||hour>23||minute>59||second>59)return false;
+ const leap=year%4===0&&(year%100!==0||year%400===0);
+ const days=[31,leap?29:28,31,30,31,30,31,31,30,31,30,31];
+ if(day<1||day>days[month-1])return false;
+ if(match[8]!=='Z'&&(Number(match[10])>23||Number(match[11])>59))return false;
+ return Number.isFinite(Date.parse(value));
+}
 export const GROUP_OLDER_PAGE_SIZE=70;
 export const GROUP_HISTORY_MAX_LOADED=1500;
 
@@ -19,8 +31,8 @@ export function compareGroupMessages(a:GroupMessage,b:GroupMessage):number{
 }
 /** A stable cursor includes ID: many messages can have the same timestamp. */
 export function olderGroupMessagesPath(groupId:string,oldest:Pick<GroupMessage,'created_at'|'id'>):string{
- if(!UUID.test(groupId)||!UUID.test(oldest.id)||!TIMESTAMP.test(oldest.created_at)
-    ||!Number.isFinite(Date.parse(oldest.created_at)))throw Error('Некорректный курсор истории группы.');
+ if(!UUID.test(groupId)||!UUID.test(oldest.id)||!isValidGroupTimestamp(oldest.created_at))
+  throw Error('Некорректный курсор истории группы.');
  // PostgREST OR / AND is constrained by the exact group ID and user RLS.
  const cursor=oldest.created_at;
  const conditions='(created_at.lt.'+cursor+',and(created_at.eq.'+cursor+',id.lt.'+oldest.id+'))';
