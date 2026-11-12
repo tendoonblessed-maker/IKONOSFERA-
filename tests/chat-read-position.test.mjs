@@ -34,7 +34,7 @@ test('direct chat read acknowledgement is staged after GET and committed after l
  const scrollIndex=shell.indexOf('history.scrollTop=history.scrollHeight;');
  const ackIndex=shell.indexOf('if(shouldAcknowledgeDirectChatRead(',scrollIndex);
  assert.ok(scrollIndex>=0&&ackIndex>scrollIndex,'the latest-page scroll is committed before read acknowledgement');
- assert.match(shell,/pending\.messageIds\.every\(id=>renderedIds\.has\(id\)\)/,'all unread IDs from the GET must exist in committed chat state');
+ assert.match(shell,/pending\.messageIds\.every\(id=>history\.querySelector\('#ik-chat-message-'\+id\)\)/,'every unread message must have a committed DOM node');
  assert.match(shell,/isDirectChatAtLatest\(history\.scrollHeight,history\.scrollTop,history\.clientHeight\)/);
  assert.match(shell,/pending\.chatId!==selected\|\|pending\.userId!==userId\|\|pending\.token!==session\?\.access_token/,'stale chat/account/token receipts are discarded');
  assert.match(shell,/document\.visibilityState==='visible'&&navigator\.onLine/);
