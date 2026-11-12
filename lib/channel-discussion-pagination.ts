@@ -134,6 +134,22 @@ export function mergeDiscussionFeedItems(
  return Array.from(rows.values()).sort(compareDiscussionFeedItems);
 }
 
+/**
+ * Remove comments belonging to posts deleted in this channel view. Keeping a
+ * tombstone set in the component prevents an already-running page request from
+ * restoring comments that were removed while the request was in flight.
+ */
+export function removeDiscussionPostComments(
+ items:readonly DiscussionFeedItem[],
+ deletedPostIds:ReadonlySet<string>
+):DiscussionFeedItem[]{
+ const normalizedIds=new Set(Array.from(deletedPostIds)
+  .filter(id=>UUID.test(id))
+  .map(id=>id.toLowerCase()));
+ if(!normalizedIds.size)return [...items];
+ return items.filter(item=>item.kind!=='comment'||!normalizedIds.has(item.post_id.toLowerCase()));
+}
+
 async function requestRows<T>(path:string,token:string,signal:AbortSignal):Promise<T[]>{
  const response=await fetch(apiUrl+path,{
   method:'GET',
