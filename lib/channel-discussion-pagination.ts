@@ -2,7 +2,7 @@ import {apiUrl,anonKey} from '@/lib/supabase-rest';
 
 export const CHANNEL_DISCUSSION_PAGE_SIZE=50;
 const UUID=/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
-const TIMESTAMP=/^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d{1,6})?(?:Z|[+-]\\d{2}:\\d{2})$/;
+const TIMESTAMP=/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?(?:Z|[+-]\d{2}:\d{2})$/;
 
 export type DiscussionFeedCursor={
  created_at:string;
@@ -37,7 +37,7 @@ function kindRank(kind:'message'|'comment'):number{
  return kind==='message'?0:1;
 }
 function subMillisecondFraction(timestamp:string):number{
- const part=/\\.(\\d{1,6})/.exec(timestamp)?.[1]??'';
+ const part=/\.(\d{1,6})/.exec(timestamp)?.[1]??'';
  return Number(part.padEnd(6,'0'));
 }
 export function compareDiscussionFeedItems(a:DiscussionFeedItem,b:DiscussionFeedItem):number{
