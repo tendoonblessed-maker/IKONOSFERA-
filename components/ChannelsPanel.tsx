@@ -4,7 +4,7 @@ import { listProfiles, type Profile } from "@/lib/supabase-rest";
 import { createRequestEpoch } from "@/lib/request-epoch";
 import { appendOlderChannelPosts } from "@/lib/channel-post-pagination";
 import { prependOlderChannelComments } from "@/lib/channel-comment-pagination";
-import {listDiscussionFeedPage,mergeDiscussionFeedItems,type DiscussionFeedCursor,type DiscussionFeedItem} from "@/lib/channel-discussion-pagination";
+import {listDiscussionFeedPage,mergeDiscussionFeedItems,removeDiscussionPostComments,type DiscussionFeedCursor,type DiscussionFeedItem} from "@/lib/channel-discussion-pagination";
 import StatusEmoji from "@/components/StatusEmoji";
 import {
  addPostComment, deletePost, editChannelPost, manageChannelComment, imageUrl, listChannelPosts, listChannelPostsPage, listPostComments, listPostCommentsPage, listPostReactions, setPostReaction, REACTION_EMOJIS, publishPost,
@@ -39,6 +39,7 @@ export default function ChannelsPanel({token,userId,channel,onBack,onShowProfile
  const discussionAbortRef=useRef<AbortController|null>(null);
  const discussionOlderLoadingRef=useRef(false);
  const discussionScrollAnchorRef=useRef<{scrollTop:number;scrollHeight:number}|null>(null);
+ const deletedDiscussionPostsRef=useRef<Set<string>>(new Set());
  const discussionInitialScrollRef=useRef(false);
  const [discussionDraft,setDiscussionDraft]=useState("");
   const [posts,setPosts]=useState<ChannelPost[]>([]);
@@ -96,6 +97,7 @@ export default function ChannelsPanel({token,userId,channel,onBack,onShowProfile
   // Publish only committed identity props; an abandoned concurrent render must not
   // invalidate requests that still belong to the visible channel.
   channelScopeRef.current={token,userId,channelId:channel.id};
+  deletedDiscussionPostsRef.current.clear();
   abortDiscussionRequest();
   setDiscussionOpen(false);
   setDiscussionItems([]);setDiscussionCursor(null);setHasOlderDiscussion(false);
@@ -193,7 +195,7 @@ export default function ChannelsPanel({token,userId,channel,onBack,onShowProfile
    if(!isCurrent())return false;
    discussionScrollAnchorRef.current=null;
    discussionInitialScrollRef.current=page.items.length>0;
-   setDiscussionItems(page.items);setDiscussionCursor(page.cursor);setHasOlderDiscussion(page.hasMore);
+   setDiscussionItems(removeDiscussionPostComments(page.items,deletedDiscussionPostsRef.current));setDiscussionCursor(page.cursor);setHasOlderDiscussion(page.hasMore);
    return true;
   }catch(e){
    if(isCurrent())setDiscussionError(readable(e));
@@ -220,8 +222,9 @@ export default function ChannelsPanel({token,userId,channel,onBack,onShowProfile
   try{
    const page=await listDiscussionFeedPage(token,channel.id,discussionCursor,controller.signal);
    if(!isCurrent())return;
-   if(page.items.length&&anchor)discussionScrollAnchorRef.current=anchor;
-   setDiscussionItems(current=>mergeDiscussionFeedItems(current,page.items));
+   const visibleItems=removeDiscussionPostComments(page.items,deletedDiscussionPostsRef.current);
+   if(visibleItems.length&&anchor)discussionScrollAnchorRef.current=anchor;
+   setDiscussionItems(current=>mergeDiscussionFeedItems(current,visibleItems));
    setDiscussionCursor(page.cursor);setHasOlderDiscussion(page.hasMore);
   }catch(e){
    if(isCurrent())setOlderDiscussionError(readable(e));
@@ -436,6 +439,14 @@ export default function ChannelsPanel({token,userId,channel,onBack,onShowProfile
    cancelOlderPostsLoad();
    await deletePost(token,p.id);
    if(isCurrent()){
+    deletedDiscussionPostsRef.current.add(p.id);
+    // Cancel only an in-flight older page; its captured scroll anchor is stale after deletion.
+    if(discussionOlderLoadingRef.current){
+     abortDiscussionRequest();
+     setOlderDiscussionLoading(false);
+    }
+    discussionScrollAnchorRef.current=null;
+    setDiscussionItems(current=>removeDiscussionPostComments(current,deletedDiscussionPostsRef.current));
     setPosts(current=>current.filter(post=>post.id!==p.id));
     setReactions(current=>current.filter(reaction=>reaction.post_id!==p.id));
     setNotice("Пост удалён.");
