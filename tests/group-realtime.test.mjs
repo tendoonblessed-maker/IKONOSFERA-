@@ -157,14 +157,18 @@ test('group realtime forwards only a validated UPDATE id, never message content'
   new:{id:'55555555-5555-4555-8555-555555555555',body:'private message body'},
   old:{body:'old private body'}
  });
- assert.deepEqual(wakeups,[undefined,'55555555-5555-4555-8555-555555555555']);
- harness.subscribeCallback('SUBSCRIBED');
+ harness.registrations.find(item=>item.filter.event==='UPDATE').callback({
+  new:{id:'not-a-uuid',body:'must not be forwarded'}
+ });
  assert.deepEqual(wakeups,[undefined,'55555555-5555-4555-8555-555555555555',undefined],
+  'INSERT and malformed UPDATE fall back to a payload-free refresh');
+ harness.subscribeCallback('SUBSCRIBED');
+ assert.deepEqual(wakeups,[undefined,'55555555-5555-4555-8555-555555555555',undefined,undefined],
   'subscription readiness reconciles events missed during join');
  unsubscribe();
  await new Promise(resolve=>setImmediate(resolve));
  assert.equal(harness.removed,1);
  assert.equal(harness.disconnects,1);
  harness.registrations[0].callback({new:{id:'55555555-5555-4555-8555-555555555555'}});
- assert.equal(wakeups.length,3,'disposed subscriptions ignore late callbacks');
+ assert.equal(wakeups.length,4,'disposed subscriptions ignore late callbacks');
 });
