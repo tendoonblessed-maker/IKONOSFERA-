@@ -757,12 +757,9 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
     }
     const history=conversationHistoryRef.current;
     if(!history)return;
-    const renderedIds=new Set(chatMessages
-      .filter(message=>message.chat_id===pending.chatId)
-      .map(message=>message.id));
-    // If the pending state rendered before the message state, wait for the
-    // subsequent commit rather than acknowledging an item not in the DOM yet.
-    if(!pending.messageIds.every(id=>renderedIds.has(id)))return;
+    // Check the actual committed message nodes, not just React state: a
+    // search/filter or an interrupted render must never count as "seen".
+    if(!pending.messageIds.every(id=>history.querySelector('#ik-chat-message-'+id)))return;
     const hasUnreadIncoming=chatMessages.some(message=>
       pending.messageIds.includes(message.id)
       &&message.chat_id===pending.chatId
