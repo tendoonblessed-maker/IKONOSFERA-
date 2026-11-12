@@ -64,6 +64,16 @@ test('group messages remain in chronological order with deterministic equal time
  assert.deepEqual(result.map(x=>x.id),['a','b','c']);
 });
 
+test('confirmed group messages preserve PostgreSQL microsecond order within one millisecond',()=>{
+ const earlier=message('z',{sender_id:OTHER,created_at:'2026-10-29T07:00:00.000123Z'});
+ const later=message('a',{sender_id:OTHER,created_at:'2026-10-29T07:00:00.000124Z'});
+ const sameInstantFirstId=message('b',{sender_id:OTHER,created_at:'2026-10-29T07:00:00.000124Z'});
+ const result=mergeConfirmedGroupMessages(
+  [later,earlier,sameInstantFirstId],new Map(),GROUP,USER,1000
+ );
+ assert.deepEqual(result.map(x=>x.id),['z','a','b']);
+});
+
 test('group realtime never renders WebSocket payload or stores another user session',()=>{
  const rt=readFileSync(new URL('../lib/group-realtime.ts',import.meta.url),'utf8');
  const panel=readFileSync(new URL('../components/GroupPanel.tsx',import.meta.url),'utf8');
