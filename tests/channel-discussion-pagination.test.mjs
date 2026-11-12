@@ -14,9 +14,10 @@ function compile(handler=()=>({ok:true,json:async()=>[]})){
  const calls=[];
  const context={
   exports,URLSearchParams,URL,Date,AbortController,AbortSignal,Promise,Error,Map,Set,Array,Number,String,Math,
+  process:{env:{NEXT_PUBLIC_SUPABASE_ANON_KEY:'public-test'}},
   setTimeout,clearTimeout,
   fetch:async(url,options)=>{calls.push({url,options});return handler(url,options,calls.length);},
-  require(name){assert.equal(name,'@/lib/supabase-rest');return {apiUrl:'https://unit.test',anonKey:'public-test'};}
+  require(name){assert.equal(name,'@/lib/supabase-rest');return {apiUrl:'https://unit.test'};}
  };
  vm.runInNewContext(compiled,context,{timeout:2000,filename:'channel-discussion-pagination.cjs'});
  return {api:exports,calls};
