@@ -150,6 +150,18 @@ export function removeDiscussionPostComments(
  return items.filter(item=>item.kind!=='comment'||!normalizedIds.has(item.post_id.toLowerCase()));
 }
 
+/** Remove comments deleted in this channel view, including stale in-flight pages. */
+export function removeDiscussionComments(
+ items:readonly DiscussionFeedItem[],
+ deletedCommentIds:ReadonlySet<string>
+):DiscussionFeedItem[]{
+ const normalizedIds=new Set(Array.from(deletedCommentIds)
+  .filter(id=>UUID.test(id))
+  .map(id=>id.toLowerCase()));
+ if(!normalizedIds.size)return [...items];
+ return items.filter(item=>item.kind!=='comment'||!normalizedIds.has(item.id.toLowerCase()));
+}
+
 async function requestRows<T>(path:string,token:string,signal:AbortSignal):Promise<T[]>{
  const response=await fetch(apiUrl+path,{
   method:'GET',
