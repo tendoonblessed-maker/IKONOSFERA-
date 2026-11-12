@@ -399,3 +399,42 @@ test('ChannelsPanel removes a deleted comment immediately and filters both discu
  assert.ok(erase.indexOf('abortDiscussionRequest()')<erase.indexOf('setDiscussionItems(current=>removeDiscussionComments'));
  assert.ok(erase.indexOf('discussionScrollAnchorRef.current=null')<erase.indexOf('setDiscussionItems(current=>removeDiscussionComments'));
 });
+
+
+test('editing a comment patches only its loaded discussion row without mutating the page',()=>{
+ const {api}=compile();
+ const editedId=uuid(502);
+ const items=[
+  {...message(1),kind:'message'},
+  {...comment(2),id:editedId,kind:'comment'},
+  {...comment(3),kind:'comment'}
+ ];
+ const next=api.updateDiscussionCommentBody(items,editedId.toUpperCase(),'edited body');
+ assert.notEqual(next,items);
+ assert.equal(next[1].body,'edited body');
+ assert.equal(items[1].body,'comment 2');
+ assert.equal(next[0],items[0]);
+ assert.equal(next[2],items[2]);
+ assert.equal(next[1].created_at,items[1].created_at);
+ assert.equal(next[1].post_id,items[1].post_id);
+});
+
+test('editing an unloaded or malformed comment ID leaves the discussion page unchanged',()=>{
+ const {api}=compile();
+ const items=[{...message(1),kind:'message'},{...comment(2),kind:'comment'}];
+ assert.equal(api.updateDiscussionCommentBody(items,uuid(999),'not loaded'),items);
+ assert.equal(api.updateDiscussionCommentBody(items,'not-a-uuid','invalid'),items);
+});
+
+test('ChannelsPanel reconciles an edited comment without reloading or overwriting a switched channel',()=>{
+ const component=read('components/ChannelsPanel.tsx');
+ const start=component.indexOf('async function saveCommentEdit(');
+ const end=component.indexOf('async function erasePost(',start);
+ const handler=component.slice(start,end);
+ assert.match(handler,/const isCurrent=\(\)=>channelScopeRef\.current\.token===token/);
+ assert.match(handler,/await manageChannelComment\(token,id,"edit",editingBody\)/);
+ assert.ok(handler.indexOf('if(!isCurrent())return')<handler.indexOf('setDiscussionItems('));
+ assert.match(handler,/setDiscussionItems\(current=>updateDiscussionCommentBody\(current,id,editingBody\)\)/);
+ assert.match(handler,/setComments\(current=>current\.map\(comment=>comment\.id\.toLowerCase\(\)===normalizedId/);
+ assert.doesNotMatch(handler,/loadDiscussion\(/);
+});
