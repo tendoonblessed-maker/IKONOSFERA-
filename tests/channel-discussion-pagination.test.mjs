@@ -304,3 +304,49 @@ test('valid leap-day timestamps with PostgreSQL microseconds remain accepted',as
  assert.equal(page.items.length,1);
  assert.equal(page.items[0].created_at,'2024-02-29T23:59:59.123456Z');
 });
+
+
+test('deleted-post tombstones keep stale in-flight pages from resurrecting comments',()=>{
+ const {api}=compile();
+ const deletedPostId=uuid(700);
+ const visible=[
+  {...message(1),kind:'message'},
+  {...comment(2),id:uuid(602),post_id:deletedPostId,kind:'comment'},
+  {...comment(3),id:uuid(603),post_id:uuid(701),kind:'comment'}
+ ];
+ const tombstones=new Set([deletedPostId.toUpperCase()]);
+ const afterDelete=api.removeDiscussionPostComments(visible,tombstones);
+ assert.deepEqual(Array.from(afterDelete,item=>item.kind+':'+item.id),[
+  'message:'+uuid(101),
+  'comment:'+uuid(603)
+ ]);
+ const stalePage=api.removeDiscussionPostComments([
+  {...comment(2),id:uuid(602),post_id:deletedPostId,kind:'comment'},
+  {...comment(4),id:uuid(604),post_id:deletedPostId,kind:'comment'},
+  {...comment(3),id:uuid(603),post_id:uuid(701),kind:'comment'}
+ ],tombstones);
+ const merged=api.mergeDiscussionFeedItems(afterDelete,stalePage);
+ assert.deepEqual(Array.from(merged,item=>item.kind+':'+item.id),[
+  'message:'+uuid(101),
+  'comment:'+uuid(603)
+ ]);
+});
+
+test('ChannelsPanel filters deleted-post comments from both page paths and invalidates stale older-page anchors',()=>{
+ const component=read('components/ChannelsPanel.tsx');
+ const initialStart=component.indexOf('const loadDiscussion=');
+ const olderStart=component.indexOf('const loadOlderDiscussion=');
+ const layoutStart=component.indexOf('useLayoutEffect(()=>{',olderStart);
+ const initial=component.slice(initialStart,olderStart);
+ const older=component.slice(olderStart,layoutStart);
+ const eraseStart=component.indexOf('async function erasePost(');
+ const eraseEnd=component.indexOf('async function eraseComment(',eraseStart);
+ const erase=component.slice(eraseStart,eraseEnd);
+ assert.match(initial,/removeDiscussionPostComments\(page\.items,deletedDiscussionPostsRef\.current\)/);
+ assert.match(older,/removeDiscussionPostComments\(page\.items,deletedDiscussionPostsRef\.current\)/);
+ assert.match(erase,/deletedDiscussionPostsRef\.current\.add\(p\.id\)/);
+ assert.match(erase,/if\(discussionOlderLoadingRef\.current\)\{\s*abortDiscussionRequest\(\)/);
+ assert.match(erase,/discussionScrollAnchorRef\.current=null/);
+ assert.match(erase,/removeDiscussionPostComments\(current,deletedDiscussionPostsRef\.current\)/);
+ assert.ok(erase.indexOf('deletedDiscussionPostsRef.current.add(p.id)')<erase.indexOf('setDiscussionItems(current=>removeDiscussionPostComments'));
+});
