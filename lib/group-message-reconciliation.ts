@@ -50,9 +50,10 @@ export function finishGroupMessageRead(
  messageId:string,
  controller:AbortController,
  clearTimer:(timeoutId:number)=>void=(timeoutId)=>clearTimeout(timeoutId)
-):void{
+):boolean{
  const active=requests.get(messageId);
- if(!active||active.controller!==controller)return;
+ if(!active||active.controller!==controller)return false;
  clearTimer(active.timeoutId);
  requests.delete(messageId);
+ return true;
 }
