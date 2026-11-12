@@ -54,11 +54,14 @@ test('group history keyset cursor queries one group with timestamp + UUID tie br
 test('cursor accepts valid 6-digit microsecond timestamps and rejects invalid filters',()=>{
  const {api}=setup();
  for(const timestamp of ['2026-10-29T09:50:12Z','2026-10-29T09:50:12.001Z',
-  '2026-10-29T09:50:12.123456+00:00']){
+  '2026-10-29T09:50:12.123456+00:00','2024-02-29T09:50:12Z','2000-02-29T09:50:12Z']){
   assert.doesNotThrow(()=>api.olderGroupMessagesPath(GROUP,row(id(1),timestamp)));
  }
  for(const timestamp of ['abc','2026-10-29T09:50:12Z,group_id.eq.'+OTHER,
-  '2026-10-29T09:50:12.1234567Z','2026-10-29T09:50:12-foo']){
+  '2026-10-29T09:50:12.1234567Z','2026-10-29T09:50:12-foo',
+  '2026-02-31T09:50:12Z','2026-02-29T09:50:12Z','2026-04-31T09:50:12Z',
+  '2026-10-29T24:00:00Z','2026-10-29T09:60:00Z','2026-10-29T09:50:60Z',
+  '2026-10-29T09:50:12+00:60','2026-10-29T09:50:12+24:00']){
   assert.throws(()=>api.olderGroupMessagesPath(GROUP,row(id(1),timestamp)),/курсор/);
  }
  assert.throws(()=>api.olderGroupMessagesPath(OTHER+'x',row(id(1))),/курсор/);
