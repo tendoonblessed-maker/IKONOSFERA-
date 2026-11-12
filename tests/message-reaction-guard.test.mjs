@@ -1,51 +1,79 @@
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
 import {readFileSync} from 'node:fs';
-import {createSingleFlightGuard,isCurrentChatActionScope} from '../lib/single-flight-guard.ts';
+import {chatActionScopeKey,createSingleFlightGuard,isCurrentChatActionScope} from '../lib/single-flight-guard.ts';
 
 const load=path=>readFileSync(new URL('../'+path,import.meta.url),'utf8');
+const scope=(chatId,userId='user-a')=>({chatId,userId});
 
-test('a synchronous guard rejects a second action before React can rerender',()=>{
+test('a synchronous guard rejects a duplicate reaction in the same account and chat',()=>{
  const guard=createSingleFlightGuard();
- const release=guard.acquire();
+ const release=guard.acquire(scope('chat-a'));
  assert.equal(typeof release,'function');
- assert.equal(guard.acquire(),null,'a same-turn duplicate must not start another request');
+ assert.equal(guard.acquire(scope('chat-a')),null,'same-turn duplicate must not start another request');
  release();
- assert.equal(typeof guard.acquire(),'function','a completed action releases the guard');
+ assert.equal(typeof guard.acquire(scope('chat-a')),'function','completed action releases its scope');
 });
 
-test('release is idempotent and an old release cannot unlock a newer action',()=>{
+test('a slow reaction in one chat does not block another chat or account',()=>{
  const guard=createSingleFlightGuard();
- const first=guard.acquire();
+ const releaseA=guard.acquire(scope('chat-a','user-a'));
+ assert.equal(typeof releaseA,'function');
+ const releaseOtherChat=guard.acquire(scope('chat-b','user-a'));
+ const releaseOtherAccount=guard.acquire(scope('chat-a','user-b'));
+ assert.equal(typeof releaseOtherChat,'function');
+ assert.equal(typeof releaseOtherAccount,'function');
+ assert.equal(guard.acquire(scope('chat-a','user-a')),null,'the original chat remains single-flight');
+ releaseOtherChat();
+ releaseOtherAccount();
+ releaseA();
+});
+
+test('release is idempotent and an old lease cannot unlock a newer action in its scope',()=>{
+ const guard=createSingleFlightGuard();
+ const first=guard.acquire(scope('chat-a'));
  assert.equal(typeof first,'function');
  first();
- const second=guard.acquire();
+ const second=guard.acquire(scope('chat-a'));
  assert.equal(typeof second,'function');
- first(); // a delayed duplicate cleanup from the old lease is harmless
- assert.equal(guard.acquire(),null,'the newer action remains protected');
+ first();
+ assert.equal(guard.acquire(scope('chat-a')),null,'newer action remains protected');
  second();
- assert.equal(typeof guard.acquire(),'function');
+ assert.equal(typeof guard.acquire(scope('chat-a')),'function');
 });
 
 test('independent guard instances do not share action state',()=>{
  const first=createSingleFlightGuard();
  const second=createSingleFlightGuard();
- const release=first.acquire();
- assert.equal(typeof second.acquire(),'function');
- assert.equal(first.acquire(),null);
+ const release=first.acquire(scope('chat-a'));
+ assert.equal(typeof second.acquire(scope('chat-a')),'function');
+ assert.equal(first.acquire(scope('chat-a')),null);
  release();
 });
 
-test('message reactions acquire the synchronous guard before network work and release in finally',()=>{
+test('chat scope keys separate accounts and conversations without delimiter collisions',()=>{
+ assert.notEqual(chatActionScopeKey(scope('chat-a','user-a')),chatActionScopeKey(scope('chat-b','user-a')));
+ assert.notEqual(chatActionScopeKey(scope('chat-a','user-a')),chatActionScopeKey(scope('chat-a','user-b')));
+ assert.notEqual(chatActionScopeKey(scope('a:b','c')),chatActionScopeKey(scope('b','a:c')));
+});
+
+test('reaction handler acquires a chat-scoped guard before network work and releases it in finally',()=>{
  const app=load('components/AppShell.tsx');
  const start=app.indexOf('async function reactToMessage(');
  const end=app.indexOf('function queueAttachment(',start);
  assert.ok(start>=0&&end>start,'reaction handler exists');
  const handler=app.slice(start,end);
- assert.match(handler,/const release=reactionActionGuardRef\.current\?\.acquire\(\);\s*if\(!release\)return;/);
- assert.ok(handler.indexOf('acquire()')<handler.indexOf('await setMessageReaction('),
+ assert.match(handler,/const release=reactionActionGuardRef\.current\?\.acquire\(\{chatId,userId\}\);\s*if\(!release\)return;/);
+ assert.ok(handler.indexOf('acquire(')<handler.indexOf('await setMessageReaction('),
   'the lock is acquired before the first asynchronous mutation');
- assert.match(handler,/finally\{release\(\);setSending\(false\);\}/);
+ assert.match(handler,/const scopeKey=chatActionScopeKey\(\{chatId,userId\}\)/);
+ assert.match(handler,/setReactionBusyScopes\(current=>new Set\(current\)\.add\(scopeKey\)\)/);
+ assert.match(handler,/setReactionBusyScopes\(current=>\{const next=new Set\(current\);next\.delete\(scopeKey\);return next;\}\)/);
+ assert.match(handler,/finally\{[\s\S]*release\(\);/);
+ assert.doesNotMatch(handler,/setSending|\|\|sending/,
+  'reaction requests must not share the global message-send busy flag');
+ assert.match(handler,/chatMessages\.some\(message=>message\.id===messageId&&message\.chat_id===chatId\)/,
+  'a stale message-menu action must not mutate a message outside the selected chat');
  assert.match(app,/reactionActionGuardRef=useRef<ReturnType<typeof createSingleFlightGuard>\|null>\(null\)/);
 });
 
@@ -78,5 +106,18 @@ test('AppShell publishes identity in a layout effect and ignores stale reaction 
   'a stale mutation response must not update the new chat UI');
  assert.match(handler,/if\(isCurrent\(\)\)setMessageReactions/);
  assert.match(handler,/catch\(e\)\{if\(isCurrent\(\)\)setError/);
- assert.match(handler,/finally\{release\(\);setSending\(false\);\}/);
+ assert.match(handler,/setReactionBusyScopes\(current=>\{const next=new Set\(current\);next\.delete\(scopeKey\);return next;\}\)/);
+});
+
+test('reaction controls are disabled only for the active account/chat reaction scope',()=>{
+ const app=load('components/AppShell.tsx');
+ assert.match(app,/const activeReactionScopeKey=selected&&userId\?chatActionScopeKey\(\{chatId:selected,userId\}\):""/);
+ assert.match(app,/const reactionBusy=Boolean\(activeReactionScopeKey&&reactionBusyScopes\.has\(activeReactionScopeKey\)\)/);
+ const start=app.indexOf('<div className="reaction-bar message-reaction-bar">');
+ const end=app.indexOf('</div></div></SwipeReplyMessage>',start);
+ const bar=app.slice(start,end);
+ assert.equal((bar.match(/disabled=\{reactionBusy\}/g)||[]).length,2);
+ const menuStart=app.indexOf('<div className="ik-message-menu-reactions"');
+ const menuEnd=app.indexOf('</div>',menuStart);
+ assert.match(app.slice(menuStart,menuEnd),/disabled=\{reactionBusy\}/);
 });
