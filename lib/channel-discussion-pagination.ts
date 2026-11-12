@@ -71,7 +71,11 @@ export function compareDiscussionFeedItems(a:DiscussionFeedItem,b:DiscussionFeed
  if(millis!==0)return millis;
  const fraction=subMillisecondFraction(a.created_at)-subMillisecondFraction(b.created_at);
  if(fraction!==0)return fraction;
- const id=a.id.localeCompare(b.id);
+ // PostgreSQL UUID ordering is bytewise and case-insensitive. Do not use
+ // localeCompare here: browser locale/case collation must not change a keyset page.
+ const leftId=a.id.toLowerCase();
+ const rightId=b.id.toLowerCase();
+ const id=leftId<rightId?-1:leftId>rightId?1:0;
  return id||kindRank(a.kind)-kindRank(b.kind);
 }
 
