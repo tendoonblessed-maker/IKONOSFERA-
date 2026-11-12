@@ -350,3 +350,49 @@ test('ChannelsPanel filters deleted-post comments from both page paths and inval
  assert.match(erase,/removeDiscussionPostComments\(current,deletedDiscussionPostsRef\.current\)/);
  assert.ok(erase.indexOf('deletedDiscussionPostsRef.current.add(p.id)')<erase.indexOf('setDiscussionItems(current=>removeDiscussionPostComments'));
 });
+
+
+test('deleted-comment tombstones keep stale in-flight pages from resurrecting a comment',()=>{
+ const {api}=compile();
+ const deletedCommentId=uuid(602);
+ const visible=[
+  {...message(1),kind:'message'},
+  {...comment(2),id:deletedCommentId,kind:'comment'},
+  {...comment(3),id:uuid(603),kind:'comment'}
+ ];
+ const tombstones=new Set([deletedCommentId.toUpperCase()]);
+ const afterDelete=api.removeDiscussionComments(visible,tombstones);
+ assert.deepEqual(Array.from(afterDelete,item=>item.kind+':'+item.id),[
+  'message:'+uuid(101),
+  'comment:'+uuid(603)
+ ]);
+ const stalePage=api.removeDiscussionComments([
+  {...comment(2),id:deletedCommentId.toLowerCase(),kind:'comment'},
+  {...comment(4),id:uuid(604),kind:'comment'},
+  {...comment(3),id:uuid(603),kind:'comment'}
+ ],tombstones);
+ const merged=api.mergeDiscussionFeedItems(afterDelete,stalePage);
+ assert.deepEqual(Array.from(merged,item=>item.kind+':'+item.id),[
+  'message:'+uuid(101),
+  'comment:'+uuid(603),
+  'comment:'+uuid(604)
+ ]);
+});
+
+test('ChannelsPanel removes a deleted comment immediately and filters both discussion page paths',()=>{
+ const component=read('components/ChannelsPanel.tsx');
+ const initialStart=component.indexOf('const loadDiscussion=');
+ const olderStart=component.indexOf('const loadOlderDiscussion=');
+ const layoutStart=component.indexOf('useLayoutEffect(()=>{',olderStart);
+ const initial=component.slice(initialStart,olderStart);
+ const older=component.slice(olderStart,layoutStart);
+ const eraseStart=component.indexOf('async function eraseComment(');
+ const eraseEnd=component.indexOf('\\n return <section',eraseStart);
+ const erase=component.slice(eraseStart,eraseEnd);
+ assert.ok(initial.includes('removeDiscussionComments(removeDiscussionPostComments(page.items,deletedDiscussionPostsRef.current),deletedDiscussionCommentsRef.current)'));
+ assert.ok(older.includes('removeDiscussionComments(removeDiscussionPostComments(page.items,deletedDiscussionPostsRef.current),deletedDiscussionCommentsRef.current)'));
+ assert.ok(erase.includes('deletedDiscussionCommentsRef.current.add(deletedId)'));
+ assert.ok(erase.includes('setDiscussionItems(current=>removeDiscussionComments(current,deletedDiscussionCommentsRef.current))'));
+ assert.ok(!erase.includes('loadDiscussion('));
+ assert.ok(erase.includes('if(!isCurrent())return'));
+});
