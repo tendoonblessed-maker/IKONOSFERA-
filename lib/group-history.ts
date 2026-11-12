@@ -1,3 +1,4 @@
+import {compareGroupMessages} from './group-pagination';
 import type {GroupMessage} from './groups';
 
 export const CONFIRMED_GROUP_MESSAGE_GRACE_MS=60_000;
@@ -30,7 +31,7 @@ export function mergeConfirmedGroupMessages(
   }
  }
  for(const message of latest)byId.set(message.id,message);
- return Array.from(byId.values()).sort((a,b)=>
-  Date.parse(a.created_at)-Date.parse(b.created_at)||a.id.localeCompare(b.id)
- );
+ // Match the exact PostgreSQL timestamp + UUID ordering used by history paging.
+ // Date.parse alone truncates fractional seconds to milliseconds.
+ return Array.from(byId.values()).sort(compareGroupMessages);
 }
