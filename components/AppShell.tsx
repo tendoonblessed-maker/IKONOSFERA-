@@ -10,7 +10,7 @@ import {clearAllGroupSendAttempts} from "@/lib/group-send-attempts";
 import ChatMedia from "@/components/ChatMedia";
 import ChatMessageText from "@/components/ChatMessageText";
 import {subscribeDirectChatChanges} from "@/lib/direct-realtime";
-import {isDirectChatAtLatest,shouldAcknowledgeDirectChatRead} from '@/lib/chat-read-position';
+import {isDirectChatAtLatest,isDirectChatReadSnapshotCurrent,shouldAcknowledgeDirectChatRead} from '@/lib/chat-read-position';
 import {subscribeInboxChanges,type InboxChangeKind} from "@/lib/inbox-realtime";
 import {isLatestAccountSnapshot} from "@/lib/inbox-snapshot";
 import {shouldOpenDirectChatSearch} from "@/lib/chat-shortcuts";
@@ -86,7 +86,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
   const [channelSlug,setChannelSlug]=useState("");
   const [channelDescription,setChannelDescription]=useState("");
   const [chatMessages,setChatMessages]=useState<ChatMessage[]>([]);
-  const [pendingDirectRead,setPendingDirectRead]=useState<{chatId:string;userId:string;token:string;messageIds:string[]}|null>(null);
+  const [pendingDirectRead,setPendingDirectRead]=useState<{chatId:string;userId:string;token:string;messageIds:string[];revision:number}|null>(null);
   const [chatLoad,setChatLoad]=useState<{id:string;status:'loading'|'ready'|'error'}|null>(null);
   const [chatReloadNonce,setChatReloadNonce]=useState(0);
   const [hasOlderMessages,setHasOlderMessages]=useState(false);
@@ -155,6 +155,8 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
   const replyJumpRequestRef=useRef(0);
   const chatContextGenerationRef=useRef(0);
   const messageSearchRequestRef=useRef(0);
+  // Any newer inbox read or Realtime wake-up invalidates a staged broad read RPC.
+  const directChatReadRevisionRef=useRef(0);
   const composerRef=useRef<HTMLTextAreaElement|null>(null);
   const confirmedMessagesRef=useRef<Map<string,ConfirmedMessage>>(new Map());
   const attachmentDragDepthRef=useRef(0);
@@ -533,6 +535,9 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
     setMessageMenuId(null);
     const sync=async(first=false)=>{
       if(cancelled||document.visibilityState==='hidden')return;
+      // The read RPC marks the whole chat, so a newer poll must invalidate
+      // this page's receipt before its layout effect can acknowledge it.
+      const readRevision=++directChatReadRevisionRef.current;
       if(inFlight){queuedSync=true;return;}
       // Offline detection avoids pointless 18-second fetch timeouts.
       // The 'online' listener below triggers an immediate retry.
@@ -546,7 +551,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
           .map(message=>message.id);
         // Stage a receipt, but do not advance the server cursor until React has
         // committed this page and the post-layout viewport is still at latest.
-        setPendingDirectRead(unreadMessageIds.length?{chatId,userId,token,messageIds:unreadMessageIds}:null);
+        setPendingDirectRead(unreadMessageIds.length?{chatId,userId,token,messageIds:unreadMessageIds,revision:readRevision}:null);
         setChatMessages(current=>mergeConfirmedRecentPage(
           current,messages,CHAT_MESSAGE_PAGE_SIZE,confirmedMessagesRef.current,chatId,userId
         ));
@@ -575,7 +580,10 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
     // Debounce bursts of read receipts and inserts. The returned rows always
     // pass ordinary RLS and message filtering, even on a Realtime signal.
     const onRealtimeChange=()=>{
-      if(cancelled||document.visibilityState==='hidden'||!navigator.onLine)return;
+      if(cancelled)return;
+      // Invalidate a staged receipt immediately, before the debounced refresh.
+      directChatReadRevisionRef.current++;
+      if(document.visibilityState==='hidden'||!navigator.onLine)return;
       if(realtimeTimer!==null)window.clearTimeout(realtimeTimer);
       realtimeTimer=window.setTimeout(()=>{
         realtimeTimer=null;
@@ -752,6 +760,12 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
     const pending=pendingDirectRead;
     if(!pending)return;
     if(pending.chatId!==selected||pending.userId!==userId||pending.token!==session?.access_token){
+      setPendingDirectRead(null);
+      return;
+    }
+    // A newer Realtime hint or overlapping poll means the staged page may
+    // no longer contain every unread message covered by mark_chat_messages_read.
+    if(!isDirectChatReadSnapshotCurrent(pending.revision,directChatReadRevisionRef.current)){
       setPendingDirectRead(null);
       return;
     }
