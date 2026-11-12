@@ -187,7 +187,7 @@ export default function ChannelsPanel({token,userId,channel,onBack,onShowProfile
    &&channelScopeRef.current.token===token
    &&channelScopeRef.current.userId===userId
    &&channelScopeRef.current.channelId===channel.id;
-  setDiscussionLoading(true);setDiscussionError("");setOlderDiscussionError("");
+  setDiscussionLoading(true);setOlderDiscussionLoading(false);setDiscussionError("");setOlderDiscussionError("");
   try{
    const page=await listDiscussionFeedPage(token,channel.id,undefined,controller.signal);
    if(!isCurrent())return false;
