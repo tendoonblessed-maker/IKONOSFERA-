@@ -1,5 +1,6 @@
 'use client';
 
+import {useEffect,useRef} from 'react';
 import type {GroupMessage} from '@/lib/groups';
 import {normalizeGroupSearch} from '@/lib/group-search';
 
@@ -30,11 +31,29 @@ export default function GroupSearchPanel({
  locatingId,ownerId,names
 }:Props){
  const term=normalizeGroupSearch(query);
- return <section className="ik-group-search" aria-label="Поиск по истории группы">
+ const inputRef=useRef<HTMLInputElement|null>(null);
+ const previousFocusRef=useRef<HTMLElement|null>(null);
+ useEffect(()=>{
+  const active=document.activeElement;
+  previousFocusRef.current=active instanceof HTMLElement?active:null;
+  inputRef.current?.focus();
+  return ()=>{
+   const target=previousFocusRef.current;
+   if(target?.isConnected)target.focus();
+   previousFocusRef.current=null;
+  };
+ },[]);
+ return <section className="ik-group-search" aria-label="Поиск по истории группы"
+  onKeyDown={event=>{
+   if(event.key==='Escape'){
+    event.preventDefault();
+    onClose();
+   }
+  }}>
   <div className="ik-group-search-bar">
    <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor"
     strokeWidth="1.8" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 5 5"/></svg>
-   <input autoFocus type="search" aria-label="Найти сообщение в группе"
+   <input ref={inputRef} type="search" aria-label="Найти сообщение в группе"
     placeholder="Поиск по всей истории группы…" maxLength={120}
     value={query} onChange={e=>onQueryChange(e.target.value)}/>
    <button type="button" className="ik-group-search-close" aria-label="Закрыть поиск"
