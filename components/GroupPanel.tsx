@@ -169,6 +169,12 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
       })
       .map(element=>element.dataset.groupMessageId??'')
       .filter(Boolean)
+      // A just-confirmed send may briefly outlive a lagging read replica.
+      // Never remove its local confirmation during the grace window.
+      .filter(id=>{
+        const confirmation=confirmedGroupMessagesRef.current.get(id.toLowerCase());
+        return !confirmation||confirmation.expiresAt<=Date.now();
+      })
       .slice(0,GROUP_MESSAGE_EXISTENCE_BATCH_SIZE);
     if(!visibleIds.length)return;
     historyReconcileInFlight=true;

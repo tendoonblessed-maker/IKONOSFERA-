@@ -256,6 +256,8 @@ test('GroupPanel checks only visible message IDs with bounded RLS reads and abor
  assert.match(panel,/removeMissingGroupMessages\(current,requestGroup,visibleIds,existingIds\)/);
  assert.match(panel,/history\.querySelectorAll<HTMLElement>\('\[data-group-message-id\]'\)/);
  assert.match(panel,/slice\(0,GROUP_MESSAGE_EXISTENCE_BATCH_SIZE\)/);
+ assert.match(panel,/const confirmation=confirmedGroupMessagesRef\.current\.get\(id\.toLowerCase\(\)\)/);
+ assert.match(panel,/!confirmation\|\|confirmation\.expiresAt<=Date\.now\(\)/);
  assert.match(panel,/Date\.now\(\)-historyReconcileLastAt<30000/);
  assert.match(panel,/historyReconcileController\?\.abort\(\)/);
  assert.doesNotMatch(realtime,/event:'DELETE'/);
