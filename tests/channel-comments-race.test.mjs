@@ -62,7 +62,8 @@ test('unified discussion feed reads are channel-scoped, abortable and reject sta
  assert.match(panel,/if\(!isCurrent\(\)\)return false;[\s\S]*?setDiscussionItems\(removeDiscussionComments\(removeDiscussionPostComments\(page\.items,deletedDiscussionPostsRef\.current\),deletedDiscussionCommentsRef\.current\)\);setDiscussionCursor\(page\.cursor\);setHasOlderDiscussion\(page\.hasMore\)/);
  assert.match(panel,/if\(isCurrent\(\)\)setDiscussionError\(readable\(e\)\)/);
  assert.match(panel,/listDiscussionFeedPage\(token,channel\.id,discussionCursor,controller\.signal\)/);
- assert.match(panel,/setDiscussionItems\(current=>mergeDiscussionFeedItems\(current,page\.items\)\)/);
+ assert.match(panel,/const visibleItems=removeDiscussionComments\(removeDiscussionPostComments\(page\.items,deletedDiscussionPostsRef\.current\),deletedDiscussionCommentsRef\.current\)/);
+ assert.match(panel,/setDiscussionItems\(current=>mergeDiscussionFeedItems\(current,visibleItems\)\)/);
 });
 
 test('switching channel context clears the previous feed and discussion snapshots before paint',()=>{
