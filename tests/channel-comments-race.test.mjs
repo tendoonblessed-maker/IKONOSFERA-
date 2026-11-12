@@ -59,7 +59,7 @@ test('unified discussion feed reads are channel-scoped, abortable and reject sta
  assert.match(panel,/channelScopeRef\.current\.userId===userId/);
  assert.match(panel,/channelScopeRef\.current\.channelId===channel\.id/);
  assert.match(panel,/listDiscussionFeedPage\(token,channel\.id,undefined,controller\.signal\)/);
- assert.match(panel,/if\(!isCurrent\(\)\)return false;[\s\S]*?setDiscussionItems\(page\.items\);setDiscussionCursor\(page\.cursor\);setHasOlderDiscussion\(page\.hasMore\)/);
+ assert.match(panel,/if\(!isCurrent\(\)\)return false;[\s\S]*?setDiscussionItems\(removeDiscussionComments\(removeDiscussionPostComments\(page\.items,deletedDiscussionPostsRef\.current\),deletedDiscussionCommentsRef\.current\)\);setDiscussionCursor\(page\.cursor\);setHasOlderDiscussion\(page\.hasMore\)/);
  assert.match(panel,/if\(isCurrent\(\)\)setDiscussionError\(readable\(e\)\)/);
  assert.match(panel,/listDiscussionFeedPage\(token,channel\.id,discussionCursor,controller\.signal\)/);
  assert.match(panel,/setDiscussionItems\(current=>mergeDiscussionFeedItems\(current,page\.items\)\)/);
@@ -73,6 +73,18 @@ test('switching channel context clears the previous feed and discussion snapshot
  assert.match(panel,/postsRequestGuard\.invalidate\(\)/);
  assert.match(panel,/commentsPostRef\.current=null/);
  assert.match(panel,/olderCommentsLoadingRef\.current=false/);
+ assert.match(panel,/deletedDiscussionPostsRef\.current\.clear\(\);[\s\S]*?deletedDiscussionCommentsRef\.current\.clear\(\)/);
+});
+
+
+
+test('discussion refresh cannot resurrect locally deleted posts or comments',()=>{
+ const panel=read('components/ChannelsPanel.tsx');
+ assert.match(panel,/deletedDiscussionPostsRef\.current\.add\(p\.id\)/);
+ assert.match(panel,/deletedDiscussionCommentsRef\.current\.add\(deletedId\)/);
+ assert.match(panel,/setDiscussionItems\(current=>removeDiscussionPostComments\(current,deletedDiscussionPostsRef\.current\)\)/);
+ assert.match(panel,/setDiscussionItems\(current=>removeDiscussionComments\(current,deletedDiscussionCommentsRef\.current\)\)/);
+ assert.match(panel,/removeDiscussionComments\(removeDiscussionPostComments\(page\.items,deletedDiscussionPostsRef\.current\),deletedDiscussionCommentsRef\.current\)/);
 });
 
 test('ChannelsPanel publishes account and channel scope after commit and invalidates old reads before paint',()=>{
