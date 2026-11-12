@@ -27,3 +27,32 @@ export function reconcileLoadedGroupMessage(
  else next.splice(index,1);
  return next;
 }
+
+
+export type GroupMessageReadRequest={controller:AbortController;timeoutId:number};
+
+/** Abort active per-message reads when a group view pauses, retaining IDs for resume. */
+export function abortGroupMessageReads(
+ requests:Map<string,GroupMessageReadRequest>,
+ pending:Set<string>,
+ clearTimer:(timeoutId:number)=>void=(timeoutId)=>clearTimeout(timeoutId)
+):void{
+ for(const [id,request] of requests){
+  pending.add(id);
+  clearTimer(request.timeoutId);
+  request.controller.abort();
+ }
+}
+
+/** A stale completion must not remove a newer read for the same message ID. */
+export function finishGroupMessageRead(
+ requests:Map<string,GroupMessageReadRequest>,
+ messageId:string,
+ controller:AbortController,
+ clearTimer:(timeoutId:number)=>void=(timeoutId)=>clearTimeout(timeoutId)
+):void{
+ const active=requests.get(messageId);
+ if(!active||active.controller!==controller)return;
+ clearTimer(active.timeoutId);
+ requests.delete(messageId);
+}
