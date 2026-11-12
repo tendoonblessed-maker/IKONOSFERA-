@@ -32,7 +32,8 @@ test('ChannelsPanel checks freshness after comments and profile awaits and ignor
  assert.match(panel,/if\(isCurrent\(\)\)setError\(readable\(e\)\)/);
  assert.match(panel,/channelScopeRef\.current\.token===token/);
  assert.match(panel,/channelScopeRef\.current\.channelId===channel\.id/);
- assert.match(panel,/useEffect\(\(\)=>\(\)=>\s*\{\s*commentsRequestGuard\.invalidate\(\);\s*postsRequestGuard\.invalidate\(\);\s*discussionRequestGuard\.invalidate\(\);\s*\},\[commentsRequestGuard,postsRequestGuard,discussionRequestGuard\]\)/);
+ assert.match(panel,/useEffect\(\(\)=>\(\)=>\s*\{\s*commentsRequestGuard\.invalidate\(\);\s*postsRequestGuard\.invalidate\(\);\s*abortDiscussionRequest\(\);\s*\},\[commentsRequestGuard,postsRequestGuard,abortDiscussionRequest\]\)/);
+ assert.match(panel,/const abortDiscussionRequest=useCallback\(\(\)=>\{[\s\S]*?discussionRequestGuard\.invalidate\(\);/);
 });
 
 
@@ -48,28 +49,40 @@ test('channel post and reaction refreshes cannot commit after a newer request or
  assert.match(panel,/if\(isCurrent\(\)\)throw e/);
 });
 
-test('discussion message and comment loads are scoped and stale failures do not reach the new channel',()=>{
+test('unified discussion feed reads are channel-scoped, abortable and reject stale responses',()=>{
  const panel=read('components/ChannelsPanel.tsx');
  assert.match(panel,/const discussionRequestGuardRef=useRef/);
- assert.match(panel,/const \[messages,replies\]=await Promise\.all\(\[listDiscussionMessages\(token,channel\.id\),listDiscussionComments\(token,channel\.id\)\]\)/);
- assert.match(panel,/if\(!isCurrent\(\)\)return false;\s*setDiscussionMessages\(messages\);setDiscussionComments\(replies\)/);
- assert.match(panel,/if\(isCurrent\(\)\)setError\(readable\(e\)\)/);
- assert.match(panel,/discussionRequestGuard\.invalidate\(\);setDiscussionOpen\(false\)/);
+ assert.match(panel,/const loadDiscussion=useCallback\(async\(\)=>\{/);
+ assert.match(panel,/const controller=new AbortController\(\);\s*discussionAbortRef\.current=controller;/);
+ assert.match(panel,/const requestId=discussionRequestGuard\.begin\(\)/);
+ assert.match(panel,/channelScopeRef\.current\.token===token/);
+ assert.match(panel,/channelScopeRef\.current\.userId===userId/);
+ assert.match(panel,/channelScopeRef\.current\.channelId===channel\.id/);
+ assert.match(panel,/listDiscussionFeedPage\(token,channel\.id,undefined,controller\.signal\)/);
+ assert.match(panel,/if\(!isCurrent\(\)\)return false;[\s\S]*?setDiscussionItems\(page\.items\);setDiscussionCursor\(page\.cursor\);setHasOlderDiscussion\(page\.hasMore\)/);
+ assert.match(panel,/if\(isCurrent\(\)\)setDiscussionError\(readable\(e\)\)/);
+ assert.match(panel,/listDiscussionFeedPage\(token,channel\.id,discussionCursor,controller\.signal\)/);
+ assert.match(panel,/setDiscussionItems\(current=>mergeDiscussionFeedItems\(current,page\.items\)\)/);
 });
 
-test('switching channel context clears the previous feed and discussion snapshots',()=>{
+test('switching channel context clears the previous feed and discussion snapshots before paint',()=>{
  const panel=read('components/ChannelsPanel.tsx');
- assert.match(panel,/setPosts\(\[\]\);setReactions\(\[\]\);setDiscussionMessages\(\[\]\);setDiscussionComments\(\[\]\);setDiscussionOpen\(false\)/);
+ assert.match(panel,/useLayoutEffect\(\(\)=>\{\s*\/\/ Publish only committed identity props/);
+ assert.match(panel,/abortDiscussionRequest\(\);\s*setDiscussionOpen\(false\);\s*setDiscussionItems\(\[\]\);setDiscussionCursor\(null\);setHasOlderDiscussion\(false\)/);
+ assert.match(panel,/setDiscussionLoading\(false\);setOlderDiscussionLoading\(false\);setDiscussionError\(""\);setOlderDiscussionError\(""\)/);
  assert.match(panel,/postsRequestGuard\.invalidate\(\)/);
- assert.match(panel,/discussionRequestGuard\.invalidate\(\)/);
+ assert.match(panel,/commentsPostRef\.current=null/);
+ assert.match(panel,/olderCommentsLoadingRef\.current=false/);
 });
 
 test('ChannelsPanel publishes account and channel scope after commit and invalidates old reads before paint',()=>{
  const panel=read('components/ChannelsPanel.tsx');
  assert.match(panel,/useLayoutEffect/);
- assert.match(panel,/commentsRequestGuard\.invalidate\(\);[\s\S]*?postsRequestGuard\.invalidate\(\);\s*discussionRequestGuard\.invalidate\(\)/);
+ assert.match(panel,/commentsRequestGuard\.invalidate\(\);[\s\S]*?postsRequestGuard\.invalidate\(\);/);
+ assert.match(panel,/abortDiscussionRequest\(\)/);
+ assert.match(panel,/const abortDiscussionRequest=useCallback\(\(\)=>\{[\s\S]*?discussionRequestGuard\.invalidate\(\);/);
  assert.match(panel,/commentsPostRef\.current=null/);
  assert.match(panel,/olderCommentsLoadingRef\.current=false/);
- assert.equal((panel.match(/channelScopeRef\.current\.userId===userId/g)||[]).length,3);
+ assert.ok((panel.match(/channelScopeRef\.current\.userId===userId/g)||[]).length>=3);
  assert.doesNotMatch(panel,/const channelScopeRef=useRef\(\{token,userId,channelId:channel\.id\}\);\s*channelScopeRef\.current=/);
 });
