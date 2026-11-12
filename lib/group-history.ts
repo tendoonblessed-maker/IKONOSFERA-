@@ -1,8 +1,19 @@
-import {compareGroupMessages} from './group-message-order';
 import type {GroupMessage} from './groups';
 
 export const CONFIRMED_GROUP_MESSAGE_GRACE_MS=60_000;
 export type ConfirmedGroupMessage={message:GroupMessage;expiresAt:number};
+
+/** Compare PostgreSQL timestamptz values without losing fractional precision. */
+function subMillisecondFraction(timestamp:string):number{
+ const part=/\.(\d{1,6})/.exec(timestamp)?.[1]??'';
+ return Number(part.padEnd(6,'0'));
+}
+export function compareGroupMessages(a:GroupMessage,b:GroupMessage):number{
+ const milli=Date.parse(a.created_at)-Date.parse(b.created_at);
+ if(milli!==0)return milli;
+ const fraction=subMillisecondFraction(a.created_at)-subMillisecondFraction(b.created_at);
+ return fraction||a.id.localeCompare(b.id);
+}
 
 /**
  * The latest server page wins except for DB-confirmed sends not yet visible
@@ -31,7 +42,6 @@ export function mergeConfirmedGroupMessages(
   }
  }
  for(const message of latest)byId.set(message.id,message);
- // Match the exact PostgreSQL timestamp + UUID ordering used by history paging.
- // Date.parse alone truncates fractional seconds to milliseconds.
+ // Confirmed sends use the same timestamp + UUID order as the history cursor.
  return Array.from(byId.values()).sort(compareGroupMessages);
 }
