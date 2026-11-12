@@ -49,7 +49,7 @@ export default function GroupSearchPanel({
     event.preventDefault();
     onClose();
    }
-  }}> 
+  }}>
   <div className="ik-group-search-bar">
    <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor"
     strokeWidth="1.8" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 5 5"/></svg>
