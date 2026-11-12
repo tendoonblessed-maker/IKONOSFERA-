@@ -12,7 +12,7 @@ import {readGroupDrafts} from '@/lib/group-drafts';
 import {getOrCreateGroupSendAttempt,clearGroupSendAttempt} from '@/lib/group-send-attempts';
 import {subscribeGroupChanges} from '@/lib/group-realtime';
 import {mergeConfirmedGroupMessages,CONFIRMED_GROUP_MESSAGE_GRACE_MS,type ConfirmedGroupMessage} from '@/lib/group-history';
-import {reconcileLoadedGroupMessage} from '@/lib/group-message-reconciliation';
+import {reconcileLoadedGroupMessage,abortGroupMessageReads,finishGroupMessageRead,type GroupMessageReadRequest} from '@/lib/group-message-reconciliation';
 import {shouldAcknowledgeGroupRead,countNewIncomingBelow} from '@/lib/group-read-position';
 import {fetchOlderGroupMessages,prependOlderGroupMessages,preserveOlderGroupMessages,GROUP_HISTORY_MAX_LOADED} from '@/lib/group-pagination';
 type Props={token:string;userId:string;group:Group;onBack:()=>void;onShowProfile:(id:string)=>void;onDraftChange:(groupId:string,text:string)=>void};
@@ -145,15 +145,17 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
   let realtimeTimer:number|null=null;
   setInitialLoading(true);
   const pendingMessageUpdates=new Set<string>();
-  const inFlightMessageUpdates=new Set<string>();
+  const messageUpdateRequests=new Map<string,GroupMessageReadRequest>();
   const reconcileMessageUpdate=(messageId:string)=>{
     const id=messageId.toLowerCase();
     if(cancelled)return;
     if(document.visibilityState==='hidden'||!navigator.onLine){pendingMessageUpdates.add(id);return;}
-    if(inFlightMessageUpdates.has(id)){pendingMessageUpdates.add(id);return;}
-    inFlightMessageUpdates.add(id);
+    if(messageUpdateRequests.has(id)){pendingMessageUpdates.add(id);return;}
     const requestGroup=group.id,requestOwner=userId,requestToken=token;
-    void getGroupMessageById(requestToken,requestGroup,id).then(updated=>{
+    const controller=new AbortController();
+    const timeoutId=window.setTimeout(()=>controller.abort(),18000);
+    messageUpdateRequests.set(id,{controller,timeoutId});
+    void getGroupMessageById(requestToken,requestGroup,id,controller.signal).then(updated=>{
       if(cancelled||contextRef.current.groupId!==requestGroup
          ||contextRef.current.userId!==requestOwner
          ||contextRef.current.token!==requestToken)return;
@@ -165,11 +167,11 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
       }
       setMessages(current=>reconcileLoadedGroupMessage(current,requestGroup,id,updated));
     }).catch(()=>{
-      // Keep the last known row on transient failures; the next visible sync retries.
+      // Paused/failed reads remain queued for the next visible sync.
       if(!cancelled&&contextRef.current.groupId===requestGroup
          &&contextRef.current.userId===requestOwner
          &&contextRef.current.token===requestToken)pendingMessageUpdates.add(id);
-    }).finally(()=>inFlightMessageUpdates.delete(id));
+    }).finally(()=>finishGroupMessageRead(messageUpdateRequests,id,controller));
   };
   const flushPendingMessageUpdates=()=>{
     if(cancelled||document.visibilityState==='hidden'||!navigator.onLine)return;
@@ -179,7 +181,11 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
     }
   };
   const sync=()=>{
-    if(cancelled||document.visibilityState==='hidden'||!navigator.onLine)return;
+    if(cancelled)return;
+    if(document.visibilityState==='hidden'||!navigator.onLine){
+      abortGroupMessageReads(messageUpdateRequests,pendingMessageUpdates);
+      return;
+    }
     // Also reconcile updates received while the mobile app was backgrounded.
     flushPendingMessageUpdates();
     if(browsingOlderRef.current)return;
@@ -212,18 +218,26 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
   // Polling is a fallback and heals any missed WebSocket notifications.
   const timer=window.setInterval(sync,6000);
   const onOnline=()=>sync();
-  document.addEventListener('visibilitychange',sync);
+  const onOffline=()=>abortGroupMessageReads(messageUpdateRequests,pendingMessageUpdates);
+  const onVisibilityChange=()=>{
+    if(document.visibilityState==='hidden')abortGroupMessageReads(messageUpdateRequests,pendingMessageUpdates);
+    else sync();
+  };
+  document.addEventListener('visibilitychange',onVisibilityChange);
   window.addEventListener('online',onOnline);
+  window.addEventListener('offline',onOffline);
   return()=>{
     cancelled=true;
+    abortGroupMessageReads(messageUpdateRequests,pendingMessageUpdates);
     pendingMessageUpdates.clear();
-    inFlightMessageUpdates.clear();
+    messageUpdateRequests.clear();
     requestSequenceRef.current++;
     window.clearInterval(timer);
     if(realtimeTimer!==null)window.clearTimeout(realtimeTimer);
     unsubscribeRealtime();
-    document.removeEventListener('visibilitychange',sync);
+    document.removeEventListener('visibilitychange',onVisibilityChange);
     window.removeEventListener('online',onOnline);
+    window.removeEventListener('offline',onOffline);
   };
  },[refresh,token,group.id]);
  // Search runs against the full group history via the existing RLS-filtered
