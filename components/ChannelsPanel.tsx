@@ -313,7 +313,7 @@ export default function ChannelsPanel({token,userId,channel,onBack,onShowProfile
   }catch(e){if(isCurrent())setError(readable(e));}
   finally{if(isCurrent())setBusy(false);}
  }
- useEffect(()=>{void reload().catch(e=>setError(readable(e)));commentsPostRef.current=null;olderCommentsLoadingRef.current=false;setOpenComments(null);setComments([]);setCommentsLoading(false);setHasOlderComments(false);setOlderCommentsLoading(false);setOlderCommentsError("");setBody("");setFile(null);setPosts([]);setReactions([]);setDiscussionMessages([]);setDiscussionComments([]);setDiscussionOpen(false);setHasOlderPosts(false);setOlderPostsError("");setOlderPostsLoading(false);olderPostsLoadingRef.current=false;setBusy(false);},[reload]);
+ useEffect(()=>{void reload().catch(e=>setError(readable(e)));commentsPostRef.current=null;olderCommentsLoadingRef.current=false;setOpenComments(null);setComments([]);setCommentsLoading(false);setHasOlderComments(false);setOlderCommentsLoading(false);setOlderCommentsError("");setBody("");setFile(null);setPosts([]);setReactions([]);abortDiscussionRequest();setDiscussionItems([]);setDiscussionCursor(null);setHasOlderDiscussion(false);setDiscussionLoading(false);setOlderDiscussionLoading(false);setDiscussionError("");setOlderDiscussionError("");discussionScrollAnchorRef.current=null;discussionInitialScrollRef.current=false;setDiscussionOpen(false);setHasOlderPosts(false);setOlderPostsError("");setOlderPostsLoading(false);olderPostsLoadingRef.current=false;setBusy(false);},[reload,abortDiscussionRequest]);
  async function showComments(postId:string){
   const requestId=commentsRequestGuard.begin();
   const isCurrent=()=>commentsRequestGuard.isCurrent(requestId)
