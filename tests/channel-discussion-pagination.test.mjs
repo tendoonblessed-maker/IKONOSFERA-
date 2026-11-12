@@ -154,6 +154,9 @@ test('ChannelsPanel exposes bounded history, retry and scroll preservation',()=>
  assert.match(component,/discussionAbortRef\.current\?\.abort\(\)/);
  assert.doesNotMatch(component,/listDiscussionMessages\(token,channel\.id\)/);
  assert.doesNotMatch(component,/listDiscussionComments\(token,channel\.id\)/);
+ assert.match(component,/abortDiscussionRequest\(\);setDiscussionItems\(\[\]\);setDiscussionCursor\(null\)/);
+ assert.match(component,/setDiscussionError\(\"\"\);setOlderDiscussionError\(\"\"\)/);
+ assert.doesNotMatch(component,/setDiscussionMessages|setDiscussionComments/);
 });
 
 
