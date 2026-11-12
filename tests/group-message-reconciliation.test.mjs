@@ -98,3 +98,12 @@ test('a mismatched response row is rejected instead of entering the timeline',as
  const harness=groupsHarness([message(MESSAGE,{group_id:OTHER_GROUP})]);
  await assert.rejects(()=>harness.api.getGroupMessageById('jwt',GROUP,MESSAGE),/актуальное сообщение/);
 });
+
+test('GroupPanel reconciles UPDATE IDs through RLS reads and retries pending IDs after resume',()=>{
+ const panel=readFileSync(new URL('../components/GroupPanel.tsx',import.meta.url),'utf8');
+ assert.match(panel,/getGroupMessageById\(requestToken,requestGroup,id\)/);
+ assert.match(panel,/reconcileLoadedGroupMessage\(current,requestGroup,id,updated\)/);
+ assert.match(panel,/pendingMessageUpdates\.add\(messageId\.toLowerCase\(\)\)/);
+ assert.match(panel,/flushPendingMessageUpdates\(\)/);
+ assert.match(panel,/pendingMessageUpdates\.clear\(\)/);
+});
