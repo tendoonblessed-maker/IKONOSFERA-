@@ -12,7 +12,7 @@ import ChatMessageText from "@/components/ChatMessageText";
 import {subscribeDirectChatChanges} from "@/lib/direct-realtime";
 import {startVisiblePolling} from "@/lib/visible-polling";
 import {createAbortableRequestScope} from "@/lib/request-abort-scope";
-import {bumpReplyTargetVersion,snapshotReplyTargetVersions,isReplyTargetVersionCurrent,filterReplyTargetsForCurrentVersion,isReplyTargetOwnerCurrent,type ReplyTargetOwner} from "@/lib/reply-target-cache";
+import {bumpReplyTargetVersion,snapshotReplyTargetVersions,isReplyTargetVersionCurrent,filterReplyTargetsForCurrentVersion,isReplyTargetOwnerCurrent,mapWithConcurrency,type ReplyTargetOwner} from "@/lib/reply-target-cache";
 import {createSingleFlightRefreshGate} from "@/lib/single-flight-refresh";
 import {subscribeInboxChanges,type InboxChangeKind} from "@/lib/inbox-realtime";
 import {isLatestAccountSnapshot} from "@/lib/inbox-snapshot";
@@ -319,10 +319,15 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
     const stillInChat=()=>isReplyTargetOwnerCurrent(requestOwner,replyTargetOwnerRef.current)
       &&selectedRef.current===chatId&&chatContextGenerationRef.current===generation
       &&replyTargetsGenerationRef.current===requestGeneration;
-    const requests=batches.map(async ids=>{
+    // Keep each PostgREST URL bounded and cap simultaneous quote reads at three.
+    // A failed batch aborts its siblings; pause/cleanup still aborts every active scope.
+    const activeScopes=new Set<ReturnType<typeof createAbortableRequestScope>>();
+    const requests=mapWithConcurrency(batches,3,async ids=>{
+      if(!stillInChat())return {ids,targets:[]};
       const batchVersions=snapshotReplyTargetVersions(ids,requestVersions);
       const scope=createAbortableRequestScope();
       const controller=scope.begin();
+      activeScopes.add(scope);
       replyTargetAbortScopesRef.current.add(scope);
       try{
         const targets=await listReplyTargets(session.access_token,chatId,ids,controller.signal);
@@ -332,10 +337,14 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
         };
       }finally{
         scope.clear(controller);
+        activeScopes.delete(scope);
         replyTargetAbortScopesRef.current.delete(scope);
       }
+    },{
+      shouldContinue:stillInChat,
+      onError:()=>{for(const scope of activeScopes)scope.abort();}
     });
-    void Promise.all(requests)
+    void requests
       .then(results=>{
         if(!stillInChat()||document.visibilityState!=='visible'||!navigator.onLine)return;
         const byId:Record<string,ReplyTarget>={};
