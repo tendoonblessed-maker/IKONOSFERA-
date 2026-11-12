@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
 import {readFileSync} from 'node:fs';
-import {isDirectChatAtLatest,shouldAcknowledgeDirectChatRead} from '../lib/chat-read-position.ts';
+import {isDirectChatAtLatest,isDirectChatReadSnapshotCurrent,shouldAcknowledgeDirectChatRead} from '../lib/chat-read-position.ts';
 
 const read=path=>readFileSync(new URL('../'+path,import.meta.url),'utf8');
 
@@ -51,4 +51,25 @@ test('direct chat latest-page scroll is a layout effect that precedes the receip
  const receipt=shell.slice(shell.lastIndexOf('useLayoutEffect(()=>{',receiptIndex),shell.indexOf('  },[pendingDirectRead,chatMessages,selected,userId,session?.access_token]);'));
  assert.match(receipt,/setPendingDirectRead\(null\)/);
  assert.match(receipt,/if\(shouldAcknowledgeDirectChatRead\(/);
+});
+
+test('a staged direct-chat read is valid only while its message snapshot is current',()=>{
+ assert.equal(isDirectChatReadSnapshotCurrent(0,0),true);
+ assert.equal(isDirectChatReadSnapshotCurrent(12,12),true);
+ assert.equal(isDirectChatReadSnapshotCurrent(12,13),false,'a Realtime wake-up invalidates the fetched page');
+ assert.equal(isDirectChatReadSnapshotCurrent(12,14),false,'an overlapping poll invalidates the earlier page');
+ assert.equal(isDirectChatReadSnapshotCurrent(-1,-1),false,'negative revisions are invalid');
+ assert.equal(isDirectChatReadSnapshotCurrent(1.5,1.5),false,'fractional revisions are invalid');
+ assert.equal(isDirectChatReadSnapshotCurrent(Number.NaN,0),false);
+});
+
+test('direct chat read receipts are invalidated immediately by Realtime and overlapping syncs',()=>{
+ const shell=read('components/AppShell.tsx');
+ const sync=shell.slice(shell.indexOf('const sync=async(first=false)'),shell.indexOf('  },[selected,session?.access_token,userId,chatReloadNonce]);'));
+ assert.match(sync,/const readRevision=\+\+directChatReadRevisionRef\.current;/);
+ assert.match(sync,/messageIds:unreadMessageIds,revision:readRevision/);
+ const realtime=shell.slice(shell.indexOf('const onRealtimeChange=()=>{'),shell.indexOf('const unsubscribeRealtime='));
+ assert.ok(realtime.indexOf('directChatReadRevisionRef.current++')<realtime.indexOf("document.visibilityState==='hidden'"),
+  'Realtime invalidates the receipt before visibility/offline early returns');
+ assert.match(shell,/isDirectChatReadSnapshotCurrent\(pending\.revision,directChatReadRevisionRef\.current\)/);
 });
