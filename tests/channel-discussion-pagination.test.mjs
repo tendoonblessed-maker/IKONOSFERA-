@@ -387,7 +387,7 @@ test('ChannelsPanel removes a deleted comment immediately and filters both discu
  const initial=component.slice(initialStart,olderStart);
  const older=component.slice(olderStart,layoutStart);
  const eraseStart=component.indexOf('async function eraseComment(');
- const eraseEnd=component.indexOf('\\n return <section',eraseStart);
+ const eraseEnd=component.indexOf('\n return <section',eraseStart);
  const erase=component.slice(eraseStart,eraseEnd);
  assert.ok(initial.includes('removeDiscussionComments(removeDiscussionPostComments(page.items,deletedDiscussionPostsRef.current),deletedDiscussionCommentsRef.current)'));
  assert.ok(older.includes('removeDiscussionComments(removeDiscussionPostComments(page.items,deletedDiscussionPostsRef.current),deletedDiscussionCommentsRef.current)'));
