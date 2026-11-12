@@ -102,7 +102,7 @@ test('a mismatched response row is rejected instead of entering the timeline',as
 
 test('GroupPanel reconciles UPDATE IDs through RLS reads and retries pending IDs after resume',()=>{
  const panel=readFileSync(new URL('../components/GroupPanel.tsx',import.meta.url),'utf8');
- assert.match(panel,/getGroupMessageById\(requestToken,requestGroup,id\)/);
+ assert.match(panel,/getGroupMessageById\(requestToken,requestGroup,id,controller\.signal\)/);
  assert.match(panel,/reconcileLoadedGroupMessage\(current,requestGroup,id,updated\)/);
  assert.match(panel,/pendingMessageUpdates\.add\(messageId\.toLowerCase\(\)\)/);
  assert.match(panel,/flushPendingMessageUpdates\(\)/);
