@@ -1,6 +1,6 @@
 'use client';
 import {useCallback,useEffect,useLayoutEffect,useRef,useState,type FormEvent} from 'react';
-import {groupMessages,sendGroupMessage,groupMembers,markGroupRead,type Group,type GroupMessage} from '@/lib/groups';
+import {groupMessages,getGroupMessageById,sendGroupMessage,groupMembers,markGroupRead,type Group,type GroupMessage} from '@/lib/groups';
 import {listProfiles,type Profile} from '@/lib/supabase-rest';
 import StatusEmoji from '@/components/StatusEmoji';
 import ChatMessageText from '@/components/ChatMessageText';
@@ -12,6 +12,7 @@ import {readGroupDrafts} from '@/lib/group-drafts';
 import {getOrCreateGroupSendAttempt,clearGroupSendAttempt} from '@/lib/group-send-attempts';
 import {subscribeGroupChanges} from '@/lib/group-realtime';
 import {mergeConfirmedGroupMessages,CONFIRMED_GROUP_MESSAGE_GRACE_MS,type ConfirmedGroupMessage} from '@/lib/group-history';
+import {reconcileLoadedGroupMessage,abortGroupMessageReads,finishGroupMessageRead,type GroupMessageReadRequest} from '@/lib/group-message-reconciliation';
 import {shouldAcknowledgeGroupRead,countNewIncomingBelow} from '@/lib/group-read-position';
 import {fetchOlderGroupMessages,prependOlderGroupMessages,preserveOlderGroupMessages,GROUP_HISTORY_MAX_LOADED} from '@/lib/group-pagination';
 type Props={token:string;userId:string;group:Group;onBack:()=>void;onShowProfile:(id:string)=>void;onDraftChange:(groupId:string,text:string)=>void};
@@ -143,8 +144,59 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
   let queuedSync=false;
   let realtimeTimer:number|null=null;
   setInitialLoading(true);
+  const pendingMessageUpdates=new Set<string>();
+  const messageUpdateRequests=new Map<string,GroupMessageReadRequest>();
+  const reconcileMessageUpdate=(messageId:string)=>{
+    const id=messageId.toLowerCase();
+    if(cancelled)return;
+    if(document.visibilityState==='hidden'||!navigator.onLine){pendingMessageUpdates.add(id);return;}
+    if(messageUpdateRequests.has(id)){pendingMessageUpdates.add(id);return;}
+    const requestGroup=group.id,requestOwner=userId,requestToken=token;
+    const controller=new AbortController();
+    const timeoutId=window.setTimeout(()=>controller.abort(),18000);
+    messageUpdateRequests.set(id,{controller,timeoutId});
+    let completedSuccessfully=false;
+    void getGroupMessageById(requestToken,requestGroup,id,controller.signal).then(updated=>{
+      if(cancelled||contextRef.current.groupId!==requestGroup
+         ||contextRef.current.userId!==requestOwner
+         ||contextRef.current.token!==requestToken)return;
+      const confirmation=confirmedGroupMessagesRef.current.get(id);
+      if(updated&&confirmation){
+        confirmedGroupMessagesRef.current.set(id,{...confirmation,message:updated});
+      }else if(!updated){
+        confirmedGroupMessagesRef.current.delete(id);
+      }
+      setMessages(current=>reconcileLoadedGroupMessage(current,requestGroup,id,updated));
+      completedSuccessfully=true;
+    }).catch(()=>{
+      // Paused/failed reads remain queued for the next visible sync.
+      if(!cancelled&&contextRef.current.groupId===requestGroup
+         &&contextRef.current.userId===requestOwner
+         &&contextRef.current.token===requestToken)pendingMessageUpdates.add(id);
+    }).finally(()=>{
+      const finished=finishGroupMessageRead(messageUpdateRequests,id,controller);
+      // If another UPDATE arrived during this GET, immediately read the
+      // canonical row again. Failed reads stay queued for the next sync,
+      // avoiding a tight retry loop on an unavailable network.
+      if(finished&&completedSuccessfully&&pendingMessageUpdates.has(id))flushPendingMessageUpdates();
+    });
+  };
+  const flushPendingMessageUpdates=()=>{
+    if(cancelled||document.visibilityState==='hidden'||!navigator.onLine)return;
+    for(const id of Array.from(pendingMessageUpdates)){
+      pendingMessageUpdates.delete(id);
+      reconcileMessageUpdate(id);
+    }
+  };
   const sync=()=>{
-    if(cancelled||document.visibilityState==='hidden'||!navigator.onLine||browsingOlderRef.current)return;
+    if(cancelled)return;
+    if(document.visibilityState==='hidden'||!navigator.onLine){
+      abortGroupMessageReads(messageUpdateRequests,pendingMessageUpdates);
+      return;
+    }
+    // Also reconcile updates received while the mobile app was backgrounded.
+    flushPendingMessageUpdates();
+    if(browsingOlderRef.current)return;
     if(inFlight){queuedSync=true;return;}
     inFlight=true;
     void refresh().then(()=>{if(!cancelled)setError('');}).catch(e=>{
@@ -156,8 +208,14 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
     });
   };
   sync();
-  const onRealtimeChanged=()=>{
-    if(cancelled||document.visibilityState==='hidden'||!navigator.onLine)return;
+  const onRealtimeChanged=(messageId?:string)=>{
+    if(cancelled)return;
+    if(messageId){
+      pendingMessageUpdates.add(messageId.toLowerCase());
+      flushPendingMessageUpdates();
+      return;
+    }
+    if(document.visibilityState==='hidden'||!navigator.onLine)return;
     if(realtimeTimer!==null)window.clearTimeout(realtimeTimer);
     realtimeTimer=window.setTimeout(()=>{
       realtimeTimer=null;
@@ -168,16 +226,26 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
   // Polling is a fallback and heals any missed WebSocket notifications.
   const timer=window.setInterval(sync,6000);
   const onOnline=()=>sync();
-  document.addEventListener('visibilitychange',sync);
+  const onOffline=()=>abortGroupMessageReads(messageUpdateRequests,pendingMessageUpdates);
+  const onVisibilityChange=()=>{
+    if(document.visibilityState==='hidden')abortGroupMessageReads(messageUpdateRequests,pendingMessageUpdates);
+    else sync();
+  };
+  document.addEventListener('visibilitychange',onVisibilityChange);
   window.addEventListener('online',onOnline);
+  window.addEventListener('offline',onOffline);
   return()=>{
     cancelled=true;
+    abortGroupMessageReads(messageUpdateRequests,pendingMessageUpdates);
+    pendingMessageUpdates.clear();
+    messageUpdateRequests.clear();
     requestSequenceRef.current++;
     window.clearInterval(timer);
     if(realtimeTimer!==null)window.clearTimeout(realtimeTimer);
     unsubscribeRealtime();
-    document.removeEventListener('visibilitychange',sync);
+    document.removeEventListener('visibilitychange',onVisibilityChange);
     window.removeEventListener('online',onOnline);
+    window.removeEventListener('offline',onOffline);
   };
  },[refresh,token,group.id]);
  // Search runs against the full group history via the existing RLS-filtered
