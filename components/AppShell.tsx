@@ -10,6 +10,7 @@ import {clearAllGroupSendAttempts} from "@/lib/group-send-attempts";
 import ChatMedia from "@/components/ChatMedia";
 import ChatMessageText from "@/components/ChatMessageText";
 import {subscribeDirectChatChanges} from "@/lib/direct-realtime";
+import {shouldAcknowledgeDirectChatRead} from '@/lib/chat-read-position';
 import {subscribeInboxChanges,type InboxChangeKind} from "@/lib/inbox-realtime";
 import {isLatestAccountSnapshot} from "@/lib/inbox-snapshot";
 import {shouldOpenDirectChatSearch} from "@/lib/chat-shortcuts";
@@ -551,7 +552,11 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
             return [...current.filter(reaction=>!recentIds.has(reaction.message_id)),...reactions];
           });})
           .catch(()=>{});
-        if(messages.some(message=>message.sender_id!==userId&&!message.read_at)){
+        if(shouldAcknowledgeDirectChatRead(
+          messages.some(message=>message.sender_id!==userId&&!message.read_at),
+          chatAutoScrollRef.current,
+          document.visibilityState==='visible'
+        )){
           void markChatRead(token,chatId).catch(()=>{});
         }
       }catch(e){
