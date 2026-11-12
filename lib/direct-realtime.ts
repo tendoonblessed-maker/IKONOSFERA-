@@ -17,7 +17,7 @@ const UUID=/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
 export function subscribeDirectChatChanges(
  token:string,
  chatId:string,
- onChanged:()=>void
+ onChanged:(messageId?:string)=>void
 ):()=>void{
  if(!backendReady||!key||!token||!UUID.test(chatId)||typeof window==='undefined')return()=>{};
 
@@ -26,7 +26,10 @@ export function subscribeDirectChatChanges(
  });
  let stopped=false;
  const channel=client.channel('direct-db:'+chatId);
- const changed=()=>{if(!stopped)onChanged();};
+ const changed=(messageId?:unknown)=>{
+  const id=typeof messageId==='string'&&UUID.test(messageId)?messageId:undefined;
+  if(!stopped)onChanged(id);
+ };
  const scope={schema:'public' as const,table:'messages',filter:'chat_id=eq.'+chatId};
 
  // Must authorize the socket with the existing login JWT. The SDK does not
@@ -34,8 +37,8 @@ export function subscribeDirectChatChanges(
  void client.realtime.setAuth(token).then(()=>{
   if(stopped)return;
   channel
-   .on('postgres_changes',{...scope,event:'INSERT'},changed)
-   .on('postgres_changes',{...scope,event:'UPDATE'},changed)
+   .on('postgres_changes',{...scope,event:'INSERT'},()=>changed())
+   .on('postgres_changes',{...scope,event:'UPDATE'},payload=>changed(payload.new?.id))
    .subscribe(status=>{
     if(status==='SUBSCRIBED')changed(); // close join/read race and resubscribe gaps
    });
