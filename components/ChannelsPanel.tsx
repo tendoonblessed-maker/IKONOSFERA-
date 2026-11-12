@@ -4,7 +4,7 @@ import { listProfiles, type Profile } from "@/lib/supabase-rest";
 import { createRequestEpoch } from "@/lib/request-epoch";
 import { appendOlderChannelPosts } from "@/lib/channel-post-pagination";
 import { prependOlderChannelComments } from "@/lib/channel-comment-pagination";
-import {listDiscussionFeedPage,mergeDiscussionFeedItems,removeDiscussionPostComments,type DiscussionFeedCursor,type DiscussionFeedItem} from "@/lib/channel-discussion-pagination";
+import {listDiscussionFeedPage,mergeDiscussionFeedItems,removeDiscussionPostComments,removeDiscussionComments,type DiscussionFeedCursor,type DiscussionFeedItem} from "@/lib/channel-discussion-pagination";
 import StatusEmoji from "@/components/StatusEmoji";
 import {
  addPostComment, deletePost, editChannelPost, manageChannelComment, imageUrl, listChannelPosts, listChannelPostsPage, listPostComments, listPostCommentsPage, listPostReactions, setPostReaction, REACTION_EMOJIS, publishPost,
@@ -40,6 +40,7 @@ export default function ChannelsPanel({token,userId,channel,onBack,onShowProfile
  const discussionOlderLoadingRef=useRef(false);
  const discussionScrollAnchorRef=useRef<{scrollTop:number;scrollHeight:number}|null>(null);
  const deletedDiscussionPostsRef=useRef<Set<string>>(new Set());
+ const deletedDiscussionCommentsRef=useRef<Set<string>>(new Set());
  const discussionInitialScrollRef=useRef(false);
  const [discussionDraft,setDiscussionDraft]=useState("");
   const [posts,setPosts]=useState<ChannelPost[]>([]);
@@ -98,6 +99,7 @@ export default function ChannelsPanel({token,userId,channel,onBack,onShowProfile
   // invalidate requests that still belong to the visible channel.
   channelScopeRef.current={token,userId,channelId:channel.id};
   deletedDiscussionPostsRef.current.clear();
+  deletedDiscussionCommentsRef.current.clear();
   abortDiscussionRequest();
   setDiscussionOpen(false);
   setDiscussionItems([]);setDiscussionCursor(null);setHasOlderDiscussion(false);
@@ -195,7 +197,7 @@ export default function ChannelsPanel({token,userId,channel,onBack,onShowProfile
    if(!isCurrent())return false;
    discussionScrollAnchorRef.current=null;
    discussionInitialScrollRef.current=page.items.length>0;
-   setDiscussionItems(removeDiscussionPostComments(page.items,deletedDiscussionPostsRef.current));setDiscussionCursor(page.cursor);setHasOlderDiscussion(page.hasMore);
+   setDiscussionItems(removeDiscussionComments(removeDiscussionPostComments(page.items,deletedDiscussionPostsRef.current),deletedDiscussionCommentsRef.current));setDiscussionCursor(page.cursor);setHasOlderDiscussion(page.hasMore);
    return true;
   }catch(e){
    if(isCurrent())setDiscussionError(readable(e));
@@ -222,7 +224,7 @@ export default function ChannelsPanel({token,userId,channel,onBack,onShowProfile
   try{
    const page=await listDiscussionFeedPage(token,channel.id,discussionCursor,controller.signal);
    if(!isCurrent())return;
-   const visibleItems=removeDiscussionPostComments(page.items,deletedDiscussionPostsRef.current);
+   const visibleItems=removeDiscussionComments(removeDiscussionPostComments(page.items,deletedDiscussionPostsRef.current),deletedDiscussionCommentsRef.current);
    if(visibleItems.length&&anchor)discussionScrollAnchorRef.current=anchor;
    setDiscussionItems(current=>mergeDiscussionFeedItems(current,visibleItems));
    setDiscussionCursor(page.cursor);setHasOlderDiscussion(page.hasMore);
@@ -458,9 +460,22 @@ export default function ChannelsPanel({token,userId,channel,onBack,onShowProfile
  }
  async function eraseComment(c:PostComment){
   if((c.author_id!==userId&&!mine)||busy||olderCommentsLoadingRef.current)return;
+  const isCurrent=()=>channelScopeRef.current.token===token
+   &&channelScopeRef.current.userId===userId
+   &&channelScopeRef.current.channelId===channel.id;
   setBusy(true);
-  try{await manageChannelComment(token,c.id,"delete");setComments(old=>old.filter(x=>x.id!==c.id));if(currentChannel.discussion_enabled)await loadDiscussion();}
-  catch(e){setError(readable(e));}finally{setBusy(false);}
+  try{
+   await manageChannelComment(token,c.id,"delete");
+   if(!isCurrent())return;
+   const deletedId=c.id.toLowerCase();
+   deletedDiscussionCommentsRef.current.add(deletedId);
+   setComments(old=>old.filter(x=>x.id.toLowerCase()!==deletedId));
+   // Keep the current page and scroll position; tombstones also filter any older
+   // page that was already in flight when the delete was acknowledged.
+   setDiscussionItems(current=>removeDiscussionComments(current,deletedDiscussionCommentsRef.current));
+   setNotice("Комментарий удалён.");
+  }catch(e){if(isCurrent())setError(readable(e));}
+  finally{setBusy(false);}
  }
  return <section className="channel-view">
   <header className="channel-topbar"><button type="button" className="profile-back" onClick={onBack} aria-label="Назад">‹ <span>Назад</span></button>
