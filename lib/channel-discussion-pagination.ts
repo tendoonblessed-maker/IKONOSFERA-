@@ -1,4 +1,5 @@
-import {apiUrl,anonKey} from '@/lib/supabase-rest';
+import {apiUrl} from '@/lib/supabase-rest';
+const publicKey=process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY??'';
 
 export const CHANNEL_DISCUSSION_PAGE_SIZE=50;
 const UUID=/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
@@ -92,7 +93,7 @@ export function mergeDiscussionFeedItems(
 async function requestRows<T>(path:string,token:string,signal:AbortSignal):Promise<T[]>{
  const response=await fetch(apiUrl+path,{
   method:'GET',
-  headers:{apikey:anonKey,Authorization:'Bearer '+token},
+  headers:{apikey:publicKey,Authorization:'Bearer '+token},
   cache:'no-store',
   signal
  });
