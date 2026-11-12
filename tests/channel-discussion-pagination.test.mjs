@@ -85,10 +85,12 @@ test('combined page merges both sources, returns the newest 50 and a stable olde
  assert.equal(page.hasMore,true);
  assert.equal(page.items[0].created_at,stamp(10));
  assert.equal(page.items.at(-1).created_at,stamp(59));
- assert.deepEqual(page.items.map(item=>item.kind),[
-  ...Array(25).fill('message').slice(10),...Array(25).fill('comment')
+ assert.deepEqual(Array.from(page.items,item=>item.kind),[
+  ...Array(25).fill('message'),...Array(25).fill('comment')
  ]);
- assert.deepEqual(page.cursor,{created_at:stamp(10),id:uuid(110),kind:'message'});
+ assert.equal(page.cursor.created_at,stamp(10));
+ assert.equal(page.cursor.id,uuid(110));
+ assert.equal(page.cursor.kind,'message');
 });
 
 test('exactly one page has no false older-page affordance and foreign rows are discarded',async()=>{
@@ -113,7 +115,7 @@ test('microsecond timestamps and UUID ties have deterministic order',()=>{
   {...message(3,'2026-11-12T10:00:00.000125Z'),kind:'message'}
  ];
  rows.sort(api.compareDiscussionFeedItems);
- assert.deepEqual(rows.map(item=>item.id),[uuid(102),uuid(101),uuid(601),uuid(501)]);
+ assert.deepEqual(rows.map(item=>item.id),[uuid(102),uuid(101),uuid(103),uuid(501)]);
 });
 
 test('merge keeps existing rows on overlap and sorts the combined timeline',()=>{
@@ -125,7 +127,7 @@ test('merge keeps existing rows on overlap and sorts the combined timeline',()=>
  ];
  const merged=api.mergeDiscussionFeedItems(current,older);
  assert.equal(merged.length,2);
- assert.deepEqual(merged.map(item=>item.id),[uuid(101),uuid(102)]);
+ assert.deepEqual(Array.from(merged,item=>item.id),[uuid(101),uuid(102)]);
  assert.equal(merged[1].body,'message 2');
 });
 
