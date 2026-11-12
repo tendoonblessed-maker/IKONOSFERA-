@@ -3,7 +3,7 @@ const publicKey=process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY??'';
 
 export const CHANNEL_DISCUSSION_PAGE_SIZE=50;
 const UUID=/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
-const TIMESTAMP=/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?(?:Z|[+-]\d{2}:\d{2})$/;
+const TIMESTAMP=/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.(\d{1,6}))?(Z|([+-])(\d{2}):(\d{2}))$/;
 
 export type DiscussionFeedCursor={
  created_at:string;
@@ -38,7 +38,22 @@ function isRecord(value:unknown):value is Record<string,unknown>{
  return typeof value==='object'&&value!==null&&!Array.isArray(value);
 }
 function isValidTimestamp(value:unknown):value is string{
- return typeof value==='string'&&TIMESTAMP.test(value)&&Number.isFinite(Date.parse(value));
+ if(typeof value!=='string')return false;
+ const match=TIMESTAMP.exec(value);
+ if(!match)return false;
+ const year=Number(match[1]);
+ const month=Number(match[2]);
+ const day=Number(match[3]);
+ const hour=Number(match[4]);
+ const minute=Number(match[5]);
+ const second=Number(match[6]);
+ const offsetHour=Number(match[10]??0);
+ const offsetMinute=Number(match[11]??0);
+ if(year<1||month<1||month>12||hour>23||minute>59||second>59||offsetHour>23||offsetMinute>59)return false;
+ const leapYear=year%4===0&&(year%100!==0||year%400===0);
+ const daysInMonth=[31,leapYear?29:28,31,30,31,30,31,31,30,31,30,31][month-1];
+ // Date.parse alone normalizes impossible dates such as February 31 and 24:00.
+ return day>=1&&day<=daysInMonth&&Number.isFinite(Date.parse(value));
 }
 function isDiscussionMessageRow(value:unknown,channelId:string):value is DiscussionMessage{
  return isRecord(value)
@@ -95,7 +110,7 @@ export function discussionPagePath(
  params.set('order','created_at.desc,id.desc');
  params.set('limit',String(CHANNEL_DISCUSSION_PAGE_SIZE+1));
  if(cursor){
-  if(!UUID.test(cursor.id)||!TIMESTAMP.test(cursor.created_at)||!Number.isFinite(Date.parse(cursor.created_at))
+  if(!UUID.test(cursor.id)||!isValidTimestamp(cursor.created_at)
     ||(cursor.kind!=='message'&&cursor.kind!=='comment')){
    throw Error('Некорректный курсор обсуждения.');
   }
