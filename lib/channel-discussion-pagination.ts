@@ -120,6 +120,14 @@ export async function listDiscussionFeedPage(
  if(externalSignal?.aborted)controller.abort();
  else externalSignal?.addEventListener('abort',abort,{once:true});
  try{
+  // Do not invoke the transport at all when the owner was already cancelled.
+  // Native fetch honours an aborted signal, but this also keeps mocks/polyfills
+  // and future request adapters from starting unnecessary work.
+  if(controller.signal.aborted){
+   const error=new Error('Запрос отменён.');
+   error.name='AbortError';
+   throw error;
+  }
   const [messages,comments]=await Promise.all([
    requestRows<DiscussionMessage>(discussionPagePath('message',channelId,cursor),token,controller.signal),
    requestRows<DiscussionComment>(discussionPagePath('comment',channelId,cursor),token,controller.signal)
