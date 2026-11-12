@@ -114,6 +114,9 @@ test('GroupPanel reconciles UPDATE IDs through RLS reads and retries pending IDs
  assert.match(panel,/window\.addEventListener\('offline',onOffline\)/);
  assert.match(panel,/finishGroupMessageRead\(messageUpdateRequests,id,controller\)/);
  assert.doesNotMatch(panel,/inFlightMessageUpdates/);
+ assert.match(panel,/let completedSuccessfully=false/);
+ assert.match(panel,/completedSuccessfully=true/);
+ assert.match(panel,/if\(finished&&completedSuccessfully&&pendingMessageUpdates\.has\(id\)\)flushPendingMessageUpdates\(\)/);
 });
 
 test('message reconciliation forwards a caller-owned AbortSignal to PostgREST',async()=>{
