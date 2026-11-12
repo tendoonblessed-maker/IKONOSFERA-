@@ -470,8 +470,14 @@ export default function ChannelsPanel({token,userId,channel,onBack,onShowProfile
    const deletedId=c.id.toLowerCase();
    deletedDiscussionCommentsRef.current.add(deletedId);
    setComments(old=>old.filter(x=>x.id.toLowerCase()!==deletedId));
-   // Keep the current page and scroll position; tombstones also filter any older
-   // page that was already in flight when the delete was acknowledged.
+   // A pending older-page request captured its scroll-height anchor before this
+   // deletion. Cancel it so its later prepend cannot restore against stale geometry.
+   if(discussionOlderLoadingRef.current){
+    abortDiscussionRequest();
+    setOlderDiscussionLoading(false);
+   }
+   discussionScrollAnchorRef.current=null;
+   // Tombstones still protect against any response that raced with cancellation.
    setDiscussionItems(current=>removeDiscussionComments(current,deletedDiscussionCommentsRef.current));
    setNotice("Комментарий удалён.");
   }catch(e){if(isCurrent())setError(readable(e));}
