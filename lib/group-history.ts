@@ -1,4 +1,4 @@
-import {compareGroupMessages} from './group-pagination';
+import {compareGroupMessages} from './group-message-order';
 import type {GroupMessage} from './groups';
 
 export const CONFIRMED_GROUP_MESSAGE_GRACE_MS=60_000;
