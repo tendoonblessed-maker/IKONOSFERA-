@@ -57,3 +57,27 @@ export function finishGroupMessageRead(
  requests.delete(messageId);
  return true;
 }
+
+/**
+ * Remove only candidate rows that a bounded, group-scoped RLS read no longer
+ * returns. Rows outside the checked viewport and other groups are untouched.
+ */
+export function removeMissingGroupMessages(
+ current:GroupMessage[],
+ groupId:string,
+ candidateIds:string[],
+ existingIds:string[]
+):GroupMessage[]{
+ const normalizedGroupId=groupId.toLowerCase();
+ const candidates=new Set(candidateIds.map(id=>id.toLowerCase()));
+ const existing=new Set(existingIds.map(id=>id.toLowerCase()));
+ let changed=false;
+ const next=current.filter(message=>{
+  const id=message.id.toLowerCase();
+  if(message.group_id.toLowerCase()!==normalizedGroupId
+     ||!candidates.has(id)||existing.has(id))return true;
+  changed=true;
+  return false;
+ });
+ return changed?next:current;
+}

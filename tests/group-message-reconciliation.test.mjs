@@ -3,7 +3,7 @@ import {test} from 'node:test';
 import {readFileSync} from 'node:fs';
 import vm from 'node:vm';
 import ts from 'typescript';
-import {reconcileLoadedGroupMessage,abortGroupMessageReads,finishGroupMessageRead} from '../lib/group-message-reconciliation.ts';
+import {reconcileLoadedGroupMessage,removeMissingGroupMessages,abortGroupMessageReads,finishGroupMessageRead} from '../lib/group-message-reconciliation.ts';
 
 const GROUP='11111111-1111-4111-8111-111111111111';
 const OTHER_GROUP='33333333-3333-4333-8333-333333333333';
@@ -40,6 +40,29 @@ test('a mismatched group or message row cannot replace a loaded message',()=>{
  const current=[message(MESSAGE)];
  assert.equal(reconcileLoadedGroupMessage(current,GROUP,MESSAGE,message(MESSAGE,{group_id:OTHER_GROUP})),current);
  assert.equal(reconcileLoadedGroupMessage(current,GROUP,MESSAGE,message('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb')),current);
+});
+
+test('visible history reconciliation removes only checked missing rows from the current group',()=>{
+ const before=message('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa');
+ const missing=message(MESSAGE);
+ const after=message('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb');
+ const other=message('cccccccc-cccc-4ccc-8ccc-cccccccccccc',{group_id:OTHER_GROUP});
+ const current=[before,missing,after,other];
+ const result=removeMissingGroupMessages(current,GROUP,[before.id,missing.id],[before.id]);
+ assert.deepEqual(result,[before,after,other]);
+ assert.equal(result[0],before);
+ assert.equal(result[1],after);
+});
+
+test('visible history reconciliation preserves the original array when all checked rows exist',()=>{
+ const current=[message(MESSAGE)];
+ assert.equal(removeMissingGroupMessages(current,GROUP,[MESSAGE],[MESSAGE]),current);
+});
+
+test('visible history reconciliation never removes rows outside its checked ID set',()=>{
+ const current=[message(MESSAGE),message('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa')];
+ assert.equal(removeMissingGroupMessages(current,GROUP,[MESSAGE],[]).length,1);
+ assert.equal(removeMissingGroupMessages(current,GROUP,[],[]),current);
 });
 
 function groupsHarness(rows,fetcher){
@@ -184,4 +207,56 @@ test('a Realtime UPDATE queued during a successful read is eligible for an immed
  assert.equal(finished,true);
  assert.equal(finished&&pending.has(MESSAGE),true);
  assert.deepEqual(cleared,[31]);
+});
+
+test('visible history existence read is a bounded authenticated GET scoped by group and candidate IDs',async()=>{
+ const second='aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+ const harness=groupsHarness([{id:MESSAGE,group_id:GROUP}]);
+ const result=await harness.api.getExistingGroupMessageIds('signed-user-jwt',GROUP,[MESSAGE,second,MESSAGE]);
+ assert.deepEqual(Array.from(result),[MESSAGE]);
+ assert.equal(harness.calls.length,1);
+ const call=harness.calls[0];
+ assert.equal(call.init.method,'GET');
+ assert.equal(call.init.headers.Authorization,'Bearer signed-user-jwt');
+ assert.equal(call.init.cache,'no-store');
+ const url=new URL(call.url);
+ assert.equal(url.searchParams.get('select'),'id,group_id');
+ assert.equal(url.searchParams.get('group_id'),'eq.'+GROUP);
+ assert.equal(url.searchParams.get('id'),'in.('+MESSAGE+','+second+')');
+ assert.equal(url.searchParams.get('limit'),'2');
+});
+
+test('visible history existence read rejects invalid IDs and oversized batches before fetch',async()=>{
+ const harness=groupsHarness([]);
+ await assert.rejects(()=>harness.api.getExistingGroupMessageIds('jwt','not-a-group',[MESSAGE]),/Неверные параметры/);
+ await assert.rejects(()=>harness.api.getExistingGroupMessageIds('jwt',GROUP,['bad-id']),/Неверные параметры/);
+ const tooMany=Array.from({length:81},(_,i)=>i.toString(16).padStart(8,'0')+'-1111-4111-8111-111111111111');
+ await assert.rejects(()=>harness.api.getExistingGroupMessageIds('jwt',GROUP,tooMany),/Слишком много/);
+ assert.equal(harness.calls.length,0);
+});
+
+test('visible history existence read rejects unexpected cross-group or unrequested rows',async()=>{
+ const harness=groupsHarness([{id:MESSAGE,group_id:OTHER_GROUP}]);
+ await assert.rejects(()=>harness.api.getExistingGroupMessageIds('jwt',GROUP,[MESSAGE]),/вышел за пределы/);
+});
+
+test('visible history existence read forwards a caller-owned AbortSignal',async()=>{
+ const controller=new AbortController();
+ const harness=groupsHarness([{id:MESSAGE,group_id:GROUP}],async(_url,init)=>{
+  assert.equal(init.signal,controller.signal);
+  return {ok:true,json:async()=>[{id:MESSAGE,group_id:GROUP}]};
+ });
+ assert.deepEqual(Array.from(await harness.api.getExistingGroupMessageIds('jwt',GROUP,[MESSAGE],controller.signal)),[MESSAGE]);
+});
+
+test('GroupPanel checks only visible message IDs with bounded RLS reads and aborts on pause',()=>{
+ const panel=readFileSync(new URL('../components/GroupPanel.tsx',import.meta.url),'utf8');
+ const realtime=readFileSync(new URL('../lib/group-realtime.ts',import.meta.url),'utf8');
+ assert.match(panel,/getExistingGroupMessageIds\(requestToken,requestGroup,visibleIds,controller\.signal\)/);
+ assert.match(panel,/removeMissingGroupMessages\(current,requestGroup,visibleIds,existingIds\)/);
+ assert.match(panel,/history\.querySelectorAll<HTMLElement>\('\[data-group-message-id\]'\)/);
+ assert.match(panel,/slice\(0,GROUP_MESSAGE_EXISTENCE_BATCH_SIZE\)/);
+ assert.match(panel,/Date\.now\(\)-historyReconcileLastAt<30000/);
+ assert.match(panel,/historyReconcileController\?\.abort\(\)/);
+ assert.doesNotMatch(realtime,/event:'DELETE'/);
 });

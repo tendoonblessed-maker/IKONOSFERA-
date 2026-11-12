@@ -38,6 +38,37 @@ export async function getGroupMessageById(token:string,groupId:string,messageId:
   throw Error('Не удалось подтвердить актуальное сообщение группы.');
  return row;
 }
+export const GROUP_MESSAGE_EXISTENCE_BATCH_SIZE=80;
+/**
+ * Return only IDs still visible to the signed-in member. The request is
+ * bounded, group-scoped, and read-only; existing Postgres RLS is authoritative.
+ */
+export async function getExistingGroupMessageIds(
+ token:string,groupId:string,messageIds:string[],signal?:AbortSignal
+):Promise<string[]>{
+ if(!UUID.test(groupId))throw Error('Неверные параметры истории группы.');
+ const normalizedGroupId=groupId.toLowerCase();
+ const normalizedIds=messageIds.map(id=>typeof id==='string'?id.toLowerCase():'');
+ if(normalizedIds.some(id=>!UUID.test(id)))throw Error('Неверные параметры истории группы.');
+ const unique=[...new Set(normalizedIds)];
+ if(unique.length>GROUP_MESSAGE_EXISTENCE_BATCH_SIZE)throw Error('Слишком много сообщений для сверки истории группы.');
+ if(!unique.length)return [];
+ const path='/rest/v1/group_messages?select=id,group_id&group_id=eq.'
+  +encodeURIComponent(normalizedGroupId)+'&id=in.('+unique.map(encodeURIComponent).join(',')+')'
+  +'&limit='+unique.length;
+ const rows=await request<Array<{id:string;group_id:string}>>(token,path,'GET',undefined,{},signal);
+ if(!Array.isArray(rows))throw Error('Некорректный ответ сверки истории группы.');
+ const expected=new Set(unique),existing=new Set<string>();
+ for(const row of rows){
+  if(!row||typeof row.id!=='string'||typeof row.group_id!=='string')
+   throw Error('Некорректная запись сверки истории группы.');
+  const id=row.id.toLowerCase();
+  if(row.group_id.toLowerCase()!==normalizedGroupId||!expected.has(id))
+   throw Error('Ответ сверки вышел за пределы текущей группы.');
+  existing.add(id);
+ }
+ return unique.filter(id=>existing.has(id));
+}
 function assertGroupMessage(row:GroupMessage|undefined,groupId:string,userId:string,body:string,messageId:string):GroupMessage{
  if(!row||row.id!==messageId||row.group_id!==groupId||row.sender_id!==userId||row.body!==body)
   throw Error('Не удалось подтвердить отправку именно этого сообщения.');

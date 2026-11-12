@@ -1,6 +1,6 @@
 'use client';
 import {useCallback,useEffect,useLayoutEffect,useRef,useState,type FormEvent} from 'react';
-import {groupMessages,getGroupMessageById,sendGroupMessage,groupMembers,markGroupRead,type Group,type GroupMessage} from '@/lib/groups';
+import {groupMessages,getGroupMessageById,getExistingGroupMessageIds,GROUP_MESSAGE_EXISTENCE_BATCH_SIZE,sendGroupMessage,groupMembers,markGroupRead,type Group,type GroupMessage} from '@/lib/groups';
 import {listProfiles,type Profile} from '@/lib/supabase-rest';
 import StatusEmoji from '@/components/StatusEmoji';
 import ChatMessageText from '@/components/ChatMessageText';
@@ -12,7 +12,7 @@ import {readGroupDrafts} from '@/lib/group-drafts';
 import {getOrCreateGroupSendAttempt,clearGroupSendAttempt} from '@/lib/group-send-attempts';
 import {subscribeGroupChanges} from '@/lib/group-realtime';
 import {mergeConfirmedGroupMessages,CONFIRMED_GROUP_MESSAGE_GRACE_MS,type ConfirmedGroupMessage} from '@/lib/group-history';
-import {reconcileLoadedGroupMessage,abortGroupMessageReads,finishGroupMessageRead,type GroupMessageReadRequest} from '@/lib/group-message-reconciliation';
+import {reconcileLoadedGroupMessage,removeMissingGroupMessages,abortGroupMessageReads,finishGroupMessageRead,type GroupMessageReadRequest} from '@/lib/group-message-reconciliation';
 import {shouldAcknowledgeGroupRead,countNewIncomingBelow} from '@/lib/group-read-position';
 import {fetchOlderGroupMessages,prependOlderGroupMessages,preserveOlderGroupMessages,GROUP_HISTORY_MAX_LOADED} from '@/lib/group-pagination';
 type Props={token:string;userId:string;group:Group;onBack:()=>void;onShowProfile:(id:string)=>void;onDraftChange:(groupId:string,text:string)=>void};
@@ -146,6 +146,56 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
   setInitialLoading(true);
   const pendingMessageUpdates=new Set<string>();
   const messageUpdateRequests=new Map<string,GroupMessageReadRequest>();
+  let historyReconcileInFlight=false;
+  let historyReconcileQueued=false;
+  let historyReconcileLastAt=0;
+  let historyReconcileController:AbortController|null=null;
+  let historyReconcileTimeout:number|null=null;
+  const reconcileVisibleHistory=async(force=false)=>{
+    if(cancelled)return;
+    if(document.visibilityState==='hidden'||!navigator.onLine){
+      historyReconcileController?.abort();
+      return;
+    }
+    if(historyReconcileInFlight){if(force)historyReconcileQueued=true;return;}
+    if(!force&&Date.now()-historyReconcileLastAt<30000)return;
+    const history=historyRef.current;
+    if(!history)return;
+    const viewport=history.getBoundingClientRect();
+    const visibleIds=Array.from(history.querySelectorAll<HTMLElement>('[data-group-message-id]'))
+      .filter(element=>{
+        const rect=element.getBoundingClientRect();
+        return rect.bottom>viewport.top&&rect.top<viewport.bottom;
+      })
+      .map(element=>element.dataset.groupMessageId??'')
+      .filter(Boolean)
+      .slice(0,GROUP_MESSAGE_EXISTENCE_BATCH_SIZE);
+    if(!visibleIds.length)return;
+    historyReconcileInFlight=true;
+    historyReconcileLastAt=Date.now();
+    const requestGroup=group.id,requestOwner=userId,requestToken=token;
+    const controller=new AbortController();
+    historyReconcileController=controller;
+    historyReconcileTimeout=window.setTimeout(()=>controller.abort(),18000);
+    try{
+      const existingIds=await getExistingGroupMessageIds(requestToken,requestGroup,visibleIds,controller.signal);
+      if(cancelled||controller.signal.aborted
+         ||contextRef.current.groupId!==requestGroup
+         ||contextRef.current.userId!==requestOwner
+         ||contextRef.current.token!==requestToken)return;
+      setMessages(current=>removeMissingGroupMessages(current,requestGroup,visibleIds,existingIds));
+    }catch{
+      // A failed or aborted check never removes local rows; a later visible sync retries.
+    }finally{
+      if(historyReconcileTimeout!==null){window.clearTimeout(historyReconcileTimeout);historyReconcileTimeout=null;}
+      if(historyReconcileController===controller)historyReconcileController=null;
+      historyReconcileInFlight=false;
+      if(historyReconcileQueued&&!cancelled&&document.visibilityState==='visible'&&navigator.onLine){
+        historyReconcileQueued=false;
+        void reconcileVisibleHistory(true);
+      }
+    }
+  };
   const reconcileMessageUpdate=(messageId:string)=>{
     const id=messageId.toLowerCase();
     if(cancelled)return;
@@ -196,6 +246,9 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
     }
     // Also reconcile updates received while the mobile app was backgrounded.
     flushPendingMessageUpdates();
+    // Reconcile only currently visible rows through a bounded RLS GET. This
+    // avoids unfiltered Postgres DELETE subscriptions across other groups.
+    void reconcileVisibleHistory();
     if(browsingOlderRef.current)return;
     if(inFlight){queuedSync=true;return;}
     inFlight=true;
@@ -225,11 +278,19 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
   const unsubscribeRealtime=subscribeGroupChanges(token,group.id,onRealtimeChanged);
   // Polling is a fallback and heals any missed WebSocket notifications.
   const timer=window.setInterval(sync,6000);
-  const onOnline=()=>sync();
-  const onOffline=()=>abortGroupMessageReads(messageUpdateRequests,pendingMessageUpdates);
+  const onOnline=()=>{sync();void reconcileVisibleHistory(true);};
+  const onOffline=()=>{
+    abortGroupMessageReads(messageUpdateRequests,pendingMessageUpdates);
+    historyReconcileController?.abort();
+  };
   const onVisibilityChange=()=>{
-    if(document.visibilityState==='hidden')abortGroupMessageReads(messageUpdateRequests,pendingMessageUpdates);
-    else sync();
+    if(document.visibilityState==='hidden'){
+      abortGroupMessageReads(messageUpdateRequests,pendingMessageUpdates);
+      historyReconcileController?.abort();
+    }else{
+      sync();
+      void reconcileVisibleHistory(true);
+    }
   };
   document.addEventListener('visibilitychange',onVisibilityChange);
   window.addEventListener('online',onOnline);
@@ -237,6 +298,8 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
   return()=>{
     cancelled=true;
     abortGroupMessageReads(messageUpdateRequests,pendingMessageUpdates);
+    historyReconcileController?.abort();
+    if(historyReconcileTimeout!==null)window.clearTimeout(historyReconcileTimeout);
     pendingMessageUpdates.clear();
     messageUpdateRequests.clear();
     requestSequenceRef.current++;
