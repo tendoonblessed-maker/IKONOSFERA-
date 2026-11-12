@@ -264,3 +264,43 @@ test('UUID ties use PostgreSQL-compatible case-insensitive ordering before sourc
  assert.equal(rows[0].id.toLowerCase(),rows[1].id.toLowerCase());
  assert.equal(api.compareDiscussionFeedItems(rows[0],rows[1]),-1);
 });
+
+test('impossible calendar timestamps are rejected in rows and keyset cursors',async()=>{
+ const invalid=[
+  message(9,'2026-02-31T10:00:00Z'),
+  message(10,'2025-02-29T10:00:00Z'),
+  message(11,'2026-11-12T24:00:00Z'),
+  message(12,'2026-11-12T10:60:00Z'),
+  message(13,'2026-11-12T10:00:60Z'),
+  message(14,'2026-11-12T10:00:00+00:60')
+ ];
+ for(const row of invalid){
+  const {api}=compile(url=>{
+   const parsed=new URL(url);
+   return success(parsed.pathname.endsWith('channel_discussion_messages')?[row]:[]);
+  });
+  await assert.rejects(
+   api.listDiscussionFeedPage('jwt',CHANNEL),
+   /некорректную запись обсуждения канала/
+  );
+ }
+ const {api,calls}=compile();
+ for(const created_at of invalid.map(row=>row.created_at)){
+  assert.throws(
+   ()=>api.discussionPagePath('message',CHANNEL,{created_at,id:uuid(1),kind:'message'}),
+   /курсор/
+  );
+ }
+ assert.equal(calls.length,0);
+});
+
+test('valid leap-day timestamps with PostgreSQL microseconds remain accepted',async()=>{
+ const row=message(20,'2024-02-29T23:59:59.123456Z');
+ const {api}=compile(url=>{
+  const parsed=new URL(url);
+  return success(parsed.pathname.endsWith('channel_discussion_messages')?[row]:[]);
+ });
+ const page=await api.listDiscussionFeedPage('jwt',CHANNEL);
+ assert.equal(page.items.length,1);
+ assert.equal(page.items[0].created_at,'2024-02-29T23:59:59.123456Z');
+});
