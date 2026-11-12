@@ -12,7 +12,7 @@ import ChatMessageText from "@/components/ChatMessageText";
 import {subscribeDirectChatChanges} from "@/lib/direct-realtime";
 import {subscribeInboxChanges,type InboxChangeKind} from "@/lib/inbox-realtime";
 import {isLatestAccountSnapshot} from "@/lib/inbox-snapshot";
-import {createSingleFlightGuard,isCurrentChatActionScope} from "@/lib/single-flight-guard";
+import {createSingleFlightGuard,chatActionScopeKey,isCurrentChatActionScope} from "@/lib/single-flight-guard";
 import {shouldOpenDirectChatSearch} from "@/lib/chat-shortcuts";
 import {reconcileRecentChannelUpdates,CHANNEL_UPDATE_GRACE_MS,type RecentChannelUpdate} from "@/lib/channel-sync";
 import ChatAttachmentPreview from "@/components/ChatAttachmentPreview";
@@ -93,6 +93,9 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
   const [olderMessagesError,setOlderMessagesError]=useState(false);
   const [messageReactions,setMessageReactions]=useState<MessageReaction[]>([]);
   const [messageReactionPicker,setMessageReactionPicker]=useState<string|null>(null);
+  const [reactionBusyScopes,setReactionBusyScopes]=useState<Set<string>>(()=>new Set());
+  const activeReactionScopeKey=selected&&userId?chatActionScopeKey({chatId:selected,userId}):"";
+  const reactionBusy=Boolean(activeReactionScopeKey&&reactionBusyScopes.has(activeReactionScopeKey));
   // React state disables the UI after render; this synchronous guard closes same-tick double taps.
   const reactionActionGuardRef=useRef<ReturnType<typeof createSingleFlightGuard>|null>(null);
   if(!reactionActionGuardRef.current)reactionActionGuardRef.current=createSingleFlightGuard();
@@ -1143,17 +1146,22 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
     }catch(e){setError(userFacingError(e));}
   }
   async function reactToMessage(messageId:string,emoji:ReactionEmoji){
-    if(!session||!selected||!userId||sending)return;
-    // setSending() is asynchronous: a rapid second tap can enter before React rerenders.
-    const release=reactionActionGuardRef.current?.acquire();
+    const chatId=selected;
+    if(!session||!chatId||!userId)return;
+    // Reject a stale menu action before it can mutate a message from another chat.
+    if(!chatMessages.some(message=>message.id===messageId&&message.chat_id===chatId))return;
+    const scopeKey=chatActionScopeKey({chatId,userId});
+    // A slow request in another chat/account must not disable this conversation.
+    const release=reactionActionGuardRef.current?.acquire({chatId,userId});
     if(!release)return;
-    const chatId=selected,token=session.access_token;
+    const token=session.access_token;
     const actionScope={chatId,userId,generation:chatContextGenerationRef.current};
     const isCurrent=()=>isCurrentChatActionScope(actionScope,{
       chatId:selectedRef.current,userId:userIdRef.current,generation:chatContextGenerationRef.current
     });
     const previous=messageReactions.find(r=>r.message_id===messageId&&r.user_id===userId);
-    setSending(true);setError("");
+    setReactionBusyScopes(current=>new Set(current).add(scopeKey));
+    setError("");
     try{
       await setMessageReaction(token,userId,messageId,previous?.emoji===emoji?null:emoji);
       if(!isCurrent())return;
@@ -1164,7 +1172,10 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
           ...current.filter(reaction=>reaction.message_id!==messageId),...updated
         ]);
       }catch{/* Reaction was saved; the chat poll will reload its state. */}
-    }catch(e){if(isCurrent())setError(userFacingError(e));}finally{release();setSending(false);}
+    }catch(e){if(isCurrent())setError(userFacingError(e));}finally{
+      setReactionBusyScopes(current=>{const next=new Set(current);next.delete(scopeKey);return next;});
+      release();
+    }
   }
   function queueAttachment(file:File|undefined){
     if(!file||!selected||!userId||sending||activePartnerBlocked)return;
@@ -1577,9 +1588,9 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
             onSave={body=>messageAction(message.id,'edit',body)}
             onCancel={()=>{setEditingMessageId(null);setEditingMessageBody('');}}
           />:message.body&&<ChatMessageText text={message.body}/>}<time dateTime={message.created_at}>{message.edited_at&&!message.deleted_for_everyone&&<span className="message-edited-label" title="Сообщение отредактировано">изм. · </span>}{message.sender_id===userId&&<span className={"message-receipt"+(message.read_at?" read":"")} title={message.read_at?"Просмотрено":"Отправлено"}>{message.read_at?"✓✓":"✓"}</span>}{new Date(message.created_at).toLocaleTimeString('ru-RU',{hour:'2-digit',minute:'2-digit'})}</time></div><div className="chat-message-tools">{!message.deleted_for_everyone&&<button type="button" className="ik-message-menu-toggle" aria-label="Действия с сообщением" onClick={()=>{setMessageMenuId(message.id);setMessageReactionPicker(null);}}>···</button>}<div className="reaction-bar message-reaction-bar">
- {REACTION_EMOJIS.filter(emoji=>messageReactions.some(r=>r.message_id===message.id&&r.emoji===emoji)).map(emoji=><button key={emoji} type="button" className={"reaction-pill"+(messageReactions.some(r=>r.message_id===message.id&&r.user_id===userId&&r.emoji===emoji)?" mine":"")} onClick={()=>void reactToMessage(message.id,emoji)} disabled={sending}>{emoji} <span>{messageReactions.filter(r=>r.message_id===message.id&&r.emoji===emoji).length}</span></button>)}
+ {REACTION_EMOJIS.filter(emoji=>messageReactions.some(r=>r.message_id===message.id&&r.emoji===emoji)).map(emoji=><button key={emoji} type="button" className={"reaction-pill"+(messageReactions.some(r=>r.message_id===message.id&&r.user_id===userId&&r.emoji===emoji)?" mine":"")} onClick={()=>void reactToMessage(message.id,emoji)} disabled={reactionBusy}>{emoji} <span>{messageReactions.filter(r=>r.message_id===message.id&&r.emoji===emoji).length}</span></button>)}
  <button type="button" className="reaction-add" aria-label="Добавить реакцию" onClick={()=>setMessageReactionPicker(messageReactionPicker===message.id?null:message.id)}>☺ +</button>
- {messageReactionPicker===message.id&&<div className="reaction-picker">{REACTION_EMOJIS.map(emoji=><button type="button" key={emoji} disabled={sending} onClick={()=>void reactToMessage(message.id,emoji)} aria-label={"Реакция "+emoji}>{emoji}</button>)}</div>}
+ {messageReactionPicker===message.id&&<div className="reaction-picker">{REACTION_EMOJIS.map(emoji=><button type="button" key={emoji} disabled={reactionBusy} onClick={()=>void reactToMessage(message.id,emoji)} aria-label={"Реакция "+emoji}>{emoji}</button>)}</div>}
  </div></div></SwipeReplyMessage></Fragment>)}<div ref={messageEnd}/></div>
       {showJumpToLatest&&!activeChatLoading&&<button type="button" className={"ik-jump-to-latest"+(replyingTo?.chatId===selected?" with-reply":"")} aria-label="Перейти к последним сообщениям" title="К последним сообщениям"
         onClick={()=>{const history=conversationHistoryRef.current;if(history){chatAutoScrollRef.current=true;history.scrollTop=history.scrollHeight;}setShowJumpToLatest(false);}}>
@@ -1624,7 +1635,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
           <span className="ik-message-menu-preview-time">{new Date(menuMessage.created_at).toLocaleTimeString('ru-RU',{hour:'2-digit',minute:'2-digit'})}</span>
         </div>
         <div className="ik-message-menu-reactions" role="group" aria-label="Быстрая реакция">
-          {REACTION_EMOJIS.slice(0,6).map(emoji=><button type="button" key={emoji} aria-label={'Реакция '+emoji} disabled={sending} onClick={()=>{const id=menuMessage.id;setMessageMenuId(null);void reactToMessage(id,emoji);}}>{emoji}</button>)}
+          {REACTION_EMOJIS.slice(0,6).map(emoji=><button type="button" key={emoji} aria-label={'Реакция '+emoji} disabled={reactionBusy} onClick={()=>{const id=menuMessage.id;setMessageMenuId(null);void reactToMessage(id,emoji);}}>{emoji}</button>)}
         </div>
         <div className="ik-message-menu-buttons">
           <button type="button" onClick={()=>replyToMessage(menuMessage)}>
