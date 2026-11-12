@@ -534,14 +534,11 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
     setSelectedMessages([]);
     setMessageMenuId(null);
     const sync=async(first=false)=>{
-      if(cancelled||document.visibilityState==='hidden')return;
+      if(cancelled||document.visibilityState==='hidden'||!navigator.onLine)return;
       // The read RPC marks the whole chat, so a newer poll must invalidate
       // this page's receipt before its layout effect can acknowledge it.
       const readRevision=++directChatReadRevisionRef.current;
       if(inFlight){queuedSync=true;return;}
-      // Offline detection avoids pointless 18-second fetch timeouts.
-      // The 'online' listener below triggers an immediate retry.
-      if(!navigator.onLine)return;
       inFlight=true;
       try{
         const messages=(await listMessages(token,chatId)).reverse();
