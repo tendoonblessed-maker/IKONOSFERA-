@@ -395,4 +395,7 @@ test('ChannelsPanel removes a deleted comment immediately and filters both discu
  assert.ok(erase.includes('setDiscussionItems(current=>removeDiscussionComments(current,deletedDiscussionCommentsRef.current))'));
  assert.ok(!erase.includes('loadDiscussion('));
  assert.ok(erase.includes('if(!isCurrent())return'));
+ assert.match(erase,/if\(discussionOlderLoadingRef\.current\)\{\s*abortDiscussionRequest\(\);\s*setOlderDiscussionLoading\(false\);\s*\}/);
+ assert.ok(erase.indexOf('abortDiscussionRequest()')<erase.indexOf('setDiscussionItems(current=>removeDiscussionComments'));
+ assert.ok(erase.indexOf('discussionScrollAnchorRef.current=null')<erase.indexOf('setDiscussionItems(current=>removeDiscussionComments'));
 });
