@@ -7,7 +7,7 @@ import ts from 'typescript';
 const CHANNEL='11111111-1111-4111-8111-111111111111';
 const OTHER='22222222-2222-4222-8222-222222222222';
 const read=path=>readFileSync(new URL('../'+path,import.meta.url),'utf8');
-function compile(handler=()=>({ok:true,json:async()=>[]})){
+function compile(handler=()=>({ok:true,json:async()=>[]}),timers={}){
  const source=read('lib/channel-discussion-pagination.ts');
  const compiled=ts.transpileModule(source,{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText;
  const exports={};
@@ -15,7 +15,7 @@ function compile(handler=()=>({ok:true,json:async()=>[]})){
  const context={
   exports,URLSearchParams,URL,Date,AbortController,AbortSignal,Promise,Error,Map,Set,Array,Number,String,Math,
   process:{env:{NEXT_PUBLIC_SUPABASE_ANON_KEY:'public-test'}},
-  setTimeout,clearTimeout,
+  setTimeout:timers.setTimeout??setTimeout,clearTimeout:timers.clearTimeout??clearTimeout,
   fetch:async(url,options)=>{calls.push({url,options});return handler(url,options,calls.length);},
   require(name){assert.equal(name,'@/lib/supabase-rest');return {apiUrl:'https://unit.test'};}
  };
@@ -154,4 +154,59 @@ test('ChannelsPanel exposes bounded history, retry and scroll preservation',()=>
  assert.match(component,/discussionAbortRef\.current\?\.abort\(\)/);
  assert.doesNotMatch(component,/listDiscussionMessages\(token,channel\.id\)/);
  assert.doesNotMatch(component,/listDiscussionComments\(token,channel\.id\)/);
+});
+
+
+const abortedError=()=>Object.assign(new Error('aborted'),{name:'AbortError'});
+
+test('a pre-aborted owner signal rejects before issuing either GET',async()=>{
+ const owner=new AbortController();
+ owner.abort();
+ const {api,calls}=compile();
+ await assert.rejects(
+  api.listDiscussionFeedPage('jwt',CHANNEL,undefined,owner.signal),
+  error=>error?.name==='AbortError'
+ );
+ assert.equal(calls.length,0);
+});
+
+test('an owner abort cancels both in-flight source reads',async()=>{
+ const owner=new AbortController();
+ const signals=[];
+ const {api,calls}=compile((url,options)=>{
+  signals.push(options.signal);
+  return new Promise((_,reject)=>{
+   options.signal.addEventListener('abort',()=>reject(abortedError()),{once:true});
+  });
+ });
+ const pending=api.listDiscussionFeedPage('jwt',CHANNEL,undefined,owner.signal);
+ assert.equal(calls.length,2);
+ owner.abort();
+ await assert.rejects(pending,error=>error?.name==='AbortError');
+ assert.equal(signals.length,2);
+ assert.equal(signals[0],signals[1]);
+ assert.equal(signals[0].aborted,true);
+});
+
+test('the 18-second deadline aborts both source reads and reports a timeout',async()=>{
+ let fireDeadline;
+ const timerId={};
+ const timers={
+  setTimeout(callback,delay){
+   assert.equal(delay,18000);
+   fireDeadline=callback;
+   return timerId;
+  },
+  clearTimeout(id){assert.equal(id,timerId);}
+ };
+ const {api,calls}=compile((url,options)=>new Promise((_,reject)=>{
+  options.signal.addEventListener('abort',()=>reject(abortedError()),{once:true});
+ }),timers);
+ const pending=api.listDiscussionFeedPage('jwt',CHANNEL);
+ assert.equal(calls.length,2);
+ assert.equal(typeof fireDeadline,'function');
+ fireDeadline();
+ await assert.rejects(pending,/Время ожидания загрузки обсуждения истекло/);
+ assert.equal(calls[0].options.signal,calls[1].options.signal);
+ assert.equal(calls[0].options.signal.aborted,true);
 });
