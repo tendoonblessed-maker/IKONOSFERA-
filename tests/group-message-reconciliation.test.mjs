@@ -3,7 +3,7 @@ import {test} from 'node:test';
 import {readFileSync} from 'node:fs';
 import vm from 'node:vm';
 import ts from 'typescript';
-import {reconcileLoadedGroupMessage} from '../lib/group-message-reconciliation.ts';
+import {reconcileLoadedGroupMessage,abortGroupMessageReads,finishGroupMessageRead} from '../lib/group-message-reconciliation.ts';
 
 const GROUP='11111111-1111-4111-8111-111111111111';
 const OTHER_GROUP='33333333-3333-4333-8333-333333333333';
@@ -42,7 +42,7 @@ test('a mismatched group or message row cannot replace a loaded message',()=>{
  assert.equal(reconcileLoadedGroupMessage(current,GROUP,MESSAGE,message('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb')),current);
 });
 
-function groupsHarness(rows){
+function groupsHarness(rows,fetcher){
  const source=readFileSync(new URL('../lib/groups.ts',import.meta.url),'utf8');
  const compiled=ts.transpileModule(source,{
   compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}
@@ -54,6 +54,7 @@ function groupsHarness(rows){
   process:{env:{NEXT_PUBLIC_SUPABASE_ANON_KEY:'public-test-key'}},
   fetch:async(url,init)=>{
    calls.push({url,init});
+   if(fetcher)return fetcher(url,init,calls.length);
    return {ok:true,json:async()=>rows};
   },
   AbortSignal,
@@ -106,4 +107,66 @@ test('GroupPanel reconciles UPDATE IDs through RLS reads and retries pending IDs
  assert.match(panel,/pendingMessageUpdates\.add\(messageId\.toLowerCase\(\)\)/);
  assert.match(panel,/flushPendingMessageUpdates\(\)/);
  assert.match(panel,/pendingMessageUpdates\.clear\(\)/);
+ assert.match(panel,/getGroupMessageById\(requestToken,requestGroup,id,controller\.signal\)/);
+ assert.match(panel,/window\.setTimeout\(\(\)=>controller\.abort\(\),18000\)/);
+ assert.match(panel,/abortGroupMessageReads\(messageUpdateRequests,pendingMessageUpdates\)/);
+ assert.match(panel,/document\.addEventListener\('visibilitychange',onVisibilityChange\)/);
+ assert.match(panel,/window\.addEventListener\('offline',onOffline\)/);
+ assert.match(panel,/finishGroupMessageRead\(messageUpdateRequests,id,controller\)/);
+ assert.doesNotMatch(panel,/inFlightMessageUpdates/);
+});
+
+test('message reconciliation forwards a caller-owned AbortSignal to PostgREST',async()=>{
+ const controller=new AbortController();
+ const row=message(MESSAGE,{body:'Текст с сервера'});
+ const harness=groupsHarness([row],async(_url,init)=>{
+  assert.equal(init.signal,controller.signal);
+  return {ok:true,json:async()=>[row]};
+ });
+ assert.deepEqual(await harness.api.getGroupMessageById('jwt',GROUP,MESSAGE,controller.signal),row);
+});
+
+test('aborting a group message reconciliation aborts the pending HTTP request',async()=>{
+ const controller=new AbortController();
+ let observedAbort=false;
+ const harness=groupsHarness([],(_url,init)=>new Promise((_resolve,reject)=>{
+  if(init.signal.aborted){
+   observedAbort=true;
+   reject(new DOMException('Aborted','AbortError'));
+   return;
+  }
+  init.signal.addEventListener('abort',()=>{
+   observedAbort=true;
+   reject(new DOMException('Aborted','AbortError'));
+  },{once:true});
+ }));
+ const pending=harness.api.getGroupMessageById('jwt',GROUP,MESSAGE,controller.signal);
+ controller.abort();
+ await assert.rejects(pending,{name:'AbortError'});
+ assert.equal(observedAbort,true);
+});
+
+test('pausing group history aborts active message reads and queues IDs for resume',()=>{
+ const controller=new AbortController();
+ const requests=new Map([[MESSAGE,{controller,timeoutId:17}]]);
+ const pending=new Set();
+ const cleared=[];
+ abortGroupMessageReads(requests,pending,id=>cleared.push(id));
+ assert.equal(controller.signal.aborted,true);
+ assert.deepEqual(Array.from(pending),[MESSAGE]);
+ assert.deepEqual(cleared,[17]);
+ assert.equal(requests.get(MESSAGE).controller,controller);
+});
+
+test('a stale completion cannot clear a replacement request for the same message',()=>{
+ const oldController=new AbortController();
+ const currentController=new AbortController();
+ const requests=new Map([[MESSAGE,{controller:currentController,timeoutId:23}]]);
+ const cleared=[];
+ finishGroupMessageRead(requests,MESSAGE,oldController,id=>cleared.push(id));
+ assert.equal(requests.get(MESSAGE).controller,currentController);
+ assert.deepEqual(cleared,[]);
+ finishGroupMessageRead(requests,MESSAGE,currentController,id=>cleared.push(id));
+ assert.equal(requests.has(MESSAGE),false);
+ assert.deepEqual(cleared,[23]);
 });
