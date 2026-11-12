@@ -10,7 +10,7 @@ import {clearAllGroupSendAttempts} from "@/lib/group-send-attempts";
 import ChatMedia from "@/components/ChatMedia";
 import ChatMessageText from "@/components/ChatMessageText";
 import {subscribeDirectChatChanges} from "@/lib/direct-realtime";
-import {shouldAcknowledgeDirectChatRead} from '@/lib/chat-read-position';
+import {isDirectChatAtLatest,shouldAcknowledgeDirectChatRead} from '@/lib/chat-read-position';
 import {subscribeInboxChanges,type InboxChangeKind} from "@/lib/inbox-realtime";
 import {isLatestAccountSnapshot} from "@/lib/inbox-snapshot";
 import {shouldOpenDirectChatSearch} from "@/lib/chat-shortcuts";
@@ -86,6 +86,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
   const [channelSlug,setChannelSlug]=useState("");
   const [channelDescription,setChannelDescription]=useState("");
   const [chatMessages,setChatMessages]=useState<ChatMessage[]>([]);
+  const [pendingDirectRead,setPendingDirectRead]=useState<{chatId:string;userId:string;token:string;messageIds:string[]}|null>(null);
   const [chatLoad,setChatLoad]=useState<{id:string;status:'loading'|'ready'|'error'}|null>(null);
   const [chatReloadNonce,setChatReloadNonce]=useState(0);
   const [hasOlderMessages,setHasOlderMessages]=useState(false);
@@ -540,6 +541,12 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
       try{
         const messages=(await listMessages(token,chatId)).reverse();
         if(cancelled)return;
+        const unreadMessageIds=messages
+          .filter(message=>message.sender_id!==userId&&!message.read_at)
+          .map(message=>message.id);
+        // Stage a receipt, but do not advance the server cursor until React has
+        // committed this page and the post-layout viewport is still at latest.
+        setPendingDirectRead(unreadMessageIds.length?{chatId,userId,token,messageIds:unreadMessageIds}:null);
         setChatMessages(current=>mergeConfirmedRecentPage(
           current,messages,CHAT_MESSAGE_PAGE_SIZE,confirmedMessagesRef.current,chatId,userId
         ));
@@ -552,13 +559,6 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
             return [...current.filter(reaction=>!recentIds.has(reaction.message_id)),...reactions];
           });})
           .catch(()=>{});
-        if(shouldAcknowledgeDirectChatRead(
-          messages.some(message=>message.sender_id!==userId&&!message.read_at),
-          chatAutoScrollRef.current,
-          document.visibilityState==='visible'
-        )){
-          void markChatRead(token,chatId).catch(()=>{});
-        }
       }catch(e){
         if(!cancelled&&first){
           setChatLoad({id:chatId,status:'error'});
@@ -742,12 +742,41 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
     if(!pendingReplyJump||pendingReplyJump.chatId!==selected)return;
     if(scrollToHistoryMessage(pendingReplyJump.id))setPendingReplyJump(null);
   },[pendingReplyJump,chatMessages,searchInConversation,messageSearch,selected]);
-  useEffect(()=>{
+  useLayoutEffect(()=>{
     const history=conversationHistoryRef.current;
     if(!history||!chatAutoScrollRef.current)return;
-    // Never pull the reader away from older messages during incoming polls.
+    // Commit the latest-page scroll before a pending read receipt is evaluated.
     history.scrollTop=history.scrollHeight;
-  },[chatMessages.length,selected]);
+  },[chatMessages,selected]);
+  useLayoutEffect(()=>{
+    const pending=pendingDirectRead;
+    if(!pending)return;
+    if(pending.chatId!==selected||pending.userId!==userId||pending.token!==session?.access_token){
+      setPendingDirectRead(null);
+      return;
+    }
+    const history=conversationHistoryRef.current;
+    if(!history)return;
+    const renderedIds=new Set(chatMessages
+      .filter(message=>message.chat_id===pending.chatId)
+      .map(message=>message.id));
+    // If the pending state rendered before the message state, wait for the
+    // subsequent commit rather than acknowledging an item not in the DOM yet.
+    if(!pending.messageIds.every(id=>renderedIds.has(id)))return;
+    const hasUnreadIncoming=chatMessages.some(message=>
+      pending.messageIds.includes(message.id)
+      &&message.chat_id===pending.chatId
+      &&message.sender_id!==pending.userId
+      &&!message.read_at
+    );
+    const atLatest=chatAutoScrollRef.current
+      &&isDirectChatAtLatest(history.scrollHeight,history.scrollTop,history.clientHeight);
+    const visible=document.visibilityState==='visible'&&navigator.onLine;
+    setPendingDirectRead(null);
+    if(shouldAcknowledgeDirectChatRead(hasUnreadIncoming,atLatest,visible)){
+      void markChatRead(pending.token,pending.chatId).catch(()=>{});
+    }
+  },[pendingDirectRead,chatMessages,selected,userId,session?.access_token]);
   useEffect(()=>{if(selected)setDraft(draftsRef.current[selected]||'');},[selected,userId]);
   useEffect(()=>{const field=composerRef.current;if(!field)return;field.style.height='auto';field.style.height=Math.min(field.scrollHeight,136)+'px';},[draft,selected]);
   useEffect(()=>{
