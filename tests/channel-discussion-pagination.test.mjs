@@ -160,6 +160,42 @@ test('ChannelsPanel exposes bounded history, retry and scroll preservation',()=>
 });
 
 
+test('malformed in-channel message timestamps are rejected before feed sorting',async()=>{
+ const bad=message(7,'not-a-timestamp');
+ const {api}=compile(url=>{
+  const parsed=new URL(url);
+  return success(parsed.pathname.endsWith('channel_discussion_messages')?[bad]:[]);
+ });
+ await assert.rejects(
+  api.listDiscussionFeedPage('jwt',CHANNEL),
+  /некорректную запись обсуждения канала/
+ );
+});
+
+test('malformed in-channel comment relations and IDs fail closed',async()=>{
+ const bad=comment(8);
+ bad.id='not-a-uuid';
+ const {api}=compile(url=>{
+  const parsed=new URL(url);
+  return success(parsed.pathname.endsWith('channel_comments')?[bad]:[]);
+ });
+ await assert.rejects(
+  api.listDiscussionFeedPage('jwt',CHANNEL),
+  /некорректную запись обсуждения канала/
+ );
+});
+
+test('non-object PostgREST rows are rejected instead of crashing the feed merge',async()=>{
+ const {api}=compile(url=>{
+  const parsed=new URL(url);
+  return success(parsed.pathname.endsWith('channel_discussion_messages')?[null]:[]);
+ });
+ await assert.rejects(
+  api.listDiscussionFeedPage('jwt',CHANNEL),
+  /некорректную запись обсуждения канала/
+ );
+});
+
 const abortedError=()=>Object.assign(new Error('aborted'),{name:'AbortError'});
 
 test('a pre-aborted owner signal rejects before issuing either GET',async()=>{
