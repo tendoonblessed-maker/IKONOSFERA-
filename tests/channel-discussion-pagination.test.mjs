@@ -249,3 +249,18 @@ test('the 18-second deadline aborts both source reads and reports a timeout',asy
  assert.equal(calls[0].options.signal,calls[1].options.signal);
  assert.equal(calls[0].options.signal.aborted,true);
 });
+
+
+test('UUID ties use PostgreSQL-compatible case-insensitive ordering before source rank',()=>{
+ const {api}=compile();
+ const same=uuid(42);
+ const rows=[
+  {...message(1),id:same.toUpperCase(),kind:'message'},
+  {...comment(1),id:same.toLowerCase(),kind:'comment'},
+  {...message(2),id:uuid(9),kind:'message'}
+ ];
+ rows.sort(api.compareDiscussionFeedItems);
+ assert.deepEqual(rows.slice(0,2).map(item=>item.kind),['message','comment']);
+ assert.equal(rows[0].id.toLowerCase(),rows[1].id.toLowerCase());
+ assert.equal(api.compareDiscussionFeedItems(rows[0],rows[1]),-1);
+});
