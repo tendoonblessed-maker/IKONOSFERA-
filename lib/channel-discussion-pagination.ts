@@ -34,6 +34,31 @@ export type DiscussionFeedPage={
  hasMore:boolean;
 };
 
+function isRecord(value:unknown):value is Record<string,unknown>{
+ return typeof value==='object'&&value!==null&&!Array.isArray(value);
+}
+function isValidTimestamp(value:unknown):value is string{
+ return typeof value==='string'&&TIMESTAMP.test(value)&&Number.isFinite(Date.parse(value));
+}
+function isDiscussionMessageRow(value:unknown,channelId:string):value is DiscussionMessage{
+ return isRecord(value)
+  &&value.channel_id===channelId
+  &&typeof value.id==='string'&&UUID.test(value.id)
+  &&typeof value.author_id==='string'&&UUID.test(value.author_id)
+  &&typeof value.body==='string'
+  &&isValidTimestamp(value.created_at);
+}
+function isDiscussionCommentRow(value:unknown,channelId:string):value is DiscussionComment{
+ if(!isRecord(value)||!isRecord(value.channel_posts))return false;
+ return value.channel_posts.channel_id===channelId
+  &&typeof value.channel_posts.body==='string'
+  &&typeof value.id==='string'&&UUID.test(value.id)
+  &&typeof value.post_id==='string'&&UUID.test(value.post_id)
+  &&typeof value.author_id==='string'&&UUID.test(value.author_id)
+  &&typeof value.body==='string'
+  &&isValidTimestamp(value.created_at);
+}
+
 function kindRank(kind:'message'|'comment'):number{
  return kind==='message'?0:1;
 }
@@ -129,12 +154,24 @@ export async function listDiscussionFeedPage(
    throw error;
   }
   const [messages,comments]=await Promise.all([
-   requestRows<DiscussionMessage>(discussionPagePath('message',channelId,cursor),token,controller.signal),
-   requestRows<DiscussionComment>(discussionPagePath('comment',channelId,cursor),token,controller.signal)
+   requestRows<unknown>(discussionPagePath('message',channelId,cursor),token,controller.signal),
+   requestRows<unknown>(discussionPagePath('comment',channelId,cursor),token,controller.signal)
   ]);
+  // PostgREST JSON is still runtime input: reject malformed rows before they
+  // reach timestamp sorting or React, while keeping the channel boundary strict.
+  if(messages.some(item=>!isRecord(item))||comments.some(item=>!isRecord(item))){
+   throw Error('Сервер вернул некорректную запись обсуждения канала.');
+  }
+  const scopedMessages=messages.filter((item):item is Record<string,unknown>=>isRecord(item)&&item.channel_id===channelId);
+  const scopedComments=comments.filter((item):item is Record<string,unknown>=>isRecord(item)
+   &&isRecord(item.channel_posts)&&item.channel_posts.channel_id===channelId);
+  if(scopedMessages.some(item=>!isDiscussionMessageRow(item,channelId))
+    ||scopedComments.some(item=>!isDiscussionCommentRow(item,channelId))){
+   throw Error('Сервер вернул некорректную запись обсуждения канала.');
+  }
   const rows:DiscussionFeedItem[]=[
-   ...messages.filter(item=>item.channel_id===channelId).map(item=>({...item,kind:'message' as const})),
-   ...comments.filter(item=>item.channel_posts?.channel_id===channelId).map(item=>({...item,kind:'comment' as const}))
+   ...scopedMessages.map(item=>({...item,kind:'message' as const}) as DiscussionFeedItem),
+   ...scopedComments.map(item=>({...item,kind:'comment' as const}) as DiscussionFeedItem)
   ];
   rows.sort((a,b)=>compareDiscussionFeedItems(b,a));
   const items=rows.slice(0,CHANNEL_DISCUSSION_PAGE_SIZE).reverse();
