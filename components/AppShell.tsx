@@ -2,6 +2,7 @@
 import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { backendReady, createTemporaryAccount, consumeEmailLinkSession, loadSession, currentUser, findProfileByUsername, listChats, listChatPreviews, listMessages, listOlderMessages, listReplyTargets, searchDirectMessages, type DirectMessageSearchResult, DIRECT_MESSAGE_SEARCH_PAGE_SIZE, type ReplyTarget, CHAT_MESSAGE_PAGE_SIZE, manageChat, manageMessage, listMessageReactions, setMessageReaction, markChatRead, listProfiles, myProfile, postMessage, reopenChat, sendDirectMedia, validateDirectMediaFile, sendEmailCode, signOut, startDirectChat, validSession, type ChatMessage, type MessageReaction, type DirectChat, type Profile, type Session, type ChatPreview } from '@/lib/supabase-rest';
 import {resizeChatComposer} from '@/lib/chat-composer';
+import {captureChatViewportAnchor,restoreChatViewportAnchor} from '@/lib/chat-viewport-anchor';
 
 import ProfilePanel from "@/components/ProfilePanel";
 import {mergeConfirmedRecentPage,prependEarlierPage,CONFIRMED_MESSAGE_GRACE_MS,type ConfirmedMessage} from "@/lib/chat-history";
@@ -155,6 +156,8 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
   const chatContextGenerationRef=useRef(0);
   const messageSearchRequestRef=useRef(0);
   const composerRef=useRef<HTMLTextAreaElement|null>(null);
+  const viewportContextRef=useRef('');
+  viewportContextRef.current=[userId,selected??'',selectedGroup?.id??'',selectedChannel?.id??'',selectedBot??'',profileTarget??''].join('|');
   const confirmedMessagesRef=useRef<Map<string,ConfirmedMessage>>(new Map());
   const attachmentDragDepthRef=useRef(0);
   useLayoutEffect(()=>{resizeChatComposer(composerRef.current);},[draft,selected,userId]);
@@ -319,44 +322,105 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
     setMessageSearchHasMore(false);
   }
 
-  // iOS Safari's visual viewport shrinks when the keyboard appears.
-  // Follow that visible area rather than a stale 100dvh layout height,
-  // without disabling the user's ability to pinch-zoom for accessibility.
+  // Keep the visible chat anchor stable while iOS/Android resizes the visual
+  // viewport for the keyboard, orientation changes, or PWA/BFCache restoration.
+  // The composer itself is never blurred and its native caret/IME selection is
+  // left untouched.
   useEffect(()=>{
     const root=document.documentElement;
+    const viewport=window.visualViewport;
     let animationFrame=0;
-    const setVisibleHeight=()=>{
+    let restoreFrame=0;
+    let preserveAnchorPending=false;
+    let pendingAnchor:{
+      history:HTMLElement;
+      anchor:ReturnType<typeof captureChatViewportAnchor>;
+      context:string;
+    }|null=null;
+
+    const restorePendingAnchor=()=>{
+      restoreFrame=0;
+      const pending=pendingAnchor;
+      pendingAnchor=null;
+      if(!pending?.anchor||!pending.history.isConnected)return;
+      if(pending.context!==viewportContextRef.current)return;
+      if(document.querySelector('.conversation-pane.open .conversation-history')!==pending.history)return;
+      restoreChatViewportAnchor(pending.history,pending.anchor);
+    };
+    const setVisibleHeight=(preserveAnchor:boolean)=>{
+      if(pendingAnchor&&(pendingAnchor.context!==viewportContextRef.current||!pendingAnchor.history.isConnected))
+        pendingAnchor=null;
+      if(preserveAnchor&&!pendingAnchor){
+        const history=document.querySelector<HTMLElement>('.conversation-pane.open .conversation-history');
+        if(history){
+          pendingAnchor={
+            history,
+            anchor:captureChatViewportAnchor(history),
+            context:viewportContextRef.current
+          };
+        }
+      }
+
       if(!window.matchMedia('(max-width:800px)').matches){
         root.style.removeProperty('--ik-visible-viewport-height');
-        return;
-      }
-      const viewport=window.visualViewport;
-      if(viewport&&Math.abs(viewport.scale-1)>0.02){
+      }else if(viewport&&Math.abs(viewport.scale-1)>0.02){
+        // Do not override pinch zoom; preserve the same message anchor while
+        // returning to the browser's zoom-aware viewport sizing.
         root.style.removeProperty('--ik-visible-viewport-height');
-        return;
+      }else{
+        const height=viewport?.height??window.innerHeight;
+        if(Number.isFinite(height)&&height>200){
+          root.style.setProperty('--ik-visible-viewport-height',Math.round(height)+'px');
+        }
       }
-      const height=viewport?.height??window.innerHeight;
-      if(Number.isFinite(height)&&height>200){
-        root.style.setProperty('--ik-visible-viewport-height',Math.round(height)+'px');
+
+      if(pendingAnchor&&!restoreFrame){
+        restoreFrame=window.requestAnimationFrame(restorePendingAnchor);
       }
     };
-    const update=()=>{
+    const schedule=(preserveAnchor:boolean)=>{
+      preserveAnchorPending=preserveAnchorPending||preserveAnchor;
       window.cancelAnimationFrame(animationFrame);
-      animationFrame=window.requestAnimationFrame(setVisibleHeight);
+      animationFrame=window.requestAnimationFrame(()=>{
+        animationFrame=0;
+        const shouldPreserve=preserveAnchorPending;
+        preserveAnchorPending=false;
+        setVisibleHeight(shouldPreserve);
+      });
     };
-    const viewport=window.visualViewport;
-    setVisibleHeight();
+    const update=()=>schedule(true);
+    const updateScroll=()=>schedule(false);
+    const onVisibilityChange=()=>{
+      if(document.visibilityState==='visible')update();
+    };
+    const onPageHide=()=>{
+      window.cancelAnimationFrame(animationFrame);
+      window.cancelAnimationFrame(restoreFrame);
+      animationFrame=0;
+      restoreFrame=0;
+      preserveAnchorPending=false;
+      pendingAnchor=null;
+    };
+
+    setVisibleHeight(true);
     viewport?.addEventListener('resize',update);
-    viewport?.addEventListener('scroll',update);
+    viewport?.addEventListener('scroll',updateScroll);
     window.addEventListener('resize',update);
     window.addEventListener('orientationchange',update);
+    window.addEventListener('pageshow',update);
+    window.addEventListener('pagehide',onPageHide);
+    document.addEventListener('visibilitychange',onVisibilityChange);
     return()=>{
       window.cancelAnimationFrame(animationFrame);
+      window.cancelAnimationFrame(restoreFrame);
       root.style.removeProperty('--ik-visible-viewport-height');
       viewport?.removeEventListener('resize',update);
-      viewport?.removeEventListener('scroll',update);
+      viewport?.removeEventListener('scroll',updateScroll);
       window.removeEventListener('resize',update);
       window.removeEventListener('orientationchange',update);
+      window.removeEventListener('pageshow',update);
+      window.removeEventListener('pagehide',onPageHide);
+      document.removeEventListener('visibilitychange',onVisibilityChange);
     };
   },[]);
   useEffect(()=>{
