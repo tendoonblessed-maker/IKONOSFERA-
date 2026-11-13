@@ -88,7 +88,7 @@ test('group messages are not sent on reconnect, and stay in drafts after failed 
  assert.match(group,/if\(!online\|\|!navigator\.onLine\)\{/);
  assert.match(group,/Сообщение осталось в черновике/);
  assert.match(group,/Черновик сохранён/);
- assert.match(group,/disabled=\{busy\|\|!draft\.trim\(\)\|\|!online\}/);
+ assert.match(group,/disabled=\{busy\|\|!visibleDraft\.trim\(\)\|\|!online\}/);
  assert.match(group,/window\.addEventListener\('online',update\)/);
  assert.match(group,/window\.addEventListener\('offline',update\)/);
  const errorBranch=group.slice(group.indexOf('}catch(e){\n   setError((e instanceof Error?e.message'),group.indexOf(' const names='));
