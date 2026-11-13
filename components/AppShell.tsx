@@ -1,9 +1,9 @@
 'use client';
 import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { backendReady, createTemporaryAccount, consumeEmailLinkSession, loadSession, currentUser, findProfileByUsername, listChats, listChatPreviews, listMessages, listOlderMessages, listReplyTargets, searchDirectMessages, type DirectMessageSearchResult, DIRECT_MESSAGE_SEARCH_PAGE_SIZE, type ReplyTarget, CHAT_MESSAGE_PAGE_SIZE, manageChat, manageMessage, listMessageReactions, setMessageReaction, markChatRead, listProfiles, myProfile, postMessage, reopenChat, sendDirectMedia, validateDirectMediaFile, sendEmailCode, signOut, startDirectChat, validSession, type ChatMessage, type MessageReaction, type DirectChat, type Profile, type Session, type ChatPreview } from '@/lib/supabase-rest';
+import { backendReady, createTemporaryAccount, consumeEmailLinkSession, loadSession, currentUser, findProfileByUsername, listChats, listChatPreviews, listMessages, listOlderMessages, listExistingDirectMessages, listReplyTargets, searchDirectMessages, type DirectMessageSearchResult, DIRECT_MESSAGE_SEARCH_PAGE_SIZE, type ReplyTarget, CHAT_MESSAGE_PAGE_SIZE, manageChat, manageMessage, listMessageReactions, setMessageReaction, markChatRead, listProfiles, myProfile, postMessage, reopenChat, sendDirectMedia, validateDirectMediaFile, sendEmailCode, signOut, startDirectChat, validSession, type ChatMessage, type MessageReaction, type DirectChat, type Profile, type Session, type ChatPreview } from '@/lib/supabase-rest';
 
 import ProfilePanel from "@/components/ProfilePanel";
-import {mergeConfirmedRecentPage,prependEarlierPage,CONFIRMED_MESSAGE_GRACE_MS,type ConfirmedMessage} from "@/lib/chat-history";
+import {mergeConfirmedRecentPage,prependEarlierPage,visibleDirectMessageIds,reconcileVisibleDirectMessages,DIRECT_MESSAGE_RECONCILE_COOLDOWN_MS,CONFIRMED_MESSAGE_GRACE_MS,type ConfirmedMessage} from "@/lib/chat-history";
 import {readChatDrafts,writeChatDrafts,clearChatDrafts,updateChatDraftEntry,type ChatDrafts} from "@/lib/chat-drafts";
 import {readGroupDrafts,writeGroupDraft,clearGroupDrafts,type GroupDrafts} from "@/lib/group-drafts";
 import {clearAllGroupSendAttempts} from "@/lib/group-send-attempts";
@@ -155,6 +155,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
   const messageSearchRequestRef=useRef(0);
   const composerRef=useRef<HTMLTextAreaElement|null>(null);
   const confirmedMessagesRef=useRef<Map<string,ConfirmedMessage>>(new Map());
+  const directHistoryReconcileRef=useRef<((force?:boolean)=>void)|null>(null);
   const attachmentDragDepthRef=useRef(0);
 
   // In-memory edits belong to one signed-in user; never reuse across accounts.
@@ -516,9 +517,57 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
     let cancelled=false;
     let inFlight=false;
     let queuedSync=false;
+    let syncRevision=0;
     let realtimeTimer:number|null=null;
+    let reconcileInFlight=false;
+    let reconcileQueued=false;
+    let reconcileLastAt=0;
+    let reconcileRevision=0;
+    let reconcileController:AbortController|null=null;
     const chatId=selected;
     const token=session.access_token;
+    const contextGeneration=chatContextGenerationRef.current;
+    const stillInChat=()=>selectedRef.current===chatId&&chatContextGenerationRef.current===contextGeneration;
+    const reconcileVisibleMessages=async(force=false)=>{
+      if(cancelled||document.visibilityState!=='visible'||!navigator.onLine)return;
+      if(force)reconcileRevision++;
+      if(reconcileInFlight){reconcileQueued=true;return;}
+      if(!force&&Date.now()-reconcileLastAt<DIRECT_MESSAGE_RECONCILE_COOLDOWN_MS)return;
+      const ids=visibleDirectMessageIds(conversationHistoryRef.current);
+      if(!ids.length)return;
+      const revision=reconcileRevision;
+      const controller=new AbortController();
+      reconcileController=controller;
+      reconcileInFlight=true;
+      try{
+        const authoritative=await listExistingDirectMessages(token,chatId,ids,controller.signal);
+        if(cancelled||controller.signal.aborted||!stillInChat())return;
+        if(revision!==reconcileRevision){reconcileQueued=true;return;}
+        setChatMessages(current=>reconcileVisibleDirectMessages(
+          current,ids,authoritative,chatId,userId,confirmedMessagesRef.current
+        ));
+        reconcileLastAt=Date.now();
+      }catch{
+        // A failed or aborted check never removes local history; a later scroll/wake-up retries it.
+      }finally{
+        if(reconcileController===controller)reconcileController=null;
+        reconcileInFlight=false;
+        if(reconcileQueued&&!cancelled&&document.visibilityState==='visible'&&navigator.onLine){
+          reconcileQueued=false;
+          void reconcileVisibleMessages(true);
+        }
+      }
+    };
+    const triggerReconcile=(force=false)=>{void reconcileVisibleMessages(force)};
+    directHistoryReconcileRef.current=triggerReconcile;
+    const pauseReconciliation=()=>{
+      if(document.visibilityState==='hidden'||!navigator.onLine){
+        syncRevision++;
+        reconcileRevision++;
+        reconcileQueued=false;
+        reconcileController?.abort();
+      }
+    };
     setChatLoad({id:chatId,status:'loading'});
     setChatMessages([]);
     setHasOlderMessages(false);
@@ -535,10 +584,11 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
       // Offline detection avoids pointless 18-second fetch timeouts.
       // The 'online' listener below triggers an immediate retry.
       if(!navigator.onLine)return;
+      const revision=syncRevision;
       inFlight=true;
       try{
         const messages=(await listMessages(token,chatId)).reverse();
-        if(cancelled)return;
+        if(cancelled||revision!==syncRevision)return;
         setChatMessages(current=>mergeConfirmedRecentPage(
           current,messages,CHAT_MESSAGE_PAGE_SIZE,confirmedMessagesRef.current,chatId,userId
         ));
@@ -546,7 +596,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
         setChatLoad({id:chatId,status:'ready'});
         // Reactions must not block displaying text and attachments.
         void listMessageReactions(token,messages.map(message=>message.id))
-          .then(reactions=>{if(!cancelled)setMessageReactions(current=>{
+          .then(reactions=>{if(!cancelled&&revision===syncRevision)setMessageReactions(current=>{
             const recentIds=new Set(messages.map(message=>message.id));
             return [...current.filter(reaction=>!recentIds.has(reaction.message_id)),...reactions];
           });})
@@ -555,7 +605,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
           void markChatRead(token,chatId).catch(()=>{});
         }
       }catch(e){
-        if(!cancelled&&first){
+        if(!cancelled&&revision===syncRevision&&first){
           setChatLoad({id:chatId,status:'error'});
           setError(userFacingError(e));
         }
@@ -567,32 +617,57 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
       }
     };
     void sync(true);
-    // Debounce bursts of read receipts and inserts. The returned rows always
-    // pass ordinary RLS and message filtering, even on a Realtime signal.
+    // Debounce Realtime wake-ups. Invalidate any older in-flight page before
+    // it can overwrite a newer edit/delete snapshot.
     const onRealtimeChange=()=>{
-      if(cancelled||document.visibilityState==='hidden'||!navigator.onLine)return;
+      if(cancelled)return;
+      if(document.visibilityState==='hidden'||!navigator.onLine){pauseReconciliation();return;}
+      syncRevision++;
       if(realtimeTimer!==null)window.clearTimeout(realtimeTimer);
       realtimeTimer=window.setTimeout(()=>{
         realtimeTimer=null;
         void sync();
+        void reconcileVisibleMessages(true);
       },150);
     };
     const unsubscribeRealtime=subscribeDirectChatChanges(token,chatId,onRealtimeChange);
     // HTTP polling remains a fallback when WebSocket is blocked, offline,
     // rate-limited or disconnected (and it repairs missed Realtime events).
     const timer=window.setInterval(()=>void sync(),6000);
-    const onVisible=()=>{if(document.visibilityState==='visible')void sync();};
-    const onConnected=()=>{if(document.visibilityState==='visible')void sync(true);};
+    const onVisible=()=>{
+      if(document.visibilityState==='visible'){
+        void sync();
+        void reconcileVisibleMessages(true);
+      }else pauseReconciliation();
+    };
+    const onConnected=()=>{
+      if(document.visibilityState==='visible'){
+        void sync(true);
+        void reconcileVisibleMessages(true);
+      }
+    };
+    const onOffline=()=>pauseReconciliation();
     document.addEventListener('visibilitychange',onVisible);
     window.addEventListener('online',onConnected);
+    window.addEventListener('offline',onOffline);
     return()=>{
-      cancelled=true;window.clearInterval(timer);
+      cancelled=true;
+      syncRevision++;
+      reconcileRevision++;
+      reconcileQueued=false;
+      reconcileController?.abort();
+      if(directHistoryReconcileRef.current===triggerReconcile)directHistoryReconcileRef.current=null;
+      window.clearInterval(timer);
       if(realtimeTimer!==null)window.clearTimeout(realtimeTimer);
       unsubscribeRealtime();
       document.removeEventListener('visibilitychange',onVisible);
       window.removeEventListener('online',onConnected);
+      window.removeEventListener('offline',onOffline);
     };
   },[selected,session?.access_token,userId,chatReloadNonce]);
+
+  // Reconcile after React commits a new page so viewport IDs match the DOM.
+  useEffect(()=>{directHistoryReconcileRef.current?.(false)},[chatMessages,selected,session?.access_token,userId]);
 
   useEffect(()=>{
     let cancelled=false;
@@ -1532,6 +1607,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
         const distance=area.scrollHeight-area.scrollTop-area.clientHeight;
         chatAutoScrollRef.current=distance<120;
         setShowJumpToLatest(distance>220&&!activeChatLoading);
+        directHistoryReconcileRef.current?.(false);
       }}>
       {!activeChatLoading&&!activeChatLoadError&&hasOlderMessages&&<div className="ik-chat-older-controls">
         <button type="button" className="ik-chat-older-button" disabled={loadingOlderMessages} onClick={()=>void loadOlderChatMessages()}>
