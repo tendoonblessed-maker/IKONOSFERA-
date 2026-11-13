@@ -868,7 +868,7 @@ test('mobile Enter inserts line breaks while desktop Enter sends and Shift+Enter
  assert.match(shell,/const softKeyboard=\/iPhone\|iPad\|iPod\|Android\/i\.test\(navigator\.userAgent\)/);
  assert.match(shell,/window\.matchMedia\('\(pointer:coarse\) and \(hover:none\)'\)/);
  assert.match(shell,/!e\.nativeEvent\.isComposing&&!softKeyboard/);
- assert.match(shell,/if\(draft\.trim\(\)&&!sending\)e\.currentTarget\.form\?\.requestSubmit\(\)/);
+ assert.match(shell,/if\(visibleDraft\.trim\(\)&&!sending\)e\.currentTarget\.form\?\.requestSubmit\(\)/);
 });
 test('message long press never interferes with swipe, scrolling or media controls',()=>{
  const swipe=load('components/SwipeReplyMessage.tsx');
@@ -1098,9 +1098,9 @@ test('offline direct chats preserve drafts and resume polling immediately on rec
  assert.match(shell,/Сообщение осталось в черновике/);
  assert.match(shell,/Вложение осталось в предпросмотре/);
  assert.match(shell,/disabled=\{sending\|\|activePartnerBlocked\|\|!networkOnline\}/);
- assert.match(shell,/disabled=\{!draft\.trim\(\)\|\|sending\|\|activePartnerBlocked\|\|!networkOnline\}/);
+ assert.match(shell,/disabled=\{!visibleDraft\.trim\(\)\|\|sending\|\|activePartnerBlocked\|\|!networkOnline\}/);
  assert.match(shell,/aria-label="Написать сообщение" enterKeyHint="enter"/);
- assert.match(shell,/onChange=\{e=>\{setDraft\(e\.target\.value\);if\(selected\)updateChatDraft\(selected,e\.target\.value\);\}\}/);
+ assert.match(shell,/onChange=\{e=>\{draftScopeRef\.current=\{ownerId:userId,chatId:selected\};setDraft\(e\.target\.value\);if\(selected\)updateChatDraft\(selected,e\.target\.value\);\}\}/);
  assert.match(drafts,/sessionStorage/);
  assert.match(shell,/!networkOnline&&<div className="ik-network-offline" role="status"/);
  assert.match(css,/\.ik-network-offline\{/);

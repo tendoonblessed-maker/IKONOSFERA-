@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
+import {readFileSync} from 'node:fs';
 import {cleanChatDrafts,readChatDrafts,writeChatDrafts,clearChatDrafts} from '../lib/chat-drafts.ts';
 
 const USER_A='11111111-1111-4111-8111-111111111111';
@@ -57,4 +58,18 @@ test('empty drafts remove stored data instead of leaving stale previews',()=>{
   writeChatDrafts(USER_A,{[CHAT_A]:'   '});
   assert.deepEqual(readChatDrafts(USER_A),{});
   assert.equal(data.size,0);
+});
+
+
+test('direct chat draft ownership and selected composer are scoped before paint',()=>{
+  const source=readFileSync(new URL('../components/AppShell.tsx',import.meta.url),'utf8');
+  assert.ok(source.includes("useLayoutEffect(()=>{\n    // Restore only the signed-in person's drafts before paint"));
+  assert.ok(source.includes("useLayoutEffect(()=>{\n    if(groupDraftsOwnerRef.current===userId)return;"));
+  assert.ok(source.includes("useLayoutEffect(()=>{\n    draftScopeRef.current={ownerId:userId,chatId:selected};"));
+  assert.ok(source.includes("const draftScopeRef=useRef({ownerId:userId,chatId:selected})"));
+  assert.ok(source.includes("draftScopeRef.current.ownerId===userId&&draftScopeRef.current.chatId===selected?draft:''"));
+  assert.ok(source.includes("value={visibleDraft}"));
+  assert.ok(source.includes("plainText=visibleDraft.trim()"));
+  assert.ok(source.includes("draftsOwnerRef.current===userId&&(draftsRef.current[chatId]||'').trim()===plainText"));
+  assert.ok(!source.includes("useEffect(()=>{if(selected)setDraft(draftsRef.current[selected]||'');"));
 });

@@ -22,6 +22,8 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
  const [membersOpen,setMembersOpen]=useState(false);
  const [memberSearch,setMemberSearch]=useState('');
  const [draft,setDraft]=useState(()=>readGroupDrafts(userId)[group.id]??'');
+ const draftScopeRef=useRef({ownerId:userId,groupId:group.id});
+ const visibleDraft=draftScopeRef.current.ownerId===userId&&draftScopeRef.current.groupId===group.id?draft:'';
  const [online,setOnline]=useState(true);
  const draftVersionRef=useRef(0);
  const [busy,setBusy]=useState(false);
@@ -84,8 +86,9 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
   setShowJumpToLatest(false);
   setNewMessagesBelow(0);
  },[group.id,userId]);
- // Mounting or switching accounts must not show another person's draft.
- useEffect(()=>{
+ // Restore synchronously before paint; a passive effect can flash the prior account's draft.
+ useLayoutEffect(()=>{
+  draftScopeRef.current={ownerId:userId,groupId:group.id};
   draftVersionRef.current+=1;
   setDraft(readGroupDrafts(userId)[group.id]??'');
  },[group.id,userId]);
@@ -98,6 +101,7 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
  },[]);
  function changeDraft(text:string){
   draftVersionRef.current+=1;
+  draftScopeRef.current={ownerId:userId,groupId:group.id};
   setDraft(text);
   setRetryAvailable(false);
   onDraftChange(group.id,text);
@@ -352,10 +356,10 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
   useEffect(()=>{if(!membersOpen||!members.length)return;let gone=false;const load=()=>{if(document.visibilityState==='visible')void getUserActivities(token,members.map(m=>m.id)).then(value=>{if(!gone)setPresence(value);}).catch(()=>{});};load();const t=setInterval(load,40000);return()=>{gone=true;clearInterval(t);};},[token,membersOpen,members]);
  async function send(e:FormEvent){
  e.preventDefault();
- if(busy||!draft.trim())return;
+ if(busy||!visibleDraft.trim())return;
  // Never queue a surprise send on reconnect. Let the user retry manually.
  if(!online||!navigator.onLine){setError('Нет интернета. Сообщение осталось в черновике.');return;}
- const body=draft.trim(),groupId=group.id,accountId=userId,requestToken=token;
+ const body=visibleDraft.trim(),groupId=group.id,accountId=userId,requestToken=token;
  const sentDraftVersion=draftVersionRef.current;
  setBusy(true);setError('');setRetryAvailable(false);
  try{
@@ -487,7 +491,7 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
  </button>}
  </div>
  <form ref={composerFormRef} className="composer ik-group-composer" onSubmit={send}>
- <textarea aria-label="Сообщение группе" placeholder={online?"Сообщение группе…":"Нет сети · черновик сохранён"} rows={1} enterKeyHint="enter" maxLength={4000} value={draft}
+ <textarea aria-label="Сообщение группе" placeholder={online?"Сообщение группе…":"Нет сети · черновик сохранён"} rows={1} enterKeyHint="enter" maxLength={4000} value={visibleDraft}
  onChange={e=>{changeDraft(e.target.value);if(error)setError('');}}
  onKeyDown={e=>{
    if(e.key!=='Enter'||e.nativeEvent.isComposing)return;
@@ -497,12 +501,12 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
    if(sendKey){e.preventDefault();e.currentTarget.form?.requestSubmit();}
  }}
  />
- <button type="submit" className="send-button" aria-label="Отправить в группу" disabled={busy||!draft.trim()||!online}>➤</button>
+ <button type="submit" className="send-button" aria-label="Отправить в группу" disabled={busy||!visibleDraft.trim()||!online}>➤</button>
  </form>
  {!online&&<p className="ik-group-offline" role="status">Нет соединения. Текст останется в черновике, отправь его после подключения.</p>}
  {error&&<div className="ik-group-send-alert" role="alert">
  <span>{error}</span>
- {retryAvailable&&online&&draft.trim()&&<button type="button" onClick={()=>composerFormRef.current?.requestSubmit()} disabled={busy}>Повторить отправку</button>}
+ {retryAvailable&&online&&visibleDraft.trim()&&<button type="button" onClick={()=>composerFormRef.current?.requestSubmit()} disabled={busy}>Повторить отправку</button>}
  </div>}
  {membersOpen&&<div className="ik-members-backdrop" role="dialog" aria-modal="true" aria-label="Участники группы">
  <div className="ik-members-modal"><div className="ik-members-header"><div><strong>{group.title}</strong><small>{members.length} участников</small></div><button type="button" onClick={()=>setMembersOpen(false)} aria-label="Закрыть список участников">✕</button></div>
