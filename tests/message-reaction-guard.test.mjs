@@ -64,7 +64,7 @@ test('reaction handler acquires a chat-scoped guard before network work and rele
  assert.ok(start>=0&&end>start,'reaction handler exists');
  const handler=app.slice(start,end);
  assert.match(handler,/const release=reactionActionGuardRef\.current\?\.acquire\(\{chatId,userId\}\);\s*if\(!release\)return;/);
- assert.ok(handler.indexOf('acquire(')<handler.indexOf('await setMessageReaction('),
+ assert.ok(handler.indexOf('acquire(')<handler.indexOf('await toggleMessageReaction('),
   'the lock is acquired before the first asynchronous mutation');
  assert.match(handler,/const scopeKey=chatActionScopeKey\(\{chatId,userId\}\)/);
  assert.match(handler,/setReactionBusyScopes\(current=>new Set\(current\)\.add\(scopeKey\)\)/);
@@ -102,9 +102,9 @@ test('AppShell publishes identity in a layout effect and ignores stale reaction 
  const handler=app.slice(start,end);
  assert.match(handler,/const actionScope=\{chatId,userId,generation:chatContextGenerationRef\.current\}/);
  assert.match(handler,/isCurrentChatActionScope\(actionScope,\{\s*chatId:selectedRef\.current,userId:userIdRef\.current,generation:chatContextGenerationRef\.current\s*\}\)/);
- assert.ok(handler.indexOf('if(!isCurrent())return;')<handler.indexOf('setMessageReactionPicker(null)'),
+ assert.ok(handler.indexOf('if(!isCurrent())return;')<handler.indexOf('toggleMessageReactionPicker(null)'),
   'a stale mutation response must not update the new chat UI');
- assert.match(handler,/if\(isCurrent\(\)\)setMessageReactions/);
+ assert.match(handler,/if\(isCurrent\(\)\)toggleMessageReactions/);
  assert.match(handler,/catch\(e\)\{if\(isCurrent\(\)\)setError/);
  assert.match(handler,/setReactionBusyScopes\(current=>\{const next=new Set\(current\);next\.delete\(scopeKey\);return next;\}\)/);
 });
