@@ -86,6 +86,9 @@ test('corrupt or invalid direct-draft snapshots preserve last-known-good memory,
     }
     values.set(key(A),'{}');
     assert.deepEqual(readChatDrafts(A),{},'a valid empty object is an intentional clear');
+    writeChatDrafts(A,{[CHAT]:'Remove me'});
+    values.delete(key(A));
+    assert.deepEqual(readChatDrafts(A),{},'a successfully removed key must not resurrect an old in-memory draft');
   }finally{
     clearChatDrafts(A);
     globalThis.window=previous;
