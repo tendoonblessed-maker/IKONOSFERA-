@@ -25,8 +25,9 @@ test('group members dialog traps Tab and Shift+Tab inside its focusable controls
 test('Escape closes the dialog and background scrolling is restored',()=>{
  assert.match(source,/event\.key==='Escape'/);
  assert.match(source,/setMembersOpen\(false\)/);
- assert.match(source,/document\.body\.style\.overflow='hidden'/);
- assert.match(source,/document\.body\.style\.overflow=previousOverflow/);
+ assert.match(source,/import \{lockBodyScroll\} from '@\/lib\/body-scroll-lock'/);
+ assert.match(source,/const releaseBodyScroll=lockBodyScroll\(document,window\)/);
+ assert.match(source,/releaseBodyScroll\(\)/);
  assert.match(source,/document\.removeEventListener\('keydown',onKey\)/);
 });
 
