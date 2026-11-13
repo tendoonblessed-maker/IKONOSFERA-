@@ -74,6 +74,8 @@ test('group composer preserves a more recent edit after an in-flight send',()=>{
  assert.match(source,/onDraftChange\(groupId,''\)/);
  assert.match(source,/onDraftChange\(group\.id,text\)/);
  assert.match(source,/setDraft\(readGroupDrafts\(userId\)\[group\.id\]\?\?''\)/);
+ assert.match(source,/useLayoutEffect\(\(\)=>\{\\n  draftVersionRef\.current\+\+/);
+ assert.doesNotMatch(source,/useEffect\(\(\)=>\{\\n  draftVersionRef\.current\+\+/);
  assert.doesNotMatch(source,/setDraft\(current=>current\.trim\(\)===body\?'':current\)/);
 });
 
