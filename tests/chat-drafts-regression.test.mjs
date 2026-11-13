@@ -65,7 +65,7 @@ test('direct chat draft ownership and selected composer are scoped before paint'
   const source=readFileSync(new URL('../components/AppShell.tsx',import.meta.url),'utf8');
   assert.ok(source.includes("useLayoutEffect(()=>{\n    // Restore only the signed-in person's drafts before paint"));
   assert.ok(source.includes("useLayoutEffect(()=>{\n    if(groupDraftsOwnerRef.current===userId)return;"));
-  assert.ok(source.includes("useLayoutEffect(()=>{\n    draftScopeRef.current={ownerId:userId,chatId:selected};"));
+  assert.ok(source.includes("useLayoutEffect(()=>{\n    // Invalidate any deferred focus from the conversation/account we just left.\n    composerFocusRequestRef.current++;\n    draftScopeRef.current={ownerId:userId,chatId:selected};"));
   assert.ok(source.includes("const draftScopeRef=useRef({ownerId:userId,chatId:selected})"));
   assert.ok(source.includes("draftScopeRef.current.ownerId===userId&&draftScopeRef.current.chatId===selected?draft:''"));
   assert.ok(source.includes("value={visibleDraft}"));

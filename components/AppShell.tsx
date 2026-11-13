@@ -1,5 +1,6 @@
 'use client';
 import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import {captureComposerSelection,focusComposerIfCurrent} from '@/lib/chat-composer-focus';
 import { backendReady, createTemporaryAccount, consumeEmailLinkSession, loadSession, currentUser, findProfileByUsername, listChats, listChatPreviews, listMessages, listOlderMessages, listReplyTargets, searchDirectMessages, type DirectMessageSearchResult, DIRECT_MESSAGE_SEARCH_PAGE_SIZE, type ReplyTarget, CHAT_MESSAGE_PAGE_SIZE, manageChat, manageMessage, listMessageReactions, setMessageReaction, markChatRead, listProfiles, myProfile, postMessage, reopenChat, sendDirectMedia, validateDirectMediaFile, sendEmailCode, signOut, startDirectChat, validSession, type ChatMessage, type MessageReaction, type DirectChat, type Profile, type Session, type ChatPreview } from '@/lib/supabase-rest';
 
 import ProfilePanel from "@/components/ProfilePanel";
@@ -156,6 +157,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
   const chatContextGenerationRef=useRef(0);
   const messageSearchRequestRef=useRef(0);
   const composerRef=useRef<HTMLTextAreaElement|null>(null);
+  const composerFocusRequestRef=useRef(0);
   const confirmedMessagesRef=useRef<Map<string,ConfirmedMessage>>(new Map());
   const attachmentDragDepthRef=useRef(0);
 
@@ -747,10 +749,25 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
   },[chatMessages.length,selected]);
   // Restore the selected chat's draft before paint so the previous chat/account is never flashed.
   useLayoutEffect(()=>{
+    // Invalidate any deferred focus from the conversation/account we just left.
+    composerFocusRequestRef.current++;
     draftScopeRef.current={ownerId:userId,chatId:selected};
     setDraft(selected?draftsRef.current[selected]||'':'');
   },[selected,userId]);
   useEffect(()=>{const field=composerRef.current;if(!field)return;field.style.height='auto';field.style.height=Math.min(field.scrollHeight,136)+'px';},[visibleDraft,selected]);
+  useEffect(()=>{
+    const invalidateComposerFocus=()=>{composerFocusRequestRef.current++;};
+    const onVisibilityChange=()=>{
+      if(document.visibilityState!=='visible')invalidateComposerFocus();
+    };
+    window.addEventListener('pagehide',invalidateComposerFocus);
+    document.addEventListener('visibilitychange',onVisibilityChange);
+    return()=>{
+      window.removeEventListener('pagehide',invalidateComposerFocus);
+      document.removeEventListener('visibilitychange',onVisibilityChange);
+      invalidateComposerFocus();
+    };
+  },[]);
   useEffect(()=>{
     const keyboard=(event:KeyboardEvent)=>{
       const shortcut=(event.ctrlKey||event.metaKey)&&!event.altKey;
@@ -1003,14 +1020,32 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
 
   function replyToMessage(message:ChatMessage){
     if(!selected||message.deleted_for_everyone)return;
-    const partner=rows.find(row=>row.chat.id===selected)?.other;
+    const chatId=selected;
+    const ownerId=userId;
+    const generation=chatContextGenerationRef.current;
+    const field=composerRef.current;
+    const selection=captureComposerSelection(field);
+    const focusRequest=++composerFocusRequestRef.current;
+    const partner=rows.find(row=>row.chat.id===chatId)?.other;
     setReplyingTo({
-      chatId:selected,id:message.id,
-      name:message.sender_id===userId?'Вы':partner?.display_name||partner?.username||'Собеседник',
+      chatId,id:message.id,
+      name:message.sender_id===ownerId?'Вы':partner?.display_name||partner?.username||'Собеседник',
       text:(message.body||'Вложение').replace(/\s+/g,' ').trim().slice(0,110)
     });
     setMessageMenuId(null);
-    window.requestAnimationFrame(()=>composerRef.current?.focus());
+    window.requestAnimationFrame(()=>{
+      if(composerFocusRequestRef.current!==focusRequest)return;
+      focusComposerIfCurrent(field,selection,()=>(
+        composerFocusRequestRef.current===focusRequest
+        &&composerRef.current===field
+        &&selectedRef.current===chatId
+        &&chatContextGenerationRef.current===generation
+        &&draftsOwnerRef.current===ownerId
+        &&draftScopeRef.current.ownerId===ownerId
+        &&draftScopeRef.current.chatId===chatId
+        &&document.visibilityState==='visible'
+      ));
+    });
   }
 
   async function sendMessage(e:React.FormEvent){
@@ -1583,7 +1618,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
       <VoiceRecorder key={userId+':'+selected} disabled={sending||activePartnerBlocked||Boolean(pendingAttachment)}
        onRecorded={file=>queueAttachment(file)}
        onError={message=>setError(message)}/>
-      <textarea ref={composerRef} aria-label="Написать сообщение" enterKeyHint="enter" placeholder={activePartnerBlocked?"Вы заблокировали пользователя":"Сообщение…"} rows={1} disabled={activePartnerBlocked} value={visibleDraft} onChange={e=>{draftScopeRef.current={ownerId:userId,chatId:selected};setDraft(e.target.value);if(selected)updateChatDraft(selected,e.target.value);}} onInput={e=>{const element=e.currentTarget;element.style.height='auto';element.style.height=Math.min(element.scrollHeight,136)+'px';}} onKeyDown={e=>{
+      <textarea key={userId+':'+selected} ref={composerRef} aria-label="Написать сообщение" enterKeyHint="enter" placeholder={activePartnerBlocked?"Вы заблокировали пользователя":"Сообщение…"} rows={1} disabled={activePartnerBlocked} value={visibleDraft} onChange={e=>{if(draftScopeRef.current.ownerId!==userId||draftScopeRef.current.chatId!==selected)return;setDraft(e.target.value);if(selected)updateChatDraft(selected,e.target.value);}} onInput={e=>{const element=e.currentTarget;element.style.height='auto';element.style.height=Math.min(element.scrollHeight,136)+'px';}} onKeyDown={e=>{
         // On iOS/Android the Return key must create a newline, not send the
         // message unexpectedly. Hardware-keyboard users retain Enter-to-send.
         const softKeyboard=/iPhone|iPad|iPod|Android/i.test(navigator.userAgent)
