@@ -41,3 +41,12 @@ test('opening a member profile transfers focus instead of restoring the hidden g
  assert.match(source,/if\(!skipMembersFocusRestoreRef\.current&&previouslyFocused\?\.isConnected\)/);
  assert.match(source,/skipMembersFocusRestoreRef\.current=false/);
 });
+
+test('programmatic focus cannot escape the group members dialog',()=>{
+ assert.match(source,/const onFocusIn=\(event:FocusEvent\)=>\{/);
+ assert.match(source,/event\.target instanceof Node&&!dialog\.contains\(event\.target\)/);
+ assert.match(source,/membersSearchRef\.current\?\?dialog\)\.focus\(\)/);
+ assert.match(source,/document\.addEventListener\('focusin',onFocusIn\)/);
+ assert.match(source,/document\.removeEventListener\('focusin',onFocusIn\)/);
+ assert.match(source,/!skipMembersFocusRestoreRef\.current&&dialog/);
+});
