@@ -12,6 +12,7 @@ import ChatMessageText from "@/components/ChatMessageText";
 import {subscribeDirectChatChanges} from "@/lib/direct-realtime";
 import {subscribeInboxChanges,type InboxChangeKind} from "@/lib/inbox-realtime";
 import {isLatestAccountSnapshot} from "@/lib/inbox-snapshot";
+import {shouldReloadAfterBfcacheRestore} from "@/lib/bfcache-session";
 import {shouldOpenDirectChatSearch} from "@/lib/chat-shortcuts";
 import {reconcileRecentChannelUpdates,CHANNEL_UPDATE_GRACE_MS,type RecentChannelUpdate} from "@/lib/channel-sync";
 import ChatAttachmentPreview from "@/components/ChatAttachmentPreview";
@@ -678,13 +679,25 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
     };
     const onVisible=()=>{if(document.visibilityState==='visible')void run(true);};
     const onConnected=()=>{if(document.visibilityState==='visible')void run(true);};
+    const onPageShow=(event:PageTransitionEvent)=>{
+      if(!event.persisted)return;
+      // BFCache can suspend timers and miss cross-tab storage events. Compare
+      // the complete session identity before retaining this page's private UI.
+      if(shouldReloadAfterBfcacheRestore(event.persisted,session,loadSession())){
+        window.location.reload();
+        return;
+      }
+      if(document.visibilityState==='visible')void run(true);
+    };
     const timer=window.setInterval(()=>void run(),12000);
     document.addEventListener('visibilitychange',onVisible);
     window.addEventListener('online',onConnected);
+    window.addEventListener('pageshow',onPageShow);
     return()=>{
       cancelled=true;window.clearInterval(timer);
       document.removeEventListener('visibilitychange',onVisible);
       window.removeEventListener('online',onConnected);
+      window.removeEventListener('pageshow',onPageShow);
     };
   },[session,userId,refresh,refreshInbox]);
 
