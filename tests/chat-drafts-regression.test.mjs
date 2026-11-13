@@ -63,8 +63,13 @@ test('empty drafts remove stored data instead of leaving stale previews',()=>{
 
 test('direct chat draft ownership and selected composer are restored before paint',()=>{
   const source=readFileSync(new URL('../components/AppShell.tsx',import.meta.url),'utf8');
-  assert.match(source,/useLayoutEffect\(\(\)=>\{\\n    \/\/ Restore only the signed-in person's drafts before paint/);
-  assert.match(source,/useLayoutEffect\(\(\)=>\{\\n    if\(groupDraftsOwnerRef\.current===userId\)return;/);
+  assert.match(source,/useLayoutEffect\(\(\)=>\{\\s*    \/\/ Restore only the signed-in person's drafts before paint/);
+  assert.match(source,/useLayoutEffect\(\(\)=>\{\\s*    if\(groupDraftsOwnerRef\.current===userId\)return;/);
   assert.match(source,/useLayoutEffect\(\(\)=>\{if\(selected\)setDraft\(draftsRef\.current\[selected\]\|\|''\);\},\[selected,userId\]\)/);
   assert.doesNotMatch(source,/useEffect\(\(\)=>\{if\(selected\)setDraft\(draftsRef\.current\[selected\]\|\|''\);\},\[selected,userId\]\)/);
+  assert.match(source,/const draftScopeRef=useRef\(\{ownerId:userId,chatId:selected\}\)/);
+  assert.match(source,/draftScopeRef\.current\.ownerId===userId&&draftScopeRef\.current\.chatId===selected\?draft:''/);
+  assert.match(source,/value=\{visibleDraft\}/);
+  assert.match(source,/plainText=visibleDraft\.trim\(\)/);
+  assert.match(source,/draftsOwnerRef\.current===userId&&\(draftsRef\.current\[chatId\]\|\|''\)\.trim\(\)===plainText/);
 });
