@@ -13,6 +13,7 @@ import {subscribeDirectChatChanges} from "@/lib/direct-realtime";
 import {startVisiblePolling} from "@/lib/visible-polling";
 import {createAbortableRequestScope} from "@/lib/request-abort-scope";
 import {bumpReplyTargetVersion,snapshotReplyTargetVersions,isReplyTargetVersionCurrent,filterReplyTargetsForCurrentVersion,isReplyTargetOwnerCurrent,mapWithConcurrency,type ReplyTargetOwner} from "@/lib/reply-target-cache";
+import {createConcurrencyGate} from "@/lib/concurrency-gate";
 import {createSingleFlightRefreshGate} from "@/lib/single-flight-refresh";
 import {subscribeInboxChanges,type InboxChangeKind} from "@/lib/inbox-realtime";
 import {isLatestAccountSnapshot} from "@/lib/inbox-snapshot";
@@ -39,6 +40,8 @@ import { REACTION_EMOJIS, type ReactionEmoji, createChannel, imageUrl, listChann
 
 type Tab = 'chats' | 'contacts' | 'channels' | 'profile' | 'settings';
 type Platform = { ios: boolean; standalone: boolean };
+// Keep reply-target reads bounded across overlapping Realtime refresh generations.
+const replyTargetReadGate=createConcurrencyGate(3);
 type ChatRow = { chat: DirectChat; other: Profile | null; preview:ChatPreview|null; previewUnavailable?:boolean };
 function dayLabel(value:string):string{
  const date=new Date(value),now=new Date();
@@ -330,7 +333,9 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
       activeScopes.add(scope);
       replyTargetAbortScopesRef.current.add(scope);
       try{
-        const targets=await listReplyTargets(session.access_token,chatId,ids,controller.signal);
+        const targets=await replyTargetReadGate.run(()=>stillInChat()
+          ?listReplyTargets(session.access_token,chatId,ids,controller.signal)
+          :Promise.resolve([]),controller.signal);
         return controller.signal.aborted?{ids,targets:[]}:{
           ids,
           targets:filterReplyTargetsForCurrentVersion(targets,replyTargetVersionsRef.current,batchVersions)
