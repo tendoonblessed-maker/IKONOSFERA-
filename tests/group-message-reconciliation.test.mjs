@@ -65,6 +65,25 @@ test('visible history reconciliation never removes rows outside its checked ID s
  assert.equal(removeMissingGroupMessages(current,GROUP,[],[]),current);
 });
 
+test('visible history reconciliation fails closed on malformed IDs or local rows',()=>{
+ const current=[message(MESSAGE)];
+ assert.equal(removeMissingGroupMessages(current,'not-a-group',[MESSAGE],[]),current);
+ assert.equal(removeMissingGroupMessages(current,GROUP,['not-a-message'],[]),current);
+ assert.equal(removeMissingGroupMessages(current,GROUP,[MESSAGE],['not-a-message']),current);
+ assert.equal(removeMissingGroupMessages(current,GROUP,[MESSAGE],['aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa']),current);
+ const malformedId=[{...message(MESSAGE),id:null}];
+ const malformedGroup=[{...message(MESSAGE),group_id:undefined}];
+ assert.equal(removeMissingGroupMessages(malformedId,GROUP,[MESSAGE],[]),malformedId);
+ assert.equal(removeMissingGroupMessages(malformedGroup,GROUP,[MESSAGE],[]),malformedGroup);
+});
+
+test('visible history reconciliation normalizes valid UUID casing without changing row order',()=>{
+ const uppercaseGroup=GROUP.toUpperCase();
+ const uppercaseMessage=MESSAGE.toUpperCase();
+ const row=message(MESSAGE,{group_id:GROUP});
+ assert.deepEqual(removeMissingGroupMessages([row],uppercaseGroup,[uppercaseMessage],[]),[]);
+});
+
 function groupsHarness(rows,fetcher){
  const source=readFileSync(new URL('../lib/groups.ts',import.meta.url),'utf8');
  const compiled=ts.transpileModule(source,{
