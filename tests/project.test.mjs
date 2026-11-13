@@ -339,7 +339,6 @@ test('chat removal for me erases own history without deleting recipient data',()
  const sql=load('supabase/migrations/20261029_020000_persistent_contacts_blocklist_chat_cleanup.sql');
  const shell=load('components/AppShell.tsx');
  const api=load('lib/supabase-rest.ts');
- const cache=load('lib/reply-target-cache.ts');
  assert.match(sql,/p_action = 'delete_for_me'/);
  assert.match(sql,/update public\.messages set deleted_for = array_append/);
  assert.match(sql,/update public\.chats/);
@@ -923,6 +922,7 @@ test('tapping old quoted messages loads bounded history and scrolls only the cha
 test('reply fetching never leaks old-account previews or unbounded PostgREST ID lists',()=>{
  const shell=load('components/AppShell.tsx');
  const api=load('lib/supabase-rest.ts');
+ const cache=load('lib/reply-target-cache.ts');
  assert.match(shell,/chatContextGenerationRef=useRef\(0\)/);
  assert.match(shell,/chatContextGenerationRef\.current\+=1/);
  assert.match(shell,/replyJumpRequestRef\.current\+=1/);
