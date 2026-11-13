@@ -7,6 +7,8 @@ const OWNER='11111111-1111-4111-8111-111111111111';
 const OTHER='22222222-2222-4222-8222-222222222222';
 const A='33333333-3333-4333-8333-333333333333';
 const B='44444444-4444-4444-8444-444444444444';
+const PREFIX='ikonosfera-group-drafts-tab-v1:';
+const key=id=>PREFIX+id;
 const load=path=>readFileSync(new URL('../'+path,import.meta.url),'utf8');
 const memory=new Map();
 const store={
@@ -15,9 +17,14 @@ const store={
  removeItem:key=>memory.delete(key)
 };
 globalThis.window={sessionStorage:store};
+function reset(){
+ clearGroupDrafts(OWNER);
+ clearGroupDrafts(OTHER);
+ memory.clear();
+}
 
 test('group drafts are isolated by both signed-in user and group ID',()=>{
- memory.clear();
+ reset();
  writeGroupDraft(OWNER,A,'Привет');
  writeGroupDraft(OWNER,B,'Другое сообщение');
  writeGroupDraft(OTHER,A,'Чужой текст');
@@ -30,7 +37,7 @@ test('group drafts are isolated by both signed-in user and group ID',()=>{
 });
 
 test('group drafts retain intentional whitespace, cap message length and discard malformed IDs',()=>{
- memory.clear();
+ reset();
  const text='  первая строка\nвторая  ';
  writeGroupDraft(OWNER,A,text);
  assert.equal(readGroupDrafts(OWNER)[A],text);
@@ -42,7 +49,7 @@ test('group drafts retain intentional whitespace, cap message length and discard
 });
 
 test('logging out clears only the previous account group drafts',()=>{
- memory.clear();
+ reset();
  writeGroupDraft(OWNER,A,'Secret');
  writeGroupDraft(OTHER,A,'Other');
  clearGroupDrafts(OWNER);
@@ -50,7 +57,8 @@ test('logging out clears only the previous account group drafts',()=>{
  assert.equal(readGroupDrafts(OTHER)[A],'Other');
 });
 
-test('storage errors and unexpected input never prevent group typing',()=>{
+test('storage errors keep the latest group draft readable in this tab',()=>{
+ reset();
  const original=globalThis.window;
  try{
   Object.defineProperty(globalThis,'window',{
@@ -58,12 +66,83 @@ test('storage errors and unexpected input never prevent group typing',()=>{
    value:{get sessionStorage(){throw Error('private-mode storage disabled');}}
   });
   assert.doesNotThrow(()=>writeGroupDraft(OWNER,A,'Keep typing'));
-  assert.deepEqual(readGroupDrafts(OWNER),{});
+  assert.equal(readGroupDrafts(OWNER)[A],'Keep typing');
   assert.doesNotThrow(()=>clearGroupDrafts(OWNER));
+  assert.deepEqual(readGroupDrafts(OWNER),{});
  }finally{
   Object.defineProperty(globalThis,'window',{configurable:true,value:original});
+  reset();
  }
  assert.deepEqual(writeGroupDraft('not-uuid',A,'wrong'),{});
+});
+
+test('failed group draft writes flush the newest snapshot after storage recovers',()=>{
+ reset();
+ const original=globalThis.window;
+ const values=new Map();
+ let blocked=false;
+ try{
+  globalThis.window={sessionStorage:{
+   getItem:id=>values.get(id)??null,
+   setItem(id,value){if(blocked)throw Error('quota');values.set(id,String(value));},
+   removeItem(id){if(blocked)throw Error('quota');values.delete(id);}
+  }};
+  writeGroupDraft(OWNER,A,'Old draft');
+  blocked=true;
+  writeGroupDraft(OWNER,A,'Latest draft');
+  writeGroupDraft(OWNER,B,'Second draft');
+  assert.deepEqual(readGroupDrafts(OWNER),{[A]:'Latest draft',[B]:'Second draft'});
+  assert.equal(JSON.parse(values.get(key(OWNER)))[A],'Old draft','stale storage remains untouched while blocked');
+  blocked=false;
+  assert.deepEqual(readGroupDrafts(OWNER),{[A]:'Latest draft',[B]:'Second draft'});
+  assert.deepEqual(JSON.parse(values.get(key(OWNER))),{[A]:'Latest draft',[B]:'Second draft'});
+ }finally{
+  globalThis.window=original;
+  reset();
+ }
+});
+
+test('failed group draft logout removal cannot resurrect private text',()=>{
+ reset();
+ const original=globalThis.window;
+ const values=new Map();
+ let blocked=false;
+ try{
+  globalThis.window={sessionStorage:{
+   getItem:id=>values.get(id)??null,
+   setItem(id,value){if(blocked)throw Error('blocked');values.set(id,String(value));},
+   removeItem(id){if(blocked)throw Error('blocked');values.delete(id);}
+  }};
+  writeGroupDraft(OWNER,A,'Private group draft');
+  blocked=true;
+  clearGroupDrafts(OWNER);
+  assert.deepEqual(readGroupDrafts(OWNER),{});
+  assert.ok(values.has(key(OWNER)),'old bytes remain physically stored while removal is blocked');
+  blocked=false;
+  assert.deepEqual(readGroupDrafts(OWNER),{});
+  assert.equal(values.has(key(OWNER)),false,'pending logout tombstone removes stale storage after recovery');
+ }finally{
+  globalThis.window=original;
+  reset();
+ }
+});
+
+test('disabled sessionStorage keeps separate in-tab snapshots for each account',()=>{
+ reset();
+ const original=globalThis.window;
+ try{
+  globalThis.window={get sessionStorage(){throw Error('storage disabled');}};
+  writeGroupDraft(OWNER,A,'Alice draft');
+  writeGroupDraft(OTHER,A,'Bob draft');
+  assert.equal(readGroupDrafts(OWNER)[A],'Alice draft');
+  assert.equal(readGroupDrafts(OTHER)[A],'Bob draft');
+  clearGroupDrafts(OWNER);
+  assert.deepEqual(readGroupDrafts(OWNER),{});
+  assert.equal(readGroupDrafts(OTHER)[A],'Bob draft');
+ }finally{
+  globalThis.window=original;
+  reset();
+ }
 });
 
 test('group composer preserves a more recent edit after an in-flight send',()=>{
@@ -112,4 +191,29 @@ test('group multiline composer supports Shift+Enter and prevents iOS input zoom'
  assert.match(group,/e\.currentTarget\.form\?\.requestSubmit\(\)/);
  assert.match(css,/\.group-view \.ik-group-composer textarea/);
  assert.match(css,/font-size:16px/);
+});
+
+test('malformed stored JSON cannot erase the last known-good in-tab draft snapshot',()=>{
+ reset();
+ const original=globalThis.window;
+ const values=new Map();
+ try{
+  globalThis.window={sessionStorage:{
+   getItem:id=>values.get(id)??null,
+   setItem:(id,value)=>values.set(id,String(value)),
+   removeItem:id=>values.delete(id)
+  }};
+  writeGroupDraft(OWNER,A,'Keep the last good draft');
+  values.set(key(OWNER),'null');
+  assert.deepEqual(readGroupDrafts(OWNER),{[A]:'Keep the last good draft'});
+  values.set(key(OWNER),'[');
+  assert.deepEqual(readGroupDrafts(OWNER),{[A]:'Keep the last good draft'});
+  values.set(key(OWNER),JSON.stringify({invalid:'not-a-group-id'}));
+  assert.deepEqual(readGroupDrafts(OWNER),{[A]:'Keep the last good draft'});
+  values.set(key(OWNER),'{}');
+  assert.deepEqual(readGroupDrafts(OWNER),{},'a valid empty object remains an authoritative empty snapshot');
+ }finally{
+  globalThis.window=original;
+  reset();
+ }
 });
