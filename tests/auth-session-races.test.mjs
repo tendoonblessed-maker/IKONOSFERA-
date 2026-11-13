@@ -92,6 +92,28 @@ test('Web Locks serialize refresh-token rotation across browser tabs',async()=>{
  assert.equal(tabB.api.loadSession().refresh_token,'rotated-refresh');
 });
 
+test('failed Web Locks acquisition fails closed and keeps the session retryable',async()=>{
+ const storage=createStorage();
+ let rejectLock=true;
+ const locks={
+  request(name,options,callback){
+   assert.equal(name,'ikonosfera-auth-refresh-v1');
+   assert.equal(options.mode,'exclusive');
+   if(rejectLock)return Promise.reject(Error('lock unavailable'));
+   return Promise.resolve().then(()=>callback({name,mode:options.mode}));
+  }
+ };
+ const {api,calls}=scenario(()=>Promise.resolve(tokenResponse('rotated-access','rotated-refresh')),{storage,locks});
+ api.saveSession(expired('old-access','old-refresh'));
+ await assert.rejects(api.validSession(),/Не удалось безопасно получить блокировку обновления сессии/);
+ assert.equal(calls.length,0,'a failed lock must never trigger an unsynchronized refresh');
+ assert.equal(api.loadSession().refresh_token,'old-refresh','failed lock acquisition must preserve credentials');
+ rejectLock=false;
+ const refreshed=await api.validSession();
+ assert.equal(refreshed.access_token,'rotated-access','a later lock acquisition should allow a safe retry');
+ assert.equal(calls.length,1);
+});
+
 test('a queued refresh never runs after another tab switches accounts',async()=>{
  const storage=createStorage();
  const locks=createLockManager();
