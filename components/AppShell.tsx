@@ -156,6 +156,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
   const composerRef=useRef<HTMLTextAreaElement|null>(null);
   const confirmedMessagesRef=useRef<Map<string,ConfirmedMessage>>(new Map());
   const directHistoryReconcileRef=useRef<((force?:boolean)=>void)|null>(null);
+  const invalidateDirectHistorySyncRef=useRef<(()=>void)|null>(null);
   const attachmentDragDepthRef=useRef(0);
 
   // In-memory edits belong to one signed-in user; never reuse across accounts.
@@ -531,7 +532,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
     const reconcileVisibleMessages=async(force=false)=>{
       if(cancelled||document.visibilityState!=='visible'||!navigator.onLine)return;
       if(force)reconcileRevision++;
-      if(reconcileInFlight){reconcileQueued=true;return;}
+      if(reconcileInFlight){if(force)reconcileQueued=true;return;}
       if(!force&&Date.now()-reconcileLastAt<DIRECT_MESSAGE_RECONCILE_COOLDOWN_MS)return;
       const ids=visibleDirectMessageIds(conversationHistoryRef.current);
       if(!ids.length)return;
@@ -542,7 +543,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
       try{
         const authoritative=await listExistingDirectMessages(token,chatId,ids,controller.signal);
         if(cancelled||controller.signal.aborted||!stillInChat())return;
-        if(revision!==reconcileRevision){reconcileQueued=true;return;}
+        if(revision!==reconcileRevision)return;
         setChatMessages(current=>reconcileVisibleDirectMessages(
           current,ids,authoritative,chatId,userId,confirmedMessagesRef.current
         ));
@@ -559,7 +560,9 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
       }
     };
     const triggerReconcile=(force=false)=>{void reconcileVisibleMessages(force)};
+    const invalidateSync=()=>{syncRevision++;};
     directHistoryReconcileRef.current=triggerReconcile;
+    invalidateDirectHistorySyncRef.current=invalidateSync;
     const pauseReconciliation=()=>{
       if(document.visibilityState==='hidden'||!navigator.onLine){
         syncRevision++;
@@ -623,6 +626,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
       if(cancelled)return;
       if(document.visibilityState==='hidden'||!navigator.onLine){pauseReconciliation();return;}
       syncRevision++;
+      reconcileRevision++;
       if(realtimeTimer!==null)window.clearTimeout(realtimeTimer);
       realtimeTimer=window.setTimeout(()=>{
         realtimeTimer=null;
@@ -657,6 +661,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
       reconcileQueued=false;
       reconcileController?.abort();
       if(directHistoryReconcileRef.current===triggerReconcile)directHistoryReconcileRef.current=null;
+      if(invalidateDirectHistorySyncRef.current===invalidateSync)invalidateDirectHistorySyncRef.current=null;
       window.clearInterval(timer);
       if(realtimeTimer!==null)window.clearTimeout(realtimeTimer);
       unsubscribeRealtime();
@@ -1190,6 +1195,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
       // An edit/delete must not be reverted by a still-pending send overlay.
       confirmedMessagesRef.current.delete(messageId);
       if(selectedRef.current===chatId){
+        invalidateDirectHistorySyncRef.current?.();
         setMessageMenuId(null);setEditingMessageId(null);
         // Actions on pages older than 100 messages must update locally too.
         setChatMessages(current=>current.flatMap(message=>{
@@ -1198,6 +1204,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
           if(action==='delete_everyone')return [{...message,deleted_for_everyone:true,body:'',media_path:null,media_type:null}];
           return [{...message,body:body??message.body,edited_at:new Date().toISOString()}];
         }));
+        directHistoryReconcileRef.current?.(true);
       }
       try{
         const updated=(await listMessages(token,chatId)).reverse();
