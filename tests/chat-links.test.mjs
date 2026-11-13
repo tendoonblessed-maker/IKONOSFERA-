@@ -217,3 +217,23 @@ test('Unicode and percent-encoded hostnames stay plain when WHATWG URL normalize
  ],'Unicode path segments on an ASCII hostname remain supported');
  assert.equal(reconstructed(unicodePath),unicodePath);
 });
+
+ 
+test('non-canonical IPv4 spellings stay literal instead of hiding the normalized destination',()=>{
+ for(const text of [
+  'http://127.1/path',
+  'http://0177.0.0.1/path',
+  'http://0x7f000001/path',
+  'http://2130706433/path',
+  'http://127.000.000.001/path'
+ ]){
+  assert.equal(links(text).length,0,'legacy IPv4 notation must not become a misleading clickable link');
+  assert.equal(reconstructed(text),text,'the original host spelling must remain unchanged');
+ }
+ const canonical='https://192.168.1.10:8443/status';
+ assert.deepEqual(links(canonical),[{text:canonical,href:canonical}],
+  'canonical dotted-decimal IPv4 addresses remain supported');
+ const ipv6='https://[2001:db8::1]:8443/status';
+ assert.deepEqual(links(ipv6),[{text:ipv6,href:ipv6}],
+  'the existing bracketed IPv6 support remains unchanged');
+});
