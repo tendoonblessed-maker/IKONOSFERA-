@@ -237,3 +237,53 @@ test('non-canonical IPv4 spellings stay literal instead of hiding the normalized
  assert.deepEqual(links(ipv6),[{text:ipv6,href:ipv6}],
   'the existing bracketed IPv6 support remains unchanged');
 });
+
+
+test('chat links reject ambiguous ports, user-info delimiters and IPv6 zone identifiers',()=>{
+ for(const text of [
+  'https://example.com:/path',
+  'https://example.com:00080/path',
+  'https://example.com:000443/path',
+  'https://example.com:00000/path',
+  'https://example.com:65536/path',
+  'https://example.com:999999/path',
+  'https://example.com:+80/path',
+  'https://example.com:-1/path',
+  'https://example.com:80:90/path',
+  'https://example.com:80abc/path',
+  'https://@example.com/path',
+  'https://example.com@evil.example/path',
+  'https://[fe80::1%25eth0]/path',
+  'https://[fe80::1%25eth0]:8443/path',
+  'https://[fe80::1%eth0]/path',
+  'https://[2001:db8::1]garbage/path',
+  'https://[2001:db8::1]:/path',
+  'https://[2001:db8::1]:0008443/path',
+  'https://[2001:db8::1]:65536/path'
+ ]){
+  assert.equal(links(text).length,0,'ambiguous authority must stay plain text: '+text);
+  assert.equal(reconstructed(text),text,'the original chat text must remain unchanged');
+ }
+});
+
+test('canonical decimal ports and bracketed IPv6 literals remain clickable',()=>{
+ const accepted=[
+  'https://example.com:0/path',
+  'https://example.com:1/path',
+  'https://example.com:80/path',
+  'https://example.com:443/path',
+  'https://example.com:65535/path',
+  'https://[2001:db8::1]/status',
+  'https://[2001:db8::1]:8443/status'
+ ];
+ for(const text of accepted){
+  assert.equal(links(text).length,1,'canonical authority should remain supported: '+text);
+  assert.equal(reconstructed(text),text);
+ }
+ assert.deepEqual(links('https://example.com:443/path'),[
+  {text:'https://example.com:443/path',href:'https://example.com/path'}
+ ],'WHATWG default-port normalization preserves the same HTTPS destination');
+ assert.deepEqual(links('http://example.com:80/path'),[
+  {text:'http://example.com:80/path',href:'http://example.com/path'}
+ ],'WHATWG default-port normalization preserves the same HTTP destination');
+});
