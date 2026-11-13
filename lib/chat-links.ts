@@ -10,7 +10,7 @@ const TRAILING_PUNCTUATION=/[.,!?;:…。，！？；：»”’›]$/u;
 // disappear during rendering. Keep such candidates literal, not clickable.
 const UNSAFE_LINK_FORMATTING=/[\p{Cf}\p{Default_Ignorable_Code_Point}]/u;
 // WHATWG URL normalizes raw backslashes and can percent-encode control bytes.
-// Percent-encoded text remains visible and is intentionally still supported.
+// Percent-encoded path text remains supported; raw host encoding is rejected below.
 const UNSAFE_LINK_SYNTAX=/[\\\p{Cc}]/u;
 const MAX_URL_LENGTH=2048;
 const MAX_LINKS=40;
@@ -49,6 +49,32 @@ function externalHref(candidate:string):string|null{
   if(!parsed.hostname||parsed.hostname.startsWith('.')||parsed.hostname.endsWith('.'))return null;
   if(parsed.hostname.includes('%'))return null;
   if(/^www\./i.test(candidate)&&!parsed.hostname.includes('.'))return null;
+  // WHATWG URL applies IDNA mapping before exposing hostname: Unicode dot
+  // separators, full-width ASCII and percent-encoded host bytes can become
+  // an apparently ordinary ASCII hostname. Inspect the original authority
+  // before normalization so the visible text and actual destination agree.
+  const authority=prefixed.match(/^https?:\/\/([^/?#]*)/i)?.[1];
+  if(!authority)return null;
+  const hostPort=authority.slice(authority.lastIndexOf('@')+1);
+  const rawHostname=hostPort.startsWith('[')
+   ?hostPort.slice(0,hostPort.indexOf(']')+1)
+   :hostPort.replace(/:\d*$/,'');
+  if(!rawHostname||/[^\x00-\x7f]/.test(rawHostname)||rawHostname.includes('%'))return null;
+  // The bubble renders the original hostname verbatim. IDN homographs can
+  // resemble trusted ASCII domains while resolving to a different punycode host.
+  // Keep internationalized hostnames literal until the UI can show a safe label.
+  if(parsed.hostname.split('.').some(label=>label.startsWith('xn--')))return null;
+  // WHATWG URL accepts legacy IPv4 spellings (127.1, octal, hex and a
+  // single integer) and silently rewrites them to dotted decimal. The chat
+  // bubble shows the original text, so only allow an exact canonical IPv4
+  // spelling when the parser has normalized the hostname to an IPv4 address.
+  if(/^(?:\d{1,3}\.){3}\d{1,3}$/.test(parsed.hostname)){
+   const octets=rawHostname.split('.');
+   const canonical=octets.length===4
+    &&octets.every(part=>/^(?:0|[1-9]\d{0,2})$/.test(part)&&Number(part)<=255)
+    &&rawHostname===parsed.hostname;
+   if(!canonical)return null;
+  }
   return parsed.href;
  }catch{return null;}
 }
