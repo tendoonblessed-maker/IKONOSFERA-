@@ -57,6 +57,6 @@ test('direct and group composers share the fallback and resize restored drafts b
   assert.ok(direct.includes('useLayoutEffect(()=>{resizeChatComposer(composerRef.current);},[draft,selected,userId]);'));
   assert.ok(group.includes('useLayoutEffect(()=>{resizeChatComposer(composerRef.current);},[draft,group.id,userId]);'));
   assert.ok(direct.includes('onInput={e=>resizeChatComposer(e.currentTarget)}'));
-  assert.ok(group.includes('ref={composerRef} aria-label="Сообщение группе"'));
+  assert.ok(group.includes('aria-label="Сообщение группе" ref={composerRef}'));
   assert.ok(group.includes('onInput={e=>resizeChatComposer(e.currentTarget)}'));
 });

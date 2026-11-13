@@ -490,7 +490,7 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
  </button>}
  </div>
  <form ref={composerFormRef} className="composer ik-group-composer" onSubmit={send}>
- <textarea ref={composerRef} aria-label="Сообщение группе" placeholder={online?"Сообщение группе…":"Нет сети · черновик сохранён"} rows={1} enterKeyHint="enter" maxLength={4000} value={draft}
+ <textarea aria-label="Сообщение группе" ref={composerRef} placeholder={online?"Сообщение группе…":"Нет сети · черновик сохранён"} rows={1} enterKeyHint="enter" maxLength={4000} value={draft}
  onChange={e=>{changeDraft(e.target.value);if(error)setError('');}}
  onInput={e=>resizeChatComposer(e.currentTarget)}
  onKeyDown={e=>{
