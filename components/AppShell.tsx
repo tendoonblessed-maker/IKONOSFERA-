@@ -1618,7 +1618,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
       <VoiceRecorder key={userId+':'+selected} disabled={sending||activePartnerBlocked||Boolean(pendingAttachment)}
        onRecorded={file=>queueAttachment(file)}
        onError={message=>setError(message)}/>
-      <textarea ref={composerRef} aria-label="Написать сообщение" enterKeyHint="enter" placeholder={activePartnerBlocked?"Вы заблокировали пользователя":"Сообщение…"} rows={1} disabled={activePartnerBlocked} value={visibleDraft} onChange={e=>{draftScopeRef.current={ownerId:userId,chatId:selected};setDraft(e.target.value);if(selected)updateChatDraft(selected,e.target.value);}} onInput={e=>{const element=e.currentTarget;element.style.height='auto';element.style.height=Math.min(element.scrollHeight,136)+'px';}} onKeyDown={e=>{
+      <textarea key={userId+':'+selected} ref={composerRef} aria-label="Написать сообщение" enterKeyHint="enter" placeholder={activePartnerBlocked?"Вы заблокировали пользователя":"Сообщение…"} rows={1} disabled={activePartnerBlocked} value={visibleDraft} onChange={e=>{if(draftScopeRef.current.ownerId!==userId||draftScopeRef.current.chatId!==selected)return;setDraft(e.target.value);if(selected)updateChatDraft(selected,e.target.value);}} onInput={e=>{const element=e.currentTarget;element.style.height='auto';element.style.height=Math.min(element.scrollHeight,136)+'px';}} onKeyDown={e=>{
         // On iOS/Android the Return key must create a newline, not send the
         // message unexpectedly. Hardware-keyboard users retain Enter-to-send.
         const softKeyboard=/iPhone|iPad|iPod|Android/i.test(navigator.userAgent)
