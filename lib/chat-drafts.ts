@@ -62,6 +62,22 @@ export function updateChatDraftEntry(drafts:ChatDrafts,chatId:string,text:string
   if(text.trim())next[chatId]=text.slice(0,MAX_TEXT);
   return cleanChatDrafts(next);
 }
+
+/**
+ * Return null for an unavailable/corrupt snapshot so it cannot erase the
+ * last-known-good in-tab copy. A valid empty object is authoritative: it is
+ * how a successful clear is represented when no key remains to be read.
+ */
+function parseStoredDrafts(value:string|null):ChatDrafts|null{
+  if(value===null)return null;
+  let parsed:unknown;
+  try{parsed=JSON.parse(value);}catch{return null;}
+  if(!parsed||typeof parsed!=='object'||Array.isArray(parsed))return null;
+  const clean=cleanChatDrafts(parsed);
+  if(Object.keys(parsed).length>0&&Object.keys(clean).length===0)return null;
+  return clean;
+}
+
 export function readChatDrafts(userId:string):ChatDrafts{
   if(!UUID.test(userId))return {};
   flushPendingDrafts(userId);
@@ -70,8 +86,8 @@ export function readChatDrafts(userId:string):ChatDrafts{
   try{
     const storage=store();
     if(!storage)return {...(memoryDrafts.get(userId)??{})};
-    const value=storage.getItem(key(userId));
-    const clean=value?cleanChatDrafts(JSON.parse(value)):{};
+    const clean=parseStoredDrafts(storage.getItem(key(userId)));
+    if(clean===null)return {...(memoryDrafts.get(userId)??{})};
     memoryDrafts.set(userId,clean);
     return {...clean};
   }catch{return {...(memoryDrafts.get(userId)??{})};}
