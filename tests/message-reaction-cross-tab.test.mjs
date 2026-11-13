@@ -37,7 +37,7 @@ function setup({initialEmoji=null,locks,fetchOverride}={}){
  const exports={};
  const calls=[];
  let currentEmoji=initialEmoji;
- const fetcher=fetchOverride||async(url,options)=>{
+ const fetcher=fetchOverride||(async(url,options)=>{
   calls.push({url,options});
   if(options.method==='GET'){
    return {ok:true,text:async()=>JSON.stringify(currentEmoji===null?[]:[{message_id:UUID,user_id:USER,emoji:currentEmoji}])};
@@ -51,7 +51,7 @@ function setup({initialEmoji=null,locks,fetchOverride}={}){
    return {ok:true,text:async()=>''};
   }
   throw new Error('Unexpected HTTP method');
- };
+ });
  const context={
   exports,
   process:{env:{NEXT_PUBLIC_SUPABASE_URL:'https://supabase.unit.test',NEXT_PUBLIC_SUPABASE_ANON_KEY:'public-anon-test'}},
