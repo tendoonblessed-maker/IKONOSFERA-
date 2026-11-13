@@ -20,6 +20,9 @@ function store():Storage|null{
  catch{return null;}
 }
 function key(ownerId:string){return PREFIX+ownerId;}
+function memorySnapshot(ownerId:string):GroupDrafts{
+ return {...(memoryDrafts.get(ownerId)??{})};
+}
 function flushPendingDrafts(ownerId:string):void{
  if(!pendingOwners.has(ownerId))return;
  try{
@@ -53,16 +56,31 @@ export function readGroupDrafts(ownerId:string):GroupDrafts{
  if(!UUID.test(ownerId))return {};
  flushPendingDrafts(ownerId);
  // Never let stale storage override an edit or a logout that is still pending.
- if(pendingOwners.has(ownerId))return {...(memoryDrafts.get(ownerId)??{})};
+ if(pendingOwners.has(ownerId))return memorySnapshot(ownerId);
  try{
   const storage=store();
-  if(!storage)return {...(memoryDrafts.get(ownerId)??{})};
+  if(!storage)return memorySnapshot(ownerId);
   const item=storage.getItem(key(ownerId));
-  const clean=item?cleanGroupDrafts(JSON.parse(item)):{};
+  // Storage eviction or an out-of-band clear must not erase a newer in-tab
+  // snapshot. The explicit logout path writes an empty tombstone first.
+  if(item===null){
+   if(memoryDrafts.has(ownerId))return memorySnapshot(ownerId);
+   memoryDrafts.set(ownerId,{});
+   return {};
+  }
+  const parsed:unknown=JSON.parse(item);
+  // Syntactically valid but malformed JSON (for example "null" or an array)
+  // is not authoritative over the last known-good snapshot.
+  if(!parsed||typeof parsed!=='object'||Array.isArray(parsed))return memorySnapshot(ownerId);
+  const entries=Object.keys(parsed);
+  const clean=cleanGroupDrafts(parsed);
+  // A non-empty object with no valid draft entries is likely corrupt/stale.
+  // Preserve the last known-good snapshot rather than silently losing text.
+  if(entries.length>0&&Object.keys(clean).length===0)return memorySnapshot(ownerId);
   memoryDrafts.set(ownerId,clean);
   return {...clean};
  }catch{
-  return {...(memoryDrafts.get(ownerId)??{})};
+  return memorySnapshot(ownerId);
  }
 }
 export function writeGroupDraft(ownerId:string,groupId:string,text:string):GroupDrafts{
