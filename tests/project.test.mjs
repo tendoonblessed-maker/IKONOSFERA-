@@ -499,7 +499,8 @@ test('rapid chat switching never inserts a sent attachment or edited message in 
   assert.ok(start>0,operation+' must exist');
   const part=shell.slice(start,start+1500);
   assert.match(part,/const chatId=selected/);
-  assert.match(part,/selectedRef\.current===chatId/);
+  if(operation==='reactToMessage')assert.match(part,/if\(!isCurrent\(\)\)return;/);
+  else assert.match(part,/selectedRef\.current===chatId/);
  }
  assert.match(shell,/draftsRef\.current\[chatId\].*\.trim\(\)===plainText/);
  assert.match(shell,/setDraft\(current=>current\.trim\(\)===plainText\?'':current\)/);

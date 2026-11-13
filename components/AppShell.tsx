@@ -1,6 +1,6 @@
 'use client';
 import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { backendReady, createTemporaryAccount, consumeEmailLinkSession, loadSession, currentUser, findProfileByUsername, listChats, listChatPreviews, listMessages, listOlderMessages, listReplyTargets, searchDirectMessages, type DirectMessageSearchResult, DIRECT_MESSAGE_SEARCH_PAGE_SIZE, type ReplyTarget, CHAT_MESSAGE_PAGE_SIZE, manageChat, manageMessage, listMessageReactions, setMessageReaction, markChatRead, listProfiles, myProfile, postMessage, reopenChat, sendDirectMedia, validateDirectMediaFile, sendEmailCode, signOut, startDirectChat, validSession, type ChatMessage, type MessageReaction, type DirectChat, type Profile, type Session, type ChatPreview } from '@/lib/supabase-rest';
+import { backendReady, createTemporaryAccount, consumeEmailLinkSession, loadSession, currentUser, findProfileByUsername, listChats, listChatPreviews, listMessages, listOlderMessages, listReplyTargets, searchDirectMessages, type DirectMessageSearchResult, DIRECT_MESSAGE_SEARCH_PAGE_SIZE, type ReplyTarget, CHAT_MESSAGE_PAGE_SIZE, manageChat, manageMessage, listMessageReactions, toggleMessageReaction, markChatRead, listProfiles, myProfile, postMessage, reopenChat, sendDirectMedia, validateDirectMediaFile, sendEmailCode, signOut, startDirectChat, validSession, type ChatMessage, type MessageReaction, type DirectChat, type Profile, type Session, type ChatPreview } from '@/lib/supabase-rest';
 
 import ProfilePanel from "@/components/ProfilePanel";
 import {mergeConfirmedRecentPage,prependEarlierPage,CONFIRMED_MESSAGE_GRACE_MS,type ConfirmedMessage} from "@/lib/chat-history";
@@ -12,6 +12,7 @@ import ChatMessageText from "@/components/ChatMessageText";
 import {subscribeDirectChatChanges} from "@/lib/direct-realtime";
 import {subscribeInboxChanges,type InboxChangeKind} from "@/lib/inbox-realtime";
 import {isLatestAccountSnapshot} from "@/lib/inbox-snapshot";
+import {createSingleFlightGuard,chatActionScopeKey,isCurrentChatActionScope} from "@/lib/single-flight-guard";
 import {shouldOpenDirectChatSearch} from "@/lib/chat-shortcuts";
 import {reconcileRecentChannelUpdates,CHANNEL_UPDATE_GRACE_MS,type RecentChannelUpdate} from "@/lib/channel-sync";
 import ChatAttachmentPreview from "@/components/ChatAttachmentPreview";
@@ -90,8 +91,14 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
   const [hasOlderMessages,setHasOlderMessages]=useState(false);
   const [loadingOlderMessages,setLoadingOlderMessages]=useState(false);
   const [olderMessagesError,setOlderMessagesError]=useState(false);
-  const [messageReactions,setMessageReactions]=useState<MessageReaction[]>([]);
-  const [messageReactionPicker,setMessageReactionPicker]=useState<string|null>(null);
+  const [messageReactions,toggleMessageReactions]=useState<MessageReaction[]>([]);
+  const [messageReactionPicker,toggleMessageReactionPicker]=useState<string|null>(null);
+  const [reactionBusyScopes,setReactionBusyScopes]=useState<Set<string>>(()=>new Set());
+  const activeReactionScopeKey=selected&&userId?chatActionScopeKey({chatId:selected,userId}):"";
+  const reactionBusy=Boolean(activeReactionScopeKey&&reactionBusyScopes.has(activeReactionScopeKey));
+  // React state disables the UI after render; this synchronous guard closes same-tick double taps.
+  const reactionActionGuardRef=useRef<ReturnType<typeof createSingleFlightGuard>|null>(null);
+  if(!reactionActionGuardRef.current)reactionActionGuardRef.current=createSingleFlightGuard();
   const [editingMessageId,setEditingMessageId]=useState<string|null>(null);
   const [editingMessageBody,setEditingMessageBody]=useState("");
   const [search,setSearch]=useState('');
@@ -140,6 +147,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
   const loadingOlderRef=useRef(false);
   const prependScrollRef=useRef<{chatId:string;height:number;top:number}|null>(null);
   const selectedRef=useRef<string|null>(null);
+  const userIdRef=useRef(userId);
   const searchInputRef=useRef<HTMLInputElement|null>(null);
   const previewCacheRef=useRef<{ownerId:string;previews:Map<string,ChatPreview>}>({ownerId:'',previews:new Map()});
   const inboxRequestRef=useRef(0);
@@ -218,9 +226,14 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
     writeChatDrafts(userId,next);
   }
 
-  useEffect(()=>{
+  useLayoutEffect(()=>{
+    // Publish chat/account identity before paint so late network completions
+    // cannot write into the next conversation between commit and passive effects.
     selectedRef.current=selected;
+    userIdRef.current=userId;
     chatContextGenerationRef.current+=1;
+  },[selected,userId]);
+  useEffect(()=>{
     replyJumpRequestRef.current+=1;
     setLocatingReply(null);setPendingReplyJump(null);
     setReplyingTo(null);setShowJumpToLatest(false);
@@ -526,7 +539,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
     setOlderMessagesError(false);
     loadingOlderRef.current=false;
     prependScrollRef.current=null;
-    setMessageReactions([]);
+    toggleMessageReactions([]);
     setSelectedMessages([]);
     setMessageMenuId(null);
     const sync=async(first=false)=>{
@@ -546,7 +559,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
         setChatLoad({id:chatId,status:'ready'});
         // Reactions must not block displaying text and attachments.
         void listMessageReactions(token,messages.map(message=>message.id))
-          .then(reactions=>{if(!cancelled)setMessageReactions(current=>{
+          .then(reactions=>{if(!cancelled)toggleMessageReactions(current=>{
             const recentIds=new Set(messages.map(message=>message.id));
             return [...current.filter(reaction=>!recentIds.has(reaction.message_id)),...reactions];
           });})
@@ -868,7 +881,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
         // Older reactions load on demand rather than during every 6s poll.
         void listMessageReactions(token,older.map(message=>message.id))
           .then(reactions=>{
-            if(stillInChat())setMessageReactions(current=>{
+            if(stillInChat())toggleMessageReactions(current=>{
               const ids=new Set(older.map(message=>message.id));
               return [...current.filter(reaction=>!ids.has(reaction.message_id)),...reactions];
             });
@@ -965,7 +978,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
           void listMessageReactions(token,ids).then(reactions=>{
             if(!stillInChat())return;
             const batch=new Set(ids);
-            setMessageReactions(current=>[
+            toggleMessageReactions(current=>[
               ...current.filter(reaction=>!batch.has(reaction.message_id)),...reactions
             ]);
           }).catch(()=>{});
@@ -1133,20 +1146,35 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
     }catch(e){setError(userFacingError(e));}
   }
   async function reactToMessage(messageId:string,emoji:ReactionEmoji){
-    if(!session||!selected||!userId||sending)return;
-    const chatId=selected,token=session.access_token;
-    const previous=messageReactions.find(r=>r.message_id===messageId&&r.user_id===userId);
-    setSending(true);setError("");
+    const chatId=selected;
+    if(!session||!chatId||!userId)return;
+    // Reject a stale menu action before it can mutate a message from another chat.
+    if(!chatMessages.some(message=>message.id===messageId&&message.chat_id===chatId))return;
+    const scopeKey=chatActionScopeKey({chatId,userId});
+    // A slow request in another chat/account must not disable this conversation.
+    const release=reactionActionGuardRef.current?.acquire({chatId,userId});
+    if(!release)return;
+    const token=session.access_token;
+    const actionScope={chatId,userId,generation:chatContextGenerationRef.current};
+    const isCurrent=()=>isCurrentChatActionScope(actionScope,{
+      chatId:selectedRef.current,userId:userIdRef.current,generation:chatContextGenerationRef.current
+    });
+    setReactionBusyScopes(current=>new Set(current).add(scopeKey));
+    setError("");
     try{
-      await setMessageReaction(token,userId,messageId,previous?.emoji===emoji?null:emoji);
-      if(selectedRef.current===chatId)setMessageReactionPicker(null);
+      await toggleMessageReaction(token,userId,messageId,emoji);
+      if(!isCurrent())return;
+      toggleMessageReactionPicker(null);
       try{
         const updated=await listMessageReactions(token,[messageId]);
-        if(selectedRef.current===chatId)setMessageReactions(current=>[
+        if(isCurrent())toggleMessageReactions(current=>[
           ...current.filter(reaction=>reaction.message_id!==messageId),...updated
         ]);
       }catch{/* Reaction was saved; the chat poll will reload its state. */}
-    }catch(e){setError(userFacingError(e));}finally{setSending(false);}
+    }catch(e){if(isCurrent())setError(userFacingError(e));}finally{
+      setReactionBusyScopes(current=>{const next=new Set(current);next.delete(scopeKey);return next;});
+      release();
+    }
   }
   function queueAttachment(file:File|undefined){
     if(!file||!selected||!userId||sending||activePartnerBlocked)return;
@@ -1548,7 +1576,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
       {!activeChatLoading&&!activeChatLoadError&&!chatMessages.length&&<div className="conversation-blank"><span>Начало переписки</span><p>Сообщения видны только участникам диалога.</p></div>}{visibleMessages.map((message,index)=><Fragment key={message.id}>{(index===0||new Date(visibleMessages[index-1].created_at).toDateString()!==new Date(message.created_at).toDateString())&&<div className="ik-chat-day-separator" role="separator"><span>{dayLabel(message.created_at)}</span></div>}<SwipeReplyMessage className={`chat-message-row ${message.sender_id===userId?'mine':'theirs'}`}
         disabled={Boolean(message.deleted_for_everyone||editingMessageId===message.id)}
         onReply={()=>replyToMessage(message)}
-        onOpenMenu={!message.deleted_for_everyone?()=>{setMessageMenuId(message.id);setMessageReactionPicker(null);}:undefined}><div id={'ik-chat-message-'+message.id} className={`bubble ${message.sender_id===userId?'mine':'theirs'}`}>
+        onOpenMenu={!message.deleted_for_everyone?()=>{setMessageMenuId(message.id);toggleMessageReactionPicker(null);}:undefined}><div id={'ik-chat-message-'+message.id} className={`bubble ${message.sender_id===userId?'mine':'theirs'}`}>
           {!message.deleted_for_everyone&&message.reply_to_message_id&&<ReplyQuote
             target={messageById.get(message.reply_to_message_id)??replyTargets[message.reply_to_message_id]??null}
             senderName={!(messageById.get(message.reply_to_message_id)??replyTargets[message.reply_to_message_id])?'Исходное сообщение':((messageById.get(message.reply_to_message_id)??replyTargets[message.reply_to_message_id])?.sender_id===userId)?'Вы':active?.other?.display_name||active?.other?.username||'Собеседник'}
@@ -1558,10 +1586,10 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
             value={editingMessageBody} onChange={setEditingMessageBody}
             onSave={body=>messageAction(message.id,'edit',body)}
             onCancel={()=>{setEditingMessageId(null);setEditingMessageBody('');}}
-          />:message.body&&<ChatMessageText text={message.body}/>}<time dateTime={message.created_at}>{message.edited_at&&!message.deleted_for_everyone&&<span className="message-edited-label" title="Сообщение отредактировано">изм. · </span>}{message.sender_id===userId&&<span className={"message-receipt"+(message.read_at?" read":"")} title={message.read_at?"Просмотрено":"Отправлено"}>{message.read_at?"✓✓":"✓"}</span>}{new Date(message.created_at).toLocaleTimeString('ru-RU',{hour:'2-digit',minute:'2-digit'})}</time></div><div className="chat-message-tools">{!message.deleted_for_everyone&&<button type="button" className="ik-message-menu-toggle" aria-label="Действия с сообщением" onClick={()=>{setMessageMenuId(message.id);setMessageReactionPicker(null);}}>···</button>}<div className="reaction-bar message-reaction-bar">
- {REACTION_EMOJIS.filter(emoji=>messageReactions.some(r=>r.message_id===message.id&&r.emoji===emoji)).map(emoji=><button key={emoji} type="button" className={"reaction-pill"+(messageReactions.some(r=>r.message_id===message.id&&r.user_id===userId&&r.emoji===emoji)?" mine":"")} onClick={()=>void reactToMessage(message.id,emoji)} disabled={sending}>{emoji} <span>{messageReactions.filter(r=>r.message_id===message.id&&r.emoji===emoji).length}</span></button>)}
- <button type="button" className="reaction-add" aria-label="Добавить реакцию" onClick={()=>setMessageReactionPicker(messageReactionPicker===message.id?null:message.id)}>☺ +</button>
- {messageReactionPicker===message.id&&<div className="reaction-picker">{REACTION_EMOJIS.map(emoji=><button type="button" key={emoji} disabled={sending} onClick={()=>void reactToMessage(message.id,emoji)} aria-label={"Реакция "+emoji}>{emoji}</button>)}</div>}
+          />:message.body&&<ChatMessageText text={message.body}/>}<time dateTime={message.created_at}>{message.edited_at&&!message.deleted_for_everyone&&<span className="message-edited-label" title="Сообщение отредактировано">изм. · </span>}{message.sender_id===userId&&<span className={"message-receipt"+(message.read_at?" read":"")} title={message.read_at?"Просмотрено":"Отправлено"}>{message.read_at?"✓✓":"✓"}</span>}{new Date(message.created_at).toLocaleTimeString('ru-RU',{hour:'2-digit',minute:'2-digit'})}</time></div><div className="chat-message-tools">{!message.deleted_for_everyone&&<button type="button" className="ik-message-menu-toggle" aria-label="Действия с сообщением" onClick={()=>{setMessageMenuId(message.id);toggleMessageReactionPicker(null);}}>···</button>}<div className="reaction-bar message-reaction-bar">
+ {REACTION_EMOJIS.filter(emoji=>messageReactions.some(r=>r.message_id===message.id&&r.emoji===emoji)).map(emoji=><button key={emoji} type="button" className={"reaction-pill"+(messageReactions.some(r=>r.message_id===message.id&&r.user_id===userId&&r.emoji===emoji)?" mine":"")} onClick={()=>void reactToMessage(message.id,emoji)} disabled={reactionBusy}>{emoji} <span>{messageReactions.filter(r=>r.message_id===message.id&&r.emoji===emoji).length}</span></button>)}
+ <button type="button" className="reaction-add" aria-label="Добавить реакцию" onClick={()=>toggleMessageReactionPicker(messageReactionPicker===message.id?null:message.id)}>☺ +</button>
+ {messageReactionPicker===message.id&&<div className="reaction-picker">{REACTION_EMOJIS.map(emoji=><button type="button" key={emoji} disabled={reactionBusy} onClick={()=>void reactToMessage(message.id,emoji)} aria-label={"Реакция "+emoji}>{emoji}</button>)}</div>}
  </div></div></SwipeReplyMessage></Fragment>)}<div ref={messageEnd}/></div>
       {showJumpToLatest&&!activeChatLoading&&<button type="button" className={"ik-jump-to-latest"+(replyingTo?.chatId===selected?" with-reply":"")} aria-label="Перейти к последним сообщениям" title="К последним сообщениям"
         onClick={()=>{const history=conversationHistoryRef.current;if(history){chatAutoScrollRef.current=true;history.scrollTop=history.scrollHeight;}setShowJumpToLatest(false);}}>
@@ -1606,7 +1634,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
           <span className="ik-message-menu-preview-time">{new Date(menuMessage.created_at).toLocaleTimeString('ru-RU',{hour:'2-digit',minute:'2-digit'})}</span>
         </div>
         <div className="ik-message-menu-reactions" role="group" aria-label="Быстрая реакция">
-          {REACTION_EMOJIS.slice(0,6).map(emoji=><button type="button" key={emoji} aria-label={'Реакция '+emoji} disabled={sending} onClick={()=>{const id=menuMessage.id;setMessageMenuId(null);void reactToMessage(id,emoji);}}>{emoji}</button>)}
+          {REACTION_EMOJIS.slice(0,6).map(emoji=><button type="button" key={emoji} aria-label={'Реакция '+emoji} disabled={reactionBusy} onClick={()=>{const id=menuMessage.id;setMessageMenuId(null);void reactToMessage(id,emoji);}}>{emoji}</button>)}
         </div>
         <div className="ik-message-menu-buttons">
           <button type="button" onClick={()=>replyToMessage(menuMessage)}>
