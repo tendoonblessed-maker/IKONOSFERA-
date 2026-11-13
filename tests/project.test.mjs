@@ -577,7 +577,7 @@ test('temporary Supabase outages never silently erase a valid saved session',()=
  assert.match(auth,/sessionRefreshPromise\?\.refreshToken===s\.refresh_token/);
  assert.match(auth,/sessionRefreshPromise\.generation===generation/);
  assert.match(auth,/if\(error instanceof SupabaseHttpError&&\[400,401,403\]\.includes\(error\.status\)\)/);
- assert.match(auth,/if\(sessionGeneration===generation&&loadSession\(\)\?\.refresh_token===s\.refresh_token\)/);
+ assert.match(auth,/if\(sessionGeneration===refreshGeneration&&loadSession\(\)\?\.refresh_token===current\.refresh_token\)/);
  assert.match(auth,/if\(sessionRefreshPromise===pending\)sessionRefreshPromise=null/);
  assert.match(auth,/throw error;/);
  assert.ok(!auth.includes('catch { clearSession(); return null; }'));
