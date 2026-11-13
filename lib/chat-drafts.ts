@@ -65,11 +65,12 @@ export function updateChatDraftEntry(drafts:ChatDrafts,chatId:string,text:string
 
 /**
  * Return null for an unavailable/corrupt snapshot so it cannot erase the
- * last-known-good in-tab copy. A valid empty object is authoritative: it is
- * how a successful clear is represented when no key remains to be read.
+ * last-known-good in-tab copy. A missing key is different: successful clear
+ * removes the key, so absence is authoritative and must clear old memory.
+ * A valid empty object is also an intentional empty snapshot.
  */
 function parseStoredDrafts(value:string|null):ChatDrafts|null{
-  if(value===null)return null;
+  if(value===null)return {};
   let parsed:unknown;
   try{parsed=JSON.parse(value);}catch{return null;}
   if(!parsed||typeof parsed!=='object'||Array.isArray(parsed))return null;
