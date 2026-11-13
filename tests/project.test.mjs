@@ -922,6 +922,7 @@ test('tapping old quoted messages loads bounded history and scrolls only the cha
 test('reply fetching never leaks old-account previews or unbounded PostgREST ID lists',()=>{
  const shell=load('components/AppShell.tsx');
  const api=load('lib/supabase-rest.ts');
+ const cache=load('lib/reply-target-cache.ts');
  assert.match(shell,/chatContextGenerationRef=useRef\(0\)/);
  assert.match(shell,/chatContextGenerationRef\.current\+=1/);
  assert.match(shell,/replyJumpRequestRef\.current\+=1/);
@@ -934,8 +935,13 @@ test('reply fetching never leaks old-account previews or unbounded PostgREST ID 
  assert.match(shell,/replyTargetController\?\.signal\.aborted/);
  assert.match(shell,/if\(!source\)\{/);
  assert.match(shell,/for\(let start=0;start<missing\.length;start\+=100\)/);
- assert.match(shell,/const requests=batches\.map\(async ids=>/);
- assert.match(shell,/Promise\.all\(requests\)/);
+ assert.match(shell,/const requests=mapWithConcurrency\(batches,3,async ids=>/);
+ assert.match(shell,/replyTargetReadGate\.run\(\(\)=>stillInChat\(\)/);
+ assert.match(shell,/listReplyTargets\(session\.access_token,chatId,ids,controller\.signal\)/);
+ assert.match(shell,/shouldContinue:stillInChat/);
+ assert.match(shell,/onError:\(\)=>\{for\(const scope of activeScopes\)scope\.abort\(\);\}/);
+ assert.doesNotMatch(shell,/const requests=batches\.map\(async ids=>/);
+ assert.match(cache,/await Promise\.all\(Array\.from\(\{length:Math\.min\(concurrency,items\.length\)\}/);
  assert.match(shell,/filterReplyTargetsForCurrentVersion/);
  assert.match(shell,/for\(let offset=0;offset<loaded\.length;offset\+=CHAT_MESSAGE_PAGE_SIZE\)/);
  assert.match(api,/const unique=\[\.\.\.new Set\(ids\)\]/);

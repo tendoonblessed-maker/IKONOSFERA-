@@ -212,6 +212,10 @@ test('reply-target preview and quote-jump reads are cancelled on chat pause and 
   assert.match(appShell,/setReplyTargetsRetryNonce\(n=>n\+1\)/);
   assert.match(appShell,/replyTargetsRetryNonce,selected/);
   assert.match(appShell,/replyTargetController\?\.signal\.aborted/);
-  assert.match(appShell,/const requests=batches\.map\(async ids=>/);
+  assert.match(appShell,/const requests=mapWithConcurrency\(batches,3,async ids=>/);
+  assert.match(appShell,/replyTargetReadGate\.run\(\(\)=>stillInChat\(\)/);
+  assert.match(appShell,/shouldContinue:stillInChat/);
+  assert.match(appShell,/onError:\(\)=>\{for\(const scope of activeScopes\)scope\.abort\(\);\}/);
+  assert.doesNotMatch(appShell,/const requests=batches\.map\(async ids=>/);
   assert.match(appShell,/scope\.clear\(controller\)/);
 });
