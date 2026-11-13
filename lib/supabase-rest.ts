@@ -77,7 +77,20 @@ async function withSessionRefreshLock<T>(work:()=>Promise<T>):Promise<T>{
   // Older browsers keep the existing per-tab single-flight and stale-response guards.
   const locks=typeof navigator!=='undefined'?navigator.locks:undefined;
   if(!locks?.request)return work();
-  return locks.request('ikonosfera-auth-refresh-v1',{mode:'exclusive'},work);
+  let entered=false;
+  try{
+    return await locks.request('ikonosfera-auth-refresh-v1',{mode:'exclusive'},()=>{
+      entered=true;
+      return work();
+    });
+  }catch(error){
+    // If lock acquisition itself failed, never retry the single-use token without
+    // cross-tab serialization. Preserve the stored session so a later attempt can retry.
+    if(entered)throw error;
+    const failure=new Error('Не удалось безопасно получить блокировку обновления сессии. Повтори попытку.');
+    (failure as Error & {cause?:unknown}).cause=error;
+    throw failure;
+  }
 }
 export async function validSession(): Promise<Session | null> {
   const s=loadSession();
