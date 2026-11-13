@@ -72,44 +72,59 @@ export function saveSession(s: { access_token: string; refresh_token: string; ex
   return session;
 }
 export function clearSession() { sessionGeneration++; localStorage.removeItem(STORAGE); }
+async function withSessionRefreshLock<T>(work:()=>Promise<T>):Promise<T>{
+  // Web Locks serialize single-use refresh-token rotation between browser tabs.
+  // Older browsers keep the existing per-tab single-flight and stale-response guards.
+  const locks=typeof navigator!=='undefined'?navigator.locks:undefined;
+  if(!locks?.request)return work();
+  return locks.request('ikonosfera-auth-refresh-v1',{mode:'exclusive'},work);
+}
 export async function validSession(): Promise<Session | null> {
   const s=loadSession();
   if(!s)return null;
   if(s.expires_at>Math.floor(Date.now()/1000))return s;
-  // A refresh token is single-use: concurrent UI requests must not refresh it
-  // twice, otherwise the second request may invalidate an otherwise valid login.
+  // Share one refresh inside this tab; Web Locks below also serialize other tabs.
   const generation=sessionGeneration;
-  // Only share an in-flight refresh for the EXACT same session and generation.
-  // A second login must never receive the previous account's access token.
   if(sessionRefreshPromise?.refreshToken===s.refresh_token
      &&sessionRefreshPromise.generation===generation)
     return sessionRefreshPromise.promise;
   const pending:PendingRefresh={refreshToken:s.refresh_token,generation,promise:null!};
   pending.promise=(async()=>{
     try{
-      const next=await http<{access_token:string;refresh_token:string;expires_in:number}>(
-        '/auth/v1/token?grant_type=refresh_token',{method:'POST',body:{refresh_token:s.refresh_token}}
-      );
-      if(sessionGeneration!==generation||loadSession()?.refresh_token!==s.refresh_token)
-        return null; // Logout, account switch, or another tab changed the session.
-      return saveSession(next);
-    }catch(error){
-      // A revoked token only clears the session that initiated this request.
-      // Network errors never silently erase the login.
-      if(error instanceof SupabaseHttpError&&[400,401,403].includes(error.status)){
-        if(sessionGeneration===generation&&loadSession()?.refresh_token===s.refresh_token)
-          clearSession();
-        return null;
-      }
-      // A stale network error should not disrupt a newer signed-in account.
-      if(sessionGeneration!==generation||loadSession()?.refresh_token!==s.refresh_token)
-        return null;
-      throw error;
+      return await withSessionRefreshLock(async()=>{
+        // Another tab may have refreshed or replaced the account while this tab
+        // waited for the lock. Never send the old single-use token after that.
+        const current=loadSession();
+        if(!current||current.access_token!==s.access_token||current.refresh_token!==s.refresh_token)
+          return null;
+        if(current.expires_at>Math.floor(Date.now()/1000))return current;
+        const refreshGeneration=sessionGeneration;
+        try{
+          const next=await http<{access_token:string;refresh_token:string;expires_in:number}>(
+            '/auth/v1/token?grant_type=refresh_token',{method:'POST',body:{refresh_token:current.refresh_token}}
+          );
+          if(sessionGeneration!==refreshGeneration||loadSession()?.refresh_token!==current.refresh_token)
+            return null; // Logout, account switch, or another tab changed the session.
+          return saveSession(next);
+        }catch(error){
+          // A revoked token only clears the session that initiated this request.
+          // Network errors never silently erase the login.
+          if(error instanceof SupabaseHttpError&&[400,401,403].includes(error.status)){
+            if(sessionGeneration===refreshGeneration&&loadSession()?.refresh_token===current.refresh_token)
+              clearSession();
+            return null;
+          }
+          // A stale network error should not disrupt a newer signed-in account.
+          if(sessionGeneration!==refreshGeneration||loadSession()?.refresh_token!==current.refresh_token)
+            return null;
+          throw error;
+        }
+      });
+    }finally{
+      // A delayed older request must not delete a newer refresh in progress.
+      if(sessionRefreshPromise===pending)sessionRefreshPromise=null;
     }
-  })().finally(()=>{
-    // A delayed older request must not delete a newer refresh in progress.
-    if(sessionRefreshPromise===pending)sessionRefreshPromise=null;
-  });
+  })();
   sessionRefreshPromise=pending;
   return pending.promise;
 }
