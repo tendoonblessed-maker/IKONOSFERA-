@@ -7,6 +7,7 @@ import {mergeConfirmedRecentPage,prependEarlierPage,CONFIRMED_MESSAGE_GRACE_MS,t
 import {readChatDrafts,writeChatDrafts,clearChatDrafts,updateChatDraftEntry,type ChatDrafts} from "@/lib/chat-drafts";
 import {readGroupDrafts,writeGroupDraft,clearGroupDrafts,type GroupDrafts} from "@/lib/group-drafts";
 import {clearAllGroupSendAttempts} from "@/lib/group-send-attempts";
+import {shouldClearPrivateDraftsAfterSessionChange} from "@/lib/cross-tab-session";
 import ChatMedia from "@/components/ChatMedia";
 import ChatMessageText from "@/components/ChatMessageText";
 import {subscribeDirectChatChanges} from "@/lib/direct-realtime";
@@ -626,11 +627,19 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
          (event.key!=='ikonosfera-session-v1'&&event.key!==null))return;
       const stored=loadSession();
       if(stored?.access_token===session?.access_token)return;
+      // Access-token rotation for the same subject is not a logout. A missing,
+      // malformed or different subject is treated as an account boundary:
+      // clear this tab's private drafts before rehydrating the new session.
+      if(shouldClearPrivateDraftsAfterSessionChange(userId,stored?.access_token)){
+        clearChatDrafts(userId);
+        clearGroupDrafts(userId);
+        clearAllGroupSendAttempts(userId);
+      }
       window.location.reload();
     };
     window.addEventListener('storage',onStorage);
     return()=>window.removeEventListener('storage',onStorage);
-  },[session?.access_token]);
+  },[session?.access_token,userId]);
 
   // On an offline cold launch, profile fetching can fail before the signed-in
   // session is hydrated. Retry bootstrap once connectivity returns; otherwise
