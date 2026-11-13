@@ -4,11 +4,12 @@ import { listProfiles, type Profile } from "@/lib/supabase-rest";
 import { createRequestEpoch } from "@/lib/request-epoch";
 import { appendOlderChannelPosts } from "@/lib/channel-post-pagination";
 import { prependOlderChannelComments } from "@/lib/channel-comment-pagination";
+import {listDiscussionFeedPage,mergeDiscussionFeedItems,removeDiscussionPostComments,removeDiscussionComments,updateDiscussionCommentBody,type DiscussionFeedCursor,type DiscussionFeedItem} from "@/lib/channel-discussion-pagination";
 import StatusEmoji from "@/components/StatusEmoji";
 import {
  addPostComment, deletePost, editChannelPost, manageChannelComment, imageUrl, listChannelPosts, listChannelPostsPage, listPostComments, listPostCommentsPage, listPostReactions, setPostReaction, REACTION_EMOJIS, publishPost,
- removeUpload, uploadChannelAttachment, updateChannel, updateChannelAvatar, deleteChannel, getChannelSubscriberCounts, listDiscussionMessages, sendDiscussionMessage, deleteDiscussionMessage, listDiscussionComments,
- type Channel, type ChannelPost, type PostComment, type PostReaction, type ReactionEmoji, type DiscussionMessage
+ removeUpload, uploadChannelAttachment, updateChannel, updateChannelAvatar, deleteChannel, getChannelSubscriberCounts, sendDiscussionMessage, deleteDiscussionMessage,
+ type Channel, type ChannelPost, type PostComment, type PostReaction, type ReactionEmoji
 } from "@/lib/social";
 
 type Props={token:string;userId:string;channel:Channel;onBack:()=>void;onShowProfile:(id:string)=>void;subscribed:boolean;onToggleSubscribe:()=>void;onMessageAuthor:()=>void;onChannelUpdated?:(channel:Channel)=>void;onChannelDeleted?:()=>void};
@@ -27,8 +28,20 @@ export default function ChannelsPanel({token,userId,channel,onBack,onShowProfile
  const [settingsDescription,setSettingsDescription]=useState(channel.description);
  const [settingsDiscussion,setSettingsDiscussion]=useState(Boolean(channel.discussion_enabled));
  const [discussionOpen,setDiscussionOpen]=useState(false);
- const [discussionMessages,setDiscussionMessages]=useState<DiscussionMessage[]>([]);
- const [discussionComments,setDiscussionComments]=useState<(PostComment & {channel_posts:{body:string;channel_id:string}|null})[]>([]);
+ const [discussionItems,setDiscussionItems]=useState<DiscussionFeedItem[]>([]);
+ const [discussionCursor,setDiscussionCursor]=useState<DiscussionFeedCursor|null>(null);
+ const [hasOlderDiscussion,setHasOlderDiscussion]=useState(false);
+ const [discussionLoading,setDiscussionLoading]=useState(false);
+ const [olderDiscussionLoading,setOlderDiscussionLoading]=useState(false);
+ const [discussionError,setDiscussionError]=useState("");
+ const [olderDiscussionError,setOlderDiscussionError]=useState("");
+ const discussionListRef=useRef<HTMLDivElement|null>(null);
+ const discussionAbortRef=useRef<AbortController|null>(null);
+ const discussionOlderLoadingRef=useRef(false);
+ const discussionScrollAnchorRef=useRef<{scrollTop:number;scrollHeight:number}|null>(null);
+ const deletedDiscussionPostsRef=useRef<Set<string>>(new Set());
+ const deletedDiscussionCommentsRef=useRef<Set<string>>(new Set());
+ const discussionInitialScrollRef=useRef(false);
  const [discussionDraft,setDiscussionDraft]=useState("");
   const [posts,setPosts]=useState<ChannelPost[]>([]);
  const [hasOlderPosts,setHasOlderPosts]=useState(false);
@@ -74,28 +87,40 @@ export default function ChannelsPanel({token,userId,channel,onBack,onShowProfile
  const discussionRequestGuardRef=useRef<ReturnType<typeof createRequestEpoch> | null>(null);
  if(!discussionRequestGuardRef.current)discussionRequestGuardRef.current=createRequestEpoch();
  const discussionRequestGuard=discussionRequestGuardRef.current;
+ const abortDiscussionRequest=useCallback(()=>{
+  discussionAbortRef.current?.abort();
+  discussionAbortRef.current=null;
+  discussionRequestGuard.invalidate();
+  discussionOlderLoadingRef.current=false;
+ },[discussionRequestGuard]);
  const channelScopeRef=useRef({token,userId,channelId:channel.id});
  useLayoutEffect(()=>{
   // Publish only committed identity props; an abandoned concurrent render must not
   // invalidate requests that still belong to the visible channel.
   channelScopeRef.current={token,userId,channelId:channel.id};
+  deletedDiscussionPostsRef.current.clear();
+  deletedDiscussionCommentsRef.current.clear();
+  abortDiscussionRequest();
+  setDiscussionOpen(false);
+  setDiscussionItems([]);setDiscussionCursor(null);setHasOlderDiscussion(false);
+  setDiscussionLoading(false);setOlderDiscussionLoading(false);setDiscussionError("");setOlderDiscussionError("");
+  discussionScrollAnchorRef.current=null;discussionInitialScrollRef.current=false;
   commentsRequestGuard.invalidate();
   commentsPostRef.current=null;
   olderCommentsLoadingRef.current=false;
   setCommentsLoading(false);setHasOlderComments(false);setOlderCommentsLoading(false);setOlderCommentsError("");
   postsRequestGuard.invalidate();
-  discussionRequestGuard.invalidate();
   cancelOlderPostsLoad();
   reactionsRequestGuard.invalidate();
   postsReloadingRef.current=true;
   setPostsReloading(true);
   setHasOlderPosts(false);
- },[token,userId,channel.id,commentsRequestGuard,postsRequestGuard,cancelOlderPostsLoad,reactionsRequestGuard,discussionRequestGuard]);
+ },[token,userId,channel.id,commentsRequestGuard,postsRequestGuard,cancelOlderPostsLoad,reactionsRequestGuard,abortDiscussionRequest]);
  useEffect(()=>()=> {
   commentsRequestGuard.invalidate();
   postsRequestGuard.invalidate();
-  discussionRequestGuard.invalidate();
- },[commentsRequestGuard,postsRequestGuard,discussionRequestGuard]);
+  abortDiscussionRequest();
+ },[commentsRequestGuard,postsRequestGuard,abortDiscussionRequest]);
  useEffect(()=>()=> {
   olderPostsRequestGuard.invalidate();
   olderPostsLoadingRef.current=false;
@@ -157,21 +182,73 @@ export default function ChannelsPanel({token,userId,channel,onBack,onShowProfile
   }
  },[hasOlderPosts,posts,token,userId,channel.id,olderPostsRequestGuard]);
  const loadDiscussion=useCallback(async()=>{
+  abortDiscussionRequest();
+  const controller=new AbortController();
+  discussionAbortRef.current=controller;
   const requestId=discussionRequestGuard.begin();
   const isCurrent=()=>discussionRequestGuard.isCurrent(requestId)
+   &&discussionAbortRef.current===controller
    &&channelScopeRef.current.token===token
    &&channelScopeRef.current.userId===userId
    &&channelScopeRef.current.channelId===channel.id;
+  setDiscussionLoading(true);setOlderDiscussionLoading(false);setDiscussionError("");setOlderDiscussionError("");
   try{
-   const [messages,replies]=await Promise.all([listDiscussionMessages(token,channel.id),listDiscussionComments(token,channel.id)]);
+   const page=await listDiscussionFeedPage(token,channel.id,undefined,controller.signal);
    if(!isCurrent())return false;
-   setDiscussionMessages(messages);setDiscussionComments(replies);
+   discussionScrollAnchorRef.current=null;
+   discussionInitialScrollRef.current=page.items.length>0;
+   setDiscussionItems(removeDiscussionComments(removeDiscussionPostComments(page.items,deletedDiscussionPostsRef.current),deletedDiscussionCommentsRef.current));setDiscussionCursor(page.cursor);setHasOlderDiscussion(page.hasMore);
    return true;
   }catch(e){
-   if(isCurrent())setError(readable(e));
+   if(isCurrent())setDiscussionError(readable(e));
    return false;
+  }finally{
+   if(isCurrent()){discussionAbortRef.current=null;setDiscussionLoading(false);}
   }
- },[token,channel.id,discussionRequestGuard]);
+ },[token,userId,channel.id,discussionRequestGuard,abortDiscussionRequest]);
+ const loadOlderDiscussion=useCallback(async()=>{
+  if(!hasOlderDiscussion||!discussionCursor||discussionOlderLoadingRef.current)return;
+  abortDiscussionRequest();
+  discussionOlderLoadingRef.current=true;
+  const controller=new AbortController();
+  discussionAbortRef.current=controller;
+  const requestId=discussionRequestGuard.begin();
+  const isCurrent=()=>discussionRequestGuard.isCurrent(requestId)
+   &&discussionAbortRef.current===controller
+   &&channelScopeRef.current.token===token
+   &&channelScopeRef.current.userId===userId
+   &&channelScopeRef.current.channelId===channel.id;
+  const list=discussionListRef.current;
+  const anchor=list?{scrollTop:list.scrollTop,scrollHeight:list.scrollHeight}:null;
+  setOlderDiscussionLoading(true);setOlderDiscussionError("");
+  try{
+   const page=await listDiscussionFeedPage(token,channel.id,discussionCursor,controller.signal);
+   if(!isCurrent())return;
+   const visibleItems=removeDiscussionComments(removeDiscussionPostComments(page.items,deletedDiscussionPostsRef.current),deletedDiscussionCommentsRef.current);
+   if(visibleItems.length&&anchor)discussionScrollAnchorRef.current=anchor;
+   setDiscussionItems(current=>mergeDiscussionFeedItems(current,visibleItems));
+   setDiscussionCursor(page.cursor);setHasOlderDiscussion(page.hasMore);
+  }catch(e){
+   if(isCurrent())setOlderDiscussionError(readable(e));
+  }finally{
+   if(isCurrent()){
+    discussionAbortRef.current=null;discussionOlderLoadingRef.current=false;setOlderDiscussionLoading(false);
+   }
+  }
+ },[hasOlderDiscussion,discussionCursor,token,userId,channel.id,discussionRequestGuard,abortDiscussionRequest]);
+ useLayoutEffect(()=>{
+  const list=discussionListRef.current;
+  const anchor=discussionScrollAnchorRef.current;
+  if(anchor){
+   if(list)list.scrollTop=anchor.scrollTop+(list.scrollHeight-anchor.scrollHeight);
+   discussionScrollAnchorRef.current=null;
+   return;
+  }
+  if(discussionInitialScrollRef.current){
+   if(list)list.scrollTop=list.scrollHeight;
+   discussionInitialScrollRef.current=false;
+  }
+ },[discussionItems]);
  async function changeChannelAvatar(file:File|undefined){
   if(!mine||!file||avatarBusy)return;
   if(!["image/jpeg","image/png","image/webp"].includes(file.type)){setError("Выбери JPG, PNG или WebP.");return;}
@@ -241,7 +318,7 @@ export default function ChannelsPanel({token,userId,channel,onBack,onShowProfile
   }catch(e){if(isCurrent())setError(readable(e));}
   finally{if(isCurrent())setBusy(false);}
  }
- useEffect(()=>{void reload().catch(e=>setError(readable(e)));commentsPostRef.current=null;olderCommentsLoadingRef.current=false;setOpenComments(null);setComments([]);setCommentsLoading(false);setHasOlderComments(false);setOlderCommentsLoading(false);setOlderCommentsError("");setBody("");setFile(null);setPosts([]);setReactions([]);setDiscussionMessages([]);setDiscussionComments([]);setDiscussionOpen(false);setHasOlderPosts(false);setOlderPostsError("");setOlderPostsLoading(false);olderPostsLoadingRef.current=false;setBusy(false);},[reload]);
+ useEffect(()=>{void reload().catch(e=>setError(readable(e)));commentsPostRef.current=null;olderCommentsLoadingRef.current=false;setOpenComments(null);setComments([]);setCommentsLoading(false);setHasOlderComments(false);setOlderCommentsLoading(false);setOlderCommentsError("");setBody("");setFile(null);setPosts([]);setReactions([]);abortDiscussionRequest();setDiscussionItems([]);setDiscussionCursor(null);setHasOlderDiscussion(false);setDiscussionLoading(false);setOlderDiscussionLoading(false);setDiscussionError("");setOlderDiscussionError("");discussionScrollAnchorRef.current=null;discussionInitialScrollRef.current=false;setDiscussionOpen(false);setHasOlderPosts(false);setOlderPostsError("");setOlderPostsLoading(false);olderPostsLoadingRef.current=false;setBusy(false);},[reload,abortDiscussionRequest]);
  async function showComments(postId:string){
   const requestId=commentsRequestGuard.begin();
   const isCurrent=()=>commentsRequestGuard.isCurrent(requestId)
@@ -348,11 +425,23 @@ export default function ChannelsPanel({token,userId,channel,onBack,onShowProfile
   finally{if(isCurrent())setBusy(false);}
  }
  async function saveCommentEdit(id:string){
-  if(busy||olderCommentsLoadingRef.current)return;setBusy(true);setError("");
-  try{await manageChannelComment(token,id,"edit",editingBody);setEditingCommentId(null);
-   setComments(current=>current.map(comment=>comment.id===id?{...comment,body:editingBody}:comment));
-   if(currentChannel.discussion_enabled)await loadDiscussion();
-  }catch(e){setError(readable(e));}finally{setBusy(false);}
+  if(busy||olderCommentsLoadingRef.current)return;
+  const isCurrent=()=>channelScopeRef.current.token===token
+   &&channelScopeRef.current.userId===userId
+   &&channelScopeRef.current.channelId===channel.id;
+  setBusy(true);setError("");
+  try{
+   await manageChannelComment(token,id,"edit",editingBody);
+   if(!isCurrent())return;
+   setEditingCommentId(null);
+   const normalizedId=id.toLowerCase();
+   setComments(current=>current.map(comment=>comment.id.toLowerCase()===normalizedId?{...comment,body:editingBody}:comment));
+   if(currentChannel.discussion_enabled){
+    // Patch only the loaded row: a full reload would discard the older-page cursor
+    // and jump the reader to the bottom of a long discussion.
+    setDiscussionItems(current=>updateDiscussionCommentBody(current,id,editingBody));
+   }
+  }catch(e){if(isCurrent())setError(readable(e));}finally{setBusy(false);}
  }
  async function erasePost(p:ChannelPost){
   if(!mine||busy||!window.confirm("Удалить этот пост?"))return;
@@ -364,6 +453,14 @@ export default function ChannelsPanel({token,userId,channel,onBack,onShowProfile
    cancelOlderPostsLoad();
    await deletePost(token,p.id);
    if(isCurrent()){
+    deletedDiscussionPostsRef.current.add(p.id);
+    // Cancel only an in-flight older page; its captured scroll anchor is stale after deletion.
+    if(discussionOlderLoadingRef.current){
+     abortDiscussionRequest();
+     setOlderDiscussionLoading(false);
+    }
+    discussionScrollAnchorRef.current=null;
+    setDiscussionItems(current=>removeDiscussionPostComments(current,deletedDiscussionPostsRef.current));
     setPosts(current=>current.filter(post=>post.id!==p.id));
     setReactions(current=>current.filter(reaction=>reaction.post_id!==p.id));
     setNotice("Пост удалён.");
@@ -375,9 +472,28 @@ export default function ChannelsPanel({token,userId,channel,onBack,onShowProfile
  }
  async function eraseComment(c:PostComment){
   if((c.author_id!==userId&&!mine)||busy||olderCommentsLoadingRef.current)return;
+  const isCurrent=()=>channelScopeRef.current.token===token
+   &&channelScopeRef.current.userId===userId
+   &&channelScopeRef.current.channelId===channel.id;
   setBusy(true);
-  try{await manageChannelComment(token,c.id,"delete");setComments(old=>old.filter(x=>x.id!==c.id));if(currentChannel.discussion_enabled)await loadDiscussion();}
-  catch(e){setError(readable(e));}finally{setBusy(false);}
+  try{
+   await manageChannelComment(token,c.id,"delete");
+   if(!isCurrent())return;
+   const deletedId=c.id.toLowerCase();
+   deletedDiscussionCommentsRef.current.add(deletedId);
+   setComments(old=>old.filter(x=>x.id.toLowerCase()!==deletedId));
+   // A pending older-page request captured its scroll-height anchor before this
+   // deletion. Cancel it so its later prepend cannot restore against stale geometry.
+   if(discussionOlderLoadingRef.current){
+    abortDiscussionRequest();
+    setOlderDiscussionLoading(false);
+   }
+   discussionScrollAnchorRef.current=null;
+   // Tombstones still protect against any response that raced with cancellation.
+   setDiscussionItems(current=>removeDiscussionComments(current,deletedDiscussionCommentsRef.current));
+   setNotice("Комментарий удалён.");
+  }catch(e){if(isCurrent())setError(readable(e));}
+  finally{setBusy(false);}
  }
  return <section className="channel-view">
   <header className="channel-topbar"><button type="button" className="profile-back" onClick={onBack} aria-label="Назад">‹ <span>Назад</span></button>
@@ -398,15 +514,17 @@ export default function ChannelsPanel({token,userId,channel,onBack,onShowProfile
     <button type="button" className="secondary-action channel-delete-danger" onClick={()=>void eraseChannel()} disabled={busy}>Удалить канал навсегда</button>
    </form>}
    {currentChannel.discussion_enabled&&<div style={{marginBottom:16}}>
-    <button type="button" className="secondary-action" onClick={()=>{if(discussionOpen){discussionRequestGuard.invalidate();setDiscussionOpen(false);}else{setDiscussionOpen(true);void loadDiscussion();}}}>{discussionOpen?"Скрыть обсуждение":"💬 Чат обсуждения"}</button>
+    <button type="button" className="secondary-action" onClick={()=>{if(discussionOpen){abortDiscussionRequest();setDiscussionLoading(false);setOlderDiscussionLoading(false);setDiscussionOpen(false);}else{setDiscussionOpen(true);void loadDiscussion();}}}>{discussionOpen?"Скрыть обсуждение":"💬 Чат обсуждения"}</button>
    </div>}
    {currentChannel.discussion_enabled&&discussionOpen&&<section className="channel-compose" style={{marginBottom:22}}>
     <h2>Обсуждение канала</h2><p style={{fontSize:12,opacity:.7}}>Сообщения участников и комментарии к публикациям отображаются вместе. Ответы к постам также видны под публикациями.</p>
-    <div style={{maxHeight:400,overflowY:"auto",display:"grid",gap:10,padding:"12px 0"}}>
-    {([
-     ...discussionMessages.map(m=>({...m,kind:"message" as const})),
-     ...discussionComments.map(m=>({...m,kind:"comment" as const}))
-    ].sort((a,b)=>a.created_at.localeCompare(b.created_at))).map(item=><div key={item.kind+item.id} className="channel-discussion-entry">
+    <div ref={discussionListRef} role="log" aria-label="История обсуждения канала" aria-busy={discussionLoading||olderDiscussionLoading} style={{maxHeight:400,overflowY:"auto",display:"grid",gap:10,padding:"12px 0"}}>
+     {(hasOlderDiscussion||olderDiscussionError)&&<button type="button" className="secondary-action" onClick={()=>void loadOlderDiscussion()} disabled={olderDiscussionLoading||discussionLoading}>{olderDiscussionLoading?"Загрузка…":olderDiscussionError?"Повторить загрузку":"Показать более ранние сообщения"}</button>}
+     {olderDiscussionError&&<p role="alert">{olderDiscussionError}</p>}
+     {discussionError&&<p role="alert">{discussionError} <button type="button" className="secondary-action" onClick={()=>void loadDiscussion()}>Повторить</button></p>}
+     {discussionLoading&&discussionItems.length===0&&<p>Загрузка обсуждения…</p>}
+     {!discussionLoading&&!discussionError&&!discussionItems.length&&<p>Пока нет сообщений.</p>}
+     {discussionItems.map(item=><div key={item.kind+item.id} className="channel-discussion-entry">
       <small>{item.author_id===userId?"Вы":"Участник "+item.author_id.slice(0,6)} · {formattedDate(item.created_at)}</small>
       {item.kind==="comment"&&<small style={{display:"block",opacity:.6}}>Ответ на публикацию: {item.channel_posts?.body?.slice(0,100)||"Медиа-публикация"}</small>}
       <p style={{margin:"6px 0"}}>{item.body}</p>

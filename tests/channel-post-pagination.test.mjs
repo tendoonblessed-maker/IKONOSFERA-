@@ -19,6 +19,7 @@ function compile(path,bindings={}){
  return exports;
 }
 const pagination=compile('lib/channel-post-pagination.ts');
+const commentPagination=compile('lib/channel-comment-pagination.ts');
 
 function uuid(n){
  return n.toString(16).padStart(8,'0')+'-1111-4111-8111-111111111111';
@@ -38,6 +39,7 @@ function socialHarness(handler){
   require(name){
    if(name==='@/lib/supabase-rest')return {apiUrl:'https://unit.test'};
    if(name==='@/lib/channel-post-pagination')return pagination;
+   if(name==='@/lib/channel-comment-pagination')return commentPagination;
    throw Error('Unexpected module '+name);
   }
  };
