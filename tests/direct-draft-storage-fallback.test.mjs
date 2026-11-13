@@ -61,3 +61,33 @@ test('disabled sessionStorage getter preserves only the correct account drafts',
     clearChatDrafts(B);
   }
 });
+
+test('corrupt or invalid direct-draft snapshots preserve last-known-good memory, while valid empty clears',()=>{
+  const previous=globalThis.window;
+  const values=new Map();
+  globalThis.window={sessionStorage:{
+    getItem:id=>values.get(id)??null,
+    setItem:(id,value)=>values.set(id,value),
+    removeItem:id=>values.delete(id)
+  }};
+  try{
+    writeChatDrafts(A,{[CHAT]:'Last known good'});
+    const invalidSnapshots=[
+      '{',
+      'null',
+      '[]',
+      '"not an object"',
+      '{"not-a-uuid":"stale"}',
+      '{"33333333-3333-4333-8333-333333333333":"   "}'
+    ];
+    for(const snapshot of invalidSnapshots){
+      values.set(key(A),snapshot);
+      assert.equal(readChatDrafts(A)[CHAT],'Last known good',`snapshot ${snapshot} must not erase the in-tab copy`);
+    }
+    values.set(key(A),'{}');
+    assert.deepEqual(readChatDrafts(A),{},'a valid empty object is an intentional clear');
+  }finally{
+    clearChatDrafts(A);
+    globalThis.window=previous;
+  }
+});
