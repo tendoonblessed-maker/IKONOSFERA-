@@ -192,3 +192,28 @@ test('group multiline composer supports Shift+Enter and prevents iOS input zoom'
  assert.match(css,/\.group-view \.ik-group-composer textarea/);
  assert.match(css,/font-size:16px/);
 });
+
+test('malformed stored JSON cannot erase the last known-good in-tab draft snapshot',()=>{
+ reset();
+ const original=globalThis.window;
+ const values=new Map();
+ try{
+  globalThis.window={sessionStorage:{
+   getItem:id=>values.get(id)??null,
+   setItem:(id,value)=>values.set(id,String(value)),
+   removeItem:id=>values.delete(id)
+  }};
+  writeGroupDraft(OWNER,A,'Keep the last good draft');
+  values.set(key(OWNER),'null');
+  assert.deepEqual(readGroupDrafts(OWNER),{[A]:'Keep the last good draft'});
+  values.set(key(OWNER),'[');
+  assert.deepEqual(readGroupDrafts(OWNER),{[A]:'Keep the last good draft'});
+  values.set(key(OWNER),JSON.stringify({invalid:'not-a-group-id'}));
+  assert.deepEqual(readGroupDrafts(OWNER),{[A]:'Keep the last good draft'});
+  values.set(key(OWNER),'{}');
+  assert.deepEqual(readGroupDrafts(OWNER),{},'a valid empty object remains an authoritative empty snapshot');
+ }finally{
+  globalThis.window=original;
+  reset();
+ }
+});
