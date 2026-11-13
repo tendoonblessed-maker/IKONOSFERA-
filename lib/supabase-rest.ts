@@ -23,24 +23,40 @@ function ensureReady() { if (!backendReady) throw Error('Сервер пока �
 function headers(token?: string, extras?: Record<string,string>) {
   return { apikey: anonKey, Authorization: `Bearer ${token || anonKey}`, 'Content-Type': 'application/json', ...extras };
 }
-async function http<T>(path: string, options: { method?: string; token?: string; body?: unknown; extraHeaders?: Record<string,string> } = {}): Promise<T> {
+function combineRequestSignal(signal:AbortSignal):{signal:AbortSignal;cleanup:()=>void}{
+  const controller=new AbortController();
+  const timeout=setTimeout(()=>controller.abort(new DOMException('The operation timed out','TimeoutError')),18000);
+  const abort=()=>controller.abort(signal.reason??new DOMException('The operation was aborted','AbortError'));
+  if(signal.aborted)abort();
+  else signal.addEventListener('abort',abort,{once:true});
+  return {
+    signal:controller.signal,
+    cleanup:()=>{clearTimeout(timeout);signal.removeEventListener('abort',abort);}
+  };
+}
+async function http<T>(path: string, options: { method?: string; token?: string; body?: unknown; extraHeaders?: Record<string,string>; signal?:AbortSignal } = {}): Promise<T> {
   ensureReady();
-  const response = await fetch(`${apiUrl}${path}`, {
-    method: options.method ?? 'GET',
-    headers: headers(options.token, options.extraHeaders),
-    body: options.body === undefined ? undefined : JSON.stringify(options.body),
-    cache: 'no-store',
-    // Fail visibly instead of showing a perpetual spinner during network stalls.
-    signal: AbortSignal.timeout(18000),
-  });
-  const raw = await response.text();
-  let value: unknown;
-  try { value = raw ? JSON.parse(raw) : null; } catch { value = raw; }
-  if (!response.ok) {
-    const error = value && typeof value === 'object' ? (value as { msg?: string; message?: string; error_description?: string }).message ?? (value as { msg?: string }).msg ?? (value as { error_description?: string }).error_description : null;
-    throw new SupabaseHttpError(error || `Запрос не выполнен (${response.status})`,response.status);
+  const combined=options.signal?combineRequestSignal(options.signal):null;
+  try{
+    const response = await fetch(`${apiUrl}${path}`, {
+      method: options.method ?? 'GET',
+      headers: headers(options.token, options.extraHeaders),
+      body: options.body === undefined ? undefined : JSON.stringify(options.body),
+      cache: 'no-store',
+      // Keep the deadline active through response.text(), while also honoring a caller lifecycle signal.
+      signal: combined?.signal??AbortSignal.timeout(18000),
+    });
+    const raw = await response.text();
+    let value: unknown;
+    try { value = raw ? JSON.parse(raw) : null; } catch { value = raw; }
+    if (!response.ok) {
+      const error = value && typeof value === 'object' ? (value as { msg?: string; message?: string; error_description?: string }).message ?? (value as { msg?: string }).msg ?? (value as { error_description?: string }).error_description : null;
+      throw new SupabaseHttpError(error || `Запрос не выполнен (${response.status})`,response.status);
+    }
+    return value as T;
+  }finally{
+    combined?.cleanup();
   }
-  return value as T;
 }
 export function loadSession(): Session | null {
   if (typeof window === 'undefined') return null;
@@ -185,6 +201,33 @@ const CHAT_MESSAGE_COLUMNS='id,chat_id,sender_id,body,created_at,media_path,medi
 /** Newest page first. Sort ties by ID so pagination has a stable boundary. */
 export async function listMessages(token:string,chatId:string):Promise<ChatMessage[]>{
   return http<ChatMessage[]>(`/rest/v1/messages?select=${CHAT_MESSAGE_COLUMNS}&chat_id=eq.${encodeURIComponent(chatId)}&order=created_at.desc,id.desc&limit=${CHAT_MESSAGE_PAGE_SIZE}`,{token});
+}
+const CHAT_MESSAGE_ID=/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
+export const DIRECT_MESSAGE_RECONCILE_BATCH_SIZE=80;
+/**
+ * Re-read only the visible, already-loaded messages. The chat filter and normal
+ * JWT/RLS remain authoritative; absent rows are treated as no longer visible.
+ */
+export async function listExistingDirectMessages(token:string,chatId:string,ids:string[],signal?:AbortSignal):Promise<ChatMessage[]>{
+  if(!CHAT_MESSAGE_ID.test(chatId)||ids.some(id=>typeof id!=='string'||!CHAT_MESSAGE_ID.test(id)))
+    throw Error('Некорректный идентификатор сообщения для сверки.');
+  const unique=[...new Set(ids.map(id=>id.toLowerCase()))];
+  if(!unique.length)return [];
+  if(unique.length>DIRECT_MESSAGE_RECONCILE_BATCH_SIZE)
+    throw Error('Слишком много сообщений для одной сверки.');
+  const allowed=new Set(unique);
+  const rows=await http<unknown>(
+    `/rest/v1/messages?select=${CHAT_MESSAGE_COLUMNS}&chat_id=eq.${encodeURIComponent(chatId)}&id=in.(${unique.map(encodeURIComponent).join(',')})&limit=${unique.length}`,
+    {token,signal}
+  );
+  if(!Array.isArray(rows))throw Error('Сервер вернул некорректную сверку истории.');
+  for(const value of rows){
+    if(!value||typeof value!=='object'||Array.isArray(value))throw Error('Сервер вернул некорректную строку истории.');
+    const row=value as Record<string,unknown>;
+    if(typeof row.id!=='string'||!CHAT_MESSAGE_ID.test(row.id)||row.chat_id!==chatId||!allowed.has(row.id.toLowerCase()))
+      throw Error('Сервер вернул строку вне текущей переписки.');
+  }
+  return rows as ChatMessage[];
 }
 /** Older than the earliest loaded message; server RLS still checks membership. */
 export async function listOlderMessages(token:string,chatId:string,before:Pick<ChatMessage,'id'|'created_at'>):Promise<ChatMessage[]>{
