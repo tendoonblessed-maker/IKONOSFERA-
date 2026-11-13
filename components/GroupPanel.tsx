@@ -360,6 +360,15 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
   document.body.style.overflow='hidden';
   membersSearchRef.current?.focus();
 
+  // Keep programmatic and assistive-technology focus changes inside the
+  // modal too; trapping Tab alone does not prevent focus() from escaping.
+  const onFocusIn=(event:FocusEvent)=>{
+   const dialog=membersDialogRef.current;
+   if(!skipMembersFocusRestoreRef.current&&dialog
+      &&event.target instanceof Node&&!dialog.contains(event.target)){
+    (membersSearchRef.current??dialog).focus();
+   }
+  };
   const onKey=(event:KeyboardEvent)=>{
    if(event.key==='Escape'){
     event.preventDefault();
@@ -385,8 +394,10 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
     first.focus();
    }
   };
+  document.addEventListener('focusin',onFocusIn);
   document.addEventListener('keydown',onKey);
   return()=>{
+   document.removeEventListener('focusin',onFocusIn);
    document.removeEventListener('keydown',onKey);
    document.body.style.overflow=previousOverflow;
    if(!skipMembersFocusRestoreRef.current&&previouslyFocused?.isConnected)previouslyFocused.focus();
