@@ -190,8 +190,8 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
     }
   },[userId]);
 
-  useEffect(()=>{
-    // Restore only the signed-in person's drafts; anonymous account drafts
+  useLayoutEffect(()=>{
+    // Restore only the signed-in person's drafts before paint; anonymous account drafts
     // never appear in someone else's account after switching users.
     if(userId===draftsOwnerRef.current)return;
     draftsOwnerRef.current=userId;
@@ -199,7 +199,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
     draftsRef.current=existing;
     setDraftPreviews({...existing});
   },[userId]);
-  useEffect(()=>{
+  useLayoutEffect(()=>{
     if(groupDraftsOwnerRef.current===userId)return;
     groupDraftsOwnerRef.current=userId;
     setGroupDraftPreviews(userId?readGroupDrafts(userId):{});
@@ -743,7 +743,8 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
     // Never pull the reader away from older messages during incoming polls.
     history.scrollTop=history.scrollHeight;
   },[chatMessages.length,selected]);
-  useEffect(()=>{if(selected)setDraft(draftsRef.current[selected]||'');},[selected,userId]);
+  // Restore the selected chat's draft before paint so the previous chat/account is never flashed.
+  useLayoutEffect(()=>{if(selected)setDraft(draftsRef.current[selected]||'');},[selected,userId]);
   useEffect(()=>{const field=composerRef.current;if(!field)return;field.style.height='auto';field.style.height=Math.min(field.scrollHeight,136)+'px';},[draft,selected]);
   useEffect(()=>{
     const keyboard=(event:KeyboardEvent)=>{
