@@ -9,6 +9,7 @@ import {searchGroupMessages,getGroupMessageContext,normalizeGroupSearch,GROUP_SE
 import {getUserActivities,activityLabel,type UserActivity} from '@/lib/activity';
 import {imageUrl} from '@/lib/social';
 import {readGroupDrafts} from '@/lib/group-drafts';
+import {resizeChatComposer} from '@/lib/chat-composer';
 import {getOrCreateGroupSendAttempt,clearGroupSendAttempt} from '@/lib/group-send-attempts';
 import {subscribeGroupChanges} from '@/lib/group-realtime';
 import {mergeConfirmedGroupMessages,CONFIRMED_GROUP_MESSAGE_GRACE_MS,type ConfirmedGroupMessage} from '@/lib/group-history';
@@ -49,6 +50,7 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
  const olderRequestRef=useRef(0);
  const initialPageLoadedRef=useRef(false);
  const composerFormRef=useRef<HTMLFormElement|null>(null);
+ const composerRef=useRef<HTMLTextAreaElement|null>(null);
  const followNewestRef=useRef(true);
  const browsingOlderRef=useRef(false);
  const searchRequestRef=useRef(0);
@@ -62,6 +64,7 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
  const confirmedGroupMessagesRef=useRef<Map<string,ConfirmedGroupMessage>>(new Map());
  const contextRef=useRef({groupId:group.id,userId,token});
  contextRef.current={groupId:group.id,userId,token};
+ useLayoutEffect(()=>{resizeChatComposer(composerRef.current);},[draft,group.id,userId]);
  useEffect(()=>{
   confirmedGroupMessagesRef.current.clear();
   olderRequestRef.current++;
@@ -487,8 +490,9 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
  </button>}
  </div>
  <form ref={composerFormRef} className="composer ik-group-composer" onSubmit={send}>
- <textarea aria-label="Сообщение группе" placeholder={online?"Сообщение группе…":"Нет сети · черновик сохранён"} rows={1} enterKeyHint="enter" maxLength={4000} value={draft}
+ <textarea ref={composerRef} aria-label="Сообщение группе" placeholder={online?"Сообщение группе…":"Нет сети · черновик сохранён"} rows={1} enterKeyHint="enter" maxLength={4000} value={draft}
  onChange={e=>{changeDraft(e.target.value);if(error)setError('');}}
+ onInput={e=>resizeChatComposer(e.currentTarget)}
  onKeyDown={e=>{
    if(e.key!=='Enter'||e.nativeEvent.isComposing)return;
    // Desktop: Enter sends, Shift+Enter inserts a newline.
