@@ -14,6 +14,7 @@ import {subscribeGroupChanges} from '@/lib/group-realtime';
 import {mergeConfirmedGroupMessages,CONFIRMED_GROUP_MESSAGE_GRACE_MS,type ConfirmedGroupMessage} from '@/lib/group-history';
 import {shouldAcknowledgeGroupRead,countNewIncomingBelow} from '@/lib/group-read-position';
 import {fetchOlderGroupMessages,prependOlderGroupMessages,preserveOlderGroupMessages,GROUP_HISTORY_MAX_LOADED} from '@/lib/group-pagination';
+import {lockBodyScroll} from '@/lib/body-scroll-lock';
 type Props={token:string;userId:string;group:Group;onBack:()=>void;onShowProfile:(id:string)=>void;onDraftChange:(groupId:string,text:string)=>void};
 export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDraftChange}:Props){
  const [messages,setMessages]=useState<GroupMessage[]>([]);
@@ -351,13 +352,12 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
   previous.ids=new Set(messages.map(m=>m.id));
   if(newBelow>0)setNewMessagesBelow(n=>Math.min(99,n+newBelow));
  },[messages,group.id,userId]);
- useEffect(()=>{
+ useLayoutEffect(()=>{
   if(!membersOpen)return;
   const previouslyFocused=document.activeElement instanceof HTMLElement
    ?document.activeElement:null;
-  const previousOverflow=document.body.style.overflow;
   skipMembersFocusRestoreRef.current=false;
-  document.body.style.overflow='hidden';
+  const releaseBodyScroll=lockBodyScroll(document,window);
   membersSearchRef.current?.focus();
 
   // Keep programmatic and assistive-technology focus changes inside the
@@ -399,7 +399,7 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
   return()=>{
    document.removeEventListener('focusin',onFocusIn);
    document.removeEventListener('keydown',onKey);
-   document.body.style.overflow=previousOverflow;
+   releaseBodyScroll();
    if(!skipMembersFocusRestoreRef.current&&previouslyFocused?.isConnected)previouslyFocused.focus();
    skipMembersFocusRestoreRef.current=false;
   };
