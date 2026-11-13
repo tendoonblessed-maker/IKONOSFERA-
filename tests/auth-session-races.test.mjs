@@ -17,24 +17,42 @@ const defer=()=>{
  const promise=new Promise((yes,no)=>{resolve=yes;reject=no});
  return {promise,resolve,reject};
 };
-function scenario(handler){
- const data=new Map();
- const storage={
+function createStorage(data=new Map()){
+ return {
   getItem:key=>data.get(key)??null,
   setItem:(key,value)=>data.set(key,value),
-  removeItem:key=>data.delete(key)
+  removeItem:key=>data.delete(key),
+  data
  };
+}
+function createLockManager(){
+ let tail=Promise.resolve();
+ return {
+  request(name,options,callback){
+   const previous=tail;
+   let release;
+   const gate=new Promise(resolve=>{release=resolve});
+   tail=previous.then(()=>gate);
+   return previous.then(async()=>{
+    try{return await callback({name,mode:options.mode});}
+    finally{release();}
+   });
+  }
+ };
+}
+function scenario(handler,{storage=createStorage(),locks}={}){
  const calls=[];
  const ctx={
   exports:{},process:{env:{NEXT_PUBLIC_SUPABASE_URL:'https://test.supabase.invalid',NEXT_PUBLIC_SUPABASE_ANON_KEY:'anon-test'}},
   window:{},localStorage:storage,AbortSignal,URLSearchParams,
+  navigator:locks?{locks}:undefined,
   fetch:(url,options)=>{
    calls.push({url,options});
    return handler(url,options,calls.length);
   }
  };
  vm.runInNewContext(compiled,ctx,{filename:'supabase-rest.cjs',timeout:2500});
- return {api:ctx.exports,calls,storage,data};
+ return {api:ctx.exports,calls,storage,data:storage.data};
 }
 const expired=(access_token,refresh_token)=>({access_token,refresh_token,expires_at:0});
 const future=(access_token,refresh_token)=>({access_token,refresh_token,expires_at:Date.now()/1000+7200});
@@ -51,6 +69,72 @@ test('concurrent validSession calls rotate the same refresh token only once',asy
  assert.equal(one.access_token,'next-a');
  assert.equal(two.access_token,'next-a');
  assert.equal(api.loadSession().refresh_token,'next-r');
+});
+
+test('Web Locks serialize refresh-token rotation across browser tabs',async()=>{
+ const storage=createStorage();
+ const locks=createLockManager();
+ const response=defer();
+ let requests=0;
+ const handler=()=>{requests++;return response.promise;};
+ const tabA=scenario(handler,{storage,locks});
+ const tabB=scenario(handler,{storage,locks});
+ tabA.api.saveSession(expired('shared-access','shared-refresh'));
+ const first=tabA.api.validSession();
+ const second=tabB.api.validSession();
+ await Promise.resolve();
+ assert.equal(requests,1,'only the tab holding the Web Lock may send the single-use refresh token');
+ response.resolve(tokenResponse('rotated-access','rotated-refresh'));
+ const [one,two]=await Promise.all([first,second]);
+ assert.equal(one.access_token,'rotated-access');
+ assert.equal(two,null,'the waiting tab must re-bootstrap after another tab rotates credentials');
+ assert.equal(requests,1);
+ assert.equal(tabB.api.loadSession().refresh_token,'rotated-refresh');
+});
+
+test('failed Web Locks acquisition fails closed and keeps the session retryable',async()=>{
+ const storage=createStorage();
+ let rejectLock=true;
+ const locks={
+  request(name,options,callback){
+   assert.equal(name,'ikonosfera-auth-refresh-v1');
+   assert.equal(options.mode,'exclusive');
+   if(rejectLock)return Promise.reject(Error('lock unavailable'));
+   return Promise.resolve().then(()=>callback({name,mode:options.mode}));
+  }
+ };
+ const {api,calls}=scenario(()=>Promise.resolve(tokenResponse('rotated-access','rotated-refresh')),{storage,locks});
+ api.saveSession(expired('old-access','old-refresh'));
+ await assert.rejects(api.validSession(),/Не удалось безопасно получить блокировку обновления сессии/);
+ assert.equal(calls.length,0,'a failed lock must never trigger an unsynchronized refresh');
+ assert.equal(api.loadSession().refresh_token,'old-refresh','failed lock acquisition must preserve credentials');
+ rejectLock=false;
+ const refreshed=await api.validSession();
+ assert.equal(refreshed.access_token,'rotated-access','a later lock acquisition should allow a safe retry');
+ assert.equal(calls.length,1);
+});
+
+test('a queued refresh never runs after another tab switches accounts',async()=>{
+ const storage=createStorage();
+ const locks=createLockManager();
+ const response=defer();
+ let requests=0;
+ const handler=()=>{requests++;return response.promise;};
+ const tabA=scenario(handler,{storage,locks});
+ const tabB=scenario(handler,{storage,locks});
+ const otherTab=scenario(handler,{storage,locks});
+ tabA.api.saveSession(expired('old-access','old-refresh'));
+ const first=tabA.api.validSession();
+ const queued=tabB.api.validSession();
+ await Promise.resolve();
+ assert.equal(requests,1);
+ otherTab.api.saveSession(future('new-account-access','new-account-refresh'));
+ response.resolve(tokenResponse('rotated-old-access','rotated-old-refresh'));
+ const [oldResult,queuedResult]=await Promise.all([first,queued]);
+ assert.equal(oldResult,null);
+ assert.equal(queuedResult,null,'the waiting tab must not refresh or adopt another account');
+ assert.equal(requests,1);
+ assert.equal(tabB.api.loadSession().access_token,'new-account-access');
 });
 
 test('log out while refresh is pending: old reply cannot revive a signed-out session',async()=>{
@@ -164,12 +248,14 @@ test('application resets sensitive caches and chat state before server logout se
  assert.doesNotMatch(method,/clearSession\(\)/);
 });
 
-test('refresh response must match both session generation and refresh token',()=>{
- assert.match(source,/sessionGeneration!==generation\|\|loadSession\(\)\?\.refresh_token!==s\.refresh_token/);
+test('refresh response is guarded by the post-lock generation and current refresh token',()=>{
+ assert.match(source,/sessionGeneration!==refreshGeneration\|\|loadSession\(\)\?\.refresh_token!==current\.refresh_token/);
  assert.match(source,/if\(sessionRefreshPromise===pending\)sessionRefreshPromise=null/);
  assert.match(source,/if\(loadSession\(\)\?\.access_token===token\)clearSession\(\)/);
+ assert.match(source,/navigator\.locks/);
+ assert.match(source,/ikonosfera-auth-refresh-v1/);
  assert.doesNotMatch(source,/finally \{ clearSession\(\); \}/);
-});
+});;
 
 
 test('late startup requests check current session before displaying a profile or refreshing private data',()=>{
