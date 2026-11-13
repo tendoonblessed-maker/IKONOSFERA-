@@ -582,11 +582,10 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
     setSelectedMessages([]);
     setMessageMenuId(null);
     const sync=async(first=false)=>{
-      if(cancelled||document.visibilityState==='hidden')return;
+      if(cancelled||document.visibilityState==='hidden'||!navigator.onLine)return;
       if(inFlight){queuedSync=true;return;}
       // Offline detection avoids pointless 18-second fetch timeouts.
       // The 'online' listener below triggers an immediate retry.
-      if(!navigator.onLine)return;
       const revision=syncRevision;
       inFlight=true;
       try{
