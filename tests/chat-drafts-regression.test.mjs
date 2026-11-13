@@ -43,7 +43,7 @@ test('corrupted or unavailable sessionStorage does not crash the composer',()=>{
       get sessionStorage(){throw Error('Storage disabled');}
     }});
     assert.doesNotThrow(()=>writeChatDrafts(USER_A,{[CHAT_A]:'Still typing'}));
-    assert.deepEqual(readChatDrafts(USER_A),{});
+    assert.equal(readChatDrafts(USER_A)[CHAT_A],'Still typing');
     assert.doesNotThrow(()=>clearChatDrafts(USER_A));
   }finally{
     Object.defineProperty(globalThis,'window',{configurable:true,value:old});

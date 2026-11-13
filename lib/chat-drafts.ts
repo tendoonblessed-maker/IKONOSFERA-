@@ -10,6 +10,25 @@ const UUID=/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
 
 export type ChatDrafts=Record<string,string>;
 
+// Keep the latest draft in this tab when sessionStorage is temporarily
+// unavailable (private browsing, quota errors, blocked cookies). Pending
+// writes are retried before a read, including empty writes from sign-out:
+// otherwise a failed removeItem could resurrect an old private draft.
+const memoryDrafts=new Map<string,ChatDrafts>();
+const pendingOwners=new Set<string>();
+
+function flushPendingDrafts(userId:string):void{
+  if(!pendingOwners.has(userId))return;
+  try{
+    const storage=store();
+    if(!storage)return;
+    const drafts=memoryDrafts.get(userId)??{};
+    if(Object.keys(drafts).length)storage.setItem(key(userId),JSON.stringify(drafts));
+    else storage.removeItem(key(userId));
+    pendingOwners.delete(userId);
+  }catch{/* Keep the pending draft/tombstone until storage recovers. */}
+}
+
 function store():Storage|null{
   try{return typeof window==='undefined'?null:window.sessionStorage;}
   catch{return null;} // Safari private mode and disabled storage must work.
@@ -43,24 +62,46 @@ export function updateChatDraftEntry(drafts:ChatDrafts,chatId:string,text:string
   if(text.trim())next[chatId]=text.slice(0,MAX_TEXT);
   return cleanChatDrafts(next);
 }
+
+/**
+ * Return null for an unavailable/corrupt snapshot so it cannot erase the
+ * last-known-good in-tab copy. A missing key is different: successful clear
+ * removes the key, so absence is authoritative and must clear old memory.
+ * A valid empty object is also an intentional empty snapshot.
+ */
+function parseStoredDrafts(value:string|null):ChatDrafts|null{
+  if(value===null)return {};
+  let parsed:unknown;
+  try{parsed=JSON.parse(value);}catch{return null;}
+  if(!parsed||typeof parsed!=='object'||Array.isArray(parsed))return null;
+  const clean=cleanChatDrafts(parsed);
+  if(Object.keys(parsed).length>0&&Object.keys(clean).length===0)return null;
+  return clean;
+}
+
 export function readChatDrafts(userId:string):ChatDrafts{
   if(!UUID.test(userId))return {};
+  flushPendingDrafts(userId);
+  // A stale storage value must never override an unsaved edit or logout.
+  if(pendingOwners.has(userId))return {...(memoryDrafts.get(userId)??{})};
   try{
-    const value=store()?.getItem(key(userId));
-    return value?cleanChatDrafts(JSON.parse(value)):{};
-  }catch{return {};}
+    const storage=store();
+    if(!storage)return {...(memoryDrafts.get(userId)??{})};
+    const clean=parseStoredDrafts(storage.getItem(key(userId)));
+    if(clean===null)return {...(memoryDrafts.get(userId)??{})};
+    memoryDrafts.set(userId,clean);
+    return {...clean};
+  }catch{return {...(memoryDrafts.get(userId)??{})};}
 }
 export function writeChatDrafts(userId:string,drafts:ChatDrafts):void{
   if(!UUID.test(userId))return;
-  try{
-    const storage=store();
-    if(!storage)return;
-    const clean=cleanChatDrafts(drafts);
-    if(Object.keys(clean).length)storage.setItem(key(userId),JSON.stringify(clean));
-    else storage.removeItem(key(userId));
-  }catch{/* Storage quotas/disabled cookies must never block message typing. */}
+  memoryDrafts.set(userId,cleanChatDrafts(drafts));
+  pendingOwners.add(userId);
+  flushPendingDrafts(userId);
 }
 export function clearChatDrafts(userId:string):void{
   if(!UUID.test(userId))return;
-  try{store()?.removeItem(key(userId));}catch{}
+  memoryDrafts.set(userId,{});
+  pendingOwners.add(userId);
+  flushPendingDrafts(userId);
 }
