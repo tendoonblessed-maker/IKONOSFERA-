@@ -68,10 +68,10 @@ function externalHref(candidate:string):string|null{
   // single integer) and silently rewrites them to dotted decimal. The chat
   // bubble shows the original text, so only allow an exact canonical IPv4
   // spelling when the parser has normalized the hostname to an IPv4 address.
-  if(/^(?:\\d{1,3}\\.){3}\\d{1,3}$/.test(parsed.hostname)){
+  if(/^(?:\d{1,3}\\.){3}\d{1,3}$/.test(parsed.hostname)){
    const octets=rawHostname.split('.');
    const canonical=octets.length===4
-    &&octets.every(part=>/^(?:0|[1-9]\\d{0,2})$/.test(part)&&Number(part)<=255)
+    &&octets.every(part=>/^(?:0|[1-9]\d{0,2})$/.test(part)&&Number(part)<=255)
     &&rawHostname===parsed.hostname;
    if(!canonical)return null;
   }
