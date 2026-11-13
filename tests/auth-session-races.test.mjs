@@ -213,3 +213,45 @@ test('background auth refresh never keeps old userId when a different valid acco
  assert.match(effect,/if\(cancelled\|\|loadSession\(\)\?\.access_token!==valid\.access_token\)return;/);
  assert.match(effect,/if\(owner\.id!==userId\)\{window\.location\.reload\(\);return;\}/);
 });
+
+
+test('loadSession rejects malformed persisted credentials before they can become bearer tokens',()=>{
+ const {api,storage}=scenario(()=>Promise.resolve(reply({})));
+ const malformed=[
+  'null',
+  '[]',
+  JSON.stringify({access_token:123,refresh_token:'refresh',expires_at:9999999999}),
+  JSON.stringify({access_token:'access',refresh_token:{value:'refresh'},expires_at:9999999999}),
+  JSON.stringify({access_token:'access',refresh_token:'refresh',expires_at:'9999999999'}),
+  JSON.stringify({access_token:'access',refresh_token:'refresh',expires_at:null}),
+  JSON.stringify({access_token:'   ',refresh_token:'refresh',expires_at:9999999999}),
+  '{broken-json'
+ ];
+ for(const value of malformed){
+  storage.setItem('ikonosfera-session-v1',value);
+  assert.equal(api.loadSession(),null);
+ }
+});
+
+test('loadSession preserves valid credentials and safely refreshes legacy records without expiry',()=>{
+ const {api,storage}=scenario(()=>Promise.resolve(reply({})));
+ storage.setItem('ikonosfera-session-v1',JSON.stringify({access_token:'access',refresh_token:'refresh',expires_at:1234567890}));
+ const current=api.loadSession();
+ assert.equal(current.access_token,'access');
+ assert.equal(current.refresh_token,'refresh');
+ assert.equal(current.expires_at,1234567890);
+ storage.setItem('ikonosfera-session-v1',JSON.stringify({access_token:'legacy-access',refresh_token:'legacy-refresh'}));
+ const legacy=api.loadSession();
+ assert.equal(legacy.access_token,'legacy-access');
+ assert.equal(legacy.refresh_token,'legacy-refresh');
+ assert.equal(legacy.expires_at,0,'legacy sessions must refresh instead of being discarded');
+});
+
+test('saveSession rejects non-string credentials and non-finite expiry values',()=>{
+ const {api,storage}=scenario(()=>Promise.resolve(reply({})));
+ assert.throws(()=>api.saveSession({access_token:123,refresh_token:'refresh'}),/действительную сессию/);
+ assert.throws(()=>api.saveSession({access_token:'access',refresh_token:'   '}),/действительную сессию/);
+ assert.throws(()=>api.saveSession({access_token:'access',refresh_token:'refresh',expires_in:Infinity}),/действительную сессию/);
+ assert.throws(()=>api.saveSession({access_token:'access',refresh_token:'refresh',expires_at:NaN}),/действительную сессию/);
+ assert.equal(storage.getItem('ikonosfera-session-v1'),null,'invalid responses must not be persisted');
+});

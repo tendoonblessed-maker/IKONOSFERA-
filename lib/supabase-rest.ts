@@ -44,11 +44,29 @@ async function http<T>(path: string, options: { method?: string; token?: string;
 }
 export function loadSession(): Session | null {
   if (typeof window === 'undefined') return null;
-  try { const s = JSON.parse(localStorage.getItem(STORAGE) || 'null') as Session | null; return s?.access_token && s.refresh_token ? s : null; } catch { return null; }
+  try {
+    const value: unknown = JSON.parse(localStorage.getItem(STORAGE) || 'null');
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+    const candidate = value as Partial<Session>;
+    if (typeof candidate.access_token !== 'string' || !candidate.access_token.trim()
+        || typeof candidate.refresh_token !== 'string' || !candidate.refresh_token.trim()) return null;
+    // Older tab sessions without an expiry remain refreshable, but malformed
+    // expiry values must never be treated as valid credentials.
+    const expiresAt = candidate.expires_at === undefined ? 0 : candidate.expires_at;
+    if (typeof expiresAt !== 'number' || !Number.isFinite(expiresAt)) return null;
+    return { access_token: candidate.access_token, refresh_token: candidate.refresh_token, expires_at: expiresAt };
+  } catch { return null; }
 }
 export function saveSession(s: { access_token: string; refresh_token: string; expires_in?: number; expires_at?: number }) {
-  if(!s.access_token||!s.refresh_token)throw Error('Сервер не выдал действительную сессию.');
-  const session: Session = { access_token: s.access_token, refresh_token: s.refresh_token, expires_at: s.expires_at ?? (Math.floor(Date.now()/1000) + (s.expires_in ?? 3600) - 60) };
+  const expiresAt = s.expires_at ?? (Math.floor(Date.now()/1000) + (s.expires_in ?? 3600) - 60);
+  if (typeof s.access_token !== 'string' || !s.access_token.trim()
+      || typeof s.refresh_token !== 'string' || !s.refresh_token.trim()
+      || (s.expires_in !== undefined && (typeof s.expires_in !== 'number' || !Number.isFinite(s.expires_in)))
+      || (s.expires_at !== undefined && (typeof s.expires_at !== 'number' || !Number.isFinite(s.expires_at)))
+      || !Number.isFinite(expiresAt)) {
+    throw Error('Сервер не выдал действительную сессию.');
+  }
+  const session: Session = { access_token: s.access_token, refresh_token: s.refresh_token, expires_at: expiresAt };
   localStorage.setItem(STORAGE, JSON.stringify(session));
   sessionGeneration++;
   return session;
