@@ -84,8 +84,8 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
   setShowJumpToLatest(false);
   setNewMessagesBelow(0);
  },[group.id,userId]);
- // Mounting or switching accounts must not show another person's draft.
- useEffect(()=>{
+ // Restore synchronously before paint; a passive effect can flash the prior account's draft.
+ useLayoutEffect(()=>{
   draftVersionRef.current+=1;
   setDraft(readGroupDrafts(userId)[group.id]??'');
  },[group.id,userId]);
