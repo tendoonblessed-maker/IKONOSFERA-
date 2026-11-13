@@ -14,6 +14,7 @@ import {subscribeGroupChanges} from '@/lib/group-realtime';
 import {mergeConfirmedGroupMessages,CONFIRMED_GROUP_MESSAGE_GRACE_MS,type ConfirmedGroupMessage} from '@/lib/group-history';
 import {shouldAcknowledgeGroupRead,countNewIncomingBelow} from '@/lib/group-read-position';
 import {fetchOlderGroupMessages,prependOlderGroupMessages,preserveOlderGroupMessages,GROUP_HISTORY_MAX_LOADED} from '@/lib/group-pagination';
+import {lockBodyScroll} from '@/lib/body-scroll-lock';
 type Props={token:string;userId:string;group:Group;onBack:()=>void;onShowProfile:(id:string)=>void;onDraftChange:(groupId:string,text:string)=>void};
 export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDraftChange}:Props){
  const [messages,setMessages]=useState<GroupMessage[]>([]);
@@ -21,6 +22,9 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
  const [presence,setPresence]=useState<Record<string,UserActivity>>({});
  const [membersOpen,setMembersOpen]=useState(false);
  const [memberSearch,setMemberSearch]=useState('');
+ const membersDialogRef=useRef<HTMLDivElement|null>(null);
+ const membersSearchRef=useRef<HTMLInputElement|null>(null);
+ const skipMembersFocusRestoreRef=useRef(false);
  const [draft,setDraft]=useState(()=>readGroupDrafts(userId)[group.id]??'');
  const [online,setOnline]=useState(true);
  const draftVersionRef=useRef(0);
@@ -348,7 +352,58 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
   previous.ids=new Set(messages.map(m=>m.id));
   if(newBelow>0)setNewMessagesBelow(n=>Math.min(99,n+newBelow));
  },[messages,group.id,userId]);
- useEffect(()=>{if(!membersOpen)return;const onKey=(event:KeyboardEvent)=>{if(event.key==='Escape')setMembersOpen(false);};window.addEventListener('keydown',onKey);return()=>window.removeEventListener('keydown',onKey);},[membersOpen]);
+ useLayoutEffect(()=>{
+  if(!membersOpen)return;
+  const previouslyFocused=document.activeElement instanceof HTMLElement
+   ?document.activeElement:null;
+  skipMembersFocusRestoreRef.current=false;
+  const releaseBodyScroll=lockBodyScroll(document,window);
+  membersSearchRef.current?.focus();
+
+  // Keep programmatic and assistive-technology focus changes inside the
+  // modal too; trapping Tab alone does not prevent focus() from escaping.
+  const onFocusIn=(event:FocusEvent)=>{
+   const dialog=membersDialogRef.current;
+   if(!skipMembersFocusRestoreRef.current&&dialog
+      &&event.target instanceof Node&&!dialog.contains(event.target)){
+    (membersSearchRef.current??dialog).focus();
+   }
+  };
+  const onKey=(event:KeyboardEvent)=>{
+   if(event.key==='Escape'){
+    event.preventDefault();
+    setMembersOpen(false);
+    return;
+   }
+   if(event.key!=='Tab')return;
+   const dialog=membersDialogRef.current;
+   const controls=dialog?.querySelectorAll<HTMLElement>(
+    'a[href],button:not([disabled]),input:not([disabled]),textarea:not([disabled]),select:not([disabled]),[tabindex]:not([tabindex="-1"])'
+   );
+   if(!dialog||!controls?.length){
+    event.preventDefault();
+    dialog?.focus();
+    return;
+   }
+   const first=controls[0],last=controls[controls.length-1];
+   if(event.shiftKey&&(document.activeElement===first||!dialog.contains(document.activeElement))){
+    event.preventDefault();
+    last.focus();
+   }else if(!event.shiftKey&&(document.activeElement===last||!dialog.contains(document.activeElement))){
+    event.preventDefault();
+    first.focus();
+   }
+  };
+  document.addEventListener('focusin',onFocusIn);
+  document.addEventListener('keydown',onKey);
+  return()=>{
+   document.removeEventListener('focusin',onFocusIn);
+   document.removeEventListener('keydown',onKey);
+   releaseBodyScroll();
+   if(!skipMembersFocusRestoreRef.current&&previouslyFocused?.isConnected)previouslyFocused.focus();
+   skipMembersFocusRestoreRef.current=false;
+  };
+ },[membersOpen]);
   useEffect(()=>{if(!membersOpen||!members.length)return;let gone=false;const load=()=>{if(document.visibilityState==='visible')void getUserActivities(token,members.map(m=>m.id)).then(value=>{if(!gone)setPresence(value);}).catch(()=>{});};load();const t=setInterval(load,40000);return()=>{gone=true;clearInterval(t);};},[token,membersOpen,members]);
  async function send(e:FormEvent){
  e.preventDefault();
@@ -504,10 +559,10 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
  <span>{error}</span>
  {retryAvailable&&online&&draft.trim()&&<button type="button" onClick={()=>composerFormRef.current?.requestSubmit()} disabled={busy}>Повторить отправку</button>}
  </div>}
- {membersOpen&&<div className="ik-members-backdrop" role="dialog" aria-modal="true" aria-label="Участники группы">
- <div className="ik-members-modal"><div className="ik-members-header"><div><strong>{group.title}</strong><small>{members.length} участников</small></div><button type="button" onClick={()=>setMembersOpen(false)} aria-label="Закрыть список участников">✕</button></div>
- <input className="ik-members-search" aria-label="Найти участника" placeholder="Поиск участников" value={memberSearch} onChange={e=>setMemberSearch(e.target.value)}/>
- <div className="ik-members-list">{filtered.map(p=><button type="button" key={p.id} className="ik-member-row" onClick={()=>{setMembersOpen(false);onShowProfile(p.id);}}>
+ {membersOpen&&<div className="ik-members-backdrop">
+ <div ref={membersDialogRef} className="ik-members-modal" role="dialog" aria-modal="true" aria-label="Участники группы" tabIndex={-1}><div className="ik-members-header"><div><strong>{group.title}</strong><small>{members.length} участников</small></div><button type="button" onClick={()=>setMembersOpen(false)} aria-label="Закрыть список участников">✕</button></div>
+ <input ref={membersSearchRef} className="ik-members-search" aria-label="Найти участника" placeholder="Поиск участников" value={memberSearch} onChange={e=>setMemberSearch(e.target.value)}/>
+ <div className="ik-members-list">{filtered.map(p=><button type="button" key={p.id} className="ik-member-row" onClick={()=>{skipMembersFocusRestoreRef.current=true;setMembersOpen(false);onShowProfile(p.id);}}>
  <span className="ik-member-avatar">{imageUrl(p.avatar_path)?<img src={imageUrl(p.avatar_path)||''} alt=""/>:(p.display_name||p.username).slice(0,1).toUpperCase()}</span>
  <span className="ik-member-info"><strong><span className="ik-name-with-status"><span>{p.display_name||p.username}</span><StatusEmoji index={p.status_emoji} decorative/></span>{p.id===group.owner_id&&<span className="ik-member-owner">Администратор</span>}</strong><small>{activityLabel(presence[p.id])}</small></span><span className="ik-member-arrow">›</span>
  </button>)}
