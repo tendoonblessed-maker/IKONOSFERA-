@@ -38,7 +38,6 @@ function setup({initialEmoji=null,locks,fetchOverride}={}){
  const calls=[];
  let currentEmoji=initialEmoji;
  const fetcher=fetchOverride||(async(url,options)=>{
-  calls.push({url,options});
   if(options.method==='GET'){
    return {ok:true,text:async()=>JSON.stringify(currentEmoji===null?[]:[{message_id:UUID,user_id:USER,emoji:currentEmoji}])};
   }
