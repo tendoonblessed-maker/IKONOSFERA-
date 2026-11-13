@@ -316,9 +316,39 @@ export async function listMessageReactions(token:string,messageIds:string[]):Pro
  if(!messageIds.length)return [];
  return http<MessageReaction[]>('/rest/v1/message_reactions?select=message_id,user_id,emoji&message_id=in.('+messageIds.map(encodeURIComponent).join(',')+')&limit=3000',{token});
 }
+async function writeMessageReactionUnlocked(token:string,userId:string,messageId:string,emoji:string|null):Promise<void>{
+ const filter='/rest/v1/message_reactions?message_id=eq.'+encodeURIComponent(messageId)+'&user_id=eq.'+encodeURIComponent(userId);
+ await http(filter,{token,method:'DELETE'});
+ if(emoji!==null)await http('/rest/v1/message_reactions',{token,method:'POST',body:{message_id:messageId,user_id:userId,emoji}});
+}
+async function withMessageReactionLock<T>(userId:string,messageId:string,work:()=>Promise<T>):Promise<T>{
+ const locks=typeof navigator!=='undefined'?navigator.locks:undefined;
+ if(!locks?.request)return work();
+ const name='ikonosfera:message-reaction:v1:'+JSON.stringify([userId,messageId]);
+ return locks.request(name,{mode:'exclusive'},work);
+}
+/** Explicitly set or clear the current user's reaction while serializing same-origin tabs. */
 export async function setMessageReaction(token:string,userId:string,messageId:string,emoji:string|null):Promise<void>{
- await http('/rest/v1/message_reactions?message_id=eq.'+encodeURIComponent(messageId)+'&user_id=eq.'+encodeURIComponent(userId),{token,method:'DELETE'});
- if(emoji)await http('/rest/v1/message_reactions',{token,method:'POST',body:{message_id:messageId,user_id:userId,emoji}});
+ await withMessageReactionLock(userId,messageId,()=>writeMessageReactionUnlocked(token,userId,messageId,emoji));
+}
+/**
+ * Toggle against the server's latest row while holding the per-message Web Lock.
+ * This prevents two tabs from making decisions from the same stale reaction snapshot.
+ */
+export async function toggleMessageReaction(token:string,userId:string,messageId:string,emoji:string):Promise<void>{
+ await withMessageReactionLock(userId,messageId,async()=>{
+  const path='/rest/v1/message_reactions?select=message_id,user_id,emoji'
+   +'&message_id=eq.'+encodeURIComponent(messageId)
+   +'&user_id=eq.'+encodeURIComponent(userId)+'&limit=2';
+  const rows=await http<MessageReaction[]>(path,{token});
+  if(!Array.isArray(rows)||rows.length>1||rows.some(row=>!row
+    ||typeof row.message_id!=='string'||row.message_id.toLowerCase()!==messageId.toLowerCase()
+    ||typeof row.user_id!=='string'||row.user_id.toLowerCase()!==userId.toLowerCase()
+    ||typeof row.emoji!=='string'))
+   throw Error('Не удалось проверить текущую реакцию.');
+  const nextEmoji=rows[0]?.emoji===emoji?null:emoji;
+  await writeMessageReactionUnlocked(token,userId,messageId,nextEmoji);
+ });
 }
 export function validateUsername(username:string):string|null{
  const value=username.trim().replace(/^@/,'').toLowerCase();
