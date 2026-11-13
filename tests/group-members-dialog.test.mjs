@@ -50,3 +50,10 @@ test('programmatic focus cannot escape the group members dialog',()=>{
  assert.match(source,/document\.removeEventListener\('focusin',onFocusIn\)/);
  assert.match(source,/!skipMembersFocusRestoreRef\.current&&dialog/);
 });
+
+test('group members dialog locks body scroll before paint and restores the original scroll position',()=>{
+ assert.match(source,/useLayoutEffect\\(\\(\\)=>\\{\\s*if\\(!membersOpen\\)return;/);
+ assert.match(source,/const releaseBodyScroll=lockBodyScroll\\(document,window\\)/);
+ assert.match(source,/releaseBodyScroll\\(\\)/);
+ assert.doesNotMatch(source,/document\\.body\\.style\\.overflow='hidden'/);
+});
