@@ -100,7 +100,9 @@ export function reconcileVisibleDirectMessages(
  const serverRows=new Map<string,ChatMessage>();
  for(const message of authoritative){
   const id=message.id.toLowerCase();
-  if(message.chat_id===chatId&&requested.has(id))serverRows.set(id,message);
+  // An unexpected row invalidates the whole snapshot; never treat it as proof of deletion.
+  if(message.chat_id!==chatId||!requested.has(id))return current;
+  serverRows.set(id,message);
  }
  let changed=false;
  const next:ChatMessage[]=[];
