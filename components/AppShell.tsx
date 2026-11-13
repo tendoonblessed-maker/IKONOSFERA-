@@ -12,7 +12,7 @@ import ChatMessageText from "@/components/ChatMessageText";
 import {subscribeDirectChatChanges} from "@/lib/direct-realtime";
 import {subscribeInboxChanges,type InboxChangeKind} from "@/lib/inbox-realtime";
 import {isLatestAccountSnapshot} from "@/lib/inbox-snapshot";
-import {shouldOpenDirectChatSearch} from "@/lib/chat-shortcuts";
+import {shouldOpenChatListSearch,shouldOpenDirectChatSearch} from "@/lib/chat-shortcuts";
 import {reconcileRecentChannelUpdates,CHANNEL_UPDATE_GRACE_MS,type RecentChannelUpdate} from "@/lib/channel-sync";
 import ChatAttachmentPreview from "@/components/ChatAttachmentPreview";
 import VoiceRecorder from "@/components/VoiceRecorder";
@@ -747,9 +747,8 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
   useEffect(()=>{const field=composerRef.current;if(!field)return;field.style.height='auto';field.style.height=Math.min(field.scrollHeight,136)+'px';},[draft,selected]);
   useEffect(()=>{
     const keyboard=(event:KeyboardEvent)=>{
-      const shortcut=(event.ctrlKey||event.metaKey)&&!event.altKey;
-      const key=event.key.toLowerCase();
-      if(shortcut&&key==='k'){
+      // Do not steal IME candidate/navigation keys from the active composer.
+      if(shouldOpenChatListSearch(event)){
         event.preventDefault();setTab('chats');setCreateMenuOpen(false);
         searchInputRef.current?.focus();searchInputRef.current?.select();
       }
