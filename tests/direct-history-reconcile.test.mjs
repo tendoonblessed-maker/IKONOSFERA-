@@ -135,6 +135,19 @@ test('AppShell reconciles only visible direct history after commits, Realtime, s
  assert.match(shell,/syncRevision\+\+/);
  assert.match(shell,/revision!==syncRevision/);
  assert.match(shell,/reconcileController\?\.abort\(\)/);
+ assert.match(shell,/invalidateDirectHistorySyncRef\.current\?\.\(\)/);
+ assert.match(shell,/directHistoryReconcileRef\.current\?\.\(true\)/);
+ assert.match(shell,/if\(selectedRef\.current===chatId\)\{\s*invalidateDirectHistorySyncRef/);
  assert.match(realtime,/event:'UPDATE'/);
  assert.doesNotMatch(realtime,/event:'DELETE'/);
+});
+
+test('visible-message selection is capped at the bounded RLS request size',()=>{
+ const {visibleDirectMessageIds}=compile('lib/chat-history.ts');
+ const nodes=Array.from({length:90},(_,i)=>({
+  id:'ik-chat-message-00000000-0000-4000-8000-'+i.toString(16).padStart(12,'0'),
+  getBoundingClientRect:()=>({top:100+i,bottom:101+i})
+ }));
+ const container={getBoundingClientRect:()=>({top:0,bottom:500}),querySelectorAll:()=>nodes};
+ assert.equal(visibleDirectMessageIds(container).length,80);
 });
