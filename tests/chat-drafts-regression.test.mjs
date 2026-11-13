@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
+import {readFileSync} from 'node:fs';
 import {cleanChatDrafts,readChatDrafts,writeChatDrafts,clearChatDrafts} from '../lib/chat-drafts.ts';
 
 const USER_A='11111111-1111-4111-8111-111111111111';
@@ -57,4 +58,13 @@ test('empty drafts remove stored data instead of leaving stale previews',()=>{
   writeChatDrafts(USER_A,{[CHAT_A]:'   '});
   assert.deepEqual(readChatDrafts(USER_A),{});
   assert.equal(data.size,0);
+});
+
+
+test('direct chat draft ownership and selected composer are restored before paint',()=>{
+  const source=readFileSync(new URL('../components/AppShell.tsx',import.meta.url),'utf8');
+  assert.match(source,/useLayoutEffect\(\(\)=>\{\\n    \/\/ Restore only the signed-in person's drafts before paint/);
+  assert.match(source,/useLayoutEffect\(\(\)=>\{\\n    if\(groupDraftsOwnerRef\.current===userId\)return;/);
+  assert.match(source,/useLayoutEffect\(\(\)=>\{if\(selected\)setDraft\(draftsRef\.current\[selected\]\|\|''\);\},\[selected,userId\]\)/);
+  assert.doesNotMatch(source,/useEffect\(\(\)=>\{if\(selected\)setDraft\(draftsRef\.current\[selected\]\|\|''\);\},\[selected,userId\]\)/);
 });
