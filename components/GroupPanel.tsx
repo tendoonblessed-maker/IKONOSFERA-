@@ -100,8 +100,9 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
   return()=>{window.removeEventListener('online',update);window.removeEventListener('offline',update);};
  },[]);
  function changeDraft(text:string){
+  // A delayed IME input must never be re-scoped to a different account or group.
+  if(draftScopeRef.current.ownerId!==userId||draftScopeRef.current.groupId!==group.id)return;
   draftVersionRef.current+=1;
-  draftScopeRef.current={ownerId:userId,groupId:group.id};
   setDraft(text);
   setRetryAvailable(false);
   onDraftChange(group.id,text);
@@ -491,7 +492,7 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
  </button>}
  </div>
  <form ref={composerFormRef} className="composer ik-group-composer" onSubmit={send}>
- <textarea aria-label="Сообщение группе" placeholder={online?"Сообщение группе…":"Нет сети · черновик сохранён"} rows={1} enterKeyHint="enter" maxLength={4000} value={visibleDraft}
+ <textarea key={userId+':'+group.id} aria-label="Сообщение группе" placeholder={online?"Сообщение группе…":"Нет сети · черновик сохранён"} rows={1} enterKeyHint="enter" maxLength={4000} value={visibleDraft}
  onChange={e=>{changeDraft(e.target.value);if(error)setError('');}}
  onKeyDown={e=>{
    if(e.key!=='Enter'||e.nativeEvent.isComposing)return;
