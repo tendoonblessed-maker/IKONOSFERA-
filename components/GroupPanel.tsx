@@ -491,7 +491,7 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
  </button>}
  </div>
  <form ref={composerFormRef} className="composer ik-group-composer" onSubmit={send}>
- <textarea aria-label="Сообщение группе" placeholder={online?"Сообщение группе…":"Нет сети · черновик сохранён"} rows={1} enterKeyHint="enter" maxLength={4000} value={draft}
+ <textarea aria-label="Сообщение группе" placeholder={online?"Сообщение группе…":"Нет сети · черновик сохранён"} rows={1} enterKeyHint="enter" maxLength={4000} value={visibleDraft}
  onChange={e=>{changeDraft(e.target.value);if(error)setError('');}}
  onKeyDown={e=>{
    if(e.key!=='Enter'||e.nativeEvent.isComposing)return;
