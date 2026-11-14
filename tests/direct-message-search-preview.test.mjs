@@ -6,6 +6,7 @@ import ts from 'typescript';
 import {slicePreviewText,truncatePreviewText} from '../lib/text-preview.ts';
 
 const source=readFileSync(new URL('../components/DirectMessageSearchPanel.tsx',import.meta.url),'utf8');
+const groupSource=readFileSync(new URL('../components/GroupSearchPanel.tsx',import.meta.url),'utf8');
 const helperSource=readFileSync(new URL('../lib/direct-message-search-preview.ts',import.meta.url),'utf8');
 const compiled=ts.transpileModule(helperSource,{
  compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}
@@ -77,4 +78,14 @@ test('direct search panel renders the shared grapheme-safe excerpt helper',()=>{
  assert.match(source,/import \{directMessageSearchExcerpt\} from '@\/lib\/direct-message-search-preview'/);
  assert.match(source,/directMessageSearchExcerpt\(message\.body,needle\)/);
  assert.doesNotMatch(source,/full\.slice\(start,start\+210\)/);
+});
+
+test('direct and group search inputs follow the first strong character direction',()=>{
+ assert.match(source,/<input autoFocus dir="auto" aria-label="Поиск сообщений в текущем чате"/);
+ assert.match(groupSource,/<input autoFocus dir="auto" type="search" aria-label="Найти сообщение в группе"/);
+});
+
+test('direct and group search snippets are isolated from surrounding bidirectional text',()=>{
+ assert.match(source,/<span className="ik-direct-search-result-text"><bdi dir="auto">\{snippet\}<\/bdi><\/span>/);
+ assert.match(groupSource,/<span className="ik-group-search-snippet"><bdi dir="auto">\{groupSearchExcerpt\(message\.body,term\)\}<\/bdi><\/span>/);
 });
