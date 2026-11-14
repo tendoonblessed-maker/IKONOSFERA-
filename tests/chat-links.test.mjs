@@ -14,8 +14,28 @@ test('links are found in personal/group plain text with safe HTTP(S) targets',()
  ]);
  assert.equal(reconstructed(text),text);
  assert.deepEqual(links('HTTP://EXAMPLE.COM/path'),[
-  {text:'HTTP://EXAMPLE.COM/path',href:'http://example.com/path'}
+  {text:'HTTP://EXAMPLE.COM/path',href:'http://example.com/path',displayText:'http://example.com/path'}
  ]);
+});
+
+
+test('rendered link labels use the canonical host, IPv6 form and effective port',()=>{
+ const cases=[
+  ['HTTPS://EXAMPLE.COM:443/path','https://example.com/path','https://example.com/path'],
+  ['http://EXAMPLE.COM:80/path','http://example.com/path','http://example.com/path'],
+  ['https://[2001:0DB8:0:0:0:0:0:1]:443/status','https://[2001:db8::1]/status','https://[2001:db8::1]/status'],
+  ['https://EXAMPLE.COM:8443/path','https://example.com:8443/path','https://example.com:8443/path'],
+  ['www.EXAMPLE.COM/help','www.example.com/help','https://www.example.com/help']
+ ];
+ for(const [input,displayText,href] of cases){
+  assert.deepEqual(links(input),[{text:input,href,displayText}],
+   'the visible label must use the canonical destination authority: '+input);
+  assert.equal(reconstructed(input),input,'source message text must remain unchanged');
+ }
+ for(const input of ['https://example.com./path','www.example.com./help']){
+  assert.equal(links(input).length,0,'a trailing-dot hostname stays literal until its display semantics are explicit');
+  assert.equal(reconstructed(input),input);
+ }
 });
 
 test('message text is preserved exactly including code, markup, newlines and ampersands',()=>{
@@ -164,6 +184,7 @@ test('React rendering uses escaped text and safe external links instead of HTML 
  const css=source('app/globals.css');
  assert.match(ui,/splitChatLinks\(text\)\.map/);
  assert.match(ui,/href=\{part\.href\}/);
+ assert.match(ui,/part\.displayText\?\?part\.text/);
  assert.match(ui,/target="_blank"/);
  assert.match(ui,/rel="noopener noreferrer nofollow ugc"/);
  assert.match(ui,/event\.stopPropagation\(\)/);
@@ -281,10 +302,10 @@ test('canonical decimal ports and bracketed IPv6 literals remain clickable',()=>
   assert.equal(reconstructed(text),text);
  }
  assert.deepEqual(links('https://example.com:443/path'),[
-  {text:'https://example.com:443/path',href:'https://example.com/path'}
+  {text:'https://example.com:443/path',href:'https://example.com/path',displayText:'https://example.com/path'}
  ],'WHATWG default-port normalization preserves the same HTTPS destination');
  assert.deepEqual(links('http://example.com:80/path'),[
-  {text:'http://example.com:80/path',href:'http://example.com/path'}
+  {text:'http://example.com:80/path',href:'http://example.com/path',displayText:'http://example.com/path'}
  ],'WHATWG default-port normalization preserves the same HTTP destination');
 });
 
