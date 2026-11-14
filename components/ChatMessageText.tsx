@@ -10,7 +10,7 @@ export default function ChatMessageText({text}:{text:string}){
   splitChatLinks(text).map((part,i)=>part.href
    ?<a key={i} href={part.href} target="_blank"
       rel="noopener noreferrer nofollow ugc"
-      onClick={event=>event.stopPropagation()}>{part.text}</a>
+      onClick={event=>event.stopPropagation()}>{part.displayText??part.text}</a>
    :<Fragment key={i}>{part.text}</Fragment>)
  }</span>;
 }

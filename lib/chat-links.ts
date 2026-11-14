@@ -3,7 +3,7 @@
  * as HTML, or sent to a link-preview service. The React renderer handles
  * escaping: strings like "a < b", code, and literal tags stay literal text.
  */
-export type ChatTextPart={text:string;href?:string};
+export type ChatTextPart={text:string;href?:string;displayText?:string};
 const LINK_CANDIDATE=/(?:https?:\/\/|www\.)[^\s<>"'\u0060]+/gi;
 const TRAILING_PUNCTUATION=/[.,!?;:…。，！？；：»”’›]$/u;
 // Unicode format and default-ignorable code points can change visual order or
@@ -82,7 +82,7 @@ function splitAuthority(authority:string):{hostname:string;port?:string}|null{
  return {hostname,port};
 }
 
-function externalHref(candidate:string):string|null{
+function externalHref(candidate:string):{href:string;displayText?:string}|null{
  if(candidate.length>MAX_URL_LENGTH||UNSAFE_LINK_FORMATTING.test(candidate)||UNSAFE_LINK_SYNTAX.test(candidate))return null;
  const prefixed=/^www\./i.test(candidate)?'https://'+candidate:candidate;
  try{
@@ -97,8 +97,9 @@ function externalHref(candidate:string):string|null{
   // separators, full-width ASCII and percent-encoded host bytes can become
   // an apparently ordinary ASCII hostname. Inspect the original authority
   // before normalization so the visible text and actual destination agree.
-  const authority=prefixed.match(/^https?:\/\/([^/?#]*)/i)?.[1];
-  if(!authority)return null;
+  const authorityMatch=prefixed.match(/^https?:\/\/([^/?#]*)/i);
+  const authority=authorityMatch?.[1];
+  if(!authority||!authorityMatch)return null;
   const authorityParts=splitAuthority(authority);
   if(!authorityParts)return null;
   const rawHostname=authorityParts.hostname;
@@ -134,7 +135,12 @@ function externalHref(candidate:string):string|null{
     &&rawHostname===parsed.hostname;
    if(!canonical)return null;
   }
-  return parsed.href;
+  // Keep the source text for exact reconstruction, but render a separate
+  // canonical label so the visible host/port matches the actual href. WHATWG
+  // lowercases DNS names, compresses IPv6 and removes the scheme's default port.
+  const displayPrefix=/^www\./i.test(candidate)?'':parsed.protocol+'//';
+  const displayText=displayPrefix+parsed.host+prefixed.slice(authorityMatch[0].length);
+  return {href:parsed.href,...(displayText!==candidate?{displayText}:{})};
  }catch{return null;}
 }
 
@@ -158,10 +164,10 @@ export function splitChatLinks(text:string):ChatTextPart[]{
   const start=match.index;
   if(start<cursor||!canBeginLink(text,start))continue;
   const {url}=splitEnding(match[0]);
-  const href=externalHref(url);
-  if(!href)continue;
+  const link=externalHref(url);
+  if(!link)continue;
   if(start>cursor)result.push({text:text.slice(cursor,start)});
-  result.push({text:url,href});
+  result.push({text:url,href:link.href,...(link.displayText?{displayText:link.displayText}:{})});
   cursor=start+url.length;
   linkCount++;
  }
