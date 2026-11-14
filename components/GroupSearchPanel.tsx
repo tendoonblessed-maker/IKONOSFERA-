@@ -27,7 +27,7 @@ export default function GroupSearchPanel({
   <div className="ik-group-search-bar">
    <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor"
     strokeWidth="1.8" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 5 5"/></svg>
-   <input autoFocus type="search" aria-label="Найти сообщение в группе"
+   <input autoFocus dir="auto" type="search" aria-label="Найти сообщение в группе"
     placeholder="Поиск по всей истории группы…" maxLength={120}
     value={query} onChange={e=>onQueryChange(e.target.value)}/>
    <button type="button" className="ik-group-search-close" aria-label="Закрыть поиск"
@@ -48,7 +48,7 @@ export default function GroupSearchPanel({
       day:'numeric',month:'short',year:'numeric'
      })}</time>
     </span>
-    <span className="ik-group-search-snippet">{groupSearchExcerpt(message.body,term)}</span>
+    <span className="ik-group-search-snippet"><bdi dir="auto">{groupSearchExcerpt(message.body,term)}</bdi></span>
     <span className="ik-group-search-arrow" aria-hidden="true">{locatingId===message.id?'◌':'›'}</span>
    </button>)}
    {!loading&&!error&&!results.length&&<p className="ik-group-search-empty">Сообщений не найдено.</p>}
