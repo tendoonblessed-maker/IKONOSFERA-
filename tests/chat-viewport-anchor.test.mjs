@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {test} from 'node:test';
-import {captureChatViewportAnchor,restoreChatViewportAnchor} from '../lib/chat-viewport-anchor.js';
+import {captureChatViewportAnchor,restoreChatViewportAnchor,watchChatViewportIntent} from '../lib/chat-viewport-anchor.js';
 
 function history(scrollTop,scrollHeight,clientHeight){
   return {scrollTop,scrollHeight,clientHeight};
@@ -48,6 +48,9 @@ test('mobile viewport recovery is scoped to the same chat and resumes after PWA 
   const shell=readFileSync(new URL('../components/AppShell.tsx',import.meta.url),'utf8');
   assert.match(shell,/captureChatViewportAnchor\(history\)/);
   assert.match(shell,/restoreChatViewportAnchor\(pending\.history,pending\.anchor\)/);
+  assert.match(shell,/watchChatViewportIntent\(history,/);
+  assert.match(shell,/pending\.stopWatching\(\)/);
+  assert.match(shell,/cancelPendingAnchor\(\)/);
   assert.match(shell,/pending\.context!==viewportContextRef\.current/);
   assert.match(shell,/document\.querySelector\('\.conversation-pane\.open \.conversation-history'\)!==pending\.history/);
   assert.match(shell,/viewport\?\.addEventListener\('resize',update\)/);
@@ -55,4 +58,27 @@ test('mobile viewport recovery is scoped to the same chat and resumes after PWA 
   assert.match(shell,/window\.addEventListener\('pageshow',update\)/);
   assert.match(shell,/window\.addEventListener\('pagehide',onPageHide\)/);
   assert.match(shell,/document\.addEventListener\('visibilitychange',onVisibilityChange\)/);
+});
+
+
+test('explicit history interaction cancels a pending viewport anchor and removes listeners',()=>{
+  const target=new EventTarget();
+  const intents=[];
+  const stop=watchChatViewportIntent(target,type=>intents.push(type));
+  target.dispatchEvent(new Event('wheel'));
+  target.dispatchEvent(new Event('touchmove'));
+  target.dispatchEvent(new Event('pointerdown'));
+  const scrollKey=new Event('keydown');
+  Object.defineProperty(scrollKey,'key',{value:'PageDown'});
+  target.dispatchEvent(scrollKey);
+  const ordinaryKey=new Event('keydown');
+  Object.defineProperty(ordinaryKey,'key',{value:'a'});
+  target.dispatchEvent(ordinaryKey);
+  assert.deepEqual(intents,['wheel','touchmove','pointerdown','keydown'],
+    'only user input that can move history cancels the pending anchor');
+  stop();
+  stop();
+  target.dispatchEvent(new Event('wheel'));
+  assert.deepEqual(intents,['wheel','touchmove','pointerdown','keydown'],
+    'cleanup is idempotent and no listener survives restoration/cancellation');
 });
