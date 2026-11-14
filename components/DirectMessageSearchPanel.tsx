@@ -1,6 +1,7 @@
 'use client';
 
 import type {DirectMessageSearchResult} from '@/lib/supabase-rest';
+import {directMessageSearchExcerpt} from '@/lib/direct-message-search-preview';
 
 type Props={
   query:string;
@@ -37,10 +38,7 @@ export default function DirectMessageSearchPanel({
     </div>
     {needle.length>=2&&<div className="ik-direct-search-results" aria-live="polite" aria-busy={loading}>
       {results.map(message=>{
-        const full=message.body.replace(/\s+/g,' ').trim();
-        const index=full.toLocaleLowerCase('ru').indexOf(needle.toLocaleLowerCase('ru'));
-        const start=index<0?0:Math.max(0,index-38);
-        const snippet=full.slice(start,start+210);
+        const snippet=directMessageSearchExcerpt(message.body,needle);
         const isLocating=locatingId===message.id;
         return <button type="button" key={message.id} className="ik-direct-search-result"
           disabled={Boolean(locatingId)} onClick={()=>onOpen(message.id)}>
@@ -48,7 +46,7 @@ export default function DirectMessageSearchPanel({
             <strong>{message.sender_id===userId?'Вы':partnerName}</strong>
             <time dateTime={message.created_at}>{new Date(message.created_at).toLocaleDateString('ru-RU',{day:'numeric',month:'short',year:'numeric'})}</time>
           </span>
-          <span className="ik-direct-search-result-text">{start>0?'…':''}{snippet}{full.length>start+210?'…':''}</span>
+          <span className="ik-direct-search-result-text">{snippet}</span>
           <span className="ik-direct-search-result-arrow" aria-hidden="true">{isLocating?'◌':'›'}</span>
         </button>;
       })}
