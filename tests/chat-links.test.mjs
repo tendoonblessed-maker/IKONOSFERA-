@@ -435,3 +435,12 @@ test('chat link accessible announcement follows the Russian document language',(
  assert.doesNotMatch(ui,/opens in a new tab/,
   'the English-only announcement must not remain in the Russian interface');
 });
+
+
+test('chat links retain a visible keyboard focus indicator in forced-colors mode',()=>{
+ const css=source('app/globals.css');
+ assert.match(css,/\\.ik-message-rich-text a:focus-visible\\s*\\{[^}]*outline:\\s*2px solid currentColor;[^}]*outline-offset:\\s*3px;/,
+  'keyboard users receive a visible focus ring on chat links');
+ assert.match(css,/@media\\s*\\(forced-colors:\\s*active\\)\\s*\\{[^}]*\\.ik-message-rich-text a:focus-visible\\s*\\{[^}]*outline-color:\\s*Highlight;/s,
+  'Windows high-contrast mode uses the system highlight color for the focus ring');
+});
