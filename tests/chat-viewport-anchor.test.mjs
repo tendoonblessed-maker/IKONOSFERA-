@@ -85,7 +85,7 @@ test('only real history gestures cancel a pending viewport anchor',()=>{
   const stop=watchChatViewportIntent(target,type=>intents.push(type));
 
   target.dispatch('pointerdown',{target:childControl});
-  assert.deepEqual(intents,[],
+  assert.deepEqual(intents[],
     'tapping a nested message action must not cancel viewport restoration');
 
   target.dispatch('pointerdown',{target});
@@ -108,21 +108,28 @@ function messageElement(id,top,bottom){
   return {id,getBoundingClientRect:()=>({top,bottom})};
 }
 
-test('capture prefers the first visible message and records its viewport offset',()=>{
+test('capture keeps a short ordered fallback list of visible messages',()=>{
   const area=history(420,1800,500);
   area.getBoundingClientRect=()=>({top:100,bottom:600});
   area.querySelectorAll=()=>[
     messageElement('ik-chat-message-above',40,95),
     messageElement('ik-chat-message-visible',85,150),
-    messageElement('ik-chat-message-below',610,680)
+    messageElement('ik-chat-message-next',170,240),
+    messageElement('ik-chat-message-third',300,360),
+    messageElement('ik-chat-message-fourth',420,480),
+    messageElement('ik-chat-message-fifth',500,560)
   ];
 
   const anchor=captureChatViewportAnchor(area);
   assert.deepEqual(anchor,{
     scrollTop:420,
     followBottom:false,
-    messageId:'ik-chat-message-visible',
-    messageOffset:-15
+    messageAnchors:[
+      {id:'ik-chat-message-visible',offset:-15},
+      {id:'ik-chat-message-next',offset:70},
+      {id:'ik-chat-message-third',offset:200},
+      {id:'ik-chat-message-fourth',offset:320}
+    ]
   });
 });
 
@@ -135,8 +142,8 @@ test('restore keeps the same message at the same visual offset after text reflow
   ];
 
   const anchor=captureChatViewportAnchor(area);
-  assert.equal(anchor.messageId,'ik-chat-message-anchor');
-  assert.equal(anchor.messageOffset,40);
+  assert.equal(anchor.messageAnchors[0].id,'ik-chat-message-anchor');
+  assert.equal(anchor.messageAnchors[0].offset,40);
 
   // A narrower viewport or 200% text zoom makes earlier content taller.
   // The anchor message moves down by 75px before restoration.
@@ -145,7 +152,73 @@ test('restore keeps the same message at the same visual offset after text reflow
   assert.equal(area.scrollTop,495);
 });
 
-test('restore falls back to the bounded absolute position if the message disappeared',()=>{
+test('pagination compensation and viewport restoration do not double-adjust scrollTop',()=>{
+  const area=history(420,1800,500);
+  let contentTop=460;
+  area.getBoundingClientRect=()=>({top:100,bottom:600});
+  area.querySelectorAll=()=>[
+    messageElement('ik-chat-message-anchor',
+      100+contentTop-area.scrollTop,
+      190+contentTop-area.scrollTop)
+  ];
+
+  const anchor=captureChatViewportAnchor(area);
+  assert.equal(anchor.messageAnchors[0].offset,40);
+
+  // The older-page layout effect prepends 75px and already compensates scrollTop.
+  contentTop+=75;
+  area.scrollHeight+=75;
+  area.scrollTop+=75;
+  const alreadyCompensatedTop=area.scrollTop;
+  assert.equal(restoreChatViewportAnchor(area,anchor),true);
+  assert.equal(area.scrollTop,alreadyCompensatedTop,
+    'a message already returned to its original visual offset must not be compensated twice');
+});
+
+test('Realtime appends below the reader do not move an older-history anchor',()=>{
+  const area=history(420,1800,500);
+  let contentTop=460;
+  area.getBoundingClientRect=()=>({top:100,bottom:600});
+  area.querySelectorAll=()=>[
+    messageElement('ik-chat-message-anchor',
+      100+contentTop-area.scrollTop,
+      190+contentTop-area.scrollTop)
+  ];
+
+  const anchor=captureChatViewportAnchor(area);
+  area.scrollHeight+=120; // A Realtime insert appends below the visible history.
+  assert.equal(restoreChatViewportAnchor(area,anchor),true);
+  assert.equal(area.scrollTop,420);
+});
+
+test('restore uses the next captured visible message when Realtime deletes the primary anchor',()=>{
+  const area=history(420,1800,500);
+  area.getBoundingClientRect=()=>({top:100,bottom:600});
+  let messages=[
+    messageElement('ik-chat-message-anchor',120,180),
+    messageElement('ik-chat-message-neighbor',260,330),
+    messageElement('ik-chat-message-next',400,470)
+  ];
+  area.querySelectorAll=()=>messages;
+
+  const anchor=captureChatViewportAnchor(area);
+  assert.deepEqual(anchor.messageAnchors,[
+    {id:'ik-chat-message-anchor',offset:20},
+    {id:'ik-chat-message-neighbor',offset:160},
+    {id:'ik-chat-message-next',offset:300}
+  ]);
+
+  // Realtime removes the anchor. The following message moves up by 120px.
+  messages=[
+    messageElement('ik-chat-message-neighbor',140,210),
+    messageElement('ik-chat-message-next',280,350)
+  ];
+  assert.equal(restoreChatViewportAnchor(area,anchor),true);
+  assert.equal(area.scrollTop,300,
+    'the next surviving message should retain its captured visual offset');
+});
+
+test('restore falls back to the bounded absolute position if every captured message disappeared',()=>{
   const area=history(900,1800,500);
   area.getBoundingClientRect=()=>({top:100,bottom:600});
   area.querySelectorAll=()=>[];
@@ -153,8 +226,10 @@ test('restore falls back to the bounded absolute position if the message disappe
   const anchor={
     scrollTop:420,
     followBottom:false,
-    messageId:'ik-chat-message-removed',
-    messageOffset:25
+    messageAnchors:[
+      {id:'ik-chat-message-removed',offset:25},
+      {id:'ik-chat-message-also-removed',offset:90}
+    ]
   };
   assert.equal(restoreChatViewportAnchor(area,anchor),true);
   assert.equal(area.scrollTop,420);
