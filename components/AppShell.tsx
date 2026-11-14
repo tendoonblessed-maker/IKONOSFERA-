@@ -363,7 +363,6 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
     setPlatform({ios,standalone});
     const onInstall=(e:Event)=>{e.preventDefault();setInstallPrompt(e as Event & {prompt:()=>Promise<void>;userChoice:Promise<{outcome:string}>});};
     window.addEventListener('beforeinstallprompt',onInstall);
-    if('serviceWorker' in navigator && window.isSecureContext) void navigator.serviceWorker.register('/sw.js').catch(()=>{});
     return ()=>window.removeEventListener('beforeinstallprompt',onInstall);
   },[]);
 
