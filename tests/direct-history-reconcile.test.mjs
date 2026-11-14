@@ -172,3 +172,36 @@ test('a viewport change during reconciliation queues one fresh visible-message r
  assert.match(shell,/reconcileInFlightIds=ids\.slice\(\)/);
  assert.match(shell,/reconcileInFlightIds=null/);
 });
+
+
+test('delayed history pages and post-edit refreshes are rejected after a newer chat revision',async()=>{
+ const {shouldApplyDirectHistorySnapshot}=compile('lib/chat-history.ts');
+ let currentEpoch=12;
+ const requestEpoch=currentEpoch;
+ let resolveResponse;
+ const response=new Promise(resolve=>{resolveResponse=resolve;});
+ const applied=response.then(rows=>shouldApplyDirectHistorySnapshot(requestEpoch,currentEpoch,true)?rows:null);
+ // Realtime, a local edit/delete, or a lifecycle invalidation advances the epoch
+ // while the old pagination GET is still waiting for its response.
+ currentEpoch++;
+ resolveResponse([message(id1,{body:'stale server snapshot'})]);
+ assert.equal(await applied,null);
+ assert.equal(shouldApplyDirectHistorySnapshot(currentEpoch,currentEpoch,true),true);
+ assert.equal(shouldApplyDirectHistorySnapshot(currentEpoch,currentEpoch,false),false,
+  'a response from a previous chat context must never be committed');
+
+ const shell=read('components/AppShell.tsx');
+ assert.match(shell,/const directHistorySyncEpochRef=useRef\\(0\\)/);
+ assert.match(shell,/const invalidateSync=\\(\\)=>\\{syncRevision\\+\\+;directHistorySyncEpochRef\\.current\\+\\+;\\}/);
+ const olderStart=shell.indexOf('async function loadOlderChatMessages');
+ const olderEnd=shell.indexOf('function scrollToHistoryMessage',olderStart);
+ const older=shell.slice(olderStart,olderEnd);
+ assert.match(older,/const syncEpoch=directHistorySyncEpochRef\\.current/);
+ assert.match(older,/shouldApplyDirectHistorySnapshot\\(syncEpoch,directHistorySyncEpochRef\\.current,stillInChat\\(\\)\\)/);
+ assert.match(older,/setChatMessages\\(current=>isCurrentPage\\(\\)\\?prependEarlierPage/);
+ const actionStart=shell.indexOf('async function messageAction');
+ const actionEnd=shell.indexOf('async function reactToMessage',actionStart);
+ const action=shell.slice(actionStart,actionEnd);
+ assert.match(action,/const refreshEpoch=directHistorySyncEpochRef\\.current/);
+ assert.match(action,/shouldApplyDirectHistorySnapshot\\(refreshEpoch,directHistorySyncEpochRef\\.current,stillInChat\\(\\)\\)/);
+});
