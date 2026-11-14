@@ -3,7 +3,7 @@ import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, use
 import { backendReady, createTemporaryAccount, consumeEmailLinkSession, loadSession, currentUser, findProfileByUsername, listChats, listChatPreviews, listMessages, listOlderMessages, listExistingDirectMessages, listReplyTargets, searchDirectMessages, type DirectMessageSearchResult, DIRECT_MESSAGE_SEARCH_PAGE_SIZE, type ReplyTarget, CHAT_MESSAGE_PAGE_SIZE, manageChat, manageMessage, listMessageReactions, setMessageReaction, markChatRead, listProfiles, myProfile, postMessage, reopenChat, sendDirectMedia, validateDirectMediaFile, sendEmailCode, signOut, startDirectChat, validSession, type ChatMessage, type MessageReaction, type DirectChat, type Profile, type Session, type ChatPreview } from '@/lib/supabase-rest';
 
 import ProfilePanel from "@/components/ProfilePanel";
-import {mergeConfirmedRecentPage,prependEarlierPage,visibleDirectMessageIds,reconcileVisibleDirectMessages,shouldQueueDirectHistoryReconcile,DIRECT_MESSAGE_RECONCILE_COOLDOWN_MS,CONFIRMED_MESSAGE_GRACE_MS,type ConfirmedMessage} from "@/lib/chat-history";
+import {mergeConfirmedRecentPage,prependEarlierPage,visibleDirectMessageIds,reconcileVisibleDirectMessages,shouldQueueDirectHistoryReconcile,shouldApplyDirectHistorySnapshot,DIRECT_MESSAGE_RECONCILE_COOLDOWN_MS,CONFIRMED_MESSAGE_GRACE_MS,type ConfirmedMessage} from "@/lib/chat-history";
 import {readChatDrafts,writeChatDrafts,clearChatDrafts,updateChatDraftEntry,type ChatDrafts} from "@/lib/chat-drafts";
 import {readGroupDrafts,writeGroupDraft,clearGroupDrafts,type GroupDrafts} from "@/lib/group-drafts";
 import {clearAllGroupSendAttempts} from "@/lib/group-send-attempts";
@@ -157,6 +157,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
   const confirmedMessagesRef=useRef<Map<string,ConfirmedMessage>>(new Map());
   const directHistoryReconcileRef=useRef<((force?:boolean)=>void)|null>(null);
   const invalidateDirectHistorySyncRef=useRef<(()=>void)|null>(null);
+  const directHistorySyncEpochRef=useRef(0);
   const attachmentDragDepthRef=useRef(0);
 
   // In-memory edits belong to one signed-in user; never reuse across accounts.
@@ -571,12 +572,12 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
       }
     };
     const triggerReconcile=(force=false)=>{void reconcileVisibleMessages(force)};
-    const invalidateSync=()=>{syncRevision++;};
+    const invalidateSync=()=>{syncRevision++;directHistorySyncEpochRef.current++;};
     directHistoryReconcileRef.current=triggerReconcile;
     invalidateDirectHistorySyncRef.current=invalidateSync;
     const pauseReconciliation=()=>{
       if(document.visibilityState==='hidden'||!navigator.onLine){
-        syncRevision++;
+        invalidateSync();
         reconcileRevision++;
         reconcileQueued=false;
         reconcileController?.abort();
@@ -635,7 +636,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
     const onRealtimeChange=()=>{
       if(cancelled)return;
       if(document.visibilityState==='hidden'||!navigator.onLine){pauseReconciliation();return;}
-      syncRevision++;
+      invalidateSync();
       reconcileRevision++;
       if(realtimeTimer!==null)window.clearTimeout(realtimeTimer);
       realtimeTimer=window.setTimeout(()=>{
@@ -666,7 +667,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
     window.addEventListener('offline',onOffline);
     return()=>{
       cancelled=true;
-      syncRevision++;
+      invalidateSync();
       reconcileRevision++;
       reconcileQueued=false;
       reconcileController?.abort();
@@ -944,6 +945,8 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
     const chatId=selected,token=session.access_token,oldest=chatMessages[0];
     const generation=chatContextGenerationRef.current;
     const stillInChat=()=>selectedRef.current===chatId&&chatContextGenerationRef.current===generation;
+    const syncEpoch=directHistorySyncEpochRef.current;
+    const isCurrentPage=()=>shouldApplyDirectHistorySnapshot(syncEpoch,directHistorySyncEpochRef.current,stillInChat());
     const history=conversationHistoryRef.current;
     loadingOlderRef.current=true;
     chatAutoScrollRef.current=false;
@@ -951,27 +954,29 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
     setLoadingOlderMessages(true);setOlderMessagesError(false);
     try{
       const older=(await listOlderMessages(token,chatId,oldest)).reverse();
-      if(!stillInChat())return;
-      setHasOlderMessages(older.length===CHAT_MESSAGE_PAGE_SIZE);
+      if(!isCurrentPage())return;
+      setHasOlderMessages(current=>isCurrentPage()?older.length===CHAT_MESSAGE_PAGE_SIZE:current);
       if(older.length){
-        setChatMessages(current=>prependEarlierPage(current,older));
+        setChatMessages(current=>isCurrentPage()?prependEarlierPage(current,older):current);
         // Older reactions load on demand rather than during every 6s poll.
         void listMessageReactions(token,older.map(message=>message.id))
           .then(reactions=>{
-            if(stillInChat())setMessageReactions(current=>{
+            if(isCurrentPage())setMessageReactions(current=>{
               const ids=new Set(older.map(message=>message.id));
               return [...current.filter(reaction=>!ids.has(reaction.message_id)),...reactions];
             });
           }).catch(()=>{});
       }else prependScrollRef.current=null;
     }catch(error){
-      if(stillInChat()){
+      if(isCurrentPage()){
         prependScrollRef.current=null;
         setOlderMessagesError(true);
-      }
+      }else if(stillInChat())prependScrollRef.current=null;
     }finally{
-      // An old chat request must not unlock a newly opened chat's pagination.
+      // A stale page must not be applied after Realtime/edit/delete, nor may
+      // its delayed completion disturb a newly opened chat's pagination.
       if(stillInChat()){
+        if(!isCurrentPage())prependScrollRef.current=null;
         loadingOlderRef.current=false;
         setLoadingOlderMessages(false);
       }
@@ -1200,11 +1205,13 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
     if(!session||!selected||!userId)return;
     if(action==="delete_everyone"&&!window.confirm("Удалить сообщение для обоих?"))return;
     const chatId=selected,token=session.access_token;
+    const generation=chatContextGenerationRef.current;
+    const stillInChat=()=>selectedRef.current===chatId&&chatContextGenerationRef.current===generation;
     try{
       await manageMessage(token,messageId,action,body);
       // An edit/delete must not be reverted by a still-pending send overlay.
       confirmedMessagesRef.current.delete(messageId);
-      if(selectedRef.current===chatId){
+      if(stillInChat()){
         invalidateDirectHistorySyncRef.current?.();
         setMessageMenuId(null);setEditingMessageId(null);
         // Actions on pages older than 100 messages must update locally too.
@@ -1215,13 +1222,16 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
           return [{...message,body:body??message.body,edited_at:new Date().toISOString()}];
         }));
         directHistoryReconcileRef.current?.(true);
+        const refreshEpoch=directHistorySyncEpochRef.current;
+        try{
+          const updated=(await listMessages(token,chatId)).reverse();
+          if(shouldApplyDirectHistorySnapshot(refreshEpoch,directHistorySyncEpochRef.current,stillInChat())&&draftsOwnerRef.current===userId){
+            setChatMessages(current=>shouldApplyDirectHistorySnapshot(refreshEpoch,directHistorySyncEpochRef.current,stillInChat())&&draftsOwnerRef.current===userId
+              ?mergeConfirmedRecentPage(current,updated,CHAT_MESSAGE_PAGE_SIZE,confirmedMessagesRef.current,chatId,userId)
+              :current);
+          }
+        }catch{/* Keep the confirmed action; retry updating the history on polling. */}
       }
-      try{
-        const updated=(await listMessages(token,chatId)).reverse();
-        if(selectedRef.current===chatId&&draftsOwnerRef.current===userId)setChatMessages(current=>mergeConfirmedRecentPage(
-          current,updated,CHAT_MESSAGE_PAGE_SIZE,confirmedMessagesRef.current,chatId,userId
-        ));
-      }catch{/* Keep the confirmed action; retry updating the history on polling. */}
     }catch(e){setError(userFacingError(e));}
   }
   async function reactToMessage(messageId:string,emoji:ReactionEmoji){
