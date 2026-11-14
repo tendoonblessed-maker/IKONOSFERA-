@@ -173,7 +173,6 @@ export function clearGroupDrafts(ownerId:string):void{
  pendingOwners.add(ownerId);
  flushPendingDrafts(ownerId);
 }
-,'u');
 
 export type GroupDrafts=Record<string,string>;
 type GraphemeSegment={segment:string};
