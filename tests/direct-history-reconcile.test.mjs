@@ -137,7 +137,7 @@ test('AppShell reconciles only visible direct history after commits, Realtime, s
  assert.match(shell,/reconcileController\?\.abort\(\)/);
  assert.match(shell,/invalidateDirectHistorySyncRef\.current\?\.\(\)/);
  assert.match(shell,/directHistoryReconcileRef\.current\?\.\(true\)/);
- assert.match(shell,/if\(selectedRef\.current===chatId\)\{\s*invalidateDirectHistorySyncRef/);
+ assert.match(shell,/if\(stillInChat\(\)\)\{\s*invalidateDirectHistorySyncRef/);
  assert.match(realtime,/event:'UPDATE'/);
  assert.doesNotMatch(realtime,/event:'DELETE'/);
 });
