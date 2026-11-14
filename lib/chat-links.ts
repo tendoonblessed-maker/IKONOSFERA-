@@ -90,7 +90,7 @@ function externalHref(candidate:string):string|null{
   // WHATWG serializes IPv4-mapped IPv6 (including dotted-decimal input) as
   // hexadecimal groups. That can hide the embedded IPv4 destination in the
   // visible chat label, so keep mapped addresses literal in message text.
-  if(/^\\[::ffff:[0-9a-f]{1,4}:[0-9a-f]{1,4}\\]$/i.test(parsed.hostname))return null;
+  if(/^\[::ffff:[0-9a-f]{1,4}:[0-9a-f]{1,4}\]$/i.test(parsed.hostname))return null;
   // The bubble renders the original hostname verbatim. IDN homographs can
   // resemble trusted ASCII domains while resolving to a different punycode host.
   // Keep internationalized hostnames literal until the UI can show a safe label.
