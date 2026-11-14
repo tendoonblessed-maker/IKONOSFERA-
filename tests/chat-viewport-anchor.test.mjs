@@ -85,7 +85,7 @@ test('only real history gestures cancel a pending viewport anchor',()=>{
   const stop=watchChatViewportIntent(target,type=>intents.push(type));
 
   target.dispatch('pointerdown',{target:childControl});
-  assert.deepEqual(intents[],
+  assert.deepEqual(intents,[],
     'tapping a nested message action must not cancel viewport restoration');
 
   target.dispatch('pointerdown',{target});
