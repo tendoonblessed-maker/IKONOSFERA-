@@ -30,7 +30,7 @@ export default function DirectMessageSearchPanel({
       if(event.key==='Escape'){event.preventDefault();event.stopPropagation();onClose();}
     }}>
     <div className="ik-conversation-search">
-      <input autoFocus aria-label="Поиск сообщений в текущем чате"
+      <input autoFocus dir="auto" aria-label="Поиск сообщений в текущем чате"
         placeholder="Поиск по всей истории…" maxLength={120} value={query}
         onChange={event=>onQueryChange(event.target.value)}/>
       <span aria-live="polite">{needle.length<2?'От 2 символов':loading?'Ищем…':failed?'Ошибка':results.length+(hasMore?'+':'')+' найдено'}</span>
@@ -46,7 +46,7 @@ export default function DirectMessageSearchPanel({
             <strong>{message.sender_id===userId?'Вы':partnerName}</strong>
             <time dateTime={message.created_at}>{new Date(message.created_at).toLocaleDateString('ru-RU',{day:'numeric',month:'short',year:'numeric'})}</time>
           </span>
-          <span className="ik-direct-search-result-text">{snippet}</span>
+          <span className="ik-direct-search-result-text"><bdi dir="auto">{snippet}</bdi></span>
           <span className="ik-direct-search-result-arrow" aria-hidden="true">{isLocating?'◌':'›'}</span>
         </button>;
       })}
