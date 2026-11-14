@@ -7,7 +7,7 @@ const PREFIX='ikonosfera-group-drafts-tab-v1:';
 const UUID=/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
 const MAX_GROUPS=48;
 const MAX_TEXT=4000;
-const MARK=new RegExp('^\\p{M}
+const MARK=new RegExp('^'+String.fromCharCode(92)+'p{M}$','u');
 
 export type GroupDrafts=Record<string,string>;
 type GraphemeSegment={segment:string};
