@@ -49,7 +49,7 @@ test('mobile viewport recovery is scoped to the same chat and resumes after PWA 
   assert.match(shell,/captureChatViewportAnchor\(history\)/);
   assert.match(shell,/restoreChatViewportAnchor\(pending\.history,pending\.anchor\)/);
   assert.match(shell,/watchChatViewportIntent\(history,/);
-  assert.match(shell,/pending\.stopWatching\(\)/);
+  assert.match(shell,/pending\?\.stopWatching\(\)/);
   assert.match(shell,/cancelPendingAnchor\(\)/);
   assert.match(shell,/pending\.context!==viewportContextRef\.current/);
   assert.match(shell,/document\.querySelector\('\.conversation-pane\.open \.conversation-history'\)!==pending\.history/);
