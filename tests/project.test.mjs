@@ -480,7 +480,7 @@ test('iPhone chat keeps composer visible and never zooms focused inputs',()=>{
  assert.match(css,/\.messenger input:not\(\[type="file"\]\)/);
  assert.match(shell,/window\.visualViewport/);
  assert.match(shell,/viewport\?\.addEventListener\('resize',update\)/);
- assert.match(shell,/viewport\?\.addEventListener\('scroll',update\)/);
+ assert.match(shell,/viewport\?\.addEventListener\('scroll',updateScroll\)/);
  assert.match(shell,/style\.setProperty\('--ik-visible-viewport-height'/);
 });
 test('chat auto scroll is scoped to message history rather than page on iOS',()=>{
