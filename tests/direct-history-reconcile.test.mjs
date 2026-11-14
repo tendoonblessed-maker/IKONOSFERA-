@@ -151,3 +151,24 @@ test('visible-message selection is capped at the bounded RLS request size',()=>{
  const container={getBoundingClientRect:()=>({top:0,bottom:500}),querySelectorAll:()=>nodes};
  assert.equal(visibleDirectMessageIds(container).length,80);
 });
+
+
+test('a viewport change during reconciliation queues one fresh visible-message read',()=>{
+ const {sameVisibleDirectMessageIds,shouldQueueDirectHistoryReconcile}=compile('lib/chat-history.ts');
+ const inFlight=[id1,id2,id3];
+
+ assert.equal(sameVisibleDirectMessageIds(inFlight,[id3,id2,id1]),true,
+  'the same visible set in a different DOM order does not need another request');
+ assert.equal(shouldQueueDirectHistoryReconcile(inFlight,[id3,id2,id1]),false);
+ assert.equal(shouldQueueDirectHistoryReconcile(inFlight,[id2,id3,'55555555-5555-4555-8555-555555555555']),true,
+  'a reader who scrolls to a different visible page must get a fresh RLS snapshot');
+ assert.equal(shouldQueueDirectHistoryReconcile(inFlight,[id1,id2,id3],true),true,
+  'Realtime and local edit/delete wake-ups still force a follow-up even for the same viewport');
+ assert.equal(shouldQueueDirectHistoryReconcile(inFlight,[],false),false,
+  'an empty viewport does not schedule a pointless request');
+
+ const shell=read('components/AppShell.tsx');
+ assert.match(shell,/shouldQueueDirectHistoryReconcile/);
+ assert.match(shell,/reconcileInFlightIds=ids\.slice\(\)/);
+ assert.match(shell,/reconcileInFlightIds=null/);
+});

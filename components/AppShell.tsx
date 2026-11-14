@@ -3,7 +3,7 @@ import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, use
 import { backendReady, createTemporaryAccount, consumeEmailLinkSession, loadSession, currentUser, findProfileByUsername, listChats, listChatPreviews, listMessages, listOlderMessages, listExistingDirectMessages, listReplyTargets, searchDirectMessages, type DirectMessageSearchResult, DIRECT_MESSAGE_SEARCH_PAGE_SIZE, type ReplyTarget, CHAT_MESSAGE_PAGE_SIZE, manageChat, manageMessage, listMessageReactions, setMessageReaction, markChatRead, listProfiles, myProfile, postMessage, reopenChat, sendDirectMedia, validateDirectMediaFile, sendEmailCode, signOut, startDirectChat, validSession, type ChatMessage, type MessageReaction, type DirectChat, type Profile, type Session, type ChatPreview } from '@/lib/supabase-rest';
 
 import ProfilePanel from "@/components/ProfilePanel";
-import {mergeConfirmedRecentPage,prependEarlierPage,visibleDirectMessageIds,reconcileVisibleDirectMessages,DIRECT_MESSAGE_RECONCILE_COOLDOWN_MS,CONFIRMED_MESSAGE_GRACE_MS,type ConfirmedMessage} from "@/lib/chat-history";
+import {mergeConfirmedRecentPage,prependEarlierPage,visibleDirectMessageIds,reconcileVisibleDirectMessages,shouldQueueDirectHistoryReconcile,DIRECT_MESSAGE_RECONCILE_COOLDOWN_MS,CONFIRMED_MESSAGE_GRACE_MS,type ConfirmedMessage} from "@/lib/chat-history";
 import {readChatDrafts,writeChatDrafts,clearChatDrafts,updateChatDraftEntry,type ChatDrafts} from "@/lib/chat-drafts";
 import {readGroupDrafts,writeGroupDraft,clearGroupDrafts,type GroupDrafts} from "@/lib/group-drafts";
 import {clearAllGroupSendAttempts} from "@/lib/group-send-attempts";
@@ -521,6 +521,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
     let syncRevision=0;
     let realtimeTimer:number|null=null;
     let reconcileInFlight=false;
+    let reconcileInFlightIds:string[]|null=null;
     let reconcileQueued=false;
     let reconcileLastAt=0;
     let reconcileRevision=0;
@@ -532,14 +533,23 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
     const reconcileVisibleMessages=async(force=false)=>{
       if(cancelled||document.visibilityState!=='visible'||!navigator.onLine)return;
       if(force)reconcileRevision++;
-      if(reconcileInFlight){if(force)reconcileQueued=true;return;}
-      if(!force&&Date.now()-reconcileLastAt<DIRECT_MESSAGE_RECONCILE_COOLDOWN_MS)return;
       const ids=visibleDirectMessageIds(conversationHistoryRef.current);
+      if(reconcileInFlight){
+        if(shouldQueueDirectHistoryReconcile(reconcileInFlightIds,ids,force)){
+          // A different visible page supersedes the old snapshot. Do not let
+          // its late response update messages the reader has already left.
+          if(!force)reconcileRevision++;
+          reconcileQueued=true;
+        }
+        return;
+      }
       if(!ids.length)return;
+      if(!force&&Date.now()-reconcileLastAt<DIRECT_MESSAGE_RECONCILE_COOLDOWN_MS)return;
       const revision=reconcileRevision;
       const controller=new AbortController();
       reconcileController=controller;
       reconcileInFlight=true;
+      reconcileInFlightIds=ids.slice();
       try{
         const authoritative=await listExistingDirectMessages(token,chatId,ids,controller.signal);
         if(cancelled||controller.signal.aborted||!stillInChat())return;
@@ -553,6 +563,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
       }finally{
         if(reconcileController===controller)reconcileController=null;
         reconcileInFlight=false;
+        reconcileInFlightIds=null;
         if(reconcileQueued&&!cancelled&&document.visibilityState==='visible'&&navigator.onLine){
           reconcileQueued=false;
           void reconcileVisibleMessages(true);

@@ -127,3 +127,24 @@ export function reconcileVisibleDirectMessages(
  }
  return changed?next:current;
 }
+
+
+/** Compare viewport message IDs as a set; DOM order changes alone need no new read. */
+export function sameVisibleDirectMessageIds(
+ previous:readonly string[]|null,
+ next:readonly string[]
+):boolean{
+ if(!previous||previous.length!==next.length)return false;
+ const ids=new Set(previous);
+ return ids.size===next.length&&next.every(id=>ids.has(id));
+}
+
+/** Queue one fresh RLS snapshot when the reader moved to a different visible page. */
+export function shouldQueueDirectHistoryReconcile(
+ inFlightIds:readonly string[]|null,
+ nextIds:readonly string[],
+ force=false
+):boolean{
+ if(!nextIds.length)return false;
+ return force||!sameVisibleDirectMessageIds(inFlightIds,nextIds);
+}
