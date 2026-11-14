@@ -401,3 +401,47 @@ test('terminal dot path segments are not stripped as sentence punctuation',()=>{
  ],'ordinary sentence punctuation should still be excluded from the link');
  assert.equal(reconstructed(sentence),sentence);
 });
+
+
+test('long chat links wrap safely and expose their exact destination in RTL messages',()=>{
+ const longUrl='https://example.com/'+('a'.repeat(1700));
+ const rtlMessage='مرحبا — '+longUrl+' — שלום';
+ assert.deepEqual(links(rtlMessage),[
+  {text:longUrl,href:longUrl}
+ ],'long URL remains one safe, complete link inside mixed RTL/LTR text');
+ assert.equal(reconstructed(rtlMessage),rtlMessage,
+  'RTL context and long-link detection must not alter the original message');
+
+ const ui=source('components/ChatMessageText.tsx');
+ const css=source('app/globals.css');
+ assert.match(ui,/dir="ltr"/,
+  'the link establishes an explicit left-to-right direction inside RTL messages');
+ assert.ok(ui.includes('aria-label={`${part.href} — ссылка открывается в новой вкладке`}'),
+  'assistive technology receives the exact destination and is told the link opens a new tab');
+ assert.match(ui,/target="_blank"/,
+  'the rendered link opens in a separate tab');
+ assert.match(css,/\.ik-message-rich-text a\s*\{[^}]*direction:\s*ltr;[^}]*unicode-bidi:\s*isolate;[^}]*overflow-wrap:\s*anywhere;[^}]*word-break:\s*break-word;/,
+  'the anchor rule isolates direction and wraps long addresses on narrow screens');
+});
+
+
+test('chat link accessible announcement follows the Russian document language',()=>{
+ const ui=source('components/ChatMessageText.tsx');
+ const layout=source('app/layout.tsx');
+ assert.match(layout,/<html lang="ru"/,
+  'the application document declares Russian as its language');
+ assert.ok(ui.includes('aria-label={`${part.href} — ссылка открывается в новой вкладке`}'),
+  'screen readers receive the destination followed by a Russian new-tab announcement');
+ assert.doesNotMatch(ui,/opens in a new tab/,
+  'the English-only announcement must not remain in the Russian interface');
+});
+
+
+
+test('chat links retain a visible keyboard focus indicator in forced-colors mode',()=>{
+ const css=source('app/globals.css');
+ assert.match(css, /\.ik-message-rich-text a:focus-visible\s*\{[^}]*outline:\s*2px solid currentColor;[^}]*outline-offset:\s*3px;/,
+  'keyboard users receive a visible focus ring on chat links');
+ assert.match(css, /@media\s*\(forced-colors:\s*active\)\s*\{[^}]*\.ik-message-rich-text a:focus-visible\s*\{[^}]*outline-color:\s*Highlight;/s,
+  'Windows high-contrast mode uses the system highlight color for the focus ring');
+});

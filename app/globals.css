@@ -3381,11 +3381,14 @@ body{position:relative}
 .ik-message-rich-text a{
   color:inherit;
   font:inherit;
+  direction:ltr;
+  unicode-bidi:isolate;
   text-decoration:underline;
   text-decoration-thickness:1px;
   text-underline-offset:3px;
   text-decoration-color:currentColor;
   overflow-wrap:anywhere;
+  word-break:break-word;
   cursor:pointer;
 }
 .ik-message-rich-text a:hover{text-decoration-thickness:2px}
@@ -3393,6 +3396,12 @@ body{position:relative}
   outline:2px solid currentColor;
   outline-offset:3px;
   border-radius:2px;
+}
+
+@media (forced-colors: active) {
+  .ik-message-rich-text a:focus-visible {
+    outline-color: Highlight;
+  }
 }
 
 

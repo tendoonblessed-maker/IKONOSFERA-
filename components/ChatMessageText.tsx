@@ -8,7 +8,8 @@ import {splitChatLinks} from '@/lib/chat-links';
 export default function ChatMessageText({text}:{text:string}){
  return <span className="ik-message-rich-text">{
   splitChatLinks(text).map((part,i)=>part.href
-   ?<a key={i} href={part.href} target="_blank"
+   ?<a key={i} href={part.href} target="_blank" dir="ltr"
+      aria-label={`${part.href} — ссылка открывается в новой вкладке`}
       rel="noopener noreferrer nofollow ugc"
       onClick={event=>event.stopPropagation()}>{part.displayText??part.text}</a>
    :<Fragment key={i}>{part.text}</Fragment>)
