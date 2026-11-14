@@ -11,7 +11,9 @@ function subMillisecondFraction(timestamp:string):number{
  const part=/\.(\d{1,6})/.exec(timestamp)?.[1]??'';
  return Number(part.padEnd(6,'0'));
 }
-export function compareGroupMessages(a:GroupMessage,b:GroupMessage):number{
+export function compareGroupMessages(
+ a:Pick<GroupMessage,'created_at'|'id'>,b:Pick<GroupMessage,'created_at'|'id'>
+):number{
  const milli=Date.parse(a.created_at)-Date.parse(b.created_at);
  if(milli!==0)return milli;
  const fraction=subMillisecondFraction(a.created_at)-subMillisecondFraction(b.created_at);
