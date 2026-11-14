@@ -4,14 +4,14 @@
  * escaping: strings like "a < b", code, and literal tags stay literal text.
  */
 export type ChatTextPart={text:string;href?:string};
-const LINK_CANDIDATE=/(?:https?:\/\/|www\.)[^\s<>"'\u0060]+/gi;
+const LINK_CANDIDATE=/(?:https?:\\/\\/|www\\.)[^\\s<>"'\\u0060]+/gi;
 const TRAILING_PUNCTUATION=/[.,!?;:…。，！？；：»”’›]$/u;
 // Unicode format and default-ignorable code points can change visual order or
 // disappear during rendering. Keep such candidates literal, not clickable.
-const UNSAFE_LINK_FORMATTING=/[\p{Cf}\p{Default_Ignorable_Code_Point}]/u;
+const UNSAFE_LINK_FORMATTING=/[\\p{Cf}\\p{Default_Ignorable_Code_Point}]/u;
 // WHATWG URL normalizes raw backslashes and can percent-encode control bytes.
 // Percent-encoded path text remains supported; raw host encoding is rejected below.
-const UNSAFE_LINK_SYNTAX=/[\\\p{Cc}]/u;
+const UNSAFE_LINK_SYNTAX=/[\\\\\\p{Cc}]/u;
 const MAX_URL_LENGTH=2048;
 const MAX_LINKS=40;
 
@@ -62,13 +62,13 @@ function splitAuthority(authority:string):{hostname:string;port?:string}|null{
  // URL accepts and normalizes ports with leading zeroes and empty ports.
  // Require one unambiguous decimal spelling so the visible authority agrees
  // with the destination represented by the generated href.
- if(port!==undefined&&(!/^(?:0|[1-9]\d{0,4})$/.test(port)||Number(port)>65535))return null;
+ if(port!==undefined&&(!/^(?:0|[1-9]\\d{0,4})$/.test(port)||Number(port)>65535))return null;
  return {hostname,port};
 }
 
 function externalHref(candidate:string):string|null{
  if(candidate.length>MAX_URL_LENGTH||UNSAFE_LINK_FORMATTING.test(candidate)||UNSAFE_LINK_SYNTAX.test(candidate))return null;
- const prefixed=/^www\./i.test(candidate)?'https://'+candidate:candidate;
+ const prefixed=/^www\\./i.test(candidate)?'https://'+candidate:candidate;
  try{
   const parsed=new URL(prefixed);
   if(parsed.protocol!=='http:'&&parsed.protocol!=='https:')return null;
@@ -76,21 +76,24 @@ function externalHref(candidate:string):string|null{
   if(parsed.username||parsed.password)return null;
   if(!parsed.hostname||parsed.hostname.startsWith('.')||parsed.hostname.endsWith('.'))return null;
   if(parsed.hostname.includes('%'))return null;
-  if(/^www\./i.test(candidate)&&!parsed.hostname.includes('.'))return null;
+  if(/^www\\./i.test(candidate)&&!parsed.hostname.includes('.'))return null;
   // WHATWG URL applies IDNA mapping before exposing hostname: Unicode dot
   // separators, full-width ASCII and percent-encoded host bytes can become
   // an apparently ordinary ASCII hostname. Inspect the original authority
   // before normalization so the visible text and actual destination agree.
-  const authority=prefixed.match(/^https?:\/\/([^/?#]*)/i)?.[1];
+  const authority=prefixed.match(/^https?:\\/\\/([^/?#]*)/i)?.[1];
   if(!authority)return null;
   const authorityParts=splitAuthority(authority);
   if(!authorityParts)return null;
   const rawHostname=authorityParts.hostname;
-  if(!rawHostname||/[^\x00-\x7f]/.test(rawHostname)||rawHostname.includes('%'))return null;
-  // WHATWG serializes IPv4-mapped IPv6 (including dotted-decimal input) as
-  // hexadecimal groups. That can hide the embedded IPv4 destination in the
-  // visible chat label, so keep mapped addresses literal in message text.
-  if(/^\[::ffff:[0-9a-f]{1,4}:[0-9a-f]{1,4}\]$/i.test(parsed.hostname))return null;
+  if(!rawHostname||/[^\\x00-\\x7f]/.test(rawHostname)||rawHostname.includes('%'))return null;
+  // WHATWG rewrites dotted-decimal IPv4 tails in IPv6 literals to hexadecimal
+  // groups, including IPv4-compatible and translation-prefix addresses. The
+  // visible label would then differ from the serialized destination.
+  if(rawHostname.startsWith('[')&&rawHostname.includes('.'))return null;
+  // WHATWG serializes IPv4-mapped IPv6 (including hexadecimal input) as
+  // hexadecimal groups. Keep mapped addresses literal in message text.
+  if(/^\\[::ffff:[0-9a-f]{1,4}:[0-9a-f]{1,4}\\]$/i.test(parsed.hostname))return null;
   // The bubble renders the original hostname verbatim. IDN homographs can
   // resemble trusted ASCII domains while resolving to a different punycode host.
   // Keep internationalized hostnames literal until the UI can show a safe label.
@@ -99,10 +102,10 @@ function externalHref(candidate:string):string|null{
   // single integer) and silently rewrites them to dotted decimal. The chat
   // bubble shows the original text, so only allow an exact canonical IPv4
   // spelling when the parser has normalized the hostname to an IPv4 address.
-  if(/^(?:\d{1,3}\.){3}\d{1,3}$/.test(parsed.hostname)){
+  if(/^(?:\\d{1,3}\\.){3}\\d{1,3}$/.test(parsed.hostname)){
    const octets=rawHostname.split('.');
    const canonical=octets.length===4
-    &&octets.every(part=>/^(?:0|[1-9]\d{0,2})$/.test(part)&&Number(part)<=255)
+    &&octets.every(part=>/^(?:0|[1-9]\\d{0,2})$/.test(part)&&Number(part)<=255)
     &&rawHostname===parsed.hostname;
    if(!canonical)return null;
   }
@@ -113,7 +116,7 @@ function externalHref(candidate:string):string|null{
 function canBeginLink(text:string,index:number):boolean{
  if(index===0)return true;
  // Don't link inside emails, identifiers or already-open URI schemes.
- return !/[\p{L}\p{N}_@/:.-]/u.test(text[index-1]);
+ return !/[\\p{L}\\p{N}_@/:.-]/u.test(text[index-1]);
 }
 
 /**
