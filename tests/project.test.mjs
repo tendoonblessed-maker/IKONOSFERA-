@@ -622,7 +622,7 @@ test('older message merge helper is testable and sorts chronology with stable ID
  assert.match(helper,/export function prependEarlierPage/);
  assert.match(helper,/message\.id,message/);
  assert.match(helper,/return Array\.from\(byId\.values\(\)\)\.sort\(compareMessages\)/);
- assert.match(shell,/setChatMessages\(current=>prependEarlierPage\(current,older\)\)/);
+ assert.match(shell,/setChatMessages\(current=>isCurrentPage\(\)\?prependEarlierPage\(current,older\):current\)/);
 });
 
 
