@@ -3,7 +3,7 @@ import {test} from 'node:test';
 import {readFileSync} from 'node:fs';
 import vm from 'node:vm';
 import ts from 'typescript';
-import {reconcileLoadedGroupMessage,removeMissingGroupMessages,abortGroupMessageReads,finishGroupMessageRead} from '../lib/group-message-reconciliation.ts';
+import {reconcileLoadedGroupMessage,removeMissingGroupMessages,abortGroupMessageReads,finishGroupMessageRead,sameVisibleGroupMessageIds,shouldQueueGroupHistoryReconcile} from '../lib/group-message-reconciliation.ts';
 
 const GROUP='11111111-1111-4111-8111-111111111111';
 const OTHER_GROUP='33333333-3333-4333-8333-333333333333';
@@ -280,4 +280,32 @@ test('GroupPanel checks only visible message IDs with bounded RLS reads and abor
  assert.match(panel,/Date\.now\(\)-historyReconcileLastAt<30000/);
  assert.match(panel,/historyReconcileController\?\.abort\(\)/);
  assert.doesNotMatch(realtime,/event:'DELETE'/);
+});
+
+
+test('a viewport change during group history reconciliation queues one fresh RLS snapshot',()=>{
+ const inFlight=[MESSAGE,'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa','bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'];
+ const samePage=[inFlight[2],inFlight[0].toUpperCase(),inFlight[1]];
+ const nextPage=[inFlight[1],inFlight[2],'cccccccc-cccc-4ccc-8ccc-cccccccccccc'];
+
+ assert.equal(sameVisibleGroupMessageIds(inFlight,samePage),true,
+  'DOM reordering and UUID casing do not create a new visible page');
+ assert.equal(sameVisibleGroupMessageIds(inFlight,[...samePage.slice(0,2)]),false);
+ assert.equal(shouldQueueGroupHistoryReconcile(inFlight,samePage),false);
+ assert.equal(shouldQueueGroupHistoryReconcile(inFlight,nextPage),true,
+  'scrolling to different messages while a request is active must queue a follow-up');
+ assert.equal(shouldQueueGroupHistoryReconcile(inFlight,inFlight,true),true,
+  'Realtime/resume wake-ups still force a follow-up for the same viewport');
+ assert.equal(shouldQueueGroupHistoryReconcile(inFlight,[],true),false,
+  'an empty viewport does not schedule a pointless request');
+});
+
+test('GroupPanel checks the latest viewport during an in-flight reconciliation and on scroll',()=>{
+ const panel=readFileSync(new URL('../components/GroupPanel.tsx',import.meta.url),'utf8');
+ assert.match(panel,/shouldQueueGroupHistoryReconcile\(historyReconcileInFlightIds,visibleIds,force\)/);
+ assert.match(panel,/historyReconcileInFlightIds=visibleIds\.slice\(\)/);
+ assert.match(panel,/historyReconcileInFlightIds=null/);
+ assert.match(panel,/reconcileVisibleHistoryRef\.current=reconcileVisibleHistory/);
+ assert.match(panel,/reconcileVisibleHistoryRef\.current\?\.\(\)/);
+ assert.match(panel,/if\(reconcileVisibleHistoryRef\.current===reconcileVisibleHistory\)reconcileVisibleHistoryRef\.current=null/);
 });

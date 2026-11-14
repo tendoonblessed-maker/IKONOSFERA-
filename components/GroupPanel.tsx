@@ -12,7 +12,7 @@ import {readGroupDrafts} from '@/lib/group-drafts';
 import {getOrCreateGroupSendAttempt,clearGroupSendAttempt} from '@/lib/group-send-attempts';
 import {subscribeGroupChanges} from '@/lib/group-realtime';
 import {mergeConfirmedGroupMessages,CONFIRMED_GROUP_MESSAGE_GRACE_MS,type ConfirmedGroupMessage} from '@/lib/group-history';
-import {reconcileLoadedGroupMessage,removeMissingGroupMessages,abortGroupMessageReads,finishGroupMessageRead,type GroupMessageReadRequest} from '@/lib/group-message-reconciliation';
+import {reconcileLoadedGroupMessage,removeMissingGroupMessages,abortGroupMessageReads,finishGroupMessageRead,sameVisibleGroupMessageIds,shouldQueueGroupHistoryReconcile,type GroupMessageReadRequest} from '@/lib/group-message-reconciliation';
 import {shouldAcknowledgeGroupRead,countNewIncomingBelow} from '@/lib/group-read-position';
 import {fetchOlderGroupMessages,prependOlderGroupMessages,preserveOlderGroupMessages,GROUP_HISTORY_MAX_LOADED} from '@/lib/group-pagination';
 type Props={token:string;userId:string;group:Group;onBack:()=>void;onShowProfile:(id:string)=>void;onDraftChange:(groupId:string,text:string)=>void};
@@ -45,6 +45,7 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
  const [searchLocating,setSearchLocating]=useState<string|null>(null);
  const [pendingSearchJump,setPendingSearchJump]=useState<string|null>(null);
  const historyRef=useRef<HTMLDivElement|null>(null);
+ const reconcileVisibleHistoryRef=useRef<((force?:boolean)=>void)|null>(null);
  const prependScrollRef=useRef<{groupId:string;userId:string;height:number;top:number}|null>(null);
  const olderLoadingRef=useRef(false);
  const olderRequestRef=useRef(0);
@@ -147,6 +148,7 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
   const pendingMessageUpdates=new Set<string>();
   const messageUpdateRequests=new Map<string,GroupMessageReadRequest>();
   let historyReconcileInFlight=false;
+  let historyReconcileInFlightIds:string[]|null=null;
   let historyReconcileQueued=false;
   let historyReconcileLastAt=0;
   let historyReconcileController:AbortController|null=null;
@@ -157,8 +159,6 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
       historyReconcileController?.abort();
       return;
     }
-    if(historyReconcileInFlight){if(force)historyReconcileQueued=true;return;}
-    if(!force&&Date.now()-historyReconcileLastAt<30000)return;
     const history=historyRef.current;
     if(!history)return;
     const viewport=history.getBoundingClientRect();
@@ -177,7 +177,15 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
       })
       .slice(0,GROUP_MESSAGE_EXISTENCE_BATCH_SIZE);
     if(!visibleIds.length)return;
+    if(historyReconcileInFlight){
+      if(shouldQueueGroupHistoryReconcile(historyReconcileInFlightIds,visibleIds,force)){
+        historyReconcileQueued=true;
+      }
+      return;
+    }
+    if(!force&&Date.now()-historyReconcileLastAt<30000)return;
     historyReconcileInFlight=true;
+    historyReconcileInFlightIds=visibleIds.slice();
     historyReconcileLastAt=Date.now();
     const requestGroup=group.id,requestOwner=userId,requestToken=token;
     const controller=new AbortController();
@@ -196,12 +204,14 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
       if(historyReconcileTimeout!==null){window.clearTimeout(historyReconcileTimeout);historyReconcileTimeout=null;}
       if(historyReconcileController===controller)historyReconcileController=null;
       historyReconcileInFlight=false;
+      historyReconcileInFlightIds=null;
       if(historyReconcileQueued&&!cancelled&&document.visibilityState==='visible'&&navigator.onLine){
         historyReconcileQueued=false;
         void reconcileVisibleHistory(true);
       }
     }
   };
+  reconcileVisibleHistoryRef.current=reconcileVisibleHistory;
   const reconcileMessageUpdate=(messageId:string)=>{
     const id=messageId.toLowerCase();
     if(cancelled)return;
@@ -303,6 +313,7 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
   window.addEventListener('offline',onOffline);
   return()=>{
     cancelled=true;
+    if(reconcileVisibleHistoryRef.current===reconcileVisibleHistory)reconcileVisibleHistoryRef.current=null;
     abortGroupMessageReads(messageUpdateRequests,pendingMessageUpdates);
     historyReconcileController?.abort();
     if(historyReconcileTimeout!==null)window.clearTimeout(historyReconcileTimeout);
@@ -568,6 +579,7 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
  <div className="ik-group-history-wrap">
  <div className="conversation-history" ref={historyRef} aria-busy={initialLoading} onScroll={event=>{
  const area=event.currentTarget;
+ reconcileVisibleHistoryRef.current?.();
  const nearBottom=!browsingOlderRef.current&&area.scrollHeight-area.scrollTop-area.clientHeight<120;
  if(area.scrollTop<100&&area.scrollHeight>area.clientHeight+30&&
     hasOlder&&!loadingOlder&&!olderError&&online&&!initialLoading){

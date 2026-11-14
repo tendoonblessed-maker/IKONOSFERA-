@@ -99,3 +99,24 @@ export function removeMissingGroupMessages(
  });
  return changed?next:current;
 }
+
+
+/** Compare visible group-message IDs as a set; DOM reordering alone is not a new page. */
+export function sameVisibleGroupMessageIds(
+ previous:readonly string[]|null,
+ next:readonly string[]
+):boolean{
+ if(!previous||previous.length!==next.length)return false;
+ const ids=new Set(previous.map(id=>id.toLowerCase()));
+ return ids.size===next.length&&next.every(id=>ids.has(id.toLowerCase()));
+}
+
+/** Queue one fresh RLS snapshot when the reader moves to another visible group page. */
+export function shouldQueueGroupHistoryReconcile(
+ inFlightIds:readonly string[]|null,
+ nextIds:readonly string[],
+ force=false
+):boolean{
+ if(!nextIds.length)return false;
+ return force||!sameVisibleGroupMessageIds(inFlightIds,nextIds);
+}
