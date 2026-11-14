@@ -61,24 +61,44 @@ test('mobile viewport recovery is scoped to the same chat and resumes after PWA 
 });
 
 
-test('explicit history interaction cancels a pending viewport anchor and removes listeners',()=>{
-  const target=new EventTarget();
+function eventTarget(){
+  const listeners=new Map();
+  return {
+    addEventListener(type,listener){
+      const bucket=listeners.get(type)||new Set();
+      bucket.add(listener);
+      listeners.set(type,bucket);
+    },
+    removeEventListener(type,listener){
+      listeners.get(type)?.delete(listener);
+    },
+    dispatch(type,{target=this,key}={}){
+      for(const listener of listeners.get(type)||[])listener({type,target,key});
+    }
+  };
+}
+
+test('only real history gestures cancel a pending viewport anchor',()=>{
+  const target=eventTarget();
+  const childControl={};
   const intents=[];
   const stop=watchChatViewportIntent(target,type=>intents.push(type));
-  target.dispatchEvent(new Event('wheel'));
-  target.dispatchEvent(new Event('touchmove'));
-  target.dispatchEvent(new Event('pointerdown'));
-  const scrollKey=new Event('keydown');
-  Object.defineProperty(scrollKey,'key',{value:'PageDown'});
-  target.dispatchEvent(scrollKey);
-  const ordinaryKey=new Event('keydown');
-  Object.defineProperty(ordinaryKey,'key',{value:'a'});
-  target.dispatchEvent(ordinaryKey);
-  assert.deepEqual(intents,['wheel','touchmove','pointerdown','keydown'],
-    'only user input that can move history cancels the pending anchor');
+
+  target.dispatch('pointerdown',{target:childControl});
+  assert.deepEqual(intents,[],
+    'tapping a nested message action must not cancel viewport restoration');
+
+  target.dispatch('pointerdown',{target});
+  target.dispatch('wheel',{target:childControl});
+  target.dispatch('touchmove',{target:childControl});
+  target.dispatch('keydown',{target,key:'PageDown'});
+  target.dispatch('keydown',{target,key:'a'});
+  assert.deepEqual(intents,['pointerdown','wheel','touchmove','keydown'],
+    'scrollbar/background, wheel, touch and scroll keys cancel; ordinary keys do not');
+
   stop();
   stop();
-  target.dispatchEvent(new Event('wheel'));
-  assert.deepEqual(intents,['wheel','touchmove','pointerdown','keydown'],
-    'cleanup is idempotent and no listener survives restoration/cancellation');
+  target.dispatch('wheel');
+  assert.deepEqual(intents,['pointerdown','wheel','touchmove','keydown'],
+    'cleanup is idempotent and no listener survives cancellation');
 });
