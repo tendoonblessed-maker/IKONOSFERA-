@@ -322,3 +322,61 @@ test('mixed ASCII and Unicode authority delimiters stay literal',()=>{
  assert.equal(links(ordinary).length,1,'Unicode path text on an ASCII host remains supported');
  assert.equal(reconstructed(ordinary),ordinary);
 });
+
+test('IPv6 literals with dotted-decimal IPv4 tails stay literal after WHATWG normalization',()=>{
+ for(const text of [
+  'https://[::192.0.2.1]/path',
+  'https://[2001:db8::192.0.2.1]/path',
+  'https://[64:ff9b::192.0.2.1]/path',
+  'https://[::ffff:192.0.2.1]/path'
+ ]){
+  assert.equal(links(text).length,0,'a dotted IPv4 tail must not be silently rewritten inside IPv6: '+text);
+  assert.equal(reconstructed(text),text,'the original IPv6 spelling must remain visible');
+ }
+ const canonicalHex='https://[2001:db8::c000:201]:8443/status';
+ assert.deepEqual(links(canonicalHex),[{text:canonicalHex,href:canonicalHex}],
+  'unambiguous hexadecimal IPv6 literals remain clickable');
+ assert.equal(reconstructed(canonicalHex),canonicalHex);
+});
+
+test('chat links reject literal and percent-encoded dot segments normalized by WHATWG URL',()=>{
+ for(const text of [
+  'https://example.com/public/../account',
+  'https://example.com/./account',
+  'https://example.com/%2e%2e/account',
+  'https://example.com/.%2e/account',
+  'https://example.com/%2e./account',
+  'https://example.com/public/%2E%2e/account',
+  'https://example.com/public/..'
+ ]){
+  assert.equal(links(text).length,0,'a normalized path must not be displayed as a different clickable path: '+text);
+  assert.equal(reconstructed(text),text,'the original message text must remain unchanged');
+ }
+});
+
+test('query strings and double-encoded path text are not mistaken for URL dot segments',()=>{
+ for(const text of [
+  'https://example.com/search?next=/../account',
+  'https://example.com/%252e%252e/account'
+ ]){
+  assert.equal(links(text).length,1,'only path segments normalized by WHATWG should be rejected: '+text);
+  assert.equal(reconstructed(text),text);
+ }
+});
+
+test('terminal dot path segments are not stripped as sentence punctuation',()=>{
+ for(const text of [
+  'https://example.com/.',
+  'https://example.com/public/..',
+  'https://example.com/public/..,',
+  'www.example.com/public/..'
+ ]){
+  assert.equal(links(text).length,0,'a terminal dot segment must remain visible to URL validation: '+text);
+  assert.equal(reconstructed(text),text,'the original message text must remain unchanged');
+ }
+ const sentence='Read https://example.com/path.';
+ assert.deepEqual(links(sentence),[
+  {text:'https://example.com/path',href:'https://example.com/path'}
+ ],'ordinary sentence punctuation should still be excluded from the link');
+ assert.equal(reconstructed(sentence),sentence);
+});

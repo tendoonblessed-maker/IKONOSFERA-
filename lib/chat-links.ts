@@ -21,10 +21,26 @@ function trailingCount(value:string,letter:string):number{
  return total;
 }
 
+function hasTerminalDotPathSegment(value:string):boolean{
+ // A final "/." or "/.." is URL path syntax, not sentence punctuation.
+ // Inspect it before splitEnding removes trailing periods from prose.
+ const lower=value.toLowerCase();
+ const authorityStart=lower.startsWith('https://')?8:lower.startsWith('http://')?7:0;
+ const queryOrHash=value.search(/[?#]/);
+ const pathEnd=queryOrHash<0?value.length:queryOrHash;
+ const pathStart=value.indexOf('/',authorityStart);
+ if(pathStart<0||pathStart>=pathEnd)return false;
+ const rawPath=value.slice(pathStart,pathEnd);
+ const lastSegment=rawPath.slice(rawPath.lastIndexOf('/')+1);
+ return lastSegment==='.'||lastSegment==='..';
+}
 function splitEnding(candidate:string):{url:string;ending:string}{
  let url=candidate;
  while(url){
   const final=url.at(-1)!;
+  // Do not trim the dots from a terminal dot-segment: externalHref must see
+  // and reject the original path before WHATWG URL normalizes it.
+  if(final==='.'&&hasTerminalDotPathSegment(url))break;
   const unbalancedClose=final===')'
    ?trailingCount(url,')')>trailingCount(url,'(')
    :final===']'
@@ -87,9 +103,21 @@ function externalHref(candidate:string):string|null{
   if(!authorityParts)return null;
   const rawHostname=authorityParts.hostname;
   if(!rawHostname||/[^\x00-\x7f]/.test(rawHostname)||rawHostname.includes('%'))return null;
-  // WHATWG serializes IPv4-mapped IPv6 (including dotted-decimal input) as
-  // hexadecimal groups. That can hide the embedded IPv4 destination in the
-  // visible chat label, so keep mapped addresses literal in message text.
+  // WHATWG removes literal and percent-encoded dot segments from URL paths.
+  // That can make the browser open a different visible path than the message
+  // shows (for example /public/../account). Keep such candidates as plain text.
+  const rawPath=prefixed.match(/^https?:\/\/[^/?#]*(\/[^?#]*)?/i)?.[1]??'';
+  const hasDotSegment=rawPath.split('/').some(segment=>{
+   const dotsOnly=segment.replace(/%2e/ig,'.');
+   return dotsOnly==='.'||dotsOnly==='..';
+  });
+  if(hasDotSegment)return null;
+  // WHATWG rewrites dotted-decimal IPv4 tails in IPv6 literals to hexadecimal
+  // groups, including IPv4-compatible and translation-prefix addresses. The
+  // visible label would then differ from the serialized destination.
+  if(rawHostname.startsWith('[')&&rawHostname.includes('.'))return null;
+  // WHATWG serializes IPv4-mapped IPv6 (including hexadecimal input) as
+  // hexadecimal groups. Keep mapped addresses literal in message text.
   if(/^\[::ffff:[0-9a-f]{1,4}:[0-9a-f]{1,4}\]$/i.test(parsed.hostname))return null;
   // The bubble renders the original hostname verbatim. IDN homographs can
   // resemble trusted ASCII domains while resolving to a different punycode host.
