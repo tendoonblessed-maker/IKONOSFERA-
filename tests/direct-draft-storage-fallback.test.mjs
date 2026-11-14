@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
-import {readChatDrafts,writeChatDrafts,clearChatDrafts} from '../lib/chat-drafts.ts';
+import {readChatDrafts,writeChatDrafts,clearChatDrafts,cleanChatDrafts,updateChatDraftEntry} from '../lib/chat-drafts.ts';
 
 const A='11111111-1111-4111-8111-111111111111';
 const B='22222222-2222-4222-8222-222222222222';
@@ -92,5 +92,48 @@ test('corrupt or invalid direct-draft snapshots preserve last-known-good memory,
   }finally{
     clearChatDrafts(A);
     globalThis.window=previous;
+  }
+});
+
+test('direct draft truncation never cuts a family emoji, flag or combining grapheme',()=>{
+  const cases=[
+    ['x'.repeat(3990)+'👨‍👩‍👧‍👦tail','x'.repeat(3990)],
+    ['x'.repeat(3998)+'🇸🇪tail','x'.repeat(3998)],
+    ['x'.repeat(3999)+'e\u0301tail','x'.repeat(3999)],
+    ['x'.repeat(3999)+'😀tail','x'.repeat(3999)]
+  ];
+  for(const [input,expected] of cases){
+    const cleaned=cleanChatDrafts({[CHAT]:input})[CHAT];
+    assert.equal(cleaned,expected);
+    assert.ok(cleaned.length<=4000);
+  }
+});
+
+test('direct draft updates and storage writes share the grapheme-safe limit',()=>{
+  const input='x'.repeat(3990)+'👩🏽‍💻tail';
+  const updated=updateChatDraftEntry({},CHAT,input);
+  assert.ok(updated[CHAT].includes('👩🏽‍💻'));
+  assert.ok(updated[CHAT].length<=4000);
+  writeChatDrafts(A,{[CHAT]:input});
+  assert.equal(readChatDrafts(A)[CHAT],updated[CHAT]);
+  clearChatDrafts(A);
+});
+
+test('fallback without Intl.Segmenter keeps common emoji and combining clusters intact',()=>{
+  const descriptor=Object.getOwnPropertyDescriptor(Intl,'Segmenter');
+  assert.ok(descriptor,'test runtime must expose Intl.Segmenter to simulate its absence');
+  try{
+    Object.defineProperty(Intl,'Segmenter',{...descriptor,value:undefined});
+    const cases=[
+      ['x'.repeat(3990)+'👨‍👩‍👧‍👦tail','x'.repeat(3990)],
+      ['x'.repeat(3998)+'🇸🇪tail','x'.repeat(3998)],
+      ['x'.repeat(3999)+'e\u0301tail','x'.repeat(3999)],
+      ['x'.repeat(3997)+'👍🏽tail','x'.repeat(3997)]
+    ];
+    for(const [input,expected] of cases){
+      assert.equal(cleanChatDrafts({[CHAT]:input})[CHAT],expected);
+    }
+  }finally{
+    Object.defineProperty(Intl,'Segmenter',descriptor);
   }
 });
