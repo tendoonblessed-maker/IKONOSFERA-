@@ -176,3 +176,11 @@ test('paged history does not change message schema or database privileges',()=>{
  assert.match(pagination,/const GROUP_/g);
  assert.doesNotMatch(pagination,/service_role|ALTER TABLE|GRANT |dangerouslySetInnerHTML/i);
 });
+
+test('message ordering accepts the minimal keyset cursor shape',()=>{
+ const {api}=setup();
+ const cursor={id:id(2),created_at:stamp};
+ const message=row(id(3),'2026-10-29T09:50:12.123457+00:00');
+ assert.ok(api.compareGroupMessages(cursor,message)<0);
+ assert.ok(api.compareGroupMessages(message,cursor)>0);
+});
