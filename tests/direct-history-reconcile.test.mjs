@@ -191,17 +191,17 @@ test('delayed history pages and post-edit refreshes are rejected after a newer c
   'a response from a previous chat context must never be committed');
 
  const shell=read('components/AppShell.tsx');
- assert.match(shell,/const directHistorySyncEpochRef=useRef\\(0\\)/);
- assert.match(shell,/const invalidateSync=\\(\\)=>\\{syncRevision\\+\\+;directHistorySyncEpochRef\\.current\\+\\+;\\}/);
+ assert.match(shell,/const directHistorySyncEpochRef=useRef\(0\)/);
+ assert.match(shell,/const invalidateSync=\(\)=>\{syncRevision\+\+;directHistorySyncEpochRef\.current\+\+;\}/);
  const olderStart=shell.indexOf('async function loadOlderChatMessages');
  const olderEnd=shell.indexOf('function scrollToHistoryMessage',olderStart);
  const older=shell.slice(olderStart,olderEnd);
- assert.match(older,/const syncEpoch=directHistorySyncEpochRef\\.current/);
- assert.match(older,/shouldApplyDirectHistorySnapshot\\(syncEpoch,directHistorySyncEpochRef\\.current,stillInChat\\(\\)\\)/);
- assert.match(older,/setChatMessages\\(current=>isCurrentPage\\(\\)\\?prependEarlierPage/);
+ assert.match(older,/const syncEpoch=directHistorySyncEpochRef\.current/);
+ assert.match(older,/shouldApplyDirectHistorySnapshot\(syncEpoch,directHistorySyncEpochRef\.current,stillInChat\(\)\)/);
+ assert.match(older,/setChatMessages\(current=>isCurrentPage\(\)\?prependEarlierPage/);
  const actionStart=shell.indexOf('async function messageAction');
  const actionEnd=shell.indexOf('async function reactToMessage',actionStart);
  const action=shell.slice(actionStart,actionEnd);
- assert.match(action,/const refreshEpoch=directHistorySyncEpochRef\\.current/);
- assert.match(action,/shouldApplyDirectHistorySnapshot\\(refreshEpoch,directHistorySyncEpochRef\\.current,stillInChat\\(\\)\\)/);
+ assert.match(action,/const refreshEpoch=directHistorySyncEpochRef\.current/);
+ assert.match(action,/shouldApplyDirectHistorySnapshot\(refreshEpoch,directHistorySyncEpochRef\.current,stillInChat\(\)\)/);
 });
