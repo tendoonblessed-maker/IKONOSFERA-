@@ -148,3 +148,13 @@ export function shouldQueueDirectHistoryReconcile(
  if(!nextIds.length)return false;
  return force||!sameVisibleDirectMessageIds(inFlightIds,nextIds);
 }
+
+
+/** Reject a delayed history snapshot after a newer chat mutation or context switch. */
+export function shouldApplyDirectHistorySnapshot(
+ requestEpoch:number,
+ currentEpoch:number,
+ contextMatches:boolean
+):boolean{
+ return contextMatches&&Number.isSafeInteger(requestEpoch)&&requestEpoch===currentEpoch;
+}
