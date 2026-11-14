@@ -336,6 +336,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
       history:HTMLElement;
       anchor:ReturnType<typeof captureChatViewportAnchor>;
       context:string;
+      stopWatching:()=>void;
     }|null=null;
 
     const releasePendingAnchor=()=>{
