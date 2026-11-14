@@ -21,10 +21,20 @@ function trailingCount(value:string,letter:string):number{
  return total;
 }
 
+function hasTerminalDotPathSegment(value:string):boolean{
+ // A final "/." or "/.." is URL path syntax, not sentence punctuation.
+ // Inspect it before splitEnding removes trailing periods from prose.
+ const match=value.match(/^(?:https?:\\/\\/)?[^/?#]+(\\/[^?#]*)?/i);
+ return /\\/(?:\\.|\\.\\.)$/.test(match?.[1]??'');
+}
+
 function splitEnding(candidate:string):{url:string;ending:string}{
  let url=candidate;
  while(url){
   const final=url.at(-1)!;
+  // Do not trim the dots from a terminal dot-segment: externalHref must see
+  // and reject the original path before WHATWG URL normalizes it.
+  if(final==='.'&&hasTerminalDotPathSegment(url))break;
   const unbalancedClose=final===')'
    ?trailingCount(url,')')>trailingCount(url,'(')
    :final===']'
