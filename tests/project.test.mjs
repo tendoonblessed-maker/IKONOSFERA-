@@ -622,7 +622,7 @@ test('older message merge helper is testable and sorts chronology with stable ID
  assert.match(helper,/export function prependEarlierPage/);
  assert.match(helper,/message\.id,message/);
  assert.match(helper,/return Array\.from\(byId\.values\(\)\)\.sort\(compareMessages\)/);
- assert.match(shell,/setChatMessages\(current=>prependEarlierPage\(current,older\)\)/);
+ assert.match(shell,/setChatMessages\(current=>isCurrentPage\(\)\?prependEarlierPage\(current,older\):current\)/);
 });
 
 
@@ -1085,7 +1085,9 @@ test('offline direct chats preserve drafts and resume polling immediately on rec
  assert.match(shell,/window\.addEventListener\('pageshow',update\)/);
  assert.match(shell,/window\.removeEventListener\('offline',update\)/);
  assert.match(shell,/window\.removeEventListener\('online',update\)/);
- assert.equal((shell.match(/if\(!navigator\.onLine\)return;/g)||[]).length,2);
+ assert.equal((shell.match(/if\(!navigator\.onLine\)return;/g)||[]).length,1);
+ const directSync=shell.slice(shell.indexOf('const sync=async(first=false)'),shell.indexOf('const unsubscribeRealtime='));
+ assert.match(directSync,/if\(cancelled\|\|document\.visibilityState==='hidden'\|\|!navigator\.onLine\)return;/);
  assert.equal((shell.match(/window\.addEventListener\('online',onConnected\)/g)||[]).length,2);
  assert.equal((shell.match(/window\.removeEventListener\('online',onConnected\)/g)||[]).length,2);
  assert.match(shell,/void sync\(true\)/);

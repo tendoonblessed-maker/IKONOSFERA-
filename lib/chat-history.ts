@@ -58,3 +58,103 @@ export function mergeConfirmedRecentPage(
  // edits or deletions with the originally confirmed send response.
  return prependEarlierPage(outstanding,merged);
 }
+
+ 
+export const DIRECT_MESSAGE_RECONCILE_BATCH_SIZE=80;
+export const DIRECT_MESSAGE_RECONCILE_COOLDOWN_MS=30_000;
+const DIRECT_MESSAGE_UUID=/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
+
+/** IDs of message bubbles intersecting the visible history viewport, bounded per request. */
+export function visibleDirectMessageIds(container:HTMLElement|null,limit=DIRECT_MESSAGE_RECONCILE_BATCH_SIZE):string[]{
+ if(!container||!Number.isInteger(limit)||limit<1)return [];
+ const viewport=container.getBoundingClientRect();
+ if(!Number.isFinite(viewport.top)||!Number.isFinite(viewport.bottom)||viewport.bottom<=viewport.top)return [];
+ const ids=new Set<string>();
+ const prefix='ik-chat-message-';
+ for(const node of container.querySelectorAll<HTMLElement>('[id^="ik-chat-message-"]')){
+  const rect=node.getBoundingClientRect();
+  if(!Number.isFinite(rect.top)||!Number.isFinite(rect.bottom)||rect.bottom<=viewport.top||rect.top>=viewport.bottom)continue;
+  const id=node.id.slice(prefix.length);
+  if(!DIRECT_MESSAGE_UUID.test(id))continue;
+  ids.add(id.toLowerCase());
+  if(ids.size>=Math.min(limit,DIRECT_MESSAGE_RECONCILE_BATCH_SIZE))break;
+ }
+ return Array.from(ids);
+}
+
+/**
+ * Reconcile only the requested visible rows. Never append an unrequested row;
+ * preserve a short-lived, DB-confirmed send if a concurrent read has not seen it yet.
+ */
+export function reconcileVisibleDirectMessages(
+ current:ChatMessage[],
+ requestedIds:string[],
+ authoritative:ChatMessage[],
+ chatId:string,
+ ownerId:string,
+ confirmed:Map<string,ConfirmedMessage>,
+ now=Date.now()
+):ChatMessage[]{
+ const requested=new Set(requestedIds.map(id=>id.toLowerCase()));
+ if(!requested.size)return current;
+ const serverRows=new Map<string,ChatMessage>();
+ for(const message of authoritative){
+  const id=message.id.toLowerCase();
+  // An unexpected row invalidates the whole snapshot; never treat it as proof of deletion.
+  if(message.chat_id!==chatId||!requested.has(id))return current;
+  serverRows.set(id,message);
+ }
+ let changed=false;
+ const next:ChatMessage[]=[];
+ for(const message of current){
+  const id=message.id.toLowerCase();
+  if(!requested.has(id)){next.push(message);continue;}
+  const server=serverRows.get(id);
+  if(server){
+   confirmed.delete(message.id);
+   confirmed.delete(id);
+   next.push(server);
+   if(server!==message)changed=true;
+   continue;
+  }
+  const pending=confirmed.get(message.id)??confirmed.get(id);
+  if(pending&&pending.expiresAt>now&&pending.message.chat_id===chatId&&pending.message.sender_id===ownerId){
+   next.push(message);
+   continue;
+  }
+  if(pending){confirmed.delete(message.id);confirmed.delete(id);}
+  changed=true;
+ }
+ return changed?next:current;
+}
+
+
+/** Compare viewport message IDs as a set; DOM order changes alone need no new read. */
+export function sameVisibleDirectMessageIds(
+ previous:readonly string[]|null,
+ next:readonly string[]
+):boolean{
+ if(!previous||previous.length!==next.length)return false;
+ const ids=new Set(previous);
+ return ids.size===next.length&&next.every(id=>ids.has(id));
+}
+
+/** Queue one fresh RLS snapshot when the reader moved to a different visible page. */
+export function shouldQueueDirectHistoryReconcile(
+ inFlightIds:readonly string[]|null,
+ nextIds:readonly string[],
+ force=false
+):boolean{
+ if(!nextIds.length)return false;
+ return force||!sameVisibleDirectMessageIds(inFlightIds,nextIds);
+}
+
+
+/** Reject a delayed history snapshot after a newer chat mutation or context switch. */
+export function shouldApplyDirectHistorySnapshot(
+ requestEpoch:number,
+ currentEpoch:number,
+ contextMatches:boolean
+):boolean{
+ return contextMatches&&Number.isSafeInteger(requestEpoch)&&requestEpoch===currentEpoch;
+}
