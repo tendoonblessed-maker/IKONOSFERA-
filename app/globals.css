@@ -3398,6 +3398,12 @@ body{position:relative}
   border-radius:2px;
 }
 
+@media (forced-colors: active) {
+  .ik-message-rich-text a:focus-visible {
+    outline-color: Highlight;
+  }
+}
+
 
 /* Group history stays scrollable while the composer remains fixed. When reading
    older messages, provide an explicit and accessible jump to latest updates. */
