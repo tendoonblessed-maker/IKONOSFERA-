@@ -416,10 +416,22 @@ test('long chat links wrap safely and expose their exact destination in RTL mess
  const css=source('app/globals.css');
  assert.match(ui,/dir="ltr"/,
   'the link establishes an explicit left-to-right direction inside RTL messages');
- assert.ok(ui.includes('aria-label={`${part.href} — opens in a new tab`}'),
+ assert.ok(ui.includes('aria-label={`${part.href} — ссылка открывается в новой вкладке`}'),
   'assistive technology receives the exact destination and is told the link opens a new tab');
  assert.match(ui,/target="_blank"/,
   'the rendered link opens in a separate tab');
  assert.match(css,/\.ik-message-rich-text a\s*\{[^}]*direction:\s*ltr;[^}]*unicode-bidi:\s*isolate;[^}]*overflow-wrap:\s*anywhere;[^}]*word-break:\s*break-word;/,
   'the anchor rule isolates direction and wraps long addresses on narrow screens');
+});
+
+
+test('chat link accessible announcement follows the Russian document language',()=>{
+ const ui=source('components/ChatMessageText.tsx');
+ const layout=source('app/layout.tsx');
+ assert.match(layout,/<html lang="ru"/,
+  'the application document declares Russian as its language');
+ assert.ok(ui.includes('aria-label={`${part.href} — ссылка открывается в новой вкладке`}'),
+  'screen readers receive the destination followed by a Russian new-tab announcement');
+ assert.doesNotMatch(ui,/opens in a new tab/,
+  'the English-only announcement must not remain in the Russian interface');
 });
