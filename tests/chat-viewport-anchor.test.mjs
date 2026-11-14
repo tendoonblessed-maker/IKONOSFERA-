@@ -102,3 +102,60 @@ test('only real history gestures cancel a pending viewport anchor',()=>{
   assert.deepEqual(intents,['pointerdown','wheel','touchmove','keydown'],
     'cleanup is idempotent and no listener survives cancellation');
 });
+
+
+function messageElement(id,top,bottom){
+  return {id,getBoundingClientRect:()=>({top,bottom})};
+}
+
+test('capture prefers the first visible message and records its viewport offset',()=>{
+  const area=history(420,1800,500);
+  area.getBoundingClientRect=()=>({top:100,bottom:600});
+  area.querySelectorAll=()=>[
+    messageElement('ik-chat-message-above',40,95),
+    messageElement('ik-chat-message-visible',85,150),
+    messageElement('ik-chat-message-below',610,680)
+  ];
+
+  const anchor=captureChatViewportAnchor(area);
+  assert.deepEqual(anchor,{
+    scrollTop:420,
+    followBottom:false,
+    messageId:'ik-chat-message-visible',
+    messageOffset:-15
+  });
+});
+
+test('restore keeps the same message at the same visual offset after text reflow',()=>{
+  const area=history(420,2200,500);
+  let messageTop=140;
+  area.getBoundingClientRect=()=>({top:100,bottom:600});
+  area.querySelectorAll=()=>[
+    messageElement('ik-chat-message-anchor',messageTop,messageTop+90)
+  ];
+
+  const anchor=captureChatViewportAnchor(area);
+  assert.equal(anchor.messageId,'ik-chat-message-anchor');
+  assert.equal(anchor.messageOffset,40);
+
+  // A narrower viewport or 200% text zoom makes earlier content taller.
+  // The anchor message moves down by 75px before restoration.
+  messageTop=215;
+  assert.equal(restoreChatViewportAnchor(area,anchor),true);
+  assert.equal(area.scrollTop,495);
+});
+
+test('restore falls back to the bounded absolute position if the message disappeared',()=>{
+  const area=history(900,1800,500);
+  area.getBoundingClientRect=()=>({top:100,bottom:600});
+  area.querySelectorAll=()=>[];
+
+  const anchor={
+    scrollTop:420,
+    followBottom:false,
+    messageId:'ik-chat-message-removed',
+    messageOffset:25
+  };
+  assert.equal(restoreChatViewportAnchor(area,anchor),true);
+  assert.equal(area.scrollTop,420);
+});
