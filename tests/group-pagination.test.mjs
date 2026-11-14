@@ -92,10 +92,30 @@ test('extra row establishes hasMore but never overlaps next page boundary',async
  assert.ok(nextUrl.searchParams.get('or').includes('id.lt.'+id(11)));
 });
 
-test('return no foreign group rows even if a server response contains a stray row',async()=>{
+test('reject the whole older page when the server returns a foreign group row',async()=>{
  const {api}=setup(()=>success([row(id(3)),row(id(2),stamp,{group_id:OTHER})]));
- const page=await api.fetchOlderGroupMessages('jwt',GROUP,row(id(4)));
- assert.deepEqual(Array.from(page.messages,x=>x.id),[id(3)]);
+ await assert.rejects(()=>api.fetchOlderGroupMessages('jwt',GROUP,row(id(4))),/Не удалось загрузить ранние сообщения/);
+});
+
+test('malformed and duplicate rows fail closed without returning a partial page',async()=>{
+ const malformed=setup(()=>success([row(id(3)),null]));
+ await assert.rejects(()=>malformed.api.fetchOlderGroupMessages('jwt',GROUP,row(id(4))),/Не удалось загрузить ранние сообщения/);
+ const duplicate=setup(()=>success([row(id(3)),row(id(3))]));
+ await assert.rejects(()=>duplicate.api.fetchOlderGroupMessages('jwt',GROUP,row(id(4))),/Не удалось загрузить ранние сообщения/);
+});
+
+test('older page rejects rows at or newer than its cursor and non-descending responses',async()=>{
+ const cursor=row(id(4));
+ const overlaps=setup(()=>success([row(id(4))]));
+ await assert.rejects(()=>overlaps.api.fetchOlderGroupMessages('jwt',GROUP,cursor),/Не удалось загрузить ранние сообщения/);
+ const unordered=setup(()=>success([row(id(2)),row(id(3))]));
+ await assert.rejects(()=>unordered.api.fetchOlderGroupMessages('jwt',GROUP,cursor),/Не удалось загрузить ранние сообщения/);
+});
+
+test('older page rejects a response larger than its bounded request window',async()=>{
+ const oversized=Array.from({length:72},(_,i)=>row(id(200-i)));
+ const {api}=setup(()=>success(oversized));
+ await assert.rejects(()=>api.fetchOlderGroupMessages('jwt',GROUP,row(id(201))),/Не удалось загрузить ранние сообщения/);
 });
 
 test('cursor ordering handles identical milliseconds, microseconds and UUID ties',()=>{
