@@ -338,3 +338,28 @@ test('IPv6 literals with dotted-decimal IPv4 tails stay literal after WHATWG nor
   'unambiguous hexadecimal IPv6 literals remain clickable');
  assert.equal(reconstructed(canonicalHex),canonicalHex);
 });
+
+test('chat links reject literal and percent-encoded dot segments normalized by WHATWG URL',()=>{
+ for(const text of [
+  'https://example.com/public/../account',
+  'https://example.com/./account',
+  'https://example.com/%2e%2e/account',
+  'https://example.com/.%2e/account',
+  'https://example.com/%2e./account',
+  'https://example.com/public/%2E%2e/account',
+  'https://example.com/public/..'
+ ]){
+  assert.equal(links(text).length,0,'a normalized path must not be displayed as a different clickable path: '+text);
+  assert.equal(reconstructed(text),text,'the original message text must remain unchanged');
+ }
+});
+
+test('query strings and double-encoded path text are not mistaken for URL dot segments',()=>{
+ for(const text of [
+  'https://example.com/search?next=/../account',
+  'https://example.com/%252e%252e/account'
+ ]){
+  assert.equal(links(text).length,1,'only path segments normalized by WHATWG should be rejected: '+text);
+  assert.equal(reconstructed(text),text);
+ }
+});
