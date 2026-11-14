@@ -38,6 +38,34 @@ function splitEnding(candidate:string):{url:string;ending:string}{
  return {url,ending:candidate.slice(url.length)};
 }
 
+function splitAuthority(authority:string):{hostname:string;port?:string}|null{
+ // Even empty user-info (https://@host) is needlessly ambiguous in chat.
+ if(!authority||authority.includes('@'))return null;
+ let hostname=authority;
+ let port:string|undefined;
+ if(authority.startsWith('[')){
+  const closing=authority.indexOf(']');
+  if(closing<0)return null;
+  hostname=authority.slice(0,closing+1);
+  const suffix=authority.slice(closing+1);
+  if(suffix){
+   if(!suffix.startsWith(':'))return null;
+   port=suffix.slice(1);
+  }
+ }else{
+  const colon=authority.lastIndexOf(':');
+  if(colon>=0){
+   hostname=authority.slice(0,colon);
+   port=authority.slice(colon+1);
+  }
+ }
+ // URL accepts and normalizes ports with leading zeroes and empty ports.
+ // Require one unambiguous decimal spelling so the visible authority agrees
+ // with the destination represented by the generated href.
+ if(port!==undefined&&(!/^(?:0|[1-9]\d{0,4})$/.test(port)||Number(port)>65535))return null;
+ return {hostname,port};
+}
+
 function externalHref(candidate:string):string|null{
  if(candidate.length>MAX_URL_LENGTH||UNSAFE_LINK_FORMATTING.test(candidate)||UNSAFE_LINK_SYNTAX.test(candidate))return null;
  const prefixed=/^www\./i.test(candidate)?'https://'+candidate:candidate;
@@ -55,11 +83,14 @@ function externalHref(candidate:string):string|null{
   // before normalization so the visible text and actual destination agree.
   const authority=prefixed.match(/^https?:\/\/([^/?#]*)/i)?.[1];
   if(!authority)return null;
-  const hostPort=authority.slice(authority.lastIndexOf('@')+1);
-  const rawHostname=hostPort.startsWith('[')
-   ?hostPort.slice(0,hostPort.indexOf(']')+1)
-   :hostPort.replace(/:\d*$/,'');
+  const authorityParts=splitAuthority(authority);
+  if(!authorityParts)return null;
+  const rawHostname=authorityParts.hostname;
   if(!rawHostname||/[^\x00-\x7f]/.test(rawHostname)||rawHostname.includes('%'))return null;
+  // WHATWG serializes IPv4-mapped IPv6 (including dotted-decimal input) as
+  // hexadecimal groups. That can hide the embedded IPv4 destination in the
+  // visible chat label, so keep mapped addresses literal in message text.
+  if(/^\[::ffff:[0-9a-f]{1,4}:[0-9a-f]{1,4}\]$/i.test(parsed.hostname))return null;
   // The bubble renders the original hostname verbatim. IDN homographs can
   // resemble trusted ASCII domains while resolving to a different punycode host.
   // Keep internationalized hostnames literal until the UI can show a safe label.
