@@ -2,7 +2,7 @@
 import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { backendReady, createTemporaryAccount, consumeEmailLinkSession, loadSession, currentUser, findProfileByUsername, listChats, listChatPreviews, listMessages, listOlderMessages, listReplyTargets, searchDirectMessages, type DirectMessageSearchResult, DIRECT_MESSAGE_SEARCH_PAGE_SIZE, type ReplyTarget, CHAT_MESSAGE_PAGE_SIZE, manageChat, manageMessage, listMessageReactions, setMessageReaction, markChatRead, listProfiles, myProfile, postMessage, reopenChat, sendDirectMedia, validateDirectMediaFile, sendEmailCode, signOut, startDirectChat, validSession, type ChatMessage, type MessageReaction, type DirectChat, type Profile, type Session, type ChatPreview } from '@/lib/supabase-rest';
 import {resizeChatComposer} from '@/lib/chat-composer';
-import {captureChatViewportAnchor,restoreChatViewportAnchor} from '@/lib/chat-viewport-anchor';
+import {captureChatViewportAnchor,restoreChatViewportAnchor,watchChatViewportIntent} from '@/lib/chat-viewport-anchor';
 
 import ProfilePanel from "@/components/ProfilePanel";
 import {mergeConfirmedRecentPage,prependEarlierPage,CONFIRMED_MESSAGE_GRACE_MS,type ConfirmedMessage} from "@/lib/chat-history";
@@ -338,10 +338,22 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
       context:string;
     }|null=null;
 
-    const restorePendingAnchor=()=>{
-      restoreFrame=0;
+    const releasePendingAnchor=()=>{
       const pending=pendingAnchor;
       pendingAnchor=null;
+      pending?.stopWatching();
+      return pending;
+    };
+    const cancelPendingAnchor=()=>{
+      releasePendingAnchor();
+      if(restoreFrame){
+        window.cancelAnimationFrame(restoreFrame);
+        restoreFrame=0;
+      }
+    };
+    const restorePendingAnchor=()=>{
+      restoreFrame=0;
+      const pending=releasePendingAnchor();
       if(!pending?.anchor||!pending.history.isConnected)return;
       if(pending.context!==viewportContextRef.current)return;
       if(document.querySelector('.conversation-pane.open .conversation-history')!==pending.history)return;
@@ -349,15 +361,20 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
     };
     const setVisibleHeight=(preserveAnchor:boolean)=>{
       if(pendingAnchor&&(pendingAnchor.context!==viewportContextRef.current||!pendingAnchor.history.isConnected))
-        pendingAnchor=null;
+        cancelPendingAnchor();
       if(preserveAnchor&&!pendingAnchor){
         const history=document.querySelector<HTMLElement>('.conversation-pane.open .conversation-history');
         if(history){
-          pendingAnchor={
+          const pending={
             history,
             anchor:captureChatViewportAnchor(history),
-            context:viewportContextRef.current
+            context:viewportContextRef.current,
+            stopWatching:()=>{}
           };
+          pending.stopWatching=watchChatViewportIntent(history,()=>{
+            if(pendingAnchor===pending)cancelPendingAnchor();
+          });
+          pendingAnchor=pending;
         }
       }
 
@@ -395,11 +412,9 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
     };
     const onPageHide=()=>{
       window.cancelAnimationFrame(animationFrame);
-      window.cancelAnimationFrame(restoreFrame);
       animationFrame=0;
-      restoreFrame=0;
       preserveAnchorPending=false;
-      pendingAnchor=null;
+      cancelPendingAnchor();
     };
 
     setVisibleHeight(true);
@@ -412,7 +427,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
     document.addEventListener('visibilitychange',onVisibilityChange);
     return()=>{
       window.cancelAnimationFrame(animationFrame);
-      window.cancelAnimationFrame(restoreFrame);
+      cancelPendingAnchor();
       root.style.removeProperty('--ik-visible-viewport-height');
       viewport?.removeEventListener('resize',update);
       viewport?.removeEventListener('scroll',updateScroll);
