@@ -217,3 +217,50 @@ test('malformed stored JSON cannot erase the last known-good in-tab draft snapsh
   reset();
  }
 });
+
+
+test('group draft truncation never cuts a family emoji, flag, combining mark or astral symbol',()=>{
+ reset();
+ const cases=[
+  ['x'.repeat(3990)+'👨‍👩‍👧‍👦tail','x'.repeat(3990)],
+  ['x'.repeat(3998)+'🇸🇪tail','x'.repeat(3998)],
+  ['x'.repeat(3999)+'e\\u0301tail','x'.repeat(3999)],
+  ['x'.repeat(3999)+'😀tail','x'.repeat(3999)]
+ ];
+ for(const [input,expected] of cases){
+  const cleaned=cleanGroupDrafts({[A]:input})[A];
+  assert.equal(cleaned,expected);
+  assert.ok(cleaned.length<=4000);
+ }
+});
+
+test('group draft writes use the grapheme-safe limit and retain a complete emoji cluster that fits',()=>{
+ reset();
+ const input='x'.repeat(3993)+'👩🏽‍💻';
+ const updated=writeGroupDraft(OWNER,A,input);
+ assert.equal(updated[A],input);
+ assert.equal(updated[A].length,4000);
+ const truncated=writeGroupDraft(OWNER,A,'x'.repeat(3990)+'👨‍👩‍👧‍👦tail');
+ assert.equal(truncated[A],'x'.repeat(3990));
+ assert.equal(readGroupDrafts(OWNER)[A],'x'.repeat(3990));
+});
+
+test('group draft fallback without Intl.Segmenter keeps common emoji and combining clusters intact',()=>{
+ reset();
+ const descriptor=Object.getOwnPropertyDescriptor(Intl,'Segmenter');
+ assert.ok(descriptor,'test runtime must expose Intl.Segmenter to simulate its absence');
+ try{
+  Object.defineProperty(Intl,'Segmenter',{...descriptor,value:undefined});
+  const cases=[
+   ['x'.repeat(3990)+'👨‍👩‍👧‍👦tail','x'.repeat(3990)],
+   ['x'.repeat(3998)+'🇸🇪tail','x'.repeat(3998)],
+   ['x'.repeat(3999)+'e\\u0301tail','x'.repeat(3999)],
+   ['x'.repeat(3997)+'👍🏽tail','x'.repeat(3997)]
+  ];
+  for(const [input,expected] of cases){
+   assert.equal(cleanGroupDrafts({[A]:input})[A],expected);
+  }
+ }finally{
+  Object.defineProperty(Intl,'Segmenter',descriptor);
+ }
+});
