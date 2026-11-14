@@ -17,6 +17,16 @@ export function compareGroupMessages(a:GroupMessage,b:GroupMessage):number{
  const fraction=subMillisecondFraction(a.created_at)-subMillisecondFraction(b.created_at);
  return fraction||a.id.localeCompare(b.id);
 }
+function isGroupMessageRow(value:unknown,groupId:string):value is GroupMessage{
+ if(!value||typeof value!=='object'||Array.isArray(value))return false;
+ const row=value as Record<string,unknown>;
+ return typeof row.id==='string'&&UUID.test(row.id)
+  &&typeof row.group_id==='string'&&row.group_id.toLowerCase()===groupId.toLowerCase()
+  &&typeof row.sender_id==='string'&&UUID.test(row.sender_id)
+  &&typeof row.body==='string'
+  &&typeof row.created_at==='string'&&TIMESTAMP.test(row.created_at)
+  &&Number.isFinite(Date.parse(row.created_at));
+}
 /** A stable cursor includes ID: many messages can have the same timestamp. */
 export function olderGroupMessagesPath(groupId:string,oldest:Pick<GroupMessage,'created_at'|'id'>):string{
  if(!UUID.test(groupId)||!UUID.test(oldest.id)||!TIMESTAMP.test(oldest.created_at)
@@ -44,8 +54,20 @@ export async function fetchOlderGroupMessages(
   signal:AbortSignal.timeout(18000)
  });
  const data:unknown=await response.json().catch(()=>null);
- if(!response.ok||!Array.isArray(data))throw Error('Не удалось загрузить ранние сообщения.');
- const rows=(data as GroupMessage[]).filter(item=>item.group_id===groupId);
+ if(!response.ok||!Array.isArray(data)||data.length>GROUP_OLDER_PAGE_SIZE+1)
+  throw Error('Не удалось загрузить ранние сообщения.');
+ const rows:GroupMessage[]=[];
+ const seen=new Set<string>();
+ for(const value of data){
+  if(!isGroupMessageRow(value,groupId))throw Error('Не удалось загрузить ранние сообщения.');
+  const messageId=value.id.toLowerCase();
+  // A duplicate, foreign or malformed row makes the whole snapshot untrusted.
+  if(seen.has(messageId)||compareGroupMessages(value,oldest)>=0
+     ||(rows.length>0&&compareGroupMessages(rows[rows.length-1],value)<=0))
+   throw Error('Не удалось загрузить ранние сообщения.');
+  seen.add(messageId);
+  rows.push(value);
+ }
  // The extra result is a has-more sentinel; it must be fetched next time.
  const page=rows.slice(0,GROUP_OLDER_PAGE_SIZE);
  page.reverse();
