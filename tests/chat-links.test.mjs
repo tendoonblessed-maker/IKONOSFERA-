@@ -287,3 +287,38 @@ test('canonical decimal ports and bracketed IPv6 literals remain clickable',()=>
   {text:'http://example.com:80/path',href:'http://example.com/path'}
  ],'WHATWG default-port normalization preserves the same HTTP destination');
 });
+
+test('IPv4-mapped IPv6 literals stay plain when WHATWG rewrites the embedded IPv4',()=>{
+ for(const text of [
+  'https://[::ffff:127.0.0.1]/admin',
+  'https://[::ffff:192.168.1.10]:8443/status',
+  'https://[0:0:0:0:0:ffff:127.0.0.1]/admin',
+  'https://[::ffff:7f00:1]/admin',
+  'https://[0:0:0:0:0:ffff:7f00:1]/admin'
+ ]){
+  assert.equal(links(text).length,0,'IPv4-mapped IPv6 must not conceal its embedded IPv4: '+text);
+  assert.equal(reconstructed(text),text,'the original chat text must remain unchanged');
+ }
+ const ordinary='https://[2001:db8::1]:8443/status';
+ assert.deepEqual(links(ordinary),[{text:ordinary,href:ordinary}],
+  'ordinary IPv6 literals remain clickable');
+ assert.equal(reconstructed(ordinary),ordinary);
+});
+
+test('mixed ASCII and Unicode authority delimiters stay literal',()=>{
+ for(const text of [
+  'https://раypal.example/path',
+  'https://sub.пример.example/path',
+  'https://example\\uFF0Fcom/path',
+  'https://example\\u2215com/path',
+  'https://example\\u2044com/path',
+  'https://example\\uFF1A443.com/path',
+  'https://example\\uFF20evil.example/path'
+ ]){
+  assert.equal(links(text).length,0,'mixed or non-standard authority must remain plain: '+text);
+  assert.equal(reconstructed(text),text,'the original chat text must remain unchanged');
+ }
+ const ordinary='https://example.com/путь';
+ assert.equal(links(ordinary).length,1,'Unicode path text on an ASCII host remains supported');
+ assert.equal(reconstructed(ordinary),ordinary);
+});
