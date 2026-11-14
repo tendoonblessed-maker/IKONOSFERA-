@@ -363,3 +363,20 @@ test('query strings and double-encoded path text are not mistaken for URL dot se
   assert.equal(reconstructed(text),text);
  }
 });
+
+test('terminal dot path segments are not stripped as sentence punctuation',()=>{
+ for(const text of [
+  'https://example.com/.',
+  'https://example.com/public/..',
+  'https://example.com/public/..,',
+  'www.example.com/public/..'
+ ]){
+  assert.equal(links(text).length,0,'a terminal dot segment must remain visible to URL validation: '+text);
+  assert.equal(reconstructed(text),text,'the original message text must remain unchanged');
+ }
+ const sentence='Read https://example.com/path.';
+ assert.deepEqual(links(sentence),[
+  {text:'https://example.com/path',href:'https://example.com/path'}
+ ],'ordinary sentence punctuation should still be excluded from the link');
+ assert.equal(reconstructed(sentence),sentence);
+});
