@@ -418,9 +418,6 @@ test('long chat links wrap safely and expose their exact destination in RTL mess
   'the link establishes an explicit left-to-right direction inside RTL messages');
  assert.match(ui,/aria-label=\{part\.href\}/,
   'assistive technology receives the exact navigable URL, not a shortened display label');
- const anchorRule=css.split('.ik-message-rich-text a{')[1]?.split('}')[0]??'';
- assert.match(anchorRule,/direction:\s*ltr/);
- assert.match(anchorRule,/unicode-bidi:\s*isolate/);
- assert.match(anchorRule,/overflow-wrap:\s*anywhere/);
- assert.match(anchorRule,/word-break:\s*break-word/);
+ assert.match(css,/\.ik-message-rich-text a\s*\{[^}]*direction:\s*ltr;[^}]*unicode-bidi:\s*isolate;[^}]*overflow-wrap:\s*anywhere;[^}]*word-break:\s*break-word;/,
+  'the anchor rule isolates direction and wraps long addresses on narrow screens');
 });
