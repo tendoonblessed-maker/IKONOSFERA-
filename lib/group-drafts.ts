@@ -7,7 +7,15 @@ const PREFIX='ikonosfera-group-drafts-tab-v1:';
 const UUID=/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
 const MAX_GROUPS=48;
 const MAX_TEXT=4000;
+const MARK=new RegExp('^\\\\p{M}$','u');
+
 export type GroupDrafts=Record<string,string>;
+type GraphemeSegment={segment:string};
+type GraphemeSegmenter={segment(value:string):Iterable<GraphemeSegment>};
+type GraphemeSegmenterConstructor=new (
+ locales?:string|string[],
+ options?:{granularity:'grapheme'}
+)=>GraphemeSegmenter;
 
 // Keep a bounded per-account snapshot for this tab when sessionStorage is
 // blocked or temporarily over quota. Pending empty snapshots are logout
@@ -36,13 +44,77 @@ function flushPendingDrafts(ownerId:string):void{
   // Keep the newest snapshot/tombstone until browser storage recovers.
  }
 }
+
+function isGraphemeExtend(point:string):boolean{
+ const code=point.codePointAt(0)??0;
+ return MARK.test(point)
+  ||(code>=0xfe00&&code<=0xfe0f)
+  ||(code>=0xe0100&&code<=0xe01ef)
+  ||(code>=0x1f3fb&&code<=0x1f3ff)
+  ||(code>=0xe0020&&code<=0xe007f);
+}
+
+/**
+ * Conservative fallback for browsers without Intl.Segmenter. It keeps
+ * surrogate pairs (Array.from), combining marks, variation selectors,
+ * emoji modifiers, flag pairs and common ZWJ emoji sequences together.
+ */
+function fallbackGraphemeClusters(value:string):string[]{
+ const clusters:string[]=[];
+ let cluster='';
+ let previousCode=0;
+ let regionalIndicators=0;
+ for(const point of Array.from(value)){
+  const code=point.codePointAt(0)??0;
+  const regional=code>=0x1f1e6&&code<=0x1f1ff;
+  const joins=cluster.length>0&&(
+   isGraphemeExtend(point)
+   ||code===0x200d
+   ||previousCode===0x200d
+   ||(previousCode===0x0d&&code===0x0a)
+   ||(regional&&regionalIndicators===1)
+  );
+  if(!joins){
+   if(cluster)clusters.push(cluster);
+   cluster=point;
+   regionalIndicators=regional?1:0;
+  }else{
+   cluster+=point;
+   if(regional)regionalIndicators++;
+  }
+  previousCode=code;
+ }
+ if(cluster)clusters.push(cluster);
+ return clusters;
+}
+
+/** Limit UTF-16 storage size without cutting a user-perceived character. */
+function truncateDraftText(value:string,maxCodeUnits:number):string{
+ const limit=Math.max(0,Math.floor(maxCodeUnits));
+ if(value.length<=limit)return value;
+ if(limit===0)return '';
+ const Segmenter=(Intl as unknown as {Segmenter?:GraphemeSegmenterConstructor}).Segmenter;
+ const segments=typeof Segmenter==='function'
+  ?new Segmenter(undefined,{granularity:'grapheme'}).segment(value)
+  :fallbackGraphemeClusters(value);
+ let result='';
+ let length=0;
+ for(const item of segments){
+  const segment=typeof item==='string'?item:item.segment;
+  if(length+segment.length>limit)break;
+  result+=segment;
+  length+=segment.length;
+ }
+ return result;
+}
+
 /** Retain the last 48 edited drafts; invalid entries must not evict real ones. */
 export function cleanGroupDrafts(input:unknown):GroupDrafts{
  if(!input||Array.isArray(input)||typeof input!=='object')return {};
  const recent=new Map<string,string>();
  for(const [groupId,text] of Object.entries(input)){
   if(!UUID.test(groupId)||typeof text!=='string')continue;
-  const limited=text.slice(0,MAX_TEXT);
+  const limited=truncateDraftText(text,MAX_TEXT);
   if(!limited.trim())continue;
   recent.set(groupId,limited);
   if(recent.size>MAX_GROUPS){
@@ -88,7 +160,7 @@ export function writeGroupDraft(ownerId:string,groupId:string,text:string):Group
  const next=readGroupDrafts(ownerId);
  // Move edited drafts to the end before enforcing the storage limit.
  delete next[groupId];
- if(text.trim())next[groupId]=text.slice(0,MAX_TEXT);
+ if(text.trim())next[groupId]=truncateDraftText(text,MAX_TEXT);
  const cleaned=cleanGroupDrafts(next);
  memoryDrafts.set(ownerId,cleaned);
  pendingOwners.add(ownerId);
