@@ -60,7 +60,7 @@ test('a rejected update check is swallowed and does not prevent a later retry',a
 test('update notice registers the worker and rechecks after resume or connectivity recovery',()=>{
   const ui=load('components/ServiceWorkerUpdateNotice.tsx');
   assert.match(ui,/navigator\.serviceWorker\.register\('\/sw\.js'\)/);
-  assert.match(ui,/registration\.update\(\)/);
+  assert.match(ui,/activeRegistration\.update\(\)/);
   assert.match(ui,/addEventListener\('controllerchange'/);
   assert.match(ui,/addEventListener\('visibilitychange'/);
   assert.match(ui,/addEventListener\('online'/);
