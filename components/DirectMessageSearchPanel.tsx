@@ -1,6 +1,7 @@
 'use client';
 
 import type {DirectMessageSearchResult} from '@/lib/supabase-rest';
+import {directMessageSearchExcerpt} from '@/lib/direct-message-search-preview';
 
 type Props={
   query:string;
@@ -29,7 +30,7 @@ export default function DirectMessageSearchPanel({
       if(event.key==='Escape'){event.preventDefault();event.stopPropagation();onClose();}
     }}>
     <div className="ik-conversation-search">
-      <input autoFocus aria-label="Поиск сообщений в текущем чате"
+      <input autoFocus dir="auto" aria-label="Поиск сообщений в текущем чате"
         placeholder="Поиск по всей истории…" maxLength={120} value={query}
         onChange={event=>onQueryChange(event.target.value)}/>
       <span aria-live="polite">{needle.length<2?'От 2 символов':loading?'Ищем…':failed?'Ошибка':results.length+(hasMore?'+':'')+' найдено'}</span>
@@ -37,10 +38,7 @@ export default function DirectMessageSearchPanel({
     </div>
     {needle.length>=2&&<div className="ik-direct-search-results" aria-live="polite" aria-busy={loading}>
       {results.map(message=>{
-        const full=message.body.replace(/\s+/g,' ').trim();
-        const index=full.toLocaleLowerCase('ru').indexOf(needle.toLocaleLowerCase('ru'));
-        const start=index<0?0:Math.max(0,index-38);
-        const snippet=full.slice(start,start+210);
+        const snippet=directMessageSearchExcerpt(message.body,needle);
         const isLocating=locatingId===message.id;
         return <button type="button" key={message.id} className="ik-direct-search-result"
           disabled={Boolean(locatingId)} onClick={()=>onOpen(message.id)}>
@@ -48,7 +46,7 @@ export default function DirectMessageSearchPanel({
             <strong>{message.sender_id===userId?'Вы':partnerName}</strong>
             <time dateTime={message.created_at}>{new Date(message.created_at).toLocaleDateString('ru-RU',{day:'numeric',month:'short',year:'numeric'})}</time>
           </span>
-          <span className="ik-direct-search-result-text">{start>0?'…':''}{snippet}{full.length>start+210?'…':''}</span>
+          <span className="ik-direct-search-result-text"><bdi dir="auto">{snippet}</bdi></span>
           <span className="ik-direct-search-result-arrow" aria-hidden="true">{isLocating?'◌':'›'}</span>
         </button>;
       })}
