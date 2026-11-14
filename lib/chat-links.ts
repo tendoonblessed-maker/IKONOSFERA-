@@ -138,7 +138,7 @@ function externalHref(candidate:string):{href:string;displayText?:string}|null{
   // Keep the source text for exact reconstruction, but render a separate
   // canonical label so the visible host/port matches the actual href. WHATWG
   // lowercases DNS names, compresses IPv6 and removes the scheme's default port.
-  const displayPrefix=/^www\\./i.test(candidate)?'':parsed.protocol+'//';
+  const displayPrefix=/^www\./i.test(candidate)?'':parsed.protocol+'//';
   const displayText=displayPrefix+parsed.host+prefixed.slice(authorityMatch[0].length);
   return {href:parsed.href,...(displayText!==candidate?{displayText}:{})};
  }catch{return null;}
