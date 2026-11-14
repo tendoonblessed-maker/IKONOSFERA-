@@ -224,7 +224,7 @@ test('group draft truncation never cuts a family emoji, flag, combining mark or 
  const cases=[
   ['x'.repeat(3990)+'👨‍👩‍👧‍👦tail','x'.repeat(3990)],
   ['x'.repeat(3998)+'🇸🇪tail','x'.repeat(3998)],
-  ['x'.repeat(3999)+'e\\u0301tail','x'.repeat(3999)],
+  ['x'.repeat(3999)+'e\u0301tail','x'.repeat(3999)],
   ['x'.repeat(3999)+'😀tail','x'.repeat(3999)]
  ];
  for(const [input,expected] of cases){
@@ -254,7 +254,7 @@ test('group draft fallback without Intl.Segmenter keeps common emoji and combini
   const cases=[
    ['x'.repeat(3990)+'👨‍👩‍👧‍👦tail','x'.repeat(3990)],
    ['x'.repeat(3998)+'🇸🇪tail','x'.repeat(3998)],
-   ['x'.repeat(3999)+'e\\u0301tail','x'.repeat(3999)],
+   ['x'.repeat(3999)+'e\u0301tail','x'.repeat(3999)],
    ['x'.repeat(3997)+'👍🏽tail','x'.repeat(3997)]
   ];
   for(const [input,expected] of cases){
