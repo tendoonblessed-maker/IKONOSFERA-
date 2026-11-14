@@ -3381,11 +3381,14 @@ body{position:relative}
 .ik-message-rich-text a{
   color:inherit;
   font:inherit;
+  direction:ltr;
+  unicode-bidi:isolate;
   text-decoration:underline;
   text-decoration-thickness:1px;
   text-underline-offset:3px;
   text-decoration-color:currentColor;
   overflow-wrap:anywhere;
+  word-break:break-word;
   cursor:pointer;
 }
 .ik-message-rich-text a:hover{text-decoration-thickness:2px}
