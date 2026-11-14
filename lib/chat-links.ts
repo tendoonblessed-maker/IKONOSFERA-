@@ -86,11 +86,11 @@ function externalHref(candidate:string):string|null{
   const authorityParts=splitAuthority(authority);
   if(!authorityParts)return null;
   const rawHostname=authorityParts.hostname;
-  if(!rawHostname||/[^\\x00-\\x7f]/.test(rawHostname)||rawHostname.includes('%'))return null;
+  if(!rawHostname||/[^\x00-\x7f]/.test(rawHostname)||rawHostname.includes('%'))return null;
   // WHATWG removes literal and percent-encoded dot segments from URL paths.
   // That can make the browser open a different visible path than the message
   // shows (for example /public/../account). Keep such candidates as plain text.
-  const rawPath=prefixed.match(/^https?:\\/\\/[^/?#]*(\\/[^?#]*)?/i)?.[1]??'';
+  const rawPath=prefixed.match(/^https?:\/\/[^/?#]*(\/[^?#]*)?/i)?.[1]??'';
   const hasDotSegment=rawPath.split('/').some(segment=>{
    const dotsOnly=segment.replace(/%2e/ig,'.');
    return dotsOnly==='.'||dotsOnly==='..';
