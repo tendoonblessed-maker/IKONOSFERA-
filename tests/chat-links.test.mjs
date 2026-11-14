@@ -309,11 +309,11 @@ test('mixed ASCII and Unicode authority delimiters stay literal',()=>{
  for(const text of [
   'https://раypal.example/path',
   'https://sub.пример.example/path',
-  'https://example\\uFF0Fcom/path',
-  'https://example\\u2215com/path',
-  'https://example\\u2044com/path',
-  'https://example\\uFF1A443.com/path',
-  'https://example\\uFF20evil.example/path'
+  'https://example\uFF0Fcom/path',
+  'https://example\u2215com/path',
+  'https://example\u2044com/path',
+  'https://example\uFF1A443.com/path',
+  'https://example\uFF20evil.example/path'
  ]){
   assert.equal(links(text).length,0,'mixed or non-standard authority must remain plain: '+text);
   assert.equal(reconstructed(text),text,'the original chat text must remain unchanged');
