@@ -322,3 +322,19 @@ test('mixed ASCII and Unicode authority delimiters stay literal',()=>{
  assert.equal(links(ordinary).length,1,'Unicode path text on an ASCII host remains supported');
  assert.equal(reconstructed(ordinary),ordinary);
 });
+
+test('IPv6 literals with dotted-decimal IPv4 tails stay literal after WHATWG normalization',()=>{
+ for(const text of [
+  'https://[::192.0.2.1]/path',
+  'https://[2001:db8::192.0.2.1]/path',
+  'https://[64:ff9b::192.0.2.1]/path',
+  'https://[::ffff:192.0.2.1]/path'
+ ]){
+  assert.equal(links(text).length,0,'a dotted IPv4 tail must not be silently rewritten inside IPv6: '+text);
+  assert.equal(reconstructed(text),text,'the original IPv6 spelling must remain visible');
+ }
+ const canonicalHex='https://[2001:db8::c000:201]:8443/status';
+ assert.deepEqual(links(canonicalHex),[{text:canonicalHex,href:canonicalHex}],
+  'unambiguous hexadecimal IPv6 literals remain clickable');
+ assert.equal(reconstructed(canonicalHex),canonicalHex);
+});
