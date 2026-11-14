@@ -401,3 +401,26 @@ test('terminal dot path segments are not stripped as sentence punctuation',()=>{
  ],'ordinary sentence punctuation should still be excluded from the link');
  assert.equal(reconstructed(sentence),sentence);
 });
+
+
+test('long chat links wrap safely and expose their exact destination in RTL messages',()=>{
+ const longUrl='https://example.com/'+('a'.repeat(1700));
+ const rtlMessage='مرحبا — '+longUrl+' — שלום';
+ assert.deepEqual(links(rtlMessage),[
+  {text:longUrl,href:longUrl}
+ ],'long URL remains one safe, complete link inside mixed RTL/LTR text');
+ assert.equal(reconstructed(rtlMessage),rtlMessage,
+  'RTL context and long-link detection must not alter the original message');
+
+ const ui=source('components/ChatMessageText.tsx');
+ const css=source('app/globals.css');
+ assert.match(ui,/dir="ltr"/,
+  'the link establishes an explicit left-to-right direction inside RTL messages');
+ assert.match(ui,/aria-label=\{part\.href\}/,
+  'assistive technology receives the exact navigable URL, not a shortened display label');
+ const anchorRule=css.match(/\.ik-message-rich-text a\\?\{([\\s\\S]*?)\\}/)?.[1]??'';
+ assert.match(anchorRule,/direction:\\s*ltr/);
+ assert.match(anchorRule,/unicode-bidi:\\s*isolate/);
+ assert.match(anchorRule,/overflow-wrap:\\s*anywhere/);
+ assert.match(anchorRule,/word-break:\\s*break-word/);
+});
