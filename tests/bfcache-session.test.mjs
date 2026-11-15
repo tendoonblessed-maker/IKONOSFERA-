@@ -29,7 +29,7 @@ test('AppShell checks session identity on persisted pageshow and revalidates unc
   const shell=source('components/AppShell.tsx');
   assert.match(shell,/const onPageShow=\(event:PageTransitionEvent\)=>\{/);
   assert.match(shell,/if\(!event\.persisted\)return/);
-  assert.match(shell,/shouldReloadAfterBfcacheRestore\(event\.persisted,session,loadSession\(\)\)/);
+  assert.match(shell,/const stored=loadSession\(\)/);\n  assert.match(shell,/shouldReloadAfterBfcacheRestore\(event\.persisted,session,stored\)/);
   assert.match(shell,/if\(document\.visibilityState==='visible'\)void run\(true\)/);
   assert.match(shell,/window\.addEventListener\('pageshow',onPageShow\)/);
   assert.match(shell,/window\.removeEventListener\('pageshow',onPageShow\)/);
