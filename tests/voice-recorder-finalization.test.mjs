@@ -13,6 +13,7 @@ const compiled=ts.transpileModule(source,{
 
 function harness({
  deliverStop=false,mimeDetection='supported',startThrows=false,
+ removeTrackListenerThrows=false,
  defaultMimeType='audio/webm;codecs=opus',getUserMedia
 }={}){
  const hooks=[];
@@ -34,7 +35,11 @@ function harness({
  const tracks=[{
   kind:'audio',readyState:'live',stopped:false,
   addEventListener(name,listener){if(name==='ended')trackListeners.add(listener);},
-  removeEventListener(name,listener){if(name==='ended')trackListeners.delete(listener);},
+  removeEventListener(name,listener){
+   if(name!=='ended')return;
+   if(removeTrackListenerThrows)throw Error('track listener already detached');
+   trackListeners.delete(listener);
+  },
   stop(){this.stopped=true;this.readyState='ended';},
   end(){
    this.readyState='ended';
@@ -198,6 +203,21 @@ test('a MediaRecorder.start failure detaches listeners, timers and microphone be
  assert.equal(h.errors.length,1);
  assert.match(h.errors[0],/Микрофон недоступен/);
  assert.equal(h.button(h.render(),'Отменить'),null,'the composer returns to idle');
+});
+
+test('a failing track-listener removal cannot block the remaining microphone cleanup',async()=>{
+ const h=harness({removeTrackListenerThrows:true});
+ await h.start();
+ assert.doesNotThrow(()=>h.button(h.render(),'Отменить').props.onClick());
+ assert.equal(h.tracks[0].stopped,true,'microphone release must continue after listener cleanup fails');
+ assert.equal(h.recorders[0].ondataavailable,null);
+ assert.equal(h.recorders[0].onstop,null);
+ assert.equal(h.recorders[0].onerror,null);
+ assert.equal(h.timers.size,0);
+ assert.equal(h.intervals.size,0);
+ h.tracks[0].end(); // A listener that could not be removed is already invalidated.
+ assert.equal(h.recorded.length,0);
+ assert.deepEqual(h.errors,[]);
 });
 
 test('a hung mobile MediaRecorder stop releases microphone and returns to idle',async()=>{
