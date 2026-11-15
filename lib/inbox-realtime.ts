@@ -36,6 +36,8 @@ export function subscribeInboxChanges(
    .on('postgres_changes',{schema:'public',table:'messages',event:'INSERT'},direct)
    .on('postgres_changes',{schema:'public',table:'messages',event:'UPDATE'},direct)
    .on('postgres_changes',{schema:'public',table:'group_messages',event:'INSERT'},group)
+   // Edits and soft-deletes must refresh the group preview as well as new sends.
+   .on('postgres_changes',{schema:'public',table:'group_messages',event:'UPDATE'},group)
    .subscribe(status=>{
     // A reconnect can miss inserts while offline: resynchronize both lists.
     if(status==='SUBSCRIBED'){direct();group();}
