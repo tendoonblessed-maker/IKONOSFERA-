@@ -11,6 +11,7 @@ const OWNER='11111111-1111-4111-8111-111111111111';
 const OTHER='22222222-2222-4222-8222-222222222222';
 const GROUP='33333333-3333-4333-8333-333333333333';
 const GROUP_B='44444444-4444-4444-8444-444444444444';
+const GROUP_C='55555555-5555-4555-8555-555555555555';
 const memory=new Map();
 const storage={
  getItem:k=>memory.get(k)??null,
@@ -55,14 +56,18 @@ test('group attempts survive remount via tab sessionStorage, not localStorage',(
  assert.doesNotMatch(code,/window\.localStorage|fetch\(/);
 });
 
-test('invalid, malformed, expired and future-dated send attempts are discarded',()=>{
+test('invalid, malformed, expired and future-dated persisted attempts are discarded after reload',()=>{
  const now=Date.now();
  const original=getOrCreateGroupSendAttempt(OWNER,GROUP,'Срок',now);
  const key='ikonosfera-group-send-v1:'+OWNER+':'+GROUP;
+ // A page reload clears the module's in-memory cache; emulate it by
+ // acknowledging/removing the current attempt before injecting persisted data.
+ clearGroupSendAttempt(OWNER,GROUP,original.id);
  const expired={...original,createdAt:now-GROUP_SEND_ATTEMPT_TTL_MS-1};
  memory.set(key,JSON.stringify(expired));
  assert.equal(readGroupSendAttempt(OWNER,GROUP,now),null);
  const fresh=getOrCreateGroupSendAttempt(OWNER,GROUP,'Срок',now);
+ clearGroupSendAttempt(OWNER,GROUP,fresh.id);
  memory.set(key,JSON.stringify({...fresh,createdAt:now+300_001}));
  assert.equal(readGroupSendAttempt(OWNER,GROUP,now),null);
  memory.set(key,'{not JSON');
@@ -90,6 +95,24 @@ test('storage unavailable does not prevent same-runtime retries',()=>{
   clearGroupSendAttempt(OWNER,GROUP,a.id);
   assert.equal(readGroupSendAttempt(OWNER,GROUP),null);
  }finally{Object.defineProperty(globalThis,'window',{configurable:true,value:prev});}
+});
+
+test('new in-memory attempt wins over stale persisted data after a storage write fails',()=>{
+ const now=Date.now();
+ const key='ikonosfera-group-send-v1:'+OWNER+':'+GROUP_C;
+ const previous=getOrCreateGroupSendAttempt(OWNER,GROUP_C,'Старое сообщение',now);
+ const setItem=storage.setItem;
+ let next;
+ try{
+  storage.setItem=()=>{throw Error('quota exceeded');};
+  next=getOrCreateGroupSendAttempt(OWNER,GROUP_C,'Новое сообщение',now+1);
+  assert.notEqual(next.id,previous.id);
+  assert.equal(JSON.parse(memory.get(key)).id,previous.id,'the failed write leaves the old persisted value');
+ }finally{storage.setItem=setItem;}
+ const recovered=readGroupSendAttempt(OWNER,GROUP_C,now+2);
+ assert.deepEqual(recovered,next,'the latest in-memory attempt must win over stale storage');
+ assert.equal(JSON.parse(memory.get(key)).id,next.id,'storage is repaired when it becomes writable again');
+ clearGroupSendAttempt(OWNER,GROUP_C,next.id);
 });
 
 test('group send API uses INSERT DO NOTHING + read back the original ID under RLS',()=>{
