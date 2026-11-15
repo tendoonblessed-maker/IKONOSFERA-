@@ -11,7 +11,7 @@ export function nextFloatingMenuIndex(key:string,currentIndex:number,itemCount:n
 }
 
 function normalizeMenuSearchText(value:string):string{
-  return value.normalize('NFKD').replace(/\\p{M}/gu,'').toLocaleLowerCase();
+  return value.normalize('NFKD').replace(/\p{M}/gu,'').toLocaleLowerCase();
 }
 
 /**
