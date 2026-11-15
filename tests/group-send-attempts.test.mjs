@@ -56,14 +56,18 @@ test('group attempts survive remount via tab sessionStorage, not localStorage',(
  assert.doesNotMatch(code,/window\.localStorage|fetch\(/);
 });
 
-test('invalid, malformed, expired and future-dated send attempts are discarded',()=>{
+test('invalid, malformed, expired and future-dated persisted attempts are discarded after reload',()=>{
  const now=Date.now();
  const original=getOrCreateGroupSendAttempt(OWNER,GROUP,'Срок',now);
  const key='ikonosfera-group-send-v1:'+OWNER+':'+GROUP;
+ // A page reload clears the module's in-memory cache; emulate it by
+ // acknowledging/removing the current attempt before injecting persisted data.
+ clearGroupSendAttempt(OWNER,GROUP,original.id);
  const expired={...original,createdAt:now-GROUP_SEND_ATTEMPT_TTL_MS-1};
  memory.set(key,JSON.stringify(expired));
  assert.equal(readGroupSendAttempt(OWNER,GROUP,now),null);
  const fresh=getOrCreateGroupSendAttempt(OWNER,GROUP,'Срок',now);
+ clearGroupSendAttempt(OWNER,GROUP,fresh.id);
  memory.set(key,JSON.stringify({...fresh,createdAt:now+300_001}));
  assert.equal(readGroupSendAttempt(OWNER,GROUP,now),null);
  memory.set(key,'{not JSON');
