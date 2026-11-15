@@ -15,7 +15,10 @@ test('WCAG relative luminance and contrast ratio use sRGB linearization',()=>{
 test('base, authenticated and soft messenger text tokens meet WCAG AA on their actual surfaces',()=>{
   const result=auditTheme(read('app/globals.css'),read('app/light-telegram-theme.css'));
   assert.equal(result.failures.length,0,result.failures.map(item=>item.label+': '+item.ratio.toFixed(2)+':1').join('\n'));
-  assert.ok(result.checks.length>=40,'the audit must cover all three active palettes');
+  assert.ok(result.checks.length>=46,'the audit must cover all active palettes and direct-message timestamps');
+  const theme=read('app/light-telegram-theme.css');
+  assert.match(theme,/\.messenger\.is-authenticated \.conversation-history>\.chat-message-row>\.bubble time\{\s*opacity:1!important/);
+  assert.match(theme,/\.messenger\.is-authenticated \.conversation-history \.chat-message-row\.mine \.bubble time,[^}]*color:#52638b!important/);
 });
 
 test('the contrast audit remains wired into the package and GitHub Actions',()=>{
