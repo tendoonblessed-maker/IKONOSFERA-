@@ -70,7 +70,7 @@ export function auditTheme(globals,softTheme){
     }
   }
   add('soft white text on --ik-soft-blue','#ffffff',required(soft,'--ik-soft-blue','soft theme'));
-  add('authenticated incoming direct timestamp on white',required(auth,'--subdued','authenticated'),'#ffffff');
+  add('authenticated incoming direct timestamp on white',required(authenticated,'--subdued','authenticated'),'#ffffff');
   add('authenticated outgoing direct timestamp on #dbe7ff','#52638b','#dbe7ff');
   return {checks,failures};
 }
