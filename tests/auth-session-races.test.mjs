@@ -25,9 +25,19 @@ function scenario(handler){
   removeItem:key=>data.delete(key)
  };
  const calls=[];
+ const validationExports={};
+ const validationSource=readFileSync(new URL('../lib/direct-history-validation.ts',import.meta.url),'utf8');
+ const validationCompiled=ts.transpileModule(validationSource,{
+  compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}
+ }).outputText;
+ vm.runInNewContext(validationCompiled,{exports:validationExports},{filename:'direct-history-validation.cjs',timeout:1000});
  const ctx={
   exports:{},process:{env:{NEXT_PUBLIC_SUPABASE_URL:'https://test.supabase.invalid',NEXT_PUBLIC_SUPABASE_ANON_KEY:'anon-test'}},
   window:{},localStorage:storage,AbortSignal,URLSearchParams,
+  require(name){
+   if(name==='./direct-history-validation')return validationExports;
+   throw new Error('Unexpected test dependency: '+name);
+  },
   fetch:(url,options)=>{
    calls.push({url,options});
    return handler(url,options,calls.length);
