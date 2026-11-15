@@ -584,7 +584,10 @@ test('temporary Supabase outages never silently erase a valid saved session',()=
 });
 test('direct message API supports cursor paging without losing same-timestamp messages',()=>{
  const api=load('lib/supabase-rest.ts');
- assert.match(api,/CHAT_MESSAGE_PAGE_SIZE=100/);
+ assert.match(api,/CHAT_MESSAGE_PAGE_SIZE=DIRECT_HISTORY_PAGE_MAX/);
+ assert.match(load('lib/direct-history-validation.ts'),/DIRECT_HISTORY_PAGE_MAX=100/);
+ assert.match(api,/validateDirectMessagePage<ChatMessage>\(rows,chatId\)/);
+ assert.match(api,/validateDirectMessagePage<ChatMessage>\(rows,chatId,before\)/);
  assert.match(api,/export async function listOlderMessages/);
  assert.match(api,/created_at\.lt\.\$\{time\}/);
  assert.match(api,/created_at\.eq\.\$\{time\},id\.lt\.\$\{id\}/);
