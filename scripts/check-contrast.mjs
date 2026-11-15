@@ -1,7 +1,7 @@
 // WCAG 2.x AA contrast audit for the active light messenger themes.
 // Reads semantic tokens from the actual CSS so CI cannot silently drift to an old palette.
 import {readFileSync} from 'node:fs';
-import {fileURLToPath,pathToFileURL} from 'node:url';
+import {pathToFileURL} from 'node:url';
 
 const MINIMUM=4.5;
 
@@ -29,7 +29,7 @@ function extractVariables(source,pattern,label,selectLast=false){
   const matches=[...source.matchAll(pattern)];
   const match=selectLast?matches.at(-1):matches[0];
   if(!match)throw new Error('Cannot find CSS token block: '+label);
-  return Object.fromEntries([...match[1].matchAll(/(--[a-z0-9-]+)\\s*:\\s*(#[0-9a-f]{3,6})\\b/gi)]
+  return Object.fromEntries([...match[1].matchAll(/(--[a-z0-9-]+)\s*:\s*(#[0-9a-f]{3,6})\b/gi)]
     .map(item=>[item[1],item[2]]));
 }
 
@@ -40,9 +40,9 @@ function required(tokens,name,label){
 }
 
 export function auditTheme(globals,softTheme){
-  const root=extractVariables(globals,/:root\\s*\\{([^}]*)\\}/,'root theme');
-  const authenticated=extractVariables(globals,/\\.messenger\\.is-authenticated\\s*\\{([^}]*)\\}/g,'authenticated theme',true);
-  const soft=extractVariables(softTheme,/\\.messenger\\.is-authenticated\\s*\\{([^}]*)\\}/,'soft theme');
+  const root=extractVariables(globals,/:root\s*\{([^}]*)\}/,'root theme');
+  const authenticated=extractVariables(globals,/.messenger\.is-authenticated\s*\{([^}]*)\}/g,'authenticated theme',true);
+  const soft=extractVariables(softTheme,/.messenger\.is-authenticated\s*\{([^}]*)\}/,'soft theme');
   const checks=[];
   const failures=[];
   const add=(label,foreground,background)=>{
@@ -85,6 +85,6 @@ function run(){
   if(failures.length)process.exitCode=1;
 }
 
-if(process.argv[1]&&pathToFileURL(fileURLToPath(new URL(process.argv[1], 'file://'+process.cwd()+'/'))).href===import.meta.url){
+if(process.argv[1]&&pathToFileURL(process.argv[1]).href===import.meta.url){
   run();
 }
