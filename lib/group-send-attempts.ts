@@ -30,16 +30,31 @@ function valid(value:unknown,now:number):value is GroupSendAttempt{
 export function readGroupSendAttempt(owner:string,group:string,now=Date.now()):GroupSendAttempt|null{
  if(!UUID.test(owner)||!UUID.test(group))return null;
  const k=key(owner,group);
- let candidate:unknown;
+
+ // sessionStorage can retain an older valid value when a newer write fails
+ // (for example, quota exhaustion). Within this tab, the in-memory attempt
+ // is the latest accepted edit and must win; repair storage best-effort.
+ const memoryCandidate=inMemory.get(k);
+ if(valid(memoryCandidate,now)){
+  try{
+   const s=storage();
+   const serialized=JSON.stringify(memoryCandidate);
+   if(s&&s.getItem(k)!==serialized)s.setItem(k,serialized);
+  }catch{/* Keep the authoritative in-tab attempt usable while storage is blocked. */}
+  return memoryCandidate;
+ }
+
+ let candidate:unknown=null;
  try{
   const raw=storage()?.getItem(k);
-  candidate=raw?JSON.parse(raw):inMemory.get(k);
- }catch{candidate=inMemory.get(k);}
+  candidate=raw?JSON.parse(raw):null;
+ }catch{/* Fall through to invalid-record cleanup. */}
  if(!valid(candidate,now)){
   inMemory.delete(k);
   try{storage()?.removeItem(k);}catch{}
   return null;
  }
+ inMemory.set(k,candidate);
  return candidate;
 }
 export function getOrCreateGroupSendAttempt(
