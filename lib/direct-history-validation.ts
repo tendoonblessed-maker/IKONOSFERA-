@@ -75,7 +75,7 @@ export function validateDirectMessagePage<T=Record<string,unknown>>(
    const previousMs=Date.parse(previous.created_at as string);
    if(previousMs<currentMs)invalidPage();
    if(previousMs===currentMs&&previous.created_at===row.created_at
-     &&compareUuid(previous.id as string,row.id)>=0)invalidPage();
+     &&compareUuid(previous.id as string,row.id)<=0)invalidPage();
   }
   if(cursorMs!==null){
    if(currentMs>cursorMs)invalidPage();
