@@ -32,6 +32,6 @@ export function mergeConfirmedGroupMessages(
  }
  for(const message of latest)byId.set(message.id,message);
  return Array.from(byId.values()).sort((a,b)=>
-  Date.parse(a.created_at)-Date.parse(b.created_at)||a.id.localeCompare(b.id)
+  compareMessageTimestamps(a.created_at,b.created_at)||a.id.localeCompare(b.id)
  );
 }
