@@ -82,6 +82,16 @@ test('update notice registers the worker and rechecks after resume or connectivi
   assert.match(ui,/aria-live="polite"/);
 });
 
+test('PWA update cannot interrupt an active IME composition',()=>{
+  const ui=load('components/ServiceWorkerUpdateNotice.tsx');
+  assert.match(ui,/addEventListener\('compositionstart', onCompositionStart, true\)/);
+  assert.match(ui,/addEventListener\('compositionend', onCompositionEnd, true\)/);
+  assert.match(ui,/removeEventListener\('compositionstart', onCompositionStart, true\)/);
+  assert.match(ui,/removeEventListener\('compositionend', onCompositionEnd, true\)/);
+  assert.match(ui,/disabled=\{composing\}/);
+  assert.match(ui,/Завершите ввод, затем обновите приложение/);
+});
+
 test('both active chat composers flush their DOM value before a PWA update',()=>{
   const shell=load('components/AppShell.tsx');
   const group=load('components/GroupPanel.tsx');
