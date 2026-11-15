@@ -1,5 +1,6 @@
 import {apiUrl} from '@/lib/supabase-rest';
 import type {GroupMessage} from '@/lib/groups';
+import {retryTransientHistoryRead} from './history-retry.js';
 
 const anonKey=process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY||'';
 const UUID=/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
@@ -37,15 +38,28 @@ export type OlderGroupPage={messages:GroupMessage[];hasMore:boolean};
 export async function fetchOlderGroupMessages(
  token:string,groupId:string,oldest:Pick<GroupMessage,'created_at'|'id'>
 ):Promise<OlderGroupPage>{
- const response=await fetch(apiUrl+olderGroupMessagesPath(groupId,oldest),{
-  method:'GET',
-  headers:{apikey:anonKey,Authorization:'Bearer '+token},
-  cache:'no-store',
-  signal:AbortSignal.timeout(18000)
+ const data=await retryTransientHistoryRead(async()=>{
+  const response=await fetch(apiUrl+olderGroupMessagesPath(groupId,oldest),{
+   method:'GET',
+   headers:{apikey:anonKey,Authorization:'Bearer '+token},
+   cache:'no-store',
+   signal:AbortSignal.timeout(18000)
+  });
+  if(!response.ok){
+   // Keep the status even when an intermediary returns a non-JSON error body.
+   await response.json().catch(()=>null);
+   const error=Error('Не удалось загрузить ранние сообщения.') as Error&{
+    status:number;retryAfter:string|null
+   };
+   error.status=response.status;
+   error.retryAfter=response.headers?.get?.('Retry-After')??null;
+   throw error;
+  }
+  const value:unknown=await response.json();
+  if(!Array.isArray(value))throw Error('Не удалось загрузить ранние сообщения.');
+  return value as GroupMessage[];
  });
- const data:unknown=await response.json().catch(()=>null);
- if(!response.ok||!Array.isArray(data))throw Error('Не удалось загрузить ранние сообщения.');
- const rows=(data as GroupMessage[]).filter(item=>item.group_id===groupId);
+ const rows=data.filter(item=>item.group_id===groupId);
  // The extra result is a has-more sentinel; it must be fetched next time.
  const page=rows.slice(0,GROUP_OLDER_PAGE_SIZE);
  page.reverse();
