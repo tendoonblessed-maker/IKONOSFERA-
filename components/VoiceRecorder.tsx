@@ -25,12 +25,13 @@ type Capture={
 type Phase='idle'|'requesting'|'recording'|'finalizing';
 
 function clearCaptureResources(capture:Capture){
- if(capture.clock!==null)window.clearInterval(capture.clock);
- if(capture.limit!==null)window.clearTimeout(capture.limit);
- if(capture.finalize!==null)window.clearTimeout(capture.finalize);
+ // Browser teardown is best-effort: one failing cleanup must not skip the rest.
+ if(capture.clock!==null){try{window.clearInterval(capture.clock);}catch{}}
+ if(capture.limit!==null){try{window.clearTimeout(capture.limit);}catch{}}
+ if(capture.finalize!==null){try{window.clearTimeout(capture.finalize);}catch{}}
  capture.clock=null;capture.limit=null;capture.finalize=null;
  if(capture.trackEnded){
-  capture.audioTrack.removeEventListener('ended',capture.trackEnded);
+  try{capture.audioTrack.removeEventListener('ended',capture.trackEnded);}catch{}
   capture.trackEnded=null;
  }
 }
