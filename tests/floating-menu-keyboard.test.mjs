@@ -50,14 +50,15 @@ test('typeahead ignores empty labels and returns null when no item matches',()=>
 test('floating action menu exposes menuitem semantics, roving focus and IME-safe typeahead',()=>{
   const menu=source('components/FloatingActionMenu.tsx');
   const css=source('app/globals.css');
-  assert.match(menu,/useRole\\(context,\\{role:'menu'\\}\\)/);
-  assert.match(menu,/setAttribute\\('role','menuitem'\\)/);
-  assert.match(menu,/item\\.tabIndex=index===0\\?0:-1/);
-  assert.match(menu,/nextFloatingMenuIndex\\(event\\.key,currentIndex,items\\.length\\)/);
-  assert.match(menu,/nextFloatingMenuTypeaheadIndex\\(labels,currentIndex,query\\)/);
-  assert.match(menu,/nativeEvent\\.isComposing/);
-  assert.match(menu,/typeaheadTimerRef/);
-  assert.match(menu,/onKeyDown:onMenuKeyDown/);
-  assert.match(menu,/returnFocus/);
-  assert.match(css,/\\.ik-floating-menu-panel button:focus-visible\\{[^}]*outline:2px solid/s);
+  assert.ok(menu.includes("useRole(context,{role:'menu'})"));
+  assert.ok(menu.includes("setAttribute('role','menuitem')"));
+  assert.ok(menu.includes('item.tabIndex=index===0?0:-1'));
+  assert.ok(menu.includes('nextFloatingMenuIndex(event.key,currentIndex,items.length)'));
+  assert.ok(menu.includes('nextFloatingMenuTypeaheadIndex(labels,currentIndex,query)'));
+  assert.ok(menu.includes('nativeEvent.isComposing'));
+  assert.ok(menu.includes('typeaheadTimerRef'));
+  assert.ok(menu.includes('onKeyDown:onMenuKeyDown'));
+  assert.ok(menu.includes('returnFocus'));
+  assert.ok(css.includes('.ik-floating-menu-panel button:focus-visible{'));
+  assert.ok(css.includes('outline:2px solid'));
 });
