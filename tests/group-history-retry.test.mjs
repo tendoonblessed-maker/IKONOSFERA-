@@ -44,7 +44,7 @@ function response(status,body,retryAfter=null){
 }
 
 test('older group-history GET retries a transient 503 with the identical scoped request',async()=>{
- const {api,calls}=setup(()=>calls.length===0
+ const {api,calls}=setup(()=>calls.length===1
   ?response(503,{message:'temporarily unavailable'},'0')
   :response(200,[row(2),row(1)]));
  const page=await api.fetchOlderGroupMessages('signed-user-jwt',GROUP,{
