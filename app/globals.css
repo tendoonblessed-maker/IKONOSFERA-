@@ -3661,3 +3661,47 @@ body{position:relative}
     flex-basis:36px;width:36px;min-width:36px;height:36px;
   }
 }
+
+
+/* PWA update notice: keep the active tab in sync after a Service Worker takeover. */
+.ik-sw-update-notice{
+  position:fixed;
+  z-index:1400;
+  left:50%;
+  bottom:calc(14px + env(safe-area-inset-bottom,0px));
+  transform:translateX(-50%);
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  width:min(520px,calc(100vw - 24px));
+  padding:10px 12px 10px 16px;
+  border:1px solid #d9dce1;
+  border-radius:16px;
+  background:#fff;
+  color:#17191d;
+  box-shadow:0 10px 30px rgba(0,0,0,.16);
+  font-size:14px;
+  line-height:1.35;
+}
+.ik-sw-update-notice button{
+  flex:0 0 auto;
+  min-width:92px;
+  min-height:44px;
+  padding:0 16px;
+  border:0;
+  border-radius:999px;
+  background:#111;
+  color:#fff;
+  font:inherit;
+  font-weight:650;
+  cursor:pointer;
+}
+.ik-sw-update-notice button:focus-visible{
+  outline:2px solid #596776;
+  outline-offset:3px;
+}
+@media(max-width:480px){
+  .ik-sw-update-notice{gap:8px;padding-left:12px;font-size:13px}
+  .ik-sw-update-notice button{min-width:84px;padding:0 12px}
+}

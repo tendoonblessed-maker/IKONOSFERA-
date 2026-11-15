@@ -14,6 +14,7 @@ import {subscribeGroupChanges} from '@/lib/group-realtime';
 import {mergeConfirmedGroupMessages,CONFIRMED_GROUP_MESSAGE_GRACE_MS,type ConfirmedGroupMessage} from '@/lib/group-history';
 import {shouldAcknowledgeGroupRead,countNewIncomingBelow} from '@/lib/group-read-position';
 import {fetchOlderGroupMessages,prependOlderGroupMessages,preserveOlderGroupMessages,GROUP_HISTORY_MAX_LOADED} from '@/lib/group-pagination';
+import {BEFORE_APP_UPDATE_EVENT} from '@/lib/service-worker-update';
 type Props={token:string;userId:string;group:Group;onBack:()=>void;onShowProfile:(id:string)=>void;onDraftChange:(groupId:string,text:string)=>void};
 export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDraftChange}:Props){
  const [messages,setMessages]=useState<GroupMessage[]>([]);
@@ -102,6 +103,17 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
   setRetryAvailable(false);
   onDraftChange(group.id,text);
  }
+
+ // Persist the textarea's current DOM value before the global PWA update reload.
+ useEffect(()=>{
+  const persistActiveGroupDraft=()=>{
+   const field=composerFormRef.current?.querySelector('textarea');
+   if(!field)return;
+   onDraftChange(group.id,field.value);
+  };
+  window.addEventListener(BEFORE_APP_UPDATE_EVENT,persistActiveGroupDraft);
+  return()=>window.removeEventListener(BEFORE_APP_UPDATE_EVENT,persistActiveGroupDraft);
+ },[group.id,onDraftChange]);
 
  const acknowledgeLatestIfVisible=useCallback(()=>{
   const last=latestGroupMessageRef.current;

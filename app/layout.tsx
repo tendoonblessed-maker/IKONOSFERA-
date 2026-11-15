@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
 import "./light-telegram-theme.css";
+import ServiceWorkerUpdateNotice from "@/components/ServiceWorkerUpdateNotice";
 
 const inter = Inter({ subsets: ["latin", "cyrillic"], display: "swap", variable:"--font-inter" });
 
@@ -30,7 +31,7 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="ru" data-theme="light">
-      <body className={`${inter.className} ${inter.variable}`}>{children}</body>
+      <body className={`${inter.className} ${inter.variable}`}>{children}<ServiceWorkerUpdateNotice /></body>
     </html>
   );
 }
