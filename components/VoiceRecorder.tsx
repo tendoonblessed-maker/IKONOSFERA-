@@ -262,7 +262,20 @@ export default function VoiceRecorder({disabled,onRecorded,onError}:Props){
    // Only the generation that still owns this request may clear shared session state.
    if(requestRef.current===generation){
     sessionActiveRef.current=false;
-    if(captureRef.current?.stream===stream)captureRef.current=null;
+    const capture=captureRef.current;
+    if(capture?.stream===stream){
+     // MediaRecorder.start() can throw after handlers and the track-ended
+     // listener are attached. Detach everything before releasing the stream.
+     captureRef.current=null;
+     capture.discard=true;
+     clearCaptureResources(capture);
+     capture.recorder.ondataavailable=null;
+     capture.recorder.onstop=null;
+     capture.recorder.onerror=null;
+     if(capture.recorder.state!=='inactive'){
+      try{capture.recorder.stop();}catch{}
+     }
+    }
    }
    if(stream)stopMediaStreamTracks(stream);
    if(requestRef.current!==generation||!liveRef.current)return;
