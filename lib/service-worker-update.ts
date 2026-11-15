@@ -1,4 +1,5 @@
 export const BEFORE_APP_UPDATE_EVENT = 'ikonosfera:before-app-update';
+export const SERVICE_WORKER_UPDATE_CHECK_TIMEOUT_MS = 20_000;
 
 /** Run synchronous draft persistence before navigating to the new app shell. */
 export function reloadAfterPersistingDrafts(persist: () => void, reload: () => void): void {
@@ -40,21 +41,48 @@ export function shouldCheckServiceWorkerUpdate(state: {
     !state.updateAvailable;
 }
 
-/** Coalesce overlapping browser lifecycle events into one update() request. */
-export function createServiceWorkerUpdateChecker() {
+/**
+ * Coalesce overlapping browser lifecycle events into one update() request.
+ * A browser update() promise that never settles must not permanently disable
+ * future checks. The timeout releases only its own in-flight slot; a late
+ * settlement from that request cannot clear a newer request's slot.
+ */
+export function createServiceWorkerUpdateChecker(
+  timeoutMs = SERVICE_WORKER_UPDATE_CHECK_TIMEOUT_MS,
+) {
   let inFlight: Promise<void> | null = null;
 
   return (update: () => Promise<unknown>): Promise<void> => {
     if (inFlight) return inFlight;
 
-    inFlight = Promise.resolve()
-      .then(update)
-      .then(() => undefined)
-      .catch(() => undefined)
-      .finally(() => {
-        inFlight = null;
-      });
+    let resolveAttempt!: () => void;
+    let completed = false;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const attempt = new Promise<void>((resolve) => {
+      resolveAttempt = resolve;
+    });
+    inFlight = attempt;
 
-    return inFlight;
+    const finish = () => {
+      if (completed) return;
+      completed = true;
+      if (timer !== null) {
+        clearTimeout(timer);
+        timer = null;
+      }
+      if (inFlight === attempt) inFlight = null;
+      resolveAttempt();
+    };
+
+    const safeTimeout = Number.isFinite(timeoutMs)
+      ? Math.max(0, timeoutMs)
+      : SERVICE_WORKER_UPDATE_CHECK_TIMEOUT_MS;
+    timer = setTimeout(finish, safeTimeout);
+
+    // Promise.resolve also converts synchronous update() throws into a
+    // settled attempt, so the next visibility/focus/online signal can retry.
+    void Promise.resolve().then(update).then(finish, finish);
+
+    return attempt;
   };
 }
