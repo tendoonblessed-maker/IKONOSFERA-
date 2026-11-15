@@ -3,7 +3,7 @@ import {test} from 'node:test';
 import {readFileSync} from 'node:fs';
 import vm from 'node:vm';
 import ts from 'typescript';
-import {compareMessageTimestamps} from '../lib/message-order.ts';
+import {compareMessageTimestamps} from '../lib/message-order.js';
 
 const GROUP='11111111-1111-4111-8111-111111111111';
 const OTHER='22222222-2222-4222-8222-222222222222';
@@ -31,7 +31,7 @@ function setup(handler=()=>({ok:true,json:async()=>[]})){
   },
   require(name){
    if(name==='@/lib/supabase-rest')return {apiUrl:'https://unit.test'};
-   if(name==='./message-order')return {compareMessageTimestamps};
+   if(name==='./message-order.js')return {compareMessageTimestamps};
    assert.fail('Unexpected module: '+name);
   }
  };
