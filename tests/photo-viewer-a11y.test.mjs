@@ -76,7 +76,9 @@ test('photo modal applies the filtered focus trap and focuses the dialog fallbac
  assert.match(ui,/querySelectorAll<HTMLElement>\(/);
  assert.match(ui,/audio\[controls\],video\[controls\],\[tabindex\]/);
  assert.match(ui, /\.filter\(isPhotoViewerTabStop\)/);
- assert.match(ui,/getPhotoViewerTabTarget\(document\.activeElement,dialog,controls,event\.shiftKey\)/);
+ assert.match(ui,/getPhotoViewerTabTarget\(document\.activeElement,dialog,getTabStops\(\),event\.shiftKey\)/);
+ assert.ok(ui.includes("document.addEventListener('keydown',handleKeyboard)"));
+ assert.ok(ui.includes('aria-modal="true"'));
  assert.match(ui,/target\.focus\(\{preventScroll:true\}\)/);
  assert.match(ui,/tabIndex=\{-1\}/);
  assert.ok(ui.includes("document.addEventListener('focusin',handleFocusIn)"));
