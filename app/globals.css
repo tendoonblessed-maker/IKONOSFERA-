@@ -403,6 +403,7 @@ textarea:focus-visible{outline:2px solid #111;outline-offset:2px}
 .reaction-picker{display:flex;flex-wrap:wrap;gap:3px;padding:7px;background:#fff;border:1px solid #ededed;border-radius:15px;box-shadow:0 10px 30px #00000018;animation:reaction-pop .18s cubic-bezier(.2,.8,.2,1) both;z-index:6}
 .reaction-picker button{width:36px;height:36px;border:0;border-radius:10px;background:transparent;font-size:21px;cursor:pointer;transition:transform .15s ease,background .15s ease}
 .reaction-picker button:hover{background:#f3f3f3;transform:scale(1.15)}
+.reaction-picker button:focus-visible{outline:2px solid #5277c3;outline-offset:2px;background:#f3f3f3}
 .reaction-picker button:active{transform:scale(.86)}
 .message-reaction-bar{max-width:100%}
 .bubble:has(.message-reaction-bar){min-width:120px}
