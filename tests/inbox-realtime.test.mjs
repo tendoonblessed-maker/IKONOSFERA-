@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
 import {readFileSync} from 'node:fs';
+import vm from 'node:vm';
+import ts from 'typescript';
 import {isLatestAccountSnapshot} from '../lib/inbox-snapshot.ts';
 
 const load=path=>readFileSync(new URL('../'+path,import.meta.url),'utf8');
@@ -37,26 +39,64 @@ test('inbox Realtime only wakes RLS-backed server fetches',()=>{
  assert.match(rt,/table:'messages',event:'INSERT'/);
  assert.match(rt,/table:'messages',event:'UPDATE'/);
  assert.match(rt,/table:'group_messages',event:'INSERT'/);
+ assert.match(rt,/table:'group_messages',event:'UPDATE'/);
  assert.match(rt,/if\(status==='SUBSCRIBED'\)\{direct\(\);group\(\);\}/);
  assert.match(rt,/client\.removeChannel\(channel\)/);
  assert.match(rt,/client\.realtime\.disconnect\(\)/);
  assert.doesNotMatch(rt,/\.from\('messages'\)|\.from\('group_messages'\)|payload\.new|service_role/i);
 });
 
-test('updates to inbox and group unread badges are debounced and network-resilient',()=>{
- const shell=load('components/AppShell.tsx');
- const effect=shell.slice(shell.indexOf('// Realtime wakes the unread counters'),shell.indexOf('  useEffect(()=>{\n    if(!selected||!session?.access_token||!userId)return;'));
- assert.match(effect,/subscribeInboxChanges\(token,userId,onChanged\)/);
- assert.match(effect,/const direct=pendingDirect,group=pendingGroup/);
- assert.match(effect,/if\(direct\)work\.push\(refreshInbox\(token,userId\)\.catch\(\(\)=>\{\}\)\)/);
- assert.match(effect,/if\(group\)\{/);
- assert.match(effect,/listGroupOverviews\(token\)\.then\(summaries=>/);
- assert.match(effect,/isLatestAccountSnapshot\(requestId,groupOverviewRequestRef\.current,userId,inboxOwnerRef\.current\)/);
- assert.match(effect,/window\.setTimeout\(\(\)=>\{timer=null;void flush\(\);\},240\)/);
- assert.match(effect,/if\(inFlight\)return/);
- assert.match(effect,/if\(!cancelled&&\(pendingDirect\|\|pendingGroup\)\)schedule\(\)/);
- assert.match(effect,/if\(timer!==null\)window\.clearTimeout\(timer\)/);
- assert.match(effect,/unsubscribe\(\)/);
+test('group edits and soft-deletes wake the inbox without exposing Realtime payloads',async()=>{
+ const source=load('lib/inbox-realtime.ts');
+ const compiled=ts.transpile(source,{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022});
+ const module={exports:{}};
+ const registrations=[];
+ let onStatus=null;
+ let authToken=null;
+ let removed=false;
+ let disconnected=false;
+ const channel={
+  on(_event,filter,callback){registrations.push({filter,callback});return this;},
+  subscribe(callback){onStatus=callback;return this;}
+ };
+ const client={
+  channel(name){assert.equal(name,'inbox-db:'+OWNER);return channel;},
+  realtime:{
+   setAuth(token){authToken=token;return Promise.resolve();},
+   disconnect(){disconnected=true;}
+  },
+  removeChannel(candidate){assert.equal(candidate,channel);removed=true;return Promise.resolve('ok');}
+ };
+ const context={
+  module,exports:module.exports,
+  require(name){
+   if(name==='@supabase/supabase-js')return {createClient:()=>client};
+   if(name==='./supabase-rest')return {apiUrl:'https://unit.test',backendReady:true};
+   throw Error('Unexpected module: '+name);
+  },
+  process:{env:{NEXT_PUBLIC_SUPABASE_ANON_KEY:'public-key'}},
+  window:{},Promise,Object,Array,Map,Set,String,Number,Boolean,RegExp,Date,Math,JSON
+ };
+ vm.runInNewContext(compiled,context,{timeout:1000});
+ const changes=[];
+ const unsubscribe=module.exports.subscribeInboxChanges('jwt',OWNER,kind=>changes.push(kind));
+ await new Promise(resolve=>setImmediate(resolve));
+
+ assert.equal(authToken,'jwt');
+ assert.ok(onStatus,'channel subscription should be installed after JWT authorization');
+ const groupUpdate=registrations.find(item=>
+  item.filter.table==='group_messages'&&item.filter.event==='UPDATE'
+ );
+ assert.ok(groupUpdate,'group message UPDATE must refresh the inbox preview');
+ groupUpdate.callback({new:{group_id:OTHER,body:'must never reach UI'}});
+ assert.deepEqual(changes,['group']);
+
+ unsubscribe();
+ assert.equal(removed,true);
+ groupUpdate.callback({new:{group_id:OTHER,body:'late event'}});
+ assert.deepEqual(changes,['group'],'disposed subscriptions must ignore late events');
+ await new Promise(resolve=>setImmediate(resolve));
+ assert.equal(disconnected,true);
 });
 
 test('both the full and lightweight inbox discard older responses and avoid stale preview cache',()=>{
