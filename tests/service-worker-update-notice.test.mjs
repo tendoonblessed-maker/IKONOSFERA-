@@ -6,6 +6,7 @@ import {
   controllerChangeResult,
   createServiceWorkerUpdateChecker,
   reloadAfterPersistingDrafts,
+  shouldAnnounceInstalledWorkerUpdate,
   shouldCheckServiceWorkerUpdate,
   shouldShowWaitingServiceWorkerUpdate,
 } from '../lib/service-worker-update.ts';
@@ -30,6 +31,14 @@ test('a waiting worker is an update only when this page was already controlled',
   assert.equal(shouldShowWaitingServiceWorkerUpdate(false,true),false);
   assert.equal(shouldShowWaitingServiceWorkerUpdate(true,false),false);
   assert.equal(shouldShowWaitingServiceWorkerUpdate(true,true),true);
+});
+
+test('an updatefound worker announces only after installation when an older worker controls the page',()=>{
+  assert.equal(shouldAnnounceInstalledWorkerUpdate(false,'installed',true),false);
+  assert.equal(shouldAnnounceInstalledWorkerUpdate(true,'installing',true),false);
+  assert.equal(shouldAnnounceInstalledWorkerUpdate(true,'installed',false),false);
+  assert.equal(shouldAnnounceInstalledWorkerUpdate(true,'installed',true),true);
+  assert.equal(shouldAnnounceInstalledWorkerUpdate(true,'redundant',true),false);
 });
 
 test('background update checks require a mounted, controlled, visible and online page',()=>{
@@ -71,6 +80,11 @@ test('update notice registers the worker and rechecks after resume or connectivi
   assert.match(ui,/navigator\.serviceWorker\.register\('\/sw\.js'\)/);
   assert.match(ui,/activeRegistration\.update\(\)/);
   assert.match(ui,/addEventListener\('controllerchange'/);
+  assert.match(ui,/addEventListener\('updatefound', onUpdateFound\)/);
+  assert.match(ui,/registration\.installing\) watchInstallingWorker/);
+  assert.match(ui,/addEventListener\('statechange', onStateChange\)/);
+  assert.match(ui,/removeEventListener\('statechange', listener\)/);
+  assert.match(ui,/removeEventListener\('updatefound', onUpdateFound\)/);
   assert.match(ui,/addEventListener\('visibilitychange'/);
   assert.match(ui,/addEventListener\('online'/);
   assert.match(ui,/addEventListener\('focus'/);
