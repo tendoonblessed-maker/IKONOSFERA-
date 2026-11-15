@@ -38,10 +38,10 @@ test('AppShell checks session identity on persisted pageshow and revalidates unc
 
 const ALICE='11111111-1111-4111-8111-111111111111';
 const BOB='22222222-2222-4222-8222-222222222222';
-const token=sub=>'header.'+Buffer.from(JSON.stringify({sub})).toString('base64url')+'.signature';
+const token=(sub,extra={})=>'header.'+Buffer.from(JSON.stringify({sub,...extra})).toString('base64url')+'.signature';
 
 test('BFCache account switch clears drafts but same-account token rotation preserves them',()=>{
-  assert.equal(shouldClearDraftsAfterBfcacheRestore(true,ALICE,token(ALICE)),false);
+  assert.equal(shouldClearDraftsAfterBfcacheRestore(true,ALICE,token(ALICE,{iat:2})),false);
   assert.equal(shouldClearDraftsAfterBfcacheRestore(true,ALICE,token(BOB)),true);
   assert.equal(shouldClearDraftsAfterBfcacheRestore(true,ALICE,null),true);
 });
