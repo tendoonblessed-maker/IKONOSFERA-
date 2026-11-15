@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
-import {compareMessageTimestamps} from '../lib/message-order.ts';
+import {compareMessageTimestamps} from '../lib/message-order.js';
 import {compareMessages} from '../lib/chat-history.ts';
 import {mergeConfirmedGroupMessages} from '../lib/group-history.ts';
 
