@@ -1,5 +1,6 @@
 /* Dependency-free Supabase Auth + PostgREST client.
    Never put a service-role or database password in NEXT_PUBLIC_* variables. */
+import {retryTransientHistoryRead} from './history-retry.js';
 export const apiUrl = (process.env.NEXT_PUBLIC_SUPABASE_URL ?? '').replace(/\/$/, '');
 const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? '';
 export const backendReady = Boolean(apiUrl && anonKey);
@@ -11,7 +12,7 @@ export type ChatMessage = { id: string; chat_id: string; sender_id: string; body
 const STORAGE = 'ikonosfera-session-v1';
 
 class SupabaseHttpError extends Error {
-  constructor(message:string,readonly status:number){super(message);this.name='SupabaseHttpError';}
+  constructor(message:string,readonly status:number,readonly retryAfter:string|null=null){super(message);this.name='SupabaseHttpError';}
 }
 type PendingRefresh={refreshToken:string;generation:number;promise:Promise<Session|null>};
 let sessionRefreshPromise:PendingRefresh|null=null;
@@ -38,7 +39,7 @@ async function http<T>(path: string, options: { method?: string; token?: string;
   try { value = raw ? JSON.parse(raw) : null; } catch { value = raw; }
   if (!response.ok) {
     const error = value && typeof value === 'object' ? (value as { msg?: string; message?: string; error_description?: string }).message ?? (value as { msg?: string }).msg ?? (value as { error_description?: string }).error_description : null;
-    throw new SupabaseHttpError(error || `Запрос не выполнен (${response.status})`,response.status);
+    throw new SupabaseHttpError(error || `Запрос не выполнен (${response.status})`,response.status,response.headers?.get?.('Retry-After')??null);
   }
   return value as T;
 }
@@ -184,13 +185,15 @@ export const CHAT_MESSAGE_PAGE_SIZE=100;
 const CHAT_MESSAGE_COLUMNS='id,chat_id,sender_id,body,created_at,media_path,media_type,read_at,edited_at,deleted_for,deleted_for_everyone,reply_to_message_id';
 /** Newest page first. Sort ties by ID so pagination has a stable boundary. */
 export async function listMessages(token:string,chatId:string):Promise<ChatMessage[]>{
-  return http<ChatMessage[]>(`/rest/v1/messages?select=${CHAT_MESSAGE_COLUMNS}&chat_id=eq.${encodeURIComponent(chatId)}&order=created_at.desc,id.desc&limit=${CHAT_MESSAGE_PAGE_SIZE}`,{token});
+  const path=`/rest/v1/messages?select=${CHAT_MESSAGE_COLUMNS}&chat_id=eq.${encodeURIComponent(chatId)}&order=created_at.desc,id.desc&limit=${CHAT_MESSAGE_PAGE_SIZE}`;
+  return retryTransientHistoryRead(()=>http<ChatMessage[]>(path,{token}));
 }
 /** Older than the earliest loaded message; server RLS still checks membership. */
 export async function listOlderMessages(token:string,chatId:string,before:Pick<ChatMessage,'id'|'created_at'>):Promise<ChatMessage[]>{
   const time=encodeURIComponent(before.created_at),id=encodeURIComponent(before.id);
   const cursor=`or=(created_at.lt.${time},and(created_at.eq.${time},id.lt.${id}))`;
-  return http<ChatMessage[]>(`/rest/v1/messages?select=${CHAT_MESSAGE_COLUMNS}&chat_id=eq.${encodeURIComponent(chatId)}&${cursor}&order=created_at.desc,id.desc&limit=${CHAT_MESSAGE_PAGE_SIZE}`,{token});
+  const path=`/rest/v1/messages?select=${CHAT_MESSAGE_COLUMNS}&chat_id=eq.${encodeURIComponent(chatId)}&${cursor}&order=created_at.desc,id.desc&limit=${CHAT_MESSAGE_PAGE_SIZE}`;
+  return retryTransientHistoryRead(()=>http<ChatMessage[]>(path,{token}));
 }
 /** Load original messages referenced by older replies, subject to normal chat RLS. */
 export type ReplyTarget=Pick<ChatMessage,'id'|'sender_id'|'body'|'deleted_for_everyone'|'media_type'>;
