@@ -58,9 +58,10 @@ test('BFCache draft cleanup fails closed for unreadable or malformed next identi
 test('AppShell clears direct drafts, group drafts and send attempts before BFCache reload',()=>{
   const shell=source('components/AppShell.tsx');
   const start=shell.indexOf('const onPageShow=(event:PageTransitionEvent)=>{');
-  const end=shell.indexOf("window.location.reload();",start);
+  const reloadStatement="window.location.reload();";
+  const end=shell.indexOf(reloadStatement,start);
   assert.ok(start>=0&&end>start,'BFCache pageshow handler exists');
-  const handler=shell.slice(start,end);
+  const handler=shell.slice(start,end+reloadStatement.length);
   assert.match(handler,/shouldClearDraftsAfterBfcacheRestore\(event\.persisted,userId,stored\?\.access_token\)/);
   const clears=['clearChatDrafts(userId)','clearGroupDrafts(userId)','clearAllGroupSendAttempts(userId)'];
   for(const clear of clears){
