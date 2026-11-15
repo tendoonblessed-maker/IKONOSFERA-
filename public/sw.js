@@ -73,7 +73,10 @@ self.addEventListener("fetch", (event) => {
   if (request.mode !== "navigate") return;
   event.respondWith(fetch(request).catch(async () => {
     try {
-      return (await caches.match(OFFLINE_URL)) ?? Response.error();
+      // Only this app-shell cache may supply the offline document. A global
+      // caches.match() could return a stale or unrelated same-origin entry.
+      const cache = await caches.open(CACHE_NAME);
+      return (await cache.match(OFFLINE_URL)) ?? Response.error();
     } catch {
       return Response.error();
     }
