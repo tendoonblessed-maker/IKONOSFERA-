@@ -45,11 +45,23 @@ test('public emoji atlas still loads when Cache API lookup throws', async () => 
   assert.equal(networkCalls, 1);
 });
 
-test('public emoji atlas response is returned even when cache open or write fails', async () => {
+test('public emoji atlas response is returned even when cache write fails', async () => {
   let networkCalls = 0;
   const listeners = createWorker({
     cacheMatch: async () => null,
     cacheOpen: async () => ({ put: async () => { throw new Error('QuotaExceededError'); } }),
+    fetchImpl: async () => { networkCalls++; return new Response('network-atlas', { status: 200 }); },
+  });
+  const response = await dispatchFetch(listeners, request('/status-emojis.webp?v=2'));
+  assert.equal(await response.text(), 'network-atlas');
+  assert.equal(networkCalls, 1);
+});
+
+test('public emoji atlas response is returned even when opening the cache fails', async () => {
+  let networkCalls = 0;
+  const listeners = createWorker({
+    cacheMatch: async () => null,
+    cacheOpen: async () => { throw new Error('QuotaExceededError'); },
     fetchImpl: async () => { networkCalls++; return new Response('network-atlas', { status: 200 }); },
   });
   const response = await dispatchFetch(listeners, request('/status-emojis.webp?v=2'));
