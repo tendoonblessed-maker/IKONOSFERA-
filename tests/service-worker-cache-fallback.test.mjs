@@ -8,7 +8,7 @@ const ORIGIN = 'https://ikonosfera.test';
 
 function createWorker({
   cacheMatch = async () => null,
-  cacheOpen = async () => ({ put: async () => {}, addAll: async () => {} }),
+  cacheOpen = async () => ({ match: async () => null, put: async () => {}, addAll: async () => {} }),
   cacheKeys = async () => [],
   cacheDelete = async () => true,
   clientsClaim = async () => {},
@@ -64,7 +64,7 @@ test('public emoji atlas response is returned even when cache write fails', asyn
   let networkCalls = 0;
   const listeners = createWorker({
     cacheMatch: async () => null,
-    cacheOpen: async () => ({ put: async () => { throw new Error('QuotaExceededError'); } }),
+    cacheOpen: async () => ({ match: async () => null, put: async () => { throw new Error('QuotaExceededError'); } }),
     fetchImpl: async () => { networkCalls++; return new Response('network-atlas', { status: 200 }); },
   });
   const response = await dispatchFetch(listeners, request('/status-emojis.webp?v=2'));
@@ -100,7 +100,7 @@ test('failed network response is not cached', async () => {
   let puts = 0;
   const listeners = createWorker({
     cacheMatch: async () => null,
-    cacheOpen: async () => ({ put: async () => { puts++; } }),
+    cacheOpen: async () => ({ match: async () => null, put: async () => { puts++; } }),
     fetchImpl: async () => new Response('not found', { status: 404 }),
   });
   const response = await dispatchFetch(listeners, request('/status-emojis.webp?v=2'));
@@ -139,7 +139,7 @@ test('worker installation succeeds when Cache Storage cannot be opened', async (
 test('worker installation succeeds when pre-caching fails', async () => {
   let skipWaitingCalls = 0;
   const listeners = createWorker({
-    cacheOpen: async () => ({ addAll: async () => { throw new Error('QuotaExceededError'); } }),
+    cacheOpen: async () => ({ match: async () => null, addAll: async () => { throw new Error('QuotaExceededError'); } }),
     skipWaiting: async () => { skipWaitingCalls++; },
   });
   await dispatchLifecycle(listeners, 'install');
@@ -173,10 +173,35 @@ test('worker activation continues cleanup and claims clients when one cache dele
   assert.equal(claimCalls, 1);
 });
 
-test('offline navigation returns Response.error when both network and cache fallback fail', async () => {
+test('offline navigation reads only the current app-shell cache', async () => {
+  let globalMatchCalls = 0;
+  const openedCaches = [];
   const listeners = createWorker({
+    cacheMatch: async () => {
+      globalMatchCalls++;
+      return new Response('stale-unrelated-offline-page');
+    },
+    cacheOpen: async (name) => {
+      openedCaches.push(name);
+      return {
+        match: async (key) => {
+          assert.equal(key, '/offline.html');
+          return new Response('current-app-offline-page');
+        },
+      };
+    },
     fetchImpl: async () => { throw new TypeError('offline'); },
-    cacheMatch: async () => { throw new Error('SecurityError'); },
+  });
+  const response = await dispatchFetch(listeners, request('/chat', { mode: 'navigate' }));
+  assert.equal(await response.text(), 'current-app-offline-page');
+  assert.equal(globalMatchCalls, 0);
+  assert.deepEqual(openedCaches, ['ikonosfera-shell-v6']);
+});
+
+test('offline navigation returns Response.error when network and app-shell cache fail', async () => {
+  const listeners = createWorker({
+    cacheOpen: async () => { throw new Error('SecurityError'); },
+    fetchImpl: async () => { throw new TypeError('offline'); },
   });
   const response = await dispatchFetch(listeners, request('/chat', { mode: 'navigate' }));
   assert.equal(response.type, 'error');
