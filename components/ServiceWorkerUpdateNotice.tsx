@@ -6,6 +6,7 @@ import {
   controllerChangeResult,
   createServiceWorkerUpdateChecker,
   reloadAfterPersistingDrafts,
+  shouldAnnounceInstalledWorkerUpdate,
   shouldCheckServiceWorkerUpdate,
   shouldShowWaitingServiceWorkerUpdate,
 } from '@/lib/service-worker-update';
@@ -20,12 +21,60 @@ export default function ServiceWorkerUpdateNotice() {
     let disposed = false;
     let controlled = Boolean(navigator.serviceWorker.controller);
     let registration: ServiceWorkerRegistration | null = null;
+    let installingWorker: ServiceWorker | null = null;
+    let onInstallingStateChange: (() => void) | null = null;
     let updateNoticeShown = false;
     const runUpdateCheck = createServiceWorkerUpdateChecker();
 
     const announceUpdate = () => {
       updateNoticeShown = true;
       setAvailable(true);
+    };
+
+    const stopWatchingInstallingWorker = () => {
+      const worker = installingWorker;
+      const listener = onInstallingStateChange;
+      installingWorker = null;
+      onInstallingStateChange = null;
+      if (worker && listener) {
+        worker.removeEventListener('statechange', listener);
+      }
+    };
+
+    const watchInstallingWorker = (worker: ServiceWorker) => {
+      stopWatchingInstallingWorker();
+      installingWorker = worker;
+
+      const onStateChange = () => {
+        if (disposed) {
+          stopWatchingInstallingWorker();
+          return;
+        }
+
+        if (shouldAnnounceInstalledWorkerUpdate(
+          controlled,
+          worker.state,
+          Boolean(registration?.waiting),
+        )) {
+          announceUpdate();
+          stopWatchingInstallingWorker();
+          return;
+        }
+
+        if (worker.state === 'redundant' || worker.state === 'activated') {
+          stopWatchingInstallingWorker();
+        }
+      };
+
+      onInstallingStateChange = onStateChange;
+      worker.addEventListener('statechange', onStateChange);
+      // The worker may already have changed state before updatefound is observed.
+      onStateChange();
+    };
+
+    const onUpdateFound = () => {
+      const worker = registration?.installing;
+      if (worker) watchInstallingWorker(worker);
     };
 
     const checkForUpdate = () => {
@@ -70,6 +119,8 @@ export default function ServiceWorkerUpdateNotice() {
     void navigator.serviceWorker.register('/sw.js').then((nextRegistration) => {
       if (disposed) return;
       registration = nextRegistration;
+      registration.addEventListener('updatefound', onUpdateFound);
+      if (registration.installing) watchInstallingWorker(registration.installing);
       if (shouldShowWaitingServiceWorkerUpdate(controlled, Boolean(registration.waiting))) {
         announceUpdate();
       }
@@ -79,6 +130,8 @@ export default function ServiceWorkerUpdateNotice() {
 
     return () => {
       disposed = true;
+      registration?.removeEventListener('updatefound', onUpdateFound);
+      stopWatchingInstallingWorker();
       document.removeEventListener('compositionstart', onCompositionStart, true);
       document.removeEventListener('compositionend', onCompositionEnd, true);
       navigator.serviceWorker.removeEventListener('controllerchange', onControllerChange);
