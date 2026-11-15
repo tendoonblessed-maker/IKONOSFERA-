@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import vm from 'node:vm';
 import ts from 'typescript';
+import {validateChatPreviewRows} from '../lib/chat-preview-validation.js';
 
 function compile(sourceFile,bindings={}){
   const source=readFileSync(new URL('../'+sourceFile,import.meta.url),'utf8');
@@ -28,7 +29,10 @@ function sessionEnvironment(fetch){
    setItem(name,value){records.set(name,String(value));},
    removeItem(name){records.delete(name);}
  };
- const client=compile('lib/supabase-rest.ts',{window:{},localStorage,fetch});
+ const client=compile('lib/supabase-rest.ts',{window:{},localStorage,fetch,require:specifier=>{
+  if(specifier==='./chat-preview-validation.js')return {validateChatPreviewRows};
+  throw new Error('Unexpected module '+specifier);
+ }});
  return {client,records};
 }
 
