@@ -156,11 +156,18 @@ test('worker activation claims clients even when cache enumeration fails', async
   assert.equal(claimCalls, 1);
 });
 
-test('worker activation continues cleanup and claims clients when one cache delete fails', async () => {
+test('worker activation deletes only obsolete app-shell versions and claims clients', async () => {
   const deleted = [];
   let claimCalls = 0;
   const listeners = createWorker({
-    cacheKeys: async () => ['ikonosfera-shell-v4', 'ikonosfera-shell-v5', 'unrelated-cache'],
+    cacheKeys: async () => [
+      'ikonosfera-shell-v4',
+      'ikonosfera-shell-v5',
+      'ikonosfera-shell-v6',
+      'ikonosfera-media-v1',
+      'ikonosfera-feature-cache',
+      'unrelated-cache',
+    ],
     cacheDelete: async (name) => {
       deleted.push(name);
       if (name === 'ikonosfera-shell-v4') throw new Error('QuotaExceededError');
