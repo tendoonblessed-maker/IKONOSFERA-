@@ -79,8 +79,11 @@ test('photo modal applies the filtered focus trap and focuses the dialog fallbac
  assert.match(ui,/getPhotoViewerTabTarget\(document\.activeElement,dialog,controls,event\.shiftKey\)/);
  assert.match(ui,/target\.focus\(\{preventScroll:true\}\)/);
  assert.match(ui,/tabIndex=\{-1\}/);
- assert.match(ui,/document\.addEventListener\('keydown',handleKeyboard\)/);
- assert.match(ui,/aria-modal="true"/);
+ assert.ok(ui.includes("document.addEventListener('focusin',handleFocusIn)"));
+ assert.ok(ui.includes("document.removeEventListener('focusin',handleFocusIn)"));
+ assert.ok(ui.includes("event.target instanceof Node)||dialog.contains(event.target)"));
+ assert.ok(ui.includes("getPhotoViewerFocusRecoveryTarget(dialog,getTabStops())"));
+ assert.ok(ui.includes("target.focus({preventScroll:true})"));
 });
 
 test('programmatic focus outside the photo modal returns to a visible control or the dialog',()=>{
