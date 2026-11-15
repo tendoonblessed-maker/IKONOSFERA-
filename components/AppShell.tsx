@@ -110,6 +110,9 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
   const [messageSearchRetry,setMessageSearchRetry]=useState(0);
   const [selectedMessages,setSelectedMessages]=useState<string[]>([]);
   const [messageMenuId,setMessageMenuId]=useState<string|null>(null);
+  const messageMenuDialogRef=useRef<HTMLDivElement|null>(null);
+  const messageMenuTriggerRef=useRef<HTMLElement|null>(null);
+  const skipMessageMenuFocusRestoreRef=useRef(false);
   const [createMenuOpen,setCreateMenuOpen]=useState(false);
   const [lookup,setLookup]=useState(initialUsername);
   const [draft,setDraft]=useState('');
@@ -995,6 +998,16 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
     }
   }
 
+  function openMessageMenu(id:string){
+    const trigger=document.getElementById('ik-message-menu-toggle-'+id);
+    if(trigger instanceof HTMLElement){
+      messageMenuTriggerRef.current=trigger;
+      trigger.focus({preventScroll:true});
+    }else messageMenuTriggerRef.current=null;
+    setMessageMenuId(id);
+    setMessageReactionPicker(null);
+  }
+
   function replyToMessage(message:ChatMessage){
     if(!selected||message.deleted_for_everyone)return;
     const partner=rows.find(row=>row.chat.id===selected)?.other;
@@ -1003,9 +1016,59 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
       name:message.sender_id===userId?'Вы':partner?.display_name||partner?.username||'Собеседник',
       text:(message.body||'Вложение').replace(/\s+/g,' ').trim().slice(0,110)
     });
+    if(messageMenuTriggerRef.current)skipMessageMenuFocusRestoreRef.current=true;
     setMessageMenuId(null);
     window.requestAnimationFrame(()=>composerRef.current?.focus());
   }
+
+  useLayoutEffect(()=>{
+    if(!messageMenuId)return;
+    const dialog=messageMenuDialogRef.current;
+    if(!dialog)return;
+    const focusable=()=>Array.from(dialog.querySelectorAll<HTMLElement>(
+      'a[href],button:not([disabled]),input:not([disabled]),textarea:not([disabled]),select:not([disabled]),[tabindex]:not([tabindex="-1"])'
+    ));
+    const initial=dialog.querySelector<HTMLElement>('[data-dialog-initial-focus]');
+    const focusStart=()=>{
+      const target=initial??focusable()[0]??dialog;
+      target.focus({preventScroll:true});
+    };
+    focusStart();
+    const onFocusIn=(event:FocusEvent)=>{
+      if(event.target instanceof Node&&!dialog.contains(event.target))focusStart();
+    };
+    const onKeyDown=(event:KeyboardEvent)=>{
+      if(event.key==='Escape'){
+        event.preventDefault();
+        setMessageMenuId(null);
+        return;
+      }
+      if(event.key!=='Tab')return;
+      const controls=focusable();
+      if(!controls.length){event.preventDefault();dialog.focus({preventScroll:true});return;}
+      const first=controls[0],last=controls[controls.length-1];
+      if(event.shiftKey&&(document.activeElement===first||!dialog.contains(document.activeElement))){
+        event.preventDefault();last.focus({preventScroll:true});
+      }else if(!event.shiftKey&&(document.activeElement===last||!dialog.contains(document.activeElement))){
+        event.preventDefault();first.focus({preventScroll:true});
+      }
+    };
+    document.addEventListener('focusin',onFocusIn);
+    document.addEventListener('keydown',onKeyDown);
+    return()=>{
+      document.removeEventListener('focusin',onFocusIn);
+      document.removeEventListener('keydown',onKeyDown);
+      const trigger=messageMenuTriggerRef.current;
+      const skipRestore=skipMessageMenuFocusRestoreRef.current;
+      skipMessageMenuFocusRestoreRef.current=false;
+      messageMenuTriggerRef.current=null;
+      if(skipRestore)return;
+      window.requestAnimationFrame(()=>{
+        if(trigger?.isConnected&&!trigger.hasAttribute('disabled'))trigger.focus({preventScroll:true});
+        else composerRef.current?.focus({preventScroll:true});
+      });
+    };
+  },[messageMenuId]);
 
   async function sendMessage(e:React.FormEvent){
     e.preventDefault();if(!session||!selected||!userId||sending||activePartnerBlocked)return;
@@ -1548,7 +1611,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
       {!activeChatLoading&&!activeChatLoadError&&!chatMessages.length&&<div className="conversation-blank"><span>Начало переписки</span><p>Сообщения видны только участникам диалога.</p></div>}{visibleMessages.map((message,index)=><Fragment key={message.id}>{(index===0||new Date(visibleMessages[index-1].created_at).toDateString()!==new Date(message.created_at).toDateString())&&<div className="ik-chat-day-separator" role="separator"><span>{dayLabel(message.created_at)}</span></div>}<SwipeReplyMessage className={`chat-message-row ${message.sender_id===userId?'mine':'theirs'}`}
         disabled={Boolean(message.deleted_for_everyone||editingMessageId===message.id)}
         onReply={()=>replyToMessage(message)}
-        onOpenMenu={!message.deleted_for_everyone?()=>{setMessageMenuId(message.id);setMessageReactionPicker(null);}:undefined}><div id={'ik-chat-message-'+message.id} className={`bubble ${message.sender_id===userId?'mine':'theirs'}`}>
+        onOpenMenu={!message.deleted_for_everyone?()=>openMessageMenu(message.id):undefined}><div id={'ik-chat-message-'+message.id} className={`bubble ${message.sender_id===userId?'mine':'theirs'}`}>
           {!message.deleted_for_everyone&&message.reply_to_message_id&&<ReplyQuote
             target={messageById.get(message.reply_to_message_id)??replyTargets[message.reply_to_message_id]??null}
             senderName={!(messageById.get(message.reply_to_message_id)??replyTargets[message.reply_to_message_id])?'Исходное сообщение':((messageById.get(message.reply_to_message_id)??replyTargets[message.reply_to_message_id])?.sender_id===userId)?'Вы':active?.other?.display_name||active?.other?.username||'Собеседник'}
@@ -1558,7 +1621,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
             value={editingMessageBody} onChange={setEditingMessageBody}
             onSave={body=>messageAction(message.id,'edit',body)}
             onCancel={()=>{setEditingMessageId(null);setEditingMessageBody('');}}
-          />:message.body&&<ChatMessageText text={message.body}/>}<time dateTime={message.created_at}>{message.edited_at&&!message.deleted_for_everyone&&<span className="message-edited-label" title="Сообщение отредактировано">изм. · </span>}{message.sender_id===userId&&<span className={"message-receipt"+(message.read_at?" read":"")} title={message.read_at?"Просмотрено":"Отправлено"}>{message.read_at?"✓✓":"✓"}</span>}{new Date(message.created_at).toLocaleTimeString('ru-RU',{hour:'2-digit',minute:'2-digit'})}</time></div><div className="chat-message-tools">{!message.deleted_for_everyone&&<button type="button" className="ik-message-menu-toggle" aria-label="Действия с сообщением" onClick={()=>{setMessageMenuId(message.id);setMessageReactionPicker(null);}}>···</button>}<div className="reaction-bar message-reaction-bar">
+          />:message.body&&<ChatMessageText text={message.body}/>}<time dateTime={message.created_at}>{message.edited_at&&!message.deleted_for_everyone&&<span className="message-edited-label" title="Сообщение отредактировано">изм. · </span>}{message.sender_id===userId&&<span className={"message-receipt"+(message.read_at?" read":"")} title={message.read_at?"Просмотрено":"Отправлено"}>{message.read_at?"✓✓":"✓"}</span>}{new Date(message.created_at).toLocaleTimeString('ru-RU',{hour:'2-digit',minute:'2-digit'})}</time></div><div className="chat-message-tools">{!message.deleted_for_everyone&&<button type="button" id={'ik-message-menu-toggle-'+message.id} className="ik-message-menu-toggle" aria-label="Действия с сообщением" onClick={()=>openMessageMenu(message.id)}>···</button>}<div className="reaction-bar message-reaction-bar">
  {REACTION_EMOJIS.filter(emoji=>messageReactions.some(r=>r.message_id===message.id&&r.emoji===emoji)).map(emoji=><button key={emoji} type="button" className={"reaction-pill"+(messageReactions.some(r=>r.message_id===message.id&&r.user_id===userId&&r.emoji===emoji)?" mine":"")} onClick={()=>void reactToMessage(message.id,emoji)} disabled={sending}>{emoji} <span>{messageReactions.filter(r=>r.message_id===message.id&&r.emoji===emoji).length}</span></button>)}
  <button type="button" className="reaction-add" aria-label="Добавить реакцию" onClick={()=>setMessageReactionPicker(messageReactionPicker===message.id?null:message.id)}>☺ +</button>
  {messageReactionPicker===message.id&&<div className="reaction-picker">{REACTION_EMOJIS.map(emoji=><button type="button" key={emoji} disabled={sending} onClick={()=>void reactToMessage(message.id,emoji)} aria-label={"Реакция "+emoji}>{emoji}</button>)}</div>}
@@ -1599,7 +1662,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
         onSend={()=>{void sendAttachment(pendingAttachment.file,attachmentCaption);}}
       />}
     {menuMessage&&<div className="ik-message-menu-backdrop" onClick={()=>setMessageMenuId(null)}>
-      <div className="ik-message-menu-sheet" role="dialog" aria-modal="true" aria-label="Действия с сообщением" onClick={e=>e.stopPropagation()}>
+      <div ref={messageMenuDialogRef} className="ik-message-menu-sheet" role="dialog" aria-modal="true" aria-label="Действия с сообщением" tabIndex={-1} onClick={e=>e.stopPropagation()}>
         <div className="ik-message-menu-preview">
           <span className="ik-message-menu-preview-name">{menuMessage.sender_id===userId?'Вы':active?.other?.display_name||'Собеседник'}</span>
           <span className="ik-message-menu-preview-text">{menuMessage.body?.slice(0,180)||'Вложение'}</span>
@@ -1609,7 +1672,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
           {REACTION_EMOJIS.slice(0,6).map(emoji=><button type="button" key={emoji} aria-label={'Реакция '+emoji} disabled={sending} onClick={()=>{const id=menuMessage.id;setMessageMenuId(null);void reactToMessage(id,emoji);}}>{emoji}</button>)}
         </div>
         <div className="ik-message-menu-buttons">
-          <button type="button" onClick={()=>replyToMessage(menuMessage)}>
+          <button type="button" data-dialog-initial-focus onClick={()=>replyToMessage(menuMessage)}>
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M10 9 5 14l5 5"/><path d="M5 14h9a5 5 0 0 0 5-5V5"/></svg><span>Ответить</span>
           </button>
           {Boolean(menuMessage.body)&&<button type="button" onClick={()=>{const text=menuMessage.body;setMessageMenuId(null);void navigator.clipboard.writeText(text).then(()=>setNotice('Сообщение скопировано.')).catch(()=>setError('Не удалось скопировать сообщение.'));}}>
