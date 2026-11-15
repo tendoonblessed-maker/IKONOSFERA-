@@ -41,8 +41,8 @@ function required(tokens,name,label){
 
 export function auditTheme(globals,softTheme){
   const root=extractVariables(globals,/:root\s*\{([^}]*)\}/,'root theme');
-  const authenticated=extractVariables(globals,/.messenger\.is-authenticated\s*\{([^}]*)\}/g,'authenticated theme',true);
-  const soft=extractVariables(softTheme,/.messenger\.is-authenticated\s*\{([^}]*)\}/,'soft theme');
+  const authenticated=extractVariables(globals,/\.messenger\.is-authenticated\s*\{([^}]*)\}/g,'authenticated theme',true);
+  const soft=extractVariables(softTheme,/\.messenger\.is-authenticated\s*\{([^}]*)\}/,'soft theme');
   const checks=[];
   const failures=[];
   const add=(label,foreground,background)=>{
