@@ -17,6 +17,15 @@ export function shouldShowWaitingServiceWorkerUpdate(
   return wasControlled && hasWaitingWorker;
 }
 
+/** A newly installed worker is an update only when an older worker already controls this page. */
+export function shouldAnnounceInstalledWorkerUpdate(
+  wasControlled: boolean,
+  workerState: string,
+  hasWaitingWorker: boolean,
+): boolean {
+  return wasControlled && workerState === 'installed' && hasWaitingWorker;
+}
+
 export function shouldCheckServiceWorkerUpdate(state: {
   disposed: boolean;
   controlled: boolean;
