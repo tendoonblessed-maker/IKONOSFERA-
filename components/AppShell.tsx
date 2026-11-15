@@ -13,6 +13,7 @@ import {subscribeDirectChatChanges} from "@/lib/direct-realtime";
 import {subscribeInboxChanges,type InboxChangeKind} from "@/lib/inbox-realtime";
 import {isLatestAccountSnapshot} from "@/lib/inbox-snapshot";
 import {shouldOpenDirectChatSearch} from "@/lib/chat-shortcuts";
+import {getMessageReactionPickerNextIndex,shouldCloseMessageReactionPickerOnKeydown} from "@/lib/message-reaction-picker";
 import {reconcileRecentChannelUpdates,CHANNEL_UPDATE_GRACE_MS,type RecentChannelUpdate} from "@/lib/channel-sync";
 import ChatAttachmentPreview from "@/components/ChatAttachmentPreview";
 import VoiceRecorder from "@/components/VoiceRecorder";
@@ -156,9 +157,42 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
   const composerRef=useRef<HTMLTextAreaElement|null>(null);
   const confirmedMessagesRef=useRef<Map<string,ConfirmedMessage>>(new Map());
   const attachmentDragDepthRef=useRef(0);
+  const messageReactionPickerRef=useRef<HTMLDivElement|null>(null);
+  const messageReactionTriggerRef=useRef<HTMLButtonElement|null>(null);
 
   // In-memory edits belong to one signed-in user; never reuse across accounts.
   useEffect(()=>{recentChannelUpdatesRef.current.clear();},[userId]);
+
+  // Keep the lightweight reaction popover dismissible without making it modal.
+  // Tab may leave naturally; Escape restores the trigger, and outside pointer/focus
+  // closes the popover without stealing focus from the newly selected control.
+  useEffect(()=>{
+    if(!messageReactionPicker)return;
+    const inside=(target:EventTarget|null)=>target instanceof Node&&(
+      Boolean(messageReactionPickerRef.current?.contains(target))||
+      Boolean(messageReactionTriggerRef.current?.contains(target))
+    );
+    const closeOnEscape=(event:KeyboardEvent)=>{
+      if(!shouldCloseMessageReactionPickerOnKeydown(event))return;
+      event.preventDefault();
+      setMessageReactionPicker(null);
+      messageReactionTriggerRef.current?.focus({preventScroll:true});
+    };
+    const closeOnOutsidePointer=(event:PointerEvent)=>{
+      if(!inside(event.target))setMessageReactionPicker(null);
+    };
+    const closeOnOutsideFocus=(event:FocusEvent)=>{
+      if(!inside(event.target))setMessageReactionPicker(null);
+    };
+    document.addEventListener('keydown',closeOnEscape);
+    document.addEventListener('pointerdown',closeOnOutsidePointer);
+    document.addEventListener('focusin',closeOnOutsideFocus);
+    return()=>{
+      document.removeEventListener('keydown',closeOnEscape);
+      document.removeEventListener('pointerdown',closeOnOutsidePointer);
+      document.removeEventListener('focusin',closeOnOutsideFocus);
+    };
+  },[messageReactionPicker]);
 
   useEffect(()=>{
     // Browser online/offline is only a connectivity hint, not a guarantee
@@ -527,6 +561,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
     loadingOlderRef.current=false;
     prependScrollRef.current=null;
     setMessageReactions([]);
+    setMessageReactionPicker(null);
     setSelectedMessages([]);
     setMessageMenuId(null);
     const sync=async(first=false)=>{
@@ -1560,8 +1595,25 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
             onCancel={()=>{setEditingMessageId(null);setEditingMessageBody('');}}
           />:message.body&&<ChatMessageText text={message.body}/>}<time dateTime={message.created_at}>{message.edited_at&&!message.deleted_for_everyone&&<span className="message-edited-label" title="Сообщение отредактировано">изм. · </span>}{message.sender_id===userId&&<span className={"message-receipt"+(message.read_at?" read":"")} title={message.read_at?"Просмотрено":"Отправлено"}>{message.read_at?"✓✓":"✓"}</span>}{new Date(message.created_at).toLocaleTimeString('ru-RU',{hour:'2-digit',minute:'2-digit'})}</time></div><div className="chat-message-tools">{!message.deleted_for_everyone&&<button type="button" className="ik-message-menu-toggle" aria-label="Действия с сообщением" onClick={()=>{setMessageMenuId(message.id);setMessageReactionPicker(null);}}>···</button>}<div className="reaction-bar message-reaction-bar">
  {REACTION_EMOJIS.filter(emoji=>messageReactions.some(r=>r.message_id===message.id&&r.emoji===emoji)).map(emoji=><button key={emoji} type="button" className={"reaction-pill"+(messageReactions.some(r=>r.message_id===message.id&&r.user_id===userId&&r.emoji===emoji)?" mine":"")} onClick={()=>void reactToMessage(message.id,emoji)} disabled={sending}>{emoji} <span>{messageReactions.filter(r=>r.message_id===message.id&&r.emoji===emoji).length}</span></button>)}
- <button type="button" className="reaction-add" aria-label="Добавить реакцию" onClick={()=>setMessageReactionPicker(messageReactionPicker===message.id?null:message.id)}>☺ +</button>
- {messageReactionPicker===message.id&&<div className="reaction-picker">{REACTION_EMOJIS.map(emoji=><button type="button" key={emoji} disabled={sending} onClick={()=>void reactToMessage(message.id,emoji)} aria-label={"Реакция "+emoji}>{emoji}</button>)}</div>}
+ <button type="button" className="reaction-add" aria-label="Добавить реакцию"
+  aria-expanded={messageReactionPicker===message.id}
+  aria-controls={'ik-message-reaction-picker-'+message.id}
+  ref={messageReactionPicker===message.id?messageReactionTriggerRef:undefined}
+  onClick={()=>setMessageReactionPicker(messageReactionPicker===message.id?null:message.id)}>☺ +</button>
+ {messageReactionPicker===message.id&&<div
+   ref={messageReactionPickerRef}
+   id={'ik-message-reaction-picker-'+message.id}
+   className="reaction-picker"
+   role="group"
+   aria-label="Выбрать реакцию"
+   onKeyDown={event=>{
+     if(event.nativeEvent.isComposing||event.nativeEvent.keyCode===229)return;
+     const buttons=Array.from(event.currentTarget.querySelectorAll<HTMLButtonElement>('button:not([disabled])'));
+     const index=event.target instanceof HTMLButtonElement?buttons.indexOf(event.target):-1;
+     const next=getMessageReactionPickerNextIndex(index,event.key,buttons.length);
+     if(next!==null){event.preventDefault();buttons[next]?.focus({preventScroll:true});}
+   }}
+ >{REACTION_EMOJIS.map(emoji=><button type="button" key={emoji} disabled={sending} onClick={()=>void reactToMessage(message.id,emoji)} aria-label={"Реакция "+emoji}>{emoji}</button>)}</div>}
  </div></div></SwipeReplyMessage></Fragment>)}<div ref={messageEnd}/></div>
       {showJumpToLatest&&!activeChatLoading&&<button type="button" className={"ik-jump-to-latest"+(replyingTo?.chatId===selected?" with-reply":"")} aria-label="Перейти к последним сообщениям" title="К последним сообщениям"
         onClick={()=>{const history=conversationHistoryRef.current;if(history){chatAutoScrollRef.current=true;history.scrollTop=history.scrollHeight;}setShowJumpToLatest(false);}}>
