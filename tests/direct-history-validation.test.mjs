@@ -10,9 +10,9 @@ import {
 const CHAT='11111111-1111-4111-8111-111111111111';
 const OTHER_CHAT='22222222-2222-4222-8222-222222222222';
 const USER='33333333-3333-4333-8333-333333333333';
-const ID_A='00000000-0000-4000-8000-000000000001';
-const ID_B='00000000-0000-4000-8000-000000000002';
-const ID_C='00000000-0000-4000-8000-000000000003';
+const ID_A='aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1';
+const ID_B='bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb2';
+const ID_C='cccccccc-cccc-4ccc-8ccc-ccccccccccc3';
 const STAMP='2026-11-15T15:00:00.123456Z';
 
 function row(id=ID_A,created_at=STAMP,extra={}){
@@ -78,6 +78,8 @@ test('older pages must be below their cursor and cannot repeat an exact boundary
  const cursor={id:ID_B,created_at:STAMP};
  const valid=[row(ID_A,'2026-11-15T14:59:59Z')];
  assert.deepEqual(validateDirectMessagePage(valid,CHAT,cursor),valid);
+ const exactOlder=[row(ID_A,STAMP)];
+ assert.deepEqual(validateDirectMessagePage(exactOlder,CHAT,cursor),exactOlder);
  assert.throws(()=>validateDirectMessagePage([
   row(ID_C,'2026-11-15T15:00:01Z')
  ],CHAT,cursor),/историю переписки/);
