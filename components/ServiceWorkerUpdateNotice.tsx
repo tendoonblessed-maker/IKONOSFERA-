@@ -12,6 +12,7 @@ import {
 
 export default function ServiceWorkerUpdateNotice() {
   const [available, setAvailable] = useState(false);
+  const [composing, setComposing] = useState(false);
 
   useEffect(() => {
     if (!('serviceWorker' in navigator) || !window.isSecureContext) return;
@@ -55,7 +56,12 @@ export default function ServiceWorkerUpdateNotice() {
     const onVisibilityChange = () => checkForUpdate();
     const onOnline = () => checkForUpdate();
     const onFocus = () => checkForUpdate();
+    // Do not let the update button interrupt an active IME pre-edit session.
+    const onCompositionStart = () => setComposing(true);
+    const onCompositionEnd = () => setComposing(false);
 
+    document.addEventListener('compositionstart', onCompositionStart, true);
+    document.addEventListener('compositionend', onCompositionEnd, true);
     navigator.serviceWorker.addEventListener('controllerchange', onControllerChange);
     document.addEventListener('visibilitychange', onVisibilityChange);
     window.addEventListener('online', onOnline);
@@ -73,6 +79,8 @@ export default function ServiceWorkerUpdateNotice() {
 
     return () => {
       disposed = true;
+      document.removeEventListener('compositionstart', onCompositionStart, true);
+      document.removeEventListener('compositionend', onCompositionEnd, true);
       navigator.serviceWorker.removeEventListener('controllerchange', onControllerChange);
       document.removeEventListener('visibilitychange', onVisibilityChange);
       window.removeEventListener('online', onOnline);
@@ -85,12 +93,17 @@ export default function ServiceWorkerUpdateNotice() {
   return (
     <aside className="ik-sw-update-notice" role="status" aria-live="polite">
       <span>Доступна новая версия IKONOSFERA</span>
-      <button type="button" onClick={() => reloadAfterPersistingDrafts(
-        () => window.dispatchEvent(new Event(BEFORE_APP_UPDATE_EVENT)),
-        () => window.location.reload(),
-      )}>
-        Обновить
+      <button type="button" disabled={composing}
+        aria-describedby={composing ? 'ik-sw-update-composition-hint' : undefined}
+        onClick={() => reloadAfterPersistingDrafts(
+          () => window.dispatchEvent(new Event(BEFORE_APP_UPDATE_EVENT)),
+          () => window.location.reload(),
+        )}>
+        {composing ? 'Завершите ввод…' : 'Обновить'}
       </button>
+      {composing && <span id="ik-sw-update-composition-hint">
+        Завершите ввод, затем обновите приложение.
+      </span>}
     </aside>
   );
 }
