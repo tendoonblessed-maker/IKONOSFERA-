@@ -1,5 +1,6 @@
 /* Dependency-free Supabase Auth + PostgREST client.
    Never put a service-role or database password in NEXT_PUBLIC_* variables. */
+import {validateChatPreviewRows} from './chat-preview-validation.js';
 export const apiUrl = (process.env.NEXT_PUBLIC_SUPABASE_URL ?? '').replace(/\/$/, '');
 const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? '';
 export const backendReady = Boolean(apiUrl && anonKey);
@@ -158,7 +159,8 @@ export type ChatPreview = {
  unread_count:number;
 };
 export async function listChatPreviews(token:string):Promise<ChatPreview[]>{
- return http<ChatPreview[]>('/rest/v1/rpc/list_chat_previews',{token});
+ const rows=await http<unknown>('/rest/v1/rpc/list_chat_previews',{token});
+ return validateChatPreviewRows(rows);
 }
 
 /** One-way saved contacts. Entries survive removing or hiding a chat. */
