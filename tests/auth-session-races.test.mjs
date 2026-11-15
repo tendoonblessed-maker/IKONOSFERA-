@@ -3,6 +3,7 @@ import {test} from 'node:test';
 import {readFileSync} from 'node:fs';
 import vm from 'node:vm';
 import ts from 'typescript';
+import {retryTransientHistoryRead} from '../lib/history-retry.js';
 
 const source=readFileSync(new URL('../lib/supabase-rest.ts',import.meta.url),'utf8');
 const compiled=ts.transpileModule(source,{
@@ -28,6 +29,7 @@ function scenario(handler){
  const ctx={
   exports:{},process:{env:{NEXT_PUBLIC_SUPABASE_URL:'https://test.supabase.invalid',NEXT_PUBLIC_SUPABASE_ANON_KEY:'anon-test'}},
   window:{},localStorage:storage,AbortSignal,URLSearchParams,
+  require(name){assert.equal(name,'./history-retry.js');return {retryTransientHistoryRead};},
   fetch:(url,options)=>{
    calls.push({url,options});
    return handler(url,options,calls.length);
