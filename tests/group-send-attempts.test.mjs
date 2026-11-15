@@ -92,6 +92,32 @@ test('storage unavailable does not prevent same-runtime retries',()=>{
  }finally{Object.defineProperty(globalThis,'window',{configurable:true,value:prev});}
 });
 
+test('sign-out continues clearing later owned attempts when one storage removal fails',()=>{
+ const prefix='ikonosfera-group-send-v1:';
+ for(const key of [...memory.keys()])if(key.startsWith(prefix+OWNER+':'))memory.delete(key);
+ const first=prefix+OWNER+':'+GROUP;
+ const second=prefix+OWNER+':'+GROUP_B;
+ const other=prefix+OTHER+':'+GROUP;
+ const record=id=>JSON.stringify({id,body:'pending',createdAt:Date.now()});
+ memory.set(first,record('55555555-5555-4555-8555-555555555555'));
+ memory.set(second,record('66666666-6666-4666-8666-666666666666'));
+ memory.set(other,record('77777777-7777-4777-8777-777777777777'));
+ const originalRemove=storage.removeItem;
+ const attempted=[];
+ storage.removeItem=key=>{
+  attempted.push(key);
+  if(key===first)throw Error('simulated storage removal failure');
+  memory.delete(key);
+ };
+ try{
+  assert.doesNotThrow(()=>clearAllGroupSendAttempts(OWNER));
+  assert.deepEqual(attempted,[first,second]);
+  assert.equal(memory.has(first),true,'a failed browser removal cannot be claimed as cleared');
+  assert.equal(memory.has(second),false,'later owned attempts must still be removed');
+  assert.equal(memory.has(other),true,'another account remains isolated');
+ }finally{storage.removeItem=originalRemove;}
+});
+
 test('group send API uses INSERT DO NOTHING + read back the original ID under RLS',()=>{
  const api=source('lib/groups.ts');
  const method=api.slice(api.indexOf('export async function sendGroupMessage('),api.indexOf('export async function listGroupOverviews('));
