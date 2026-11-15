@@ -2,8 +2,10 @@
 
 import { useEffect, useState } from 'react';
 import {
+  BEFORE_APP_UPDATE_EVENT,
   controllerChangeResult,
   createServiceWorkerUpdateChecker,
+  reloadAfterPersistingDrafts,
   shouldCheckServiceWorkerUpdate,
   shouldShowWaitingServiceWorkerUpdate,
 } from '@/lib/service-worker-update';
@@ -83,7 +85,10 @@ export default function ServiceWorkerUpdateNotice() {
   return (
     <aside className="ik-sw-update-notice" role="status" aria-live="polite">
       <span>Доступна новая версия IKONOSFERA</span>
-      <button type="button" onClick={() => window.location.reload()}>
+      <button type="button" onClick={() => reloadAfterPersistingDrafts(
+        () => window.dispatchEvent(new Event(BEFORE_APP_UPDATE_EVENT)),
+        () => window.location.reload(),
+      )}>
         Обновить
       </button>
     </aside>

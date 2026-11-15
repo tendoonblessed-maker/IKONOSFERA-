@@ -2,13 +2,22 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 import {
+  BEFORE_APP_UPDATE_EVENT,
   controllerChangeResult,
   createServiceWorkerUpdateChecker,
+  reloadAfterPersistingDrafts,
   shouldCheckServiceWorkerUpdate,
   shouldShowWaitingServiceWorkerUpdate,
 } from '../lib/service-worker-update.ts';
 
 const load=(path)=>readFileSync(new URL('../'+path,import.meta.url),'utf8');
+
+test('the update action flushes composer drafts synchronously before reload',()=>{
+  const calls=[];
+  reloadAfterPersistingDrafts(()=>calls.push('persist'),()=>calls.push('reload'));
+  assert.deepEqual(calls,['persist','reload']);
+  assert.equal(BEFORE_APP_UPDATE_EVENT,'ikonosfera:before-app-update');
+});
 
 test('first Service Worker control is silent and a later controller change announces an update',()=>{
   const first=controllerChangeResult(false);
@@ -71,6 +80,20 @@ test('update notice registers the worker and rechecks after resume or connectivi
   assert.match(ui,/window\.location\.reload\(\)/);
   assert.match(ui,/role="status"/);
   assert.match(ui,/aria-live="polite"/);
+});
+
+test('both active chat composers flush their DOM value before a PWA update',()=>{
+  const shell=load('components/AppShell.tsx');
+  const group=load('components/GroupPanel.tsx');
+  const ui=load('components/ServiceWorkerUpdateNotice.tsx');
+  assert.ok(ui.includes('reloadAfterPersistingDrafts('));
+  assert.ok(ui.includes('new Event(BEFORE_APP_UPDATE_EVENT)'));
+  assert.ok(shell.includes('addEventListener(BEFORE_APP_UPDATE_EVENT,persistActiveDirectDraft)'));
+  assert.ok(shell.includes('updateChatDraft(chatId,field.value)'));
+  assert.ok(shell.includes('removeEventListener(BEFORE_APP_UPDATE_EVENT,persistActiveDirectDraft)'));
+  assert.ok(group.includes('addEventListener(BEFORE_APP_UPDATE_EVENT,persistActiveGroupDraft)'));
+  assert.ok(group.includes('onDraftChange(group.id,field.value)'));
+  assert.ok(group.includes('removeEventListener(BEFORE_APP_UPDATE_EVENT,persistActiveGroupDraft)'));
 });
 
 test('layout owns one update notice and AppShell no longer registers a duplicate worker',()=>{

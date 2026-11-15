@@ -7,6 +7,7 @@ import {mergeConfirmedRecentPage,prependEarlierPage,CONFIRMED_MESSAGE_GRACE_MS,t
 import {readChatDrafts,writeChatDrafts,clearChatDrafts,updateChatDraftEntry,type ChatDrafts} from "@/lib/chat-drafts";
 import {readGroupDrafts,writeGroupDraft,clearGroupDrafts,type GroupDrafts} from "@/lib/group-drafts";
 import {clearAllGroupSendAttempts} from "@/lib/group-send-attempts";
+import {BEFORE_APP_UPDATE_EVENT} from '@/lib/service-worker-update';
 import ChatMedia from "@/components/ChatMedia";
 import ChatMessageText from "@/components/ChatMessageText";
 import {subscribeDirectChatChanges} from "@/lib/direct-realtime";
@@ -217,6 +218,19 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
     setDraftPreviews(next);
     writeChatDrafts(userId,next);
   }
+
+  // Flush the visible composer synchronously before a user-triggered Service
+  // Worker reload; the DOM can be ahead of React state during IME composition.
+  useEffect(()=>{
+    const persistActiveDirectDraft=()=>{
+      const chatId=selectedRef.current;
+      const field=composerRef.current;
+      if(!chatId||!field)return;
+      updateChatDraft(chatId,field.value);
+    };
+    window.addEventListener(BEFORE_APP_UPDATE_EVENT,persistActiveDirectDraft);
+    return()=>window.removeEventListener(BEFORE_APP_UPDATE_EVENT,persistActiveDirectDraft);
+  },[userId]);
 
   useEffect(()=>{
     selectedRef.current=selected;

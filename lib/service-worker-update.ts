@@ -1,3 +1,11 @@
+export const BEFORE_APP_UPDATE_EVENT = 'ikonosfera:before-app-update';
+
+/** Run synchronous draft persistence before navigating to the new app shell. */
+export function reloadAfterPersistingDrafts(persist: () => void, reload: () => void): void {
+  persist();
+  reload();
+}
+
 export function controllerChangeResult(wasControlled: boolean) {
   return { controlled: true as const, updateAvailable: wasControlled };
 }
