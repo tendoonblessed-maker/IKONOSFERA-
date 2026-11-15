@@ -13,6 +13,7 @@ import {subscribeDirectChatChanges} from "@/lib/direct-realtime";
 import {subscribeInboxChanges,type InboxChangeKind} from "@/lib/inbox-realtime";
 import {isLatestAccountSnapshot} from "@/lib/inbox-snapshot";
 import {shouldOpenDirectChatSearch} from "@/lib/chat-shortcuts";
+import {handleInstallHelpDialogKeydown} from '@/lib/install-help-dialog';
 import {reconcileRecentChannelUpdates,CHANNEL_UPDATE_GRACE_MS,type RecentChannelUpdate} from "@/lib/channel-sync";
 import ChatAttachmentPreview from "@/components/ChatAttachmentPreview";
 import VoiceRecorder from "@/components/VoiceRecorder";
@@ -134,6 +135,27 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
   const [notice,setNotice]=useState('');
   const [installHelp,setInstallHelp]=useState(false);
   const [installPrompt,setInstallPrompt]=useState<(Event & {prompt:()=>Promise<void>;userChoice:Promise<{outcome:string}>})|null>(null);
+  const installHelpDialogRef=useRef<HTMLDivElement|null>(null);
+  const installHelpActionRef=useRef<HTMLButtonElement|null>(null);
+  useEffect(()=>{
+    if(!installHelp)return;
+    const previousFocus=document.activeElement instanceof HTMLElement?document.activeElement:null;
+    const focusTarget=installHelpActionRef.current??installHelpDialogRef.current;
+    focusTarget?.focus({preventScroll:true});
+    const onKeyDown=(event:KeyboardEvent)=>handleInstallHelpDialogKeydown(event,focusTarget,()=>setInstallHelp(false));
+    const dialog=installHelpDialogRef.current;
+    const onFocusIn=(event:FocusEvent)=>{
+      const target=event.target;
+      if(dialog&&target instanceof Node&&!dialog.contains(target))focusTarget?.focus({preventScroll:true});
+    };
+    document.addEventListener('keydown',onKeyDown);
+    document.addEventListener('focusin',onFocusIn);
+    return()=>{
+      document.removeEventListener('keydown',onKeyDown);
+      document.removeEventListener('focusin',onFocusIn);
+      if(previousFocus?.isConnected)previousFocus.focus({preventScroll:true});
+    };
+  },[installHelp]);
   const messageEnd=useRef<HTMLDivElement|null>(null);
   const conversationHistoryRef=useRef<HTMLDivElement|null>(null);
   const chatAutoScrollRef=useRef(true);
@@ -1633,7 +1655,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
       </div>
     </div>}
     {(error||notice)&&<div role="status" className={`toast ${error?'toast-error':notice==='Ссылка скопирована!'?'toast-copy-success':''}`}><span>{error||notice}</span><button aria-label="Закрыть уведомление" onClick={()=>{setError('');setNotice('');}}>×</button></div>}
-    {installHelp&&<div className="install-backdrop" role="dialog" aria-modal="true" aria-label="Установка приложения"><div className="install-card"><h2>Установить IKONOSFERA</h2><p>{platform.ios?'Открой страницу в Safari → «Поделиться» → «На экран Домой» → «Добавить».':'В Chrome на Android открой меню ⋮ и выбери «Установить приложение» или «Добавить на главный экран».'}</p><button className="accent-button" onClick={()=>setInstallHelp(false)}>Понятно</button></div></div>}
+    {installHelp&&<div className="install-backdrop" onClick={event=>{if(event.target===event.currentTarget)setInstallHelp(false);}}><div ref={installHelpDialogRef} className="install-card" role="dialog" aria-modal="true" aria-labelledby="ik-install-help-title" aria-describedby="ik-install-help-description" tabIndex={-1}><h2 id="ik-install-help-title">Установить IKONOSFERA</h2><p id="ik-install-help-description">{platform.ios?'Открой страницу в Safari → «Поделиться» → «На экран Домой» → «Добавить».':'В Chrome на Android открой меню ⋮ и выбери «Установить приложение» или «Добавить на главный экран».'}</p><button ref={installHelpActionRef} className="accent-button" onClick={()=>setInstallHelp(false)}>Понятно</button></div></div>}
     {loading&&<div className="initializing"><img src="/branding/ikonosfera.svg" alt="IKONOSFERA © BY TENDO888" width={1266} height={734}/><span>Загружаем переписки…</span></div>}
   </div>;
 }
