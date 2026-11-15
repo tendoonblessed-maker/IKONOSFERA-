@@ -75,6 +75,43 @@ test('a rejected update check is swallowed and does not prevent a later retry',a
   assert.equal(calls,2);
 });
 
+test('a stalled browser update check times out and permits a later retry',async()=>{
+  const run=createServiceWorkerUpdateChecker(8);
+  let calls=0;
+  const stalled=run(()=>{calls++;return new Promise(()=>{});});
+  await stalled;
+  assert.equal(calls,1);
+  await run(async()=>{calls++;});
+  assert.equal(calls,2);
+});
+
+test('a late settlement from a timed-out check cannot clear a newer in-flight check',async()=>{
+  const run=createServiceWorkerUpdateChecker(8);
+  let resolveFirst;
+  let resolveSecond;
+  let calls=0;
+
+  const first=run(()=>{calls++;return new Promise(resolve=>{resolveFirst=resolve;});});
+  await Promise.resolve();
+  await first;
+
+  const second=run(()=>{calls++;return new Promise(resolve=>{resolveSecond=resolve;});});
+  await Promise.resolve();
+  assert.equal(calls,2);
+
+  resolveFirst();
+  await Promise.resolve();
+  await Promise.resolve();
+
+  const overlapping=run(async()=>{calls++;});
+  assert.strictEqual(overlapping,second,
+    'the late first completion must not release the second request slot');
+  assert.equal(calls,2);
+
+  resolveSecond();
+  await second;
+});
+
 test('update notice registers the worker and rechecks after resume or connectivity recovery',()=>{
   const ui=load('components/ServiceWorkerUpdateNotice.tsx');
   assert.match(ui,/navigator\.serviceWorker\.register\('\/sw\.js'\)/);
