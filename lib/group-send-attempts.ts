@@ -75,9 +75,18 @@ export function clearAllGroupSendAttempts(owner:string):void{
   if(!s)return;
   const targets:string[]=[];
   for(let i=0;i<s.length;i++){
-   const k=s.key(i);
-   if(k?.startsWith(prefix))targets.push(k);
+   try{
+    const k=s.key(i);
+    if(k?.startsWith(prefix))targets.push(k);
+   }catch{
+    // A broken storage entry must not prevent inspecting later keys.
+   }
   }
-  for(const k of targets)s.removeItem(k);
+  for(const k of targets){
+   try{s.removeItem(k);}
+   catch{
+    // Best-effort sign-out cleanup: continue removing other owned attempts.
+   }
+  }
  }catch{}
 }
