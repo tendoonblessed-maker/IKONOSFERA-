@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import vm from 'node:vm';
 import ts from 'typescript';
+import {compareMessageTimestamps} from '../lib/message-order.js';
 
 function compile(sourceFile,bindings={}){
   const source=readFileSync(new URL('../'+sourceFile,import.meta.url),'utf8');
