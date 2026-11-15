@@ -1,9 +1,9 @@
 import type {ChatMessage} from './supabase-rest';
+import {compareMessageTimestamps} from './message-order';
 
 /** Server orders pages by created_at.desc,id.desc; UI displays ascending. */
 export function compareMessages(a:ChatMessage,b:ChatMessage):number{
-  const timestampDiff=Date.parse(a.created_at)-Date.parse(b.created_at);
-  return timestampDiff||a.id.localeCompare(b.id);
+  return compareMessageTimestamps(a.created_at,b.created_at)||a.id.localeCompare(b.id);
 }
 
 /** A recent poll is authoritative for its page, but must not erase older pages. */
