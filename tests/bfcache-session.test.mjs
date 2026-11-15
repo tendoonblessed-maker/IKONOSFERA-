@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
 import {readFileSync} from 'node:fs';
-import {shouldReloadAfterBfcacheRestore} from '../lib/bfcache-session.ts';
+import {shouldReloadAfterBfcacheRestore,shouldClearDraftsAfterBfcacheRestore} from '../lib/bfcache-session.ts';
 
 const session=(access_token,refresh_token)=>({access_token,refresh_token});
 const source=path=>readFileSync(new URL('../'+path,import.meta.url),'utf8');
@@ -33,4 +33,37 @@ test('AppShell checks session identity on persisted pageshow and revalidates unc
   assert.match(shell,/if\(document\.visibilityState==='visible'\)void run\(true\)/);
   assert.match(shell,/window\.addEventListener\('pageshow',onPageShow\)/);
   assert.match(shell,/window\.removeEventListener\('pageshow',onPageShow\)/);
+});
+
+const ALICE='11111111-1111-4111-8111-111111111111';
+const BOB='22222222-2222-4222-8222-222222222222';
+const token=sub=>'header.'+Buffer.from(JSON.stringify({sub})).toString('base64url')+'.signature';
+
+test('BFCache account switch clears drafts but same-account token rotation preserves them',()=>{
+  assert.equal(shouldClearDraftsAfterBfcacheRestore(true,ALICE,token(ALICE)),false);
+  assert.equal(shouldClearDraftsAfterBfcacheRestore(true,ALICE,token(BOB)),true);
+  assert.equal(shouldClearDraftsAfterBfcacheRestore(true,ALICE,null),true);
+});
+
+test('BFCache draft cleanup fails closed for unreadable or malformed next identities',()=>{
+  for(const value of [undefined,'not-a-jwt','header.e30.signature',token('not-a-uuid')]){
+    assert.equal(shouldClearDraftsAfterBfcacheRestore(true,ALICE,value),true);
+  }
+  assert.equal(shouldClearDraftsAfterBfcacheRestore(true,'not-a-uuid',token(BOB)),true);
+  assert.equal(shouldClearDraftsAfterBfcacheRestore(false,ALICE,token(BOB)),false);
+  assert.equal(shouldClearDraftsAfterBfcacheRestore(true,'',null),false);
+});
+
+test('AppShell clears direct drafts, group drafts and send attempts before BFCache reload',()=>{
+  const shell=source('components/AppShell.tsx');
+  const start=shell.indexOf('const onPageShow=(event:PageTransitionEvent)=>{');
+  const end=shell.indexOf("window.location.reload();",start);
+  assert.ok(start>=0&&end>start,'BFCache pageshow handler exists');
+  const handler=shell.slice(start,end);
+  assert.match(handler,/shouldClearDraftsAfterBfcacheRestore\(event\.persisted,userId,stored\?\.access_token\)/);
+  const clears=['clearChatDrafts(userId)','clearGroupDrafts(userId)','clearAllGroupSendAttempts(userId)'];
+  for(const clear of clears){
+    assert.ok(handler.indexOf(clear)>=0,'missing '+clear);
+  }
+  assert.ok(Math.max(...clears.map(clear=>handler.indexOf(clear)))<handler.indexOf('window.location.reload'));
 });
