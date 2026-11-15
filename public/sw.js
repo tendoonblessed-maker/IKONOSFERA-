@@ -3,18 +3,38 @@ const CACHE_NAME = "ikonosfera-shell-v6";
 const OFFLINE_URL = "/offline.html";
 
 self.addEventListener("install", (event) => {
-  event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => cache.addAll([OFFLINE_URL, "/icon-192.png", "/status-emojis.webp?v=2"]))
-  );
-  self.skipWaiting();
+  event.waitUntil((async () => {
+    // Pre-caching is an offline enhancement, not a prerequisite for installing
+    // the worker. Storage restrictions must not prevent the app from updating.
+    try {
+      const cache = await caches.open(CACHE_NAME);
+      await cache.addAll([OFFLINE_URL, "/icon-192.png", "/status-emojis.webp?v=2"]);
+    } catch {
+      // The worker can still serve network requests without an offline cache.
+    }
+    await self.skipWaiting();
+  })());
 });
 
 self.addEventListener("activate", (event) => {
-  event.waitUntil(
-    caches.keys().then((names) =>
-      Promise.all(names.filter((name) => name.startsWith("ikonosfera-") && name !== CACHE_NAME).map((name) => caches.delete(name)))
-    ).then(() => self.clients.claim())
-  );
+  event.waitUntil((async () => {
+    // Old-cache cleanup is best-effort. A failed delete must not prevent this
+    // worker from claiming clients and serving the current app version.
+    try {
+      const names = await caches.keys();
+      const staleNames = names.filter((name) => name.startsWith("ikonosfera-") && name !== CACHE_NAME);
+      await Promise.all(staleNames.map(async (name) => {
+        try {
+          await caches.delete(name);
+        } catch {
+          // Continue cleaning other old caches and claim clients below.
+        }
+      }));
+    } catch {
+      // Cache enumeration may be unavailable in private/restricted contexts.
+    }
+    await self.clients.claim();
+  })());
 });
 
 self.addEventListener("fetch", (event) => {
@@ -52,6 +72,10 @@ self.addEventListener("fetch", (event) => {
   }
   if (request.mode !== "navigate") return;
   event.respondWith(fetch(request).catch(async () => {
-    return (await caches.match(OFFLINE_URL)) ?? Response.error();
+    try {
+      return (await caches.match(OFFLINE_URL)) ?? Response.error();
+    } catch {
+      return Response.error();
+    }
   }));
 });
