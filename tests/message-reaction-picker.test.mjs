@@ -36,7 +36,7 @@ test('message reaction picker exposes its trigger relationship and accessible gr
   assert.match(shell,/aria-expanded=\{messageReactionPicker===message\.id\}/);
   assert.match(shell,/aria-controls=\{'ik-message-reaction-picker-'\+message\.id\}/);
   assert.match(shell,/role="group"\s+aria-label="Выбрать реакцию"/);
-  assert.match(shell,/aria-label="Реакция "\+emoji/);
+  assert.match(shell,/aria-label=\{"Реакция "\+emoji\}/);
 });
 
 test('reaction picker closes on outside pointer or focus and restores focus on Escape',()=>{
@@ -44,7 +44,7 @@ test('reaction picker closes on outside pointer or focus and restores focus on E
   assert.match(shell,/document\.addEventListener\('focusin',closeOnOutsideFocus\)/);
   assert.match(shell,/document\.removeEventListener\('pointerdown',closeOnOutsidePointer\)/);
   assert.match(shell,/document\.removeEventListener\('focusin',closeOnOutsideFocus\)/);
-  assert.match(shell,/messageReactionPickerTriggerRef\.current\?\.focus\(\{preventScroll:true\}\)/);
+  assert.match(shell,/messageReactionTriggerRef\.current\?\.focus\(\{preventScroll:true\}\)/);
   assert.match(shell,/setMessageReactionPicker\(null\);\s*setSelectedMessages\(\[\]\)/);
 });
 
