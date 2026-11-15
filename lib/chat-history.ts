@@ -1,5 +1,5 @@
 import type {ChatMessage} from './supabase-rest';
-import {compareMessageTimestamps} from './message-order';
+import {compareMessageTimestamps} from './message-order.js';
 
 /** Server orders pages by created_at.desc,id.desc; UI displays ascending. */
 export function compareMessages(a:ChatMessage,b:ChatMessage):number{
