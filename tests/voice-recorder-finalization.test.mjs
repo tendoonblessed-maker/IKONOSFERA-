@@ -12,7 +12,7 @@ const compiled=ts.transpileModule(source,{
 }).outputText;
 
 function harness({
- deliverStop=false,mimeDetection='supported',
+ deliverStop=false,mimeDetection='supported',startThrows=false,
  defaultMimeType='audio/webm;codecs=opus',getUserMedia
 }={}){
  const hooks=[];
@@ -89,7 +89,7 @@ function harness({
    this.mimeType=options.mimeType||defaultMimeType;
    recorders.push(this);
   }
-  start(){this.state='recording';}
+  start(){if(startThrows)throw Error('MediaRecorder.start failed');this.state='recording';}
   stop(){
    this.state='inactive';
    if(deliverStop){
@@ -174,11 +174,31 @@ function harness({
  };
  return {
   render,button,pending,fireTimeout,start,clickStart,flush,errors,recorded,tracks,recorders,timers,intervals,
-  document:doc,
+  document:doc,trackListeners,
   emitDocument:name=>documentEvents.get(name)?.(),
   emitWindow:name=>windowEvents.get(name)?.()
  };
 }
+
+
+test('a MediaRecorder.start failure detaches listeners, timers and microphone before returning idle',async()=>{
+ const h=harness({startThrows:true});
+ h.clickStart();
+ await h.flush();
+ assert.equal(h.recorders.length,1);
+ assert.equal(h.recorders[0].state,'inactive');
+ assert.equal(h.tracks[0].stopped,true,'a failed start must release the microphone');
+ assert.equal(h.trackListeners.size,0,'the audio-track ended listener must be detached');
+ assert.equal(h.timers.size,0,'no recording or permission timer may survive');
+ assert.equal(h.intervals.size,0,'no elapsed-time interval may survive');
+ assert.equal(h.recorders[0].ondataavailable,null);
+ assert.equal(h.recorders[0].onstop,null);
+ assert.equal(h.recorders[0].onerror,null);
+ assert.equal(h.recorded.length,0,'a failed start never reaches the attachment preview');
+ assert.equal(h.errors.length,1);
+ assert.match(h.errors[0],/Микрофон недоступен/);
+ assert.equal(h.button(h.render(),'Отменить'),null,'the composer returns to idle');
+});
 
 test('a hung mobile MediaRecorder stop releases microphone and returns to idle',async()=>{
  const h=harness();
