@@ -683,7 +683,15 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
       if(!event.persisted)return;
       // BFCache can suspend timers and miss cross-tab storage events. Compare
       // the complete session identity before retaining this page's private UI.
-      if(shouldReloadAfterBfcacheRestore(event.persisted,session,loadSession())){
+      const stored=loadSession();
+      if(shouldReloadAfterBfcacheRestore(event.persisted,session,stored)){
+        if(shouldClearDraftsAfterBfcacheRestore(event.persisted,userId,stored?.access_token)){
+          // A BFCache page may have missed the cross-tab storage event. Clear
+          // the previous account's tab-local private state before reloading.
+          clearChatDrafts(userId);
+          clearGroupDrafts(userId);
+          clearAllGroupSendAttempts(userId);
+        }
         window.location.reload();
         return;
       }
