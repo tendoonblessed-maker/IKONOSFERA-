@@ -5,7 +5,8 @@ import {
  shouldClosePhotoViewerOnKeydown,
  restorePhotoViewerFocus,
  isPhotoViewerTabStop,
- getPhotoViewerTabTarget
+ getPhotoViewerTabTarget,
+ getPhotoViewerFocusRecoveryTarget
 } from '../lib/photo-viewer-a11y.ts';
 
 const key=(overrides={})=>({key:'Escape',isComposing:false,keyCode:27,...overrides});
@@ -80,4 +81,16 @@ test('photo modal applies the filtered focus trap and focuses the dialog fallbac
  assert.match(ui,/tabIndex=\{-1\}/);
  assert.match(ui,/document\.addEventListener\('keydown',handleKeyboard\)/);
  assert.match(ui,/aria-modal="true"/);
+});
+
+test('programmatic focus outside the photo modal returns to a visible control or the dialog',()=>{
+ const first={},second={},dialog={};
+ assert.equal(getPhotoViewerFocusRecoveryTarget(dialog,[first,second]),first);
+ assert.equal(getPhotoViewerFocusRecoveryTarget(dialog,[]),dialog);
+ const ui=source();
+ assert.match(ui,/document\\.addEventListener\\('focusin',handleFocusIn\\)/);
+ assert.match(ui,/document\\.removeEventListener\\('focusin',handleFocusIn\\)/);
+ assert.match(ui,/event\\.target instanceof Node\\).*dialog\\.contains\\(event\\.target\\)/);
+ assert.match(ui,/getPhotoViewerFocusRecoveryTarget\\(dialog,getTabStops\\(\\)\\)/);
+ assert.match(ui,/target\\.focus\\(\\{preventScroll:true\\}\\)/);
 });

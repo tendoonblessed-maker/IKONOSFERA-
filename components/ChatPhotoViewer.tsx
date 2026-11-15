@@ -3,7 +3,7 @@
 import {useEffect,useRef} from 'react';
 import {createPortal} from 'react-dom';
 import {
-  getPhotoViewerTabTarget,isPhotoViewerTabStop,
+  getPhotoViewerTabTarget,getPhotoViewerFocusRecoveryTarget,isPhotoViewerTabStop,
   restorePhotoViewerFocus,shouldClosePhotoViewerOnKeydown
 } from '@/lib/photo-viewer-a11y';
 
@@ -28,6 +28,14 @@ export default function ChatPhotoViewer({src,onClose,onImageError}:Props){
     document.body.style.overflow='hidden';
     closeButtonRef.current?.focus();
 
+    const getTabStops=()=>{
+      const dialog=dialogRef.current;
+      if(!dialog)return [];
+      // Follow the visible tab order, including native media controls.
+      return Array.from(dialog.querySelectorAll<HTMLElement>(
+        'a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),audio[controls],video[controls],[tabindex]'
+      )).filter(isPhotoViewerTabStop);
+    };
     const handleKeyboard=(event:KeyboardEvent)=>{
       if(shouldClosePhotoViewerOnKeydown(event)){
         event.preventDefault();
@@ -37,19 +45,24 @@ export default function ChatPhotoViewer({src,onClose,onImageError}:Props){
       if(event.key!=='Tab')return;
       const dialog=dialogRef.current;
       if(!dialog)return;
-      // Follow the visible tab order; native media controls are included and
-      // hidden/disabled descendants are excluded before choosing a wrap target.
-      const controls=Array.from(dialog.querySelectorAll<HTMLElement>(
-        'a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),audio[controls],video[controls],[tabindex]'
-      )).filter(isPhotoViewerTabStop);
-      const target=getPhotoViewerTabTarget(document.activeElement,dialog,controls,event.shiftKey);
+      const target=getPhotoViewerTabTarget(document.activeElement,dialog,getTabStops(),event.shiftKey);
       if(target){
         event.preventDefault();
         target.focus({preventScroll:true});
       }
     };
+    // aria-modal communicates the boundary to assistive technology; this
+    // guard also contains programmatic focus changes made by the page itself.
+    const handleFocusIn=(event:FocusEvent)=>{
+      const dialog=dialogRef.current;
+      if(!dialog||!(event.target instanceof Node)||dialog.contains(event.target))return;
+      const target=getPhotoViewerFocusRecoveryTarget(dialog,getTabStops());
+      target.focus({preventScroll:true});
+    };
+    document.addEventListener('focusin',handleFocusIn);
     document.addEventListener('keydown',handleKeyboard);
     return()=>{
+      document.removeEventListener('focusin',handleFocusIn);
       document.removeEventListener('keydown',handleKeyboard);
       document.body.style.overflow=previousOverflow;
       restorePhotoViewerFocus(previousFocus);

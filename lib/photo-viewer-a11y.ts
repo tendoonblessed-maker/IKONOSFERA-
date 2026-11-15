@@ -41,3 +41,12 @@ export function getPhotoViewerTabTarget(
  if(!shiftKey&&(active===last||!dialog.contains(active)))return first;
  return null;
 }
+
+
+/** Keep programmatic focus inside the modal, even when no controls are available. */
+export function getPhotoViewerFocusRecoveryTarget(
+ dialog:HTMLElement,
+ controls:readonly HTMLElement[]
+):HTMLElement{
+ return controls[0]??dialog;
+}
