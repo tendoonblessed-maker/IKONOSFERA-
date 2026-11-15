@@ -26,14 +26,13 @@ export function contrastRatio(foreground,background){
 }
 
 function extractVariables(source,pattern,label,selectLast=false){
-  const matches=[...source.matchAll(pattern)];
-  const candidates=selectLast?matches.filter(item=>/--bg\\s*:/.test(item[1])):matches;
+  const matches=pattern.global?[...source.matchAll(pattern)]:[source.match(pattern)].filter(Boolean);
+  const candidates=selectLast?matches.filter(item=>/--bg\s*:/.test(item[1])):matches;
   const match=selectLast?candidates.at(-1):candidates[0];
   if(!match)throw new Error('Cannot find CSS token block: '+label);
   return Object.fromEntries([...match[1].matchAll(/(--[a-z0-9-]+)\s*:\s*(#[0-9a-f]{3,6})\b/gi)]
     .map(item=>[item[1],item[2]]));
 }
-
 function required(tokens,name,label){
   const value=tokens[name];
   if(!value)throw new Error('Missing '+name+' in '+label);
