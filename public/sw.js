@@ -18,16 +18,18 @@ self.addEventListener("install", (event) => {
 
 self.addEventListener("activate", (event) => {
   event.waitUntil((async () => {
-    // Old-cache cleanup is best-effort. A failed delete must not prevent this
-    // worker from claiming clients and serving the current app version.
+    // Only retire previous app-shell versions. Other caches on this origin may
+    // belong to independently deployed features and must remain untouched.
     try {
       const names = await caches.keys();
-      const staleNames = names.filter((name) => name.startsWith("ikonosfera-") && name !== CACHE_NAME);
+      const staleNames = names.filter((name) =>
+        /^ikonosfera-shell-v\d+$/.test(name) && name !== CACHE_NAME
+      );
       await Promise.all(staleNames.map(async (name) => {
         try {
           await caches.delete(name);
         } catch {
-          // Continue cleaning other old caches and claim clients below.
+          // Continue cleaning other old shell caches and claim clients below.
         }
       }));
     } catch {
