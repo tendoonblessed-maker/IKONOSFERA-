@@ -12,7 +12,7 @@ import ChatMessageText from "@/components/ChatMessageText";
 import {subscribeDirectChatChanges} from "@/lib/direct-realtime";
 import {subscribeInboxChanges,type InboxChangeKind} from "@/lib/inbox-realtime";
 import {isLatestAccountSnapshot} from "@/lib/inbox-snapshot";
-import {shouldReloadAfterBfcacheRestore} from "@/lib/bfcache-session";
+import {shouldReloadAfterBfcacheRestore,shouldClearDraftsAfterBfcacheRestore} from "@/lib/bfcache-session";
 import {shouldOpenDirectChatSearch} from "@/lib/chat-shortcuts";
 import {reconcileRecentChannelUpdates,CHANNEL_UPDATE_GRACE_MS,type RecentChannelUpdate} from "@/lib/channel-sync";
 import ChatAttachmentPreview from "@/components/ChatAttachmentPreview";
