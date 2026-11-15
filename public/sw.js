@@ -25,15 +25,29 @@ self.addEventListener("fetch", (event) => {
   if (url.pathname === "/status-emojis.webp") {
     // The single 144KB corrected atlas loads from the local cache after installation.
     // This cache contains only public artwork, never user/profile/chat data.
-    event.respondWith(caches.match(request).then(cached =>
-      cached ?? fetch(request).then(async response => {
-        if (response.ok) {
+    event.respondWith((async () => {
+      // Cache Storage is an optimization only. Safari private mode, quota
+      // pressure, or a transient storage failure must not break the network
+      // response for this public asset.
+      let cached = null;
+      try {
+        cached = await caches.match(request);
+      } catch {
+        // Continue with the network when cache lookup is unavailable.
+      }
+      if (cached) return cached;
+
+      const response = await fetch(request);
+      if (response.ok) {
+        try {
           const cache = await caches.open(CACHE_NAME);
           await cache.put(request, response.clone());
+        } catch {
+          // Do not turn a successful public-asset response into a failed fetch.
         }
-        return response;
-      })
-    ));
+      }
+      return response;
+    })());
     return;
   }
   if (request.mode !== "navigate") return;
