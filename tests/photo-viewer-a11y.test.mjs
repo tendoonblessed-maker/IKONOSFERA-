@@ -91,9 +91,9 @@ test('programmatic focus outside the photo modal returns to a visible control or
  assert.equal(getPhotoViewerFocusRecoveryTarget(dialog,[first,second]),first);
  assert.equal(getPhotoViewerFocusRecoveryTarget(dialog,[]),dialog);
  const ui=source();
- assert.match(ui,/document\\.addEventListener\\('focusin',handleFocusIn\\)/);
- assert.match(ui,/document\\.removeEventListener\\('focusin',handleFocusIn\\)/);
- assert.match(ui,/event\\.target instanceof Node\\).*dialog\\.contains\\(event\\.target\\)/);
- assert.match(ui,/getPhotoViewerFocusRecoveryTarget\\(dialog,getTabStops\\(\\)\\)/);
- assert.match(ui,/target\\.focus\\(\\{preventScroll:true\\}\\)/);
+ assert.ok(ui.includes("document.addEventListener('focusin',handleFocusIn)"));
+ assert.ok(ui.includes("document.removeEventListener('focusin',handleFocusIn)"));
+ assert.ok(ui.includes("event.target instanceof Node)||dialog.contains(event.target)"));
+ assert.ok(ui.includes("getPhotoViewerFocusRecoveryTarget(dialog,getTabStops())"));
+ assert.ok(ui.includes("target.focus({preventScroll:true})"));
 });
