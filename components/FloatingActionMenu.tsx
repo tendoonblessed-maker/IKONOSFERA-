@@ -2,7 +2,7 @@
 
 import {useEffect,useRef,useState,type ReactNode,type KeyboardEvent as ReactKeyboardEvent} from 'react';
 import {autoUpdate,flip,offset,shift,FloatingFocusManager,FloatingPortal,useClick,useDismiss,useFloating,useInteractions,useRole} from '@floating-ui/react';
-import {nextFloatingMenuIndex} from '@/lib/floating-menu-keyboard';
+import {nextFloatingMenuIndex,nextFloatingMenuTypeaheadIndex} from '@/lib/floating-menu-keyboard';
 
 type Props={
   label:string;
@@ -24,6 +24,8 @@ export default function FloatingActionMenu({
 }:Props){
   const [open,setOpen]=useState(false);
   const menuRef=useRef<HTMLDivElement|null>(null);
+  const typeaheadBufferRef=useRef('');
+  const typeaheadTimerRef=useRef<ReturnType<typeof setTimeout>|null>(null);
   const {refs,floatingStyles,context}=useFloating({
     open,onOpenChange:setOpen,placement:'bottom-end',strategy:'fixed',
     whileElementsMounted:autoUpdate,
@@ -49,6 +51,9 @@ export default function FloatingActionMenu({
       item.tabIndex=index===0?0:-1;
     });
     return()=>{
+      if(typeaheadTimerRef.current!==null)clearTimeout(typeaheadTimerRef.current);
+      typeaheadTimerRef.current=null;
+      typeaheadBufferRef.current='';
       original.forEach(({item,role,tabIndex})=>{
         if(role===null)item.removeAttribute('role');
         else item.setAttribute('role',role);
@@ -60,14 +65,43 @@ export default function FloatingActionMenu({
 
   const onMenuKeyDown=(event:ReactKeyboardEvent<HTMLDivElement>)=>{
     const panel=menuRef.current;
-    if(!panel)return;
+    if(!panel||event.nativeEvent.isComposing||event.key==='Process')return;
     const items=Array.from(panel.querySelectorAll<HTMLButtonElement>('button:not(:disabled)'));
     const currentIndex=items.findIndex(item=>item===document.activeElement);
     const nextIndex=nextFloatingMenuIndex(event.key,currentIndex,items.length);
-    if(nextIndex===null)return;
+    if(nextIndex!==null){
+      event.preventDefault();
+      if(typeaheadTimerRef.current!==null)clearTimeout(typeaheadTimerRef.current);
+      typeaheadTimerRef.current=null;
+      typeaheadBufferRef.current='';
+      items.forEach((item,index)=>{item.tabIndex=index===nextIndex?0:-1;});
+      items[nextIndex]?.focus();
+      return;
+    }
+    if(event.altKey||event.ctrlKey||event.metaKey||Array.from(event.key).length!==1||event.key.trim()==='')return;
+    const labels=items.map(item=>item.getAttribute('aria-label')||item.textContent||'');
+    const bufferedQuery=typeaheadBufferRef.current+event.key;
+    let query=bufferedQuery;
+    let typeaheadIndex=nextFloatingMenuTypeaheadIndex(labels,currentIndex,query);
+    if(typeaheadIndex===null&&bufferedQuery!==event.key){
+      query=event.key;
+      typeaheadIndex=nextFloatingMenuTypeaheadIndex(labels,currentIndex,query);
+    }
+    if(typeaheadIndex===null){
+      if(typeaheadTimerRef.current!==null)clearTimeout(typeaheadTimerRef.current);
+      typeaheadTimerRef.current=null;
+      typeaheadBufferRef.current='';
+      return;
+    }
     event.preventDefault();
-    items.forEach((item,index)=>{item.tabIndex=index===nextIndex?0:-1;});
-    items[nextIndex]?.focus();
+    items.forEach((item,index)=>{item.tabIndex=index===typeaheadIndex?0:-1;});
+    items[typeaheadIndex]?.focus();
+    typeaheadBufferRef.current=query;
+    if(typeaheadTimerRef.current!==null)clearTimeout(typeaheadTimerRef.current);
+    typeaheadTimerRef.current=setTimeout(()=>{
+      typeaheadBufferRef.current='';
+      typeaheadTimerRef.current=null;
+    },700);
   };
 
   return <span className={'ik-floating-menu-anchor '+wrapperClassName}>
