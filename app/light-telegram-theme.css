@@ -195,6 +195,14 @@
   border-color:#f0f1f7!important;
   box-shadow:0 2px 10px rgba(78,96,137,.06)!important;
 }
+.messenger.is-authenticated .conversation-history>.chat-message-row>.bubble time{
+  opacity:1!important;
+}
+.messenger.is-authenticated .conversation-history .chat-message-row.mine .bubble time,
+.messenger.is-authenticated .conversation-history .chat-message-row.mine>.bubble time{
+  color:#52638b!important;
+  opacity:1!important;
+}
 .messenger.is-authenticated .ik-chat-loading-bubble,
 .messenger.is-authenticated .ik-chat-loading-avatar{
   background-color:#e8eaf4;
