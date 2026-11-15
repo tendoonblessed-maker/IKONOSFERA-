@@ -34,9 +34,8 @@ export function assertDirectHistoryCursor(chatId:string,before:DirectHistoryCurs
 /**
  * Treat a PostgREST page as one snapshot: never silently filter a malformed,
  * foreign, duplicated, oversized or obviously out-of-order direct-chat page.
- * Same-millisecond fractional ordering is intentionally left to the shared
- * microsecond comparator; this guard avoids false rejection until that
- * comparator is present in the base branch.
+ * Distinct fractional timestamps that collapse to one JavaScript millisecond
+ * are not re-sorted here; the server cursor remains authoritative for those ties.
  */
 export function validateDirectMessagePage<T=Record<string,unknown>>(
  payload:unknown,
