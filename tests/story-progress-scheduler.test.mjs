@@ -29,14 +29,15 @@ function createFrameClock(){
  };
 }
 
-function createHarness({durationMs=6000,visible=true,paused=false}={}){
+function createHarness({durationMs=6000,visible=true,paused=false,reducedMotion=false}={}){
  const clock=createFrameClock();
  const progress=[];
  let completed=0;
- const state={visible,paused};
+ const state={visible,paused,reducedMotion};
  const scheduler=createStoryProgressScheduler({
   durationMs,
   isPaused:()=>state.paused,
+  isMotionReduced:()=>state.reducedMotion,
   isVisible:()=>state.visible,
   requestFrame:callback=>clock.requestFrame(callback),
   cancelFrame:id=>clock.cancelFrame(id),
@@ -78,6 +79,43 @@ test('holding a story pauses its clock and preserves elapsed foreground time',()
  h.scheduler.sync();
  h.clock.step(9000);
  assert.equal(h.progress.at(-1),100/6000);
+ h.clock.step(9100);
+ assert.equal(h.progress.at(-1),200/6000);
+});
+
+test('reduced motion disables automatic story progress until the preference is turned off',()=>{
+ const h=createHarness({reducedMotion:true});
+ assert.equal(h.clock.pending.size,0,'reduced motion must not schedule animation frames');
+ assert.deepEqual(h.progress,[0]);
+ assert.equal(h.completed,0);
+
+ h.state.reducedMotion=false;
+ h.scheduler.sync();
+ assert.equal(h.clock.pending.size,1);
+ h.clock.step(0);
+ h.clock.step(100);
+ assert.equal(h.progress.at(-1),100/6000);
+ assert.equal(h.completed,0);
+});
+
+test('changing to reduced motion pauses an active story without counting paused time',()=>{
+ const h=createHarness();
+ h.clock.step(0);
+ h.clock.step(100);
+ const staleId=[...h.clock.pending.keys()][0];
+ const staleCallback=h.clock.callbacks.get(staleId);
+
+ h.state.reducedMotion=true;
+ h.scheduler.sync();
+ assert.equal(h.clock.pending.size,0,'reduced motion cancels the pending frame');
+ const before=h.progress.length;
+ staleCallback(5000);
+ assert.equal(h.progress.length,before,'a queued frame cannot advance a reduced-motion story');
+
+ h.state.reducedMotion=false;
+ h.scheduler.sync();
+ h.clock.step(9000);
+ assert.equal(h.progress.at(-1),100/6000,'resuming must preserve prior elapsed time');
  h.clock.step(9100);
  assert.equal(h.progress.at(-1),200/6000);
 });
@@ -129,15 +167,23 @@ test('dispose cancels pending work and suppresses a callback already queued by t
  assert.equal(h.completed,0);
 });
 
-test('React story hook syncs the scheduler on visibility changes and unmount',()=>{
+test('React story hook follows reduced-motion changes and cleans up its listener',()=>{
  const hook=readFileSync(new URL('../lib/use-story-progress.ts',import.meta.url),'utf8');
  const strip=readFileSync(new URL('../components/StoriesStrip.tsx',import.meta.url),'utf8');
+ const profile=readFileSync(new URL('../components/ProfilePanel.tsx',import.meta.url),'utf8');
  assert.match(hook,/createStoryProgressScheduler/);
- assert.match(hook,/document\.addEventListener\('visibilitychange',onVisibilityChange\)/);
- assert.match(hook,/scheduler\.sync\(\)/);
- assert.match(hook,/scheduler\.dispose\(\)/);
- assert.match(hook,/window\.requestAnimationFrame/);
- assert.match(hook,/window\.cancelAnimationFrame/);
+ assert.match(hook,/window\\.matchMedia\\('\\(prefers-reduced-motion: reduce\\)'\\)/);
+ assert.match(hook,/isMotionReduced:\\(\\)=>motionReducedRef\\.current/);
+ assert.match(hook,/motionQuery\\.addEventListener\\('change',onMotionChange\\)/);
+ assert.match(hook,/motionQuery\\.removeEventListener\\('change',onMotionChange\\)/);
+ assert.match(hook,/motionQuery\\.addListener\\(onMotionChange\\)/);
+ assert.match(hook,/motionQuery\\.removeListener\\(onMotionChange\\)/);
+ assert.match(hook,/document\\.addEventListener\\('visibilitychange',onVisibilityChange\\)/);
+ assert.match(hook,/scheduler\\.sync\\(\\)/);
+ assert.match(hook,/scheduler\\.dispose\\(\\)/);
+ assert.match(hook,/window\\.requestAnimationFrame/);
+ assert.match(hook,/window\\.cancelAnimationFrame/);
  assert.match(hook,/useLayoutEffect/);
- assert.match(strip,/useStoryProgress\(activeStoryId,\(\)=>next\(\),paused\)/);
+ assert.match(strip,/useStoryProgress\\(activeStoryId,\\(\\)=>next\\(\\),paused\\)/);
+ assert.match(profile,/useStoryProgress\\(activeStory\\?\\.id/);
 });
