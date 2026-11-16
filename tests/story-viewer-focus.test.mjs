@@ -32,12 +32,14 @@ function fixture(customControls,sharedFocused){
     makeControl(focused,'middle'),
     makeControl(focused,'last')
   ];
-  const dialog={
+  const nonTabStop={name:'programmatic-only',tabIndex:-1};
+  let dialog;
+  dialog={
     querySelectorAll(){return controls;},
-    contains(node){return controls.includes(node);},
+    contains(node){return node===dialog||node===nonTabStop||controls.includes(node);},
     focus(){focused.push('dialog');}
   };
-  return {focused,first:controls[0],middle:controls[1],last:controls[2],controls,dialog};
+  return {focused,first:controls[0],middle:controls[1],last:controls[2],controls,dialog,nonTabStop};
 }
 function key(overrides={}){
   return {key:'Tab',shiftKey:false,prevented:false,preventDefault(){this.prevented=true;},...overrides};
@@ -63,6 +65,21 @@ test('story dialog moves focus back inside when it was outside the modal',()=>{
   assert.deepEqual(f.focused,['first']);
   const backward=key({shiftKey:true});
   assert.equal(trapDialogTab(backward,f.dialog,outside),true);
+  assert.deepEqual(f.focused,['first','last']);
+});
+
+test('Tab from the dialog container or a programmatic-only descendant stays in the modal',()=>{
+  const f=fixture();
+  assert.equal(f.dialog.contains(f.nonTabStop),true);
+
+  const fromContainer=key();
+  assert.equal(trapDialogTab(fromContainer,f.dialog,f.dialog),true);
+  assert.equal(fromContainer.prevented,true);
+  assert.deepEqual(f.focused,['first']);
+
+  const fromProgrammaticChild=key({shiftKey:true});
+  assert.equal(trapDialogTab(fromProgrammaticChild,f.dialog,f.nonTabStop),true);
+  assert.equal(fromProgrammaticChild.prevented,true);
   assert.deepEqual(f.focused,['first','last']);
 });
 
