@@ -3,7 +3,7 @@ import {useCallback,useEffect,useRef,useState} from 'react';
 import {addStory,getContactsStories,imageUrl,uploadPhoto,type Story} from '@/lib/social';
 import type {Profile} from '@/lib/supabase-rest';
 import {useStoryProgress} from '@/lib/use-story-progress';
-import {restoreDialogFocus,trapDialogTab} from '@/lib/dialog-focus';
+import {restoreDialogFocus,restoreDialogFocusInside,trapDialogTab} from '@/lib/dialog-focus';
 
 type Person={id:string;name:string;avatar:string|null;stories:Story[]};
 type Props={token:string;userId:string;contacts:Profile[];ownProfile:Profile|null};
