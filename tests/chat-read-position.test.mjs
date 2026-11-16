@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
 import {readFileSync} from 'node:fs';
-import {isDirectChatAtLatest,isDirectChatReadSnapshotCurrent,shouldAcknowledgeDirectChatRead} from '../lib/chat-read-position.ts';
+import {getVisibleUnreadIncomingDirectMessageIds,isDirectChatAtLatest,isDirectChatReadSnapshotCurrent,shouldAcknowledgeDirectChatRead} from '../lib/chat-read-position.ts';
 
 const read=path=>readFileSync(new URL('../'+path,import.meta.url),'utf8');
 
@@ -34,7 +34,8 @@ test('direct chat read acknowledgement is staged after GET and committed after l
  const scrollIndex=shell.indexOf('history.scrollTop=history.scrollHeight;');
  const ackIndex=shell.indexOf('if(shouldAcknowledgeDirectChatRead(',scrollIndex);
  assert.ok(scrollIndex>=0&&ackIndex>scrollIndex,'the latest-page scroll is committed before read acknowledgement');
- assert.match(shell,/pending\.messageIds\.every\(id=>history\.querySelector\('#ik-chat-message-'\+id\)\)/,'every unread message must have a committed DOM node');
+ assert.match(shell,/visiblePendingIds\.every\(id=>history\.querySelector\('#ik-chat-message-'\+id\)\)/,'every visible unread message must have a committed DOM node');
+ assert.match(shell,/!message\.deleted_for\?\.includes\(pending\.userId\)/,'rows hidden for this account are excluded from the staged read check');
  assert.match(shell,/isDirectChatAtLatest\(history\.scrollHeight,history\.scrollTop,history\.clientHeight\)/);
  assert.match(shell,/pending\.chatId!==selected\|\|pending\.userId!==userId\|\|pending\.token!==session\?\.access_token/,'stale chat/account/token receipts are discarded');
  assert.match(shell,/document\.visibilityState==='visible'&&navigator\.onLine/);
@@ -72,4 +73,29 @@ test('direct chat read receipts are invalidated immediately by Realtime and over
  assert.ok(realtime.indexOf('directChatReadRevisionRef.current++')<realtime.indexOf("document.visibilityState==='hidden'"),
   'Realtime invalidates the receipt before visibility/offline early returns');
  assert.match(shell,/isDirectChatReadSnapshotCurrent\(pending\.revision,directChatReadRevisionRef\.current\)/);
+});
+
+
+test('hidden-for-me rows do not block read acknowledgement for visible incoming messages',()=>{
+ const reader='reader';
+ const messages=[
+  {id:'visible',sender_id:'other',read_at:null,deleted_for:[]},
+  {id:'hidden-for-reader',sender_id:'other',read_at:null,deleted_for:[reader]},
+  {id:'hidden-for-someone-else',sender_id:'other',read_at:null,deleted_for:['another']},
+  {id:'already-read',sender_id:'other',read_at:'2026-11-16T22:00:00Z',deleted_for:[]},
+  {id:'own-message',sender_id:reader,read_at:null,deleted_for:[]}
+ ];
+ assert.deepEqual(
+  getVisibleUnreadIncomingDirectMessageIds(messages,reader),
+  ['visible','hidden-for-someone-else']
+ );
+ assert.deepEqual(getVisibleUnreadIncomingDirectMessageIds(messages,''),[]);
+});
+
+test('a message hidden after its GET is removed from the pending DOM gate',()=>{
+ const shell=read('components/AppShell.tsx');
+ const effect=shell.slice(shell.indexOf('const visiblePendingIds='),shell.indexOf('const atLatest='));
+ assert.match(effect,/chatMessages\.some\(message=>message\.id===id&&!message\.deleted_for\?\.includes\(pending\.userId\)\)/);
+ assert.match(effect,/visiblePendingIds\.includes\(message\.id\)/);
+ assert.match(effect,/!message\.deleted_for\?\.includes\(pending\.userId\)/);
 });

@@ -10,7 +10,7 @@ import {clearAllGroupSendAttempts} from "@/lib/group-send-attempts";
 import ChatMedia from "@/components/ChatMedia";
 import ChatMessageText from "@/components/ChatMessageText";
 import {subscribeDirectChatChanges} from "@/lib/direct-realtime";
-import {isDirectChatAtLatest,isDirectChatReadSnapshotCurrent,shouldAcknowledgeDirectChatRead} from '@/lib/chat-read-position';
+import {getVisibleUnreadIncomingDirectMessageIds,isDirectChatAtLatest,isDirectChatReadSnapshotCurrent,shouldAcknowledgeDirectChatRead} from '@/lib/chat-read-position';
 import {subscribeInboxChanges,type InboxChangeKind} from "@/lib/inbox-realtime";
 import {isLatestAccountSnapshot} from "@/lib/inbox-snapshot";
 import {shouldOpenDirectChatSearch} from "@/lib/chat-shortcuts";
@@ -543,9 +543,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
       try{
         const messages=(await listMessages(token,chatId)).reverse();
         if(cancelled)return;
-        const unreadMessageIds=messages
-          .filter(message=>message.sender_id!==userId&&!message.read_at)
-          .map(message=>message.id);
+        const unreadMessageIds=getVisibleUnreadIncomingDirectMessageIds(messages,userId);
         // Stage a receipt, but do not advance the server cursor until React has
         // committed this page and the post-layout viewport is still at latest.
         setPendingDirectRead(unreadMessageIds.length?{chatId,userId,token,messageIds:unreadMessageIds,revision:readRevision}:null);
@@ -770,12 +768,18 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
     if(!history)return;
     // Check the actual committed message nodes, not just React state: a
     // search/filter or an interrupted render must never count as "seen".
-    if(!pending.messageIds.every(id=>history.querySelector('#ik-chat-message-'+id)))return;
+    // Messages hidden for this account have no DOM node by design and
+    // must not block acknowledgement of the visible unread messages.
+    const visiblePendingIds=pending.messageIds.filter(id=>
+      chatMessages.some(message=>message.id===id&&!message.deleted_for?.includes(pending.userId))
+    );
+    if(!visiblePendingIds.every(id=>history.querySelector('#ik-chat-message-'+id)))return;
     const hasUnreadIncoming=chatMessages.some(message=>
-      pending.messageIds.includes(message.id)
+      visiblePendingIds.includes(message.id)
       &&message.chat_id===pending.chatId
       &&message.sender_id!==pending.userId
       &&!message.read_at
+      &&!message.deleted_for?.includes(pending.userId)
     );
     const atLatest=chatAutoScrollRef.current
       &&isDirectChatAtLatest(history.scrollHeight,history.scrollTop,history.clientHeight);

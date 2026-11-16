@@ -26,3 +26,24 @@ export function shouldAcknowledgeDirectChatRead(
 ):boolean{
  return hasUnreadIncoming&&atLatest&&visible;
 }
+
+
+type DirectReadCandidate={
+ id:string;
+ sender_id:string;
+ read_at:string|null;
+ deleted_for?:string[];
+};
+
+/** Only visible incoming unread rows should block/trigger a broad chat read. */
+export function getVisibleUnreadIncomingDirectMessageIds(
+ messages:readonly DirectReadCandidate[],
+ readerId:string
+):string[]{
+ if(!readerId)return [];
+ return messages
+  .filter(message=>message.sender_id!==readerId
+   &&!message.read_at
+   &&!message.deleted_for?.includes(readerId))
+  .map(message=>message.id);
+}
