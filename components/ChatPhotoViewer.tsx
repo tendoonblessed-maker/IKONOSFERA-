@@ -26,7 +26,7 @@ export default function ChatPhotoViewer({src,onClose,onImageError}:Props){
       ?document.activeElement:null;
     const previousOverflow=document.body.style.overflow;
     document.body.style.overflow='hidden';
-    closeButtonRef.current?.focus();
+    closeButtonRef.current?.focus({preventScroll:true});
 
     const getTabStops=()=>{
       const dialog=dialogRef.current;
