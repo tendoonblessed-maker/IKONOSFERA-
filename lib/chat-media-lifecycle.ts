@@ -15,7 +15,7 @@ export function pauseChatMediaOnDetach(
  }
 }
 
-/** Pause private chat playback when the tab is backgrounded or navigated away.
+/** Pause private chat playback when the tab is backgrounded, frozen or navigated away.
  * Playback intentionally does not resume automatically when the page returns.
  */
 export type ChatMediaVisibilityDocument=Pick<Document,'visibilityState'|'addEventListener'|'removeEventListener'>;
@@ -31,10 +31,15 @@ export function watchChatMediaPageLifecycle(
   if(doc.visibilityState==='hidden')pauseChatMediaOnDetach(element);
  };
  const onPageHide=()=>pauseChatMediaOnDetach(element);
+ // Chromium may freeze a page after it is backgrounded; keep this as an
+ // additional signal rather than relying on visibilitychange ordering alone.
+ const onFreeze=()=>pauseChatMediaOnDetach(element);
  doc.addEventListener('visibilitychange',onVisibilityChange);
+ doc.addEventListener('freeze',onFreeze);
  win.addEventListener('pagehide',onPageHide);
  return ()=>{
   doc.removeEventListener('visibilitychange',onVisibilityChange);
+  doc.removeEventListener('freeze',onFreeze);
   win.removeEventListener('pagehide',onPageHide);
  };
 }
