@@ -4,24 +4,15 @@ export type DialogTabEvent = {
   preventDefault: () => void;
 };
 
-type Focusable = {
-  focus: (options?: FocusOptions) => void;
-};
-
-type FocusDialog = {
-  querySelectorAll: (selector: string) => ArrayLike<Focusable>;
-  contains: (node: Node | null) => boolean;
-};
-
 /** Keep keyboard Tab navigation inside a modal dialog. */
 export function trapDialogTab(
   event: DialogTabEvent,
-  dialog: FocusDialog | null,
-  activeElement: Node | null
+  dialog: HTMLElement | null,
+  activeElement: Element | null
 ): boolean {
   if (event.key !== 'Tab' || !dialog) return false;
 
-  const controls = Array.from(dialog.querySelectorAll(
+  const controls = Array.from(dialog.querySelectorAll<HTMLElement>(
     'a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])'
   ));
   if (!controls.length) {
