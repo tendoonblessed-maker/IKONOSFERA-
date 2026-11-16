@@ -1,5 +1,6 @@
 'use client';
 
+import ProfilePhotoLightbox from "@/components/ProfilePhotoLightbox";
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { changeProfile, explainProfileError, validateUsername } from "@/lib/supabase-rest";
 import {getUserActivities,activityLabel,type UserActivity} from "@/lib/activity";
@@ -253,6 +254,6 @@ export default function ProfilePanel({token,userId,targetId,onBack,onOwnProfileC
      {activeStory.caption&&<div className="story-viewer-caption">{activeStory.caption}</div>}
     </div>
    </div>}
-   {viewer&&<div className="profile-lightbox" role="dialog" aria-modal="true" aria-label="Просмотр фото"><button className="profile-lightbox-close" type="button" onClick={()=>setViewer(null)}>Закрыть ×</button><img src={viewer.url} alt={viewer.caption||"Фото пользователя"}/>{viewer.caption&&<p>{viewer.caption}</p>}</div>}
+   {viewer&&<ProfilePhotoLightbox url={viewer.url} caption={viewer.caption} onClose={()=>setViewer(null)}/>}
  </section>;
 }
