@@ -24,6 +24,13 @@ export function useStoryProgress(storyId:string|null,onComplete:()=>void,paused=
 
  useLayoutEffect(()=>{
   if(!storyId)return;
+  let motionQuery:MediaQueryList|null=null;
+  if(typeof window.matchMedia==='function'){
+   motionQuery=window.matchMedia('(prefers-reduced-motion: reduce)');
+   motionReducedRef.current=motionQuery.matches;
+  }else{
+   motionReducedRef.current=false;
+  }
   const scheduler=createStoryProgressScheduler({
    durationMs:STORY_DURATION_MS,
    isPaused:()=>pausedRef.current,
@@ -37,20 +44,16 @@ export function useStoryProgress(storyId:string|null,onComplete:()=>void,paused=
    onComplete:()=>callbackRef.current()
   });
   schedulerRef.current=scheduler;
-  let motionQuery:MediaQueryList|null=null;
   const onMotionChange=(event:MediaQueryListEvent)=>{
    motionReducedRef.current=event.matches;
    scheduler.sync();
   };
-  if(typeof window.matchMedia==='function'){
-   motionQuery=window.matchMedia('(prefers-reduced-motion: reduce)');
-   motionReducedRef.current=motionQuery.matches;
+  if(motionQuery){
    if(typeof motionQuery.addEventListener==='function'){
     motionQuery.addEventListener('change',onMotionChange);
    }else{
     motionQuery.addListener(onMotionChange);
    }
-   scheduler.sync();
   }
   const onVisibilityChange=()=>scheduler.sync();
   document.addEventListener('visibilitychange',onVisibilityChange);
