@@ -1,4 +1,5 @@
 import {apiUrl} from './supabase-rest';
+import {compareMessageTimestamps} from './message-order.js';
 import type {GroupMessage} from './groups';
 
 const anonKey=process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY??'';
@@ -77,13 +78,28 @@ export async function getGroupMessageContext(
  const target=(await getRows(token,exact))[0];
  if(!target||target.id!==targetId||target.group_id!==groupId)
   throw Error('Сообщение удалено или больше недоступно.');
- const older=new URLSearchParams({...base,created_at:'lte.'+target.created_at,order:'created_at.desc,id.desc',limit:'70'});
- const newer=new URLSearchParams({...base,created_at:'gte.'+target.created_at,order:'created_at.asc,id.asc',limit:'70'});
+ // Timestamp-only lte/gte filters can return the same boundary rows twice
+ // and can omit the true neighbors when many messages share one timestamp.
+ // Match the database's (created_at, id) ordering with a strict keyset on
+ // both sides of the verified target. The group filter and member RLS remain.
+ const cursor=target.created_at;
+ const older=new URLSearchParams({
+  ...base,
+  or:'(created_at.lt.'+cursor+',and(created_at.eq.'+cursor+',id.lt.'+target.id+'))',
+  order:'created_at.desc,id.desc',
+  limit:'70'
+ });
+ const newer=new URLSearchParams({
+  ...base,
+  or:'(created_at.gt.'+cursor+',and(created_at.eq.'+cursor+',id.gt.'+target.id+'))',
+  order:'created_at.asc,id.asc',
+  limit:'70'
+ });
  const [before,after]=await Promise.all([getRows(token,older),getRows(token,newer)]);
  const map=new Map<string,GroupMessage>();
  for(const message of [...before,...after,target]){
   if(message.group_id===groupId)map.set(message.id,message);
  }
  return Array.from(map.values()).sort((a,b)=>
-  Date.parse(a.created_at)-Date.parse(b.created_at)||a.id.localeCompare(b.id));
+  compareMessageTimestamps(a.created_at,b.created_at)||a.id.localeCompare(b.id));
 }
