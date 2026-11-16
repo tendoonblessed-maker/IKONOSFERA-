@@ -99,3 +99,9 @@ test('programmatic focus outside the photo modal returns to a visible control or
  assert.ok(ui.includes("getPhotoViewerFocusRecoveryTarget(dialog,getTabStops())"));
  assert.ok(ui.includes("target.focus({preventScroll:true})"));
 });
+
+
+test('opening the photo viewer focuses its close control without scrolling the chat',()=>{
+ const ui=source();
+ assert.match(ui,/closeButtonRef\\.current\\?\\.focus\\(\\{preventScroll:true\\}\\)/);
+});
