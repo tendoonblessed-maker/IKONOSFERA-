@@ -13,6 +13,15 @@ export function shouldAcknowledgeGroupRead(
  return Boolean(latestId&&latestId!==lastAcknowledgedId&&atBottom&&visible);
 }
 
+/** Return only newly observed messages written by someone other than the reader. */
+export function getNewIncomingGroupMessages(
+ latest:GroupMessage[],
+ previousIds:ReadonlySet<string>,
+ readerId:string
+):GroupMessage[]{
+ return latest.filter(message=>!previousIds.has(message.id)&&message.sender_id!==readerId);
+}
+
 /** Count newly arrived OTHER-user messages only while reading older history. */
 export function countNewIncomingBelow(
  latest:GroupMessage[],
