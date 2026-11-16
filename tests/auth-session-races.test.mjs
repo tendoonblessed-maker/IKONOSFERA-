@@ -19,10 +19,11 @@ const defer=()=>{
 };
 function scenario(handler){
  const data=new Map();
+ const storageFaults={getItem:false,setItem:false,removeItem:false};
  const storage={
-  getItem:key=>data.get(key)??null,
-  setItem:(key,value)=>data.set(key,value),
-  removeItem:key=>data.delete(key)
+  getItem:key=>{if(storageFaults.getItem)throw Error('storage read denied');return data.get(key)??null;},
+  setItem:(key,value)=>{if(storageFaults.setItem)throw Error('storage write denied');data.set(key,value);},
+  removeItem:key=>{if(storageFaults.removeItem)throw Error('storage removal denied');data.delete(key);}
  };
  const calls=[];
  const ctx={
@@ -34,7 +35,7 @@ function scenario(handler){
   }
  };
  vm.runInNewContext(compiled,ctx,{filename:'supabase-rest.cjs',timeout:2500});
- return {api:ctx.exports,calls,storage,data};
+ return {api:ctx.exports,calls,storage,data,storageFaults};
 }
 const expired=(access_token,refresh_token)=>({access_token,refresh_token,expires_at:0});
 const future=(access_token,refresh_token)=>({access_token,refresh_token,expires_at:Date.now()/1000+7200});
@@ -212,4 +213,31 @@ test('background auth refresh never keeps old userId when a different valid acco
  assert.match(effect,/const owner=await currentUser\(valid\.access_token\)/);
  assert.match(effect,/if\(cancelled\|\|loadSession\(\)\?\.access_token!==valid\.access_token\)return;/);
  assert.match(effect,/if\(owner\.id!==userId\)\{window\.location\.reload\(\);return;\}/);
+});
+
+test('sign-out still revokes the server session when localStorage removal fails',async()=>{
+ const {api,calls,data,storageFaults}=scenario(()=>Promise.resolve(reply({})));
+ api.saveSession(future('storage-old-access','storage-old-refresh'));
+ storageFaults.removeItem=true;
+ await api.signOut('storage-old-access');
+ assert.equal(api.loadSession(),null,'the replacement tombstone must not be parsed as a session');
+ assert.equal(data.get('ikonosfera-session-v1'),'null','write a persistent invalid-session tombstone when removeItem fails');
+ assert.equal(calls.length,1,'server revocation must still be attempted');
+ assert.match(calls[0].url,/\/auth\/v1\/logout$/);
+});
+
+test('in-memory sign-out guard blocks stale credentials when storage removal and tombstone writes both fail',async()=>{
+ const {api,calls,data,storageFaults}=scenario(()=>Promise.resolve(reply({})));
+ api.saveSession(future('blocked-access','blocked-refresh'));
+ const storedBefore=data.get('ikonosfera-session-v1');
+ storageFaults.removeItem=true;
+ storageFaults.setItem=true;
+ await api.signOut('blocked-access');
+ assert.equal(calls.length,1,'storage errors must not prevent the remote logout request');
+ assert.equal(data.get('ikonosfera-session-v1'),storedBefore,'the simulated browser refused both storage mutations');
+ assert.equal(api.loadSession(),null,'the current tab must not revive the stale stored credentials');
+ storageFaults.removeItem=false;
+ storageFaults.setItem=false;
+ api.saveSession(future('fresh-access','fresh-refresh'));
+ assert.equal(api.loadSession().access_token,'fresh-access','a successful new login clears the in-memory sign-out guard');
 });
