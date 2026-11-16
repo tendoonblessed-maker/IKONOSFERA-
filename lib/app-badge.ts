@@ -24,6 +24,10 @@ export function createAppBadgeSynchronizer(
      if(typeof api.setAppBadge==='function')await api.setAppBadge(count);
     }else if(typeof api.clearAppBadge==='function'){
      await api.clearAppBadge();
+    }else if(typeof api.setAppBadge==='function'){
+     // setAppBadge(0) is specified to clear the badge when clearAppBadge is
+     // missing in a partial browser implementation.
+     await api.setAppBadge(0);
     }
    }catch{
     // Badge support is optional. A browser/OS rejection must never affect chat.
