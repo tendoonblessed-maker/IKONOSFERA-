@@ -34,7 +34,8 @@ function fixture(customControls){
   ];
   const dialog={
     querySelectorAll(){return controls;},
-    contains(node){return controls.includes(node);}
+    contains(node){return controls.includes(node);},
+    focus(){focused.push('dialog');}
   };
   return {focused,first:controls[0],middle:controls[1],last:controls[2],controls,dialog};
 }
@@ -111,7 +112,7 @@ test('a dialog with no rendered tab stops still prevents focus from escaping',()
   const tab=key();
   assert.equal(trapDialogTab(tab,f.dialog,null),true);
   assert.equal(tab.prevented,true);
-  assert.deepEqual(f.focused,[]);
+  assert.deepEqual(f.focused,['dialog']);
 });
 
 test('focus restoration avoids disconnected or hidden openers and prevents scroll jumps',()=>{
@@ -133,6 +134,7 @@ test('both story viewers wire focus trapping, initial focus and opener restorati
     assert.match(component,/storyCloseRef\.current\?\.focus\(\{preventScroll:true\}\)/);
     assert.match(component,/restoreDialogFocus\(previousFocus\)/);
     assert.match(component,/ref=\{storyDialogRef\}/);
+    assert.match(component,/ref=\{storyDialogRef\}\s+tabIndex=\{-1\}/);
     assert.match(component,/ref=\{storyCloseRef\}/);
   }
 });
