@@ -69,6 +69,30 @@ export function trapDialogTab(
   return false;
 }
 
+/**
+ * Recover programmatic focus changes that escape an open modal. Tab trapping
+ * alone cannot contain focus() calls from other components or browser tools.
+ * Prefer the dialog's close control, then the first visible tab stop, and
+ * finally the dialog container when every control is temporarily unavailable.
+ */
+export function restoreDialogFocusInside(
+  dialog: HTMLElement | null,
+  activeElement: Element | null,
+  preferredFocus: HTMLElement | null = null
+): boolean {
+  if (!dialog || (activeElement && dialog.contains(activeElement))) return false;
+
+  const controls = Array.from(dialog.querySelectorAll<HTMLElement>(
+    'a[href],area[href],button,input,select,textarea,summary,iframe,audio[controls],video[controls],[contenteditable="true"],[contenteditable="plaintext-only"],[tabindex]'
+  )).filter(isDialogTabStop);
+  const target = preferredFocus && controls.includes(preferredFocus)
+    ? preferredFocus
+    : controls[0];
+
+  (target ?? dialog).focus({preventScroll: true});
+  return true;
+}
+
 /** Return focus to the opener without jumping the underlying chat/profile scroll. */
 export function restoreDialogFocus(previousFocus: HTMLElement | null): void {
   // The opener can become disabled, hidden or inert while the dialog is open.
