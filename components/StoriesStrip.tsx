@@ -48,7 +48,20 @@ export default function StoriesStrip({token,userId,contacts,ownProfile}:Props){
   if(e.key==='Tab')trapDialogTab(e,storyDialogRef.current,document.activeElement);
   if(e.key==='ArrowRight')next();
   if(e.key==='ArrowLeft')prev();
- };window.addEventListener('keydown',onKey);return()=>window.removeEventListener('keydown',onKey);},[active,people]);
+ };
+ const onFocusIn=(event:FocusEvent)=>{
+  const dialog=storyDialogRef.current;
+  if(dialog&&event.target instanceof Element&&!dialog.contains(event.target)){
+   restoreDialogFocusInside(dialog,event.target,storyCloseRef.current);
+  }
+ };
+ window.addEventListener('keydown',onKey);
+ document.addEventListener('focusin',onFocusIn);
+ return()=>{
+  window.removeEventListener('keydown',onKey);
+  document.removeEventListener('focusin',onFocusIn);
+ };
+},[active,people]);
  useEffect(()=>{if(!active)return;const old=document.body.style.overflow;document.body.style.overflow='hidden';return()=>{document.body.style.overflow=old;};},[active]);
  function next(){setActive(prev=>{if(!prev)return null;const group=people[prev.person];if(prev.story+1<group.stories.length)return {...prev,story:prev.story+1};const i=people.findIndex((p,j)=>j>prev.person&&p.stories.length);return i<0?null:{person:i,story:0};});}
  function prev(){setActive(current=>{if(!current)return null;if(current.story>0)return {...current,story:current.story-1};for(let j=current.person-1;j>=0;j--)if(people[j].stories.length)return {person:j,story:people[j].stories.length-1};return {...current,story:0};});}
