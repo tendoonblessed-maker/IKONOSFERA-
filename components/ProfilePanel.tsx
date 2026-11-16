@@ -134,7 +134,18 @@ export default function ProfilePanel({token,userId,targetId,onBack,onOwnProfileC
    if(event.key==='Tab')trapDialogTab(event,storyDialogRef.current,document.activeElement);
    if(event.key==='ArrowRight')setStoryIndex(i=>i===null?null:i+1>=stories.length?null:i+1);
    if(event.key==='ArrowLeft')setStoryIndex(i=>i===null?null:Math.max(0,i-1));};
-  window.addEventListener('keydown',onKey);return()=>window.removeEventListener('keydown',onKey);
+  const onFocusIn=(event:FocusEvent)=>{
+   const dialog=storyDialogRef.current;
+   if(dialog&&event.target instanceof Element&&!dialog.contains(event.target)){
+    restoreDialogFocusInside(dialog,event.target,storyCloseRef.current);
+   }
+  };
+  window.addEventListener('keydown',onKey);
+  document.addEventListener('focusin',onFocusIn);
+  return()=>{
+   window.removeEventListener('keydown',onKey);
+   document.removeEventListener('focusin',onFocusIn);
+  };
  },[storyIndex,stories.length]);
  useEffect(()=>{
   if(!activeStory)return;
