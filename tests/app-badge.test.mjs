@@ -84,10 +84,10 @@ test('unsupported or rejected badge APIs fail silently',async()=>{
 });
 
 test('AppShell mirrors direct and group unread totals without requesting notification permission',()=>{
- assert.match(shell,/createAppBadgeSynchronizer\\(api\\)/);
- assert.match(shell,/appBadgeSyncRef\\.current\\?\\.\\(userId\\?unreadTotal:0\\)/);
- assert.match(shell,/rows\\.reduce\\(\\(sum,row\\)=>sum\\+Number\\(row\\.preview\\?\\.unread_count\\|\\|0\\),0\\)\\+groups\\.reduce/);
- assert.doesNotMatch(shell,/Notification\\.requestPermission/);
+ assert.match(shell,/createAppBadgeSynchronizer\(api\)/);
+ assert.match(shell,/appBadgeSyncRef\.current\?\.\(userId\?unreadTotal:0\)/);
+ assert.match(shell,/rows\.reduce\(\(sum,row\)=>sum\+Number\(row\.preview\?\.unread_count\|\|0\),0\)\+groups\.reduce/);
+ assert.doesNotMatch(shell,/Notification\.requestPermission/);
 });
 
 test('logout clears account-scoped group unread snapshots before resetting the account',()=>{
