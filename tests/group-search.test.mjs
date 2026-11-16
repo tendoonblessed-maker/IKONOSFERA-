@@ -3,6 +3,7 @@ import {test} from 'node:test';
 import {readFileSync} from 'node:fs';
 import vm from 'node:vm';
 import ts from 'typescript';
+import {compareMessageTimestamps} from '../lib/message-order.js';
 
 const GROUP='11111111-1111-4111-8111-111111111111';
 const OTHER='22222222-2222-4222-8222-222222222222';
@@ -20,8 +21,9 @@ function setup(handler=()=>({ok:true,json:async()=>[]})){
   process:{env:{NEXT_PUBLIC_SUPABASE_ANON_KEY:'test-anon'}},
   fetch:async(url,options)=>{calls.push({url,options});return handler(url,options,calls.length);},
   require(name){
-   assert.equal(name,'./supabase-rest');
-   return {apiUrl:'https://test.invalid'};
+   if(name==='./supabase-rest')return {apiUrl:'https://test.invalid'};
+   if(name==='./message-order.js')return {compareMessageTimestamps};
+   assert.fail('Unexpected module: '+name);
   }
  };
  vm.runInNewContext(compiled,ctx,{filename:'group-search.cjs',timeout:2500});
@@ -55,7 +57,7 @@ test('search queries with quotes, commas and Unicode are quoted/encoded, not ope
  assert.equal(a.get('group_id'),'eq.'+GROUP);
  assert.ok(a.get('body').startsWith('ilike."%'));
  assert.ok(a.get('body').includes('a.b, (текст)'));
- assert.ok(a.get('body').includes('\\"кавычка\\"'));
+ assert.ok(a.get('body').includes('\\\"кавычка\\\"'));
  assert.equal(a.get('limit'),'25');
  assert.equal(a.get('offset'),'24');
 });
@@ -80,24 +82,53 @@ test('reject short, invalid groups, and unbounded search pages before fetch',asy
  assert.equal(calls.length,0);
 });
 
-test('context navigation refetches exact target with membership RLS and bounded adjacent rows',async()=>{
+test('context navigation refetches exact target with membership RLS and bounded keyset neighbors',async()=>{
  const older={...ROW,id:'55555555-5555-4555-8555-555555555555',created_at:'2026-10-29T07:59:00.000Z'};
  const newer={...ROW,id:'66666666-6666-4666-8666-666666666666',created_at:'2026-10-29T08:01:00.000Z'};
- const {api,calls}=setup((url)=>{
+ const {api,calls}=setup(url=>{
   const p=params(url);
   if(p.get('id'))return result([ROW]);
-  if(p.get('order')==='created_at.desc,id.desc')return result([ROW,older]);
-  return result([ROW,newer]);
+  if(p.get('or')?.includes('created_at.lt.'))return result([older]);
+  return result([newer]);
  });
  const list=await api.getGroupMessageContext('jwt',GROUP,ROW.id,ROW.created_at);
  assert.deepEqual(Array.from(list,x=>x.id),[older.id,ROW.id,newer.id]);
  assert.equal(calls.length,3);
+ const olderParams=params(calls[1].url);
+ const newerParams=params(calls[2].url);
+ assert.equal(olderParams.get('or'),
+  '(created_at.lt.'+ROW.created_at+',and(created_at.eq.'+ROW.created_at+',id.lt.'+ROW.id+'))');
+ assert.equal(newerParams.get('or'),
+  '(created_at.gt.'+ROW.created_at+',and(created_at.eq.'+ROW.created_at+',id.gt.'+ROW.id+'))');
+ assert.equal(olderParams.get('order'),'created_at.desc,id.desc');
+ assert.equal(newerParams.get('order'),'created_at.asc,id.asc');
  for(const call of calls){
   const p=params(call.url);
   assert.equal(p.get('group_id'),'eq.'+GROUP);
   assert.equal(call.options.headers.Authorization,'Bearer jwt');
   assert.ok(Number(p.get('limit'))<=70);
  }
+});
+
+test('context navigation preserves microseconds and UUID order for messages sharing a timestamp',async()=>{
+ const target={...ROW,id:'80000000-0000-4000-8000-000000000000',created_at:'2026-10-29T08:00:00.123125Z'};
+ const early={...ROW,id:'ffffffff-ffff-4fff-8fff-fffffffffff1',created_at:'2026-10-29T08:00:00.123124Z'};
+ const sameBefore={...ROW,id:'00000000-0000-4000-8000-000000000001',created_at:target.created_at};
+ const sameAfter={...ROW,id:'ffffffff-ffff-4fff-8fff-fffffffffff2',created_at:target.created_at};
+ const late={...ROW,id:'00000000-0000-4000-8000-000000000002',created_at:'2026-10-29T08:00:00.123126Z'};
+ const {api,calls}=setup(url=>{
+  const p=params(url);
+  if(p.get('id'))return result([target]);
+  if(p.get('or')?.includes('created_at.lt.'))return result([sameBefore,early]);
+  return result([late,sameAfter]);
+ });
+ const list=await api.getGroupMessageContext('jwt',GROUP,target.id,target.created_at);
+ assert.deepEqual(Array.from(list,x=>x.id),[
+  early.id,sameBefore.id,target.id,sameAfter.id,late.id
+ ]);
+ assert.equal(calls.length,3);
+ assert.ok(Date.parse(early.created_at)===Date.parse(target.created_at));
+ assert.ok(compareMessageTimestamps(early.created_at,target.created_at)<0);
 });
 
 test('context navigation rejects deleted or foreign message before fetching any timeline',async()=>{
