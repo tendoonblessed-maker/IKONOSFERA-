@@ -12,6 +12,7 @@ import ChatMessageText from "@/components/ChatMessageText";
 import {subscribeDirectChatChanges} from "@/lib/direct-realtime";
 import {subscribeInboxChanges,type InboxChangeKind} from "@/lib/inbox-realtime";
 import {isLatestAccountSnapshot} from "@/lib/inbox-snapshot";
+import {compareInboxActivityDescending} from "@/lib/inbox-order";
 import {shouldOpenDirectChatSearch} from "@/lib/chat-shortcuts";
 import {reconcileRecentChannelUpdates,CHANNEL_UPDATE_GRACE_MS,type RecentChannelUpdate} from "@/lib/channel-sync";
 import ChatAttachmentPreview from "@/components/ChatAttachmentPreview";
@@ -407,8 +408,10 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
       .sort((a,b)=>{
         const pinned=Number(Boolean(b.pinned_for?.includes(id)))-Number(Boolean(a.pinned_for?.includes(id)));
         if(pinned)return pinned;
-        return Date.parse(overview.get(b.id)?.last_created_at||b.created_at)
-          -Date.parse(overview.get(a.id)?.last_created_at||a.created_at);
+        return compareInboxActivityDescending(
+          {chatId:a.id,timestamp:overview.get(a.id)?.last_created_at||a.created_at},
+          {chatId:b.id,timestamp:overview.get(b.id)?.last_created_at||b.created_at}
+        );
       })
       .map(chat=>({chat,other:chatById.get(chat.user_a===id?chat.user_b:chat.user_a)??null,preview:overview.get(chat.id)??null,previewUnavailable:previewResult.failed&&!overview.has(chat.id)})));
     // Chat list may now render, even if discovery or membership queries are slow.
@@ -453,8 +456,10 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
       .sort((a,b)=>{
         const pinned=Number(Boolean(b.pinned_for?.includes(id)))-Number(Boolean(a.pinned_for?.includes(id)));
         if(pinned)return pinned;
-        return Date.parse(overview.get(b.id)?.last_created_at||b.created_at)
-          -Date.parse(overview.get(a.id)?.last_created_at||a.created_at);
+        return compareInboxActivityDescending(
+          {chatId:a.id,timestamp:overview.get(a.id)?.last_created_at||a.created_at},
+          {chatId:b.id,timestamp:overview.get(b.id)?.last_created_at||b.created_at}
+        );
       })
       .map(chat=>({chat,other:byId.get(chat.user_a===id?chat.user_b:chat.user_a)??null,preview:overview.get(chat.id)??null,previewUnavailable:previewResult.failed&&!overview.has(chat.id)})));
   },[loadInboxPreviews]);
