@@ -10,9 +10,9 @@
   --ik-soft-bg:#f6f7fc;
   --ik-soft-panel:#ffffff;
   --ik-soft-ink:#181b27;
-  --ik-soft-muted:#8a91a3;
+  --ik-soft-muted:#626b7d;
   --ik-soft-border:#e9ebf3;
-  --ik-soft-blue:#4b82f8;
+  --ik-soft-blue:#2458c7;
   --ik-soft-blue-pale:#eaf0ff;
   --ik-soft-shadow:0 7px 27px rgba(70,87,143,.075);
   background:var(--ik-soft-bg)!important;
@@ -63,7 +63,7 @@
 .messenger.is-authenticated .pane-search input::placeholder,
 .messenger.is-authenticated .channel-tools input::placeholder,
 .messenger.is-authenticated .ik-contact-lookup input::placeholder{
-  color:#a2a8b7!important;
+  color:var(--ik-soft-muted)!important;
 }
 .messenger.is-authenticated .ik-inbox-filters {
   background:#fff!important;
@@ -195,6 +195,14 @@
   border-color:#f0f1f7!important;
   box-shadow:0 2px 10px rgba(78,96,137,.06)!important;
 }
+.messenger.is-authenticated .conversation-history>.chat-message-row>.bubble time{
+  opacity:1!important;
+}
+.messenger.is-authenticated .conversation-history .chat-message-row.mine .bubble time,
+.messenger.is-authenticated .conversation-history .chat-message-row.mine>.bubble time{
+  color:#52638b!important;
+  opacity:1!important;
+}
 .messenger.is-authenticated .ik-chat-loading-bubble,
 .messenger.is-authenticated .ik-chat-loading-avatar{
   background-color:#e8eaf4;
@@ -228,7 +236,7 @@
   box-shadow:none!important;
 }
 .messenger.is-authenticated .composer textarea::placeholder{
-  color:#a4aab9!important;
+  color:var(--ik-soft-muted)!important;
 }
 .messenger.is-authenticated .composer .send-button,
 .messenger.is-authenticated .group-view .composer .send-button{

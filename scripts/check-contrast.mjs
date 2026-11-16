@@ -1,25 +1,105 @@
-// WCAG relative luminance, no dependencies.
-const palette = {
-  background: '#000000', layer: '#0a0a0a', raised: '#111111',
-  text: '#f5f5f5', secondary: '#a1a1a1', subdued: '#8a8a8a',
-  accentTeal: '#4dd0c7', accentAmber: '#ffb84d',
-};
-function lum(hex) {
-  const rgb = hex.match(/[0-9a-f]{2}/gi).map(x => parseInt(x, 16) / 255);
-  return rgb.map(c => c <= .04045 ? c / 12.92 : ((c + .055) / 1.055) ** 2.4)
-    .reduce((a, c, i) => a + c * [0.2126, 0.7152, 0.0722][i], 0);
+// WCAG 2.x AA contrast audit for the active light messenger themes.
+// Reads semantic tokens from the actual CSS so CI cannot silently drift to an old palette.
+import {readFileSync} from 'node:fs';
+import {pathToFileURL} from 'node:url';
+
+const MINIMUM=4.5;
+
+function normalizeHex(value){
+  if(typeof value!=='string'||!/^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i.test(value)){
+    throw new TypeError('Expected a 3- or 6-digit hex color: '+String(value));
+  }
+  const raw=value.slice(1);
+  return '#'+(raw.length===3?[...raw].map(char=>char+char).join(''):raw).toLowerCase();
 }
-function ratio(a, b) {
-  const x = lum(a), y = lum(b);
-  return (Math.max(x, y) + .05) / (Math.min(x, y) + .05);
+
+export function relativeLuminance(hex){
+  const color=normalizeHex(hex);
+  const channels=[1,3,5].map(index=>parseInt(color.slice(index,index+2),16)/255)
+    .map(channel=>channel<=0.04045?channel/12.92:((channel+0.055)/1.055)**2.4);
+  return channels.reduce((sum,channel,index)=>sum+channel*[0.2126,0.7152,0.0722][index],0);
 }
-for (const [fg, bg, minimum] of [
-  ['text', 'background', 4.5], ['secondary', 'background', 4.5],
-  ['subdued', 'background', 4.5], ['secondary', 'layer', 4.5],
-  ['subdued', 'raised', 4.5], ['accentTeal', 'background', 4.5],
-  ['accentAmber', 'background', 4.5]
-]) {
-  const actual = ratio(palette[fg], palette[bg]);
-  console.log(`${fg} / ${bg}: ${actual.toFixed(2)}:1 ${actual >= minimum ? 'PASS' : 'FAIL'}`);
-  if (actual < minimum) process.exitCode = 1;
+
+export function contrastRatio(foreground,background){
+  const a=relativeLuminance(foreground),b=relativeLuminance(background);
+  return (Math.max(a,b)+0.05)/(Math.min(a,b)+0.05);
+}
+
+function extractVariables(source,pattern,label,selectLast=false){
+  const matches=pattern.global?[...source.matchAll(pattern)]:[source.match(pattern)].filter(Boolean);
+  const candidates=selectLast?matches.filter(item=>/--bg\s*:/.test(item[1])):matches;
+  const match=selectLast?candidates.at(-1):candidates[0];
+  if(!match)throw new Error('Cannot find CSS token block: '+label);
+  return Object.fromEntries([...match[1].matchAll(/(--[a-z0-9-]+)\s*:\s*(#[0-9a-f]{3,6})\b/gi)]
+    .map(item=>[item[1],item[2]]));
+}
+function required(tokens,name,label){
+  const value=tokens[name];
+  if(!value)throw new Error('Missing '+name+' in '+label);
+  return value;
+}
+
+export function auditTheme(globals,softTheme){
+  const root=extractVariables(globals,/:root\s*\{([^}]*)\}/,'root theme');
+  const authenticated=extractVariables(globals,/\.messenger\.is-authenticated\s*\{([^}]*)\}/g,'authenticated theme',true);
+  const soft=extractVariables(softTheme,/\.messenger\.is-authenticated\s*\{([^}]*)\}/,'soft theme');
+  const checks=[];
+  const failures=[];
+  const add=(label,foreground,background)=>{
+    const value=contrastRatio(foreground,background);
+    const check={label,ratio:value,minimum:MINIMUM,pass:value>=MINIMUM};
+    checks.push(check);
+    if(!check.pass)failures.push(check);
+  };
+  const textNames=['--text','--secondary','--subdued','--accent'];
+  const surfaceNames=['--bg','--layer','--raised','--raised-2'];
+  for(const [label,tokens] of [['base',root],['authenticated',authenticated]]){
+    for(const textName of textNames){
+      const foreground=required(tokens,textName,label);
+      for(const surfaceName of surfaceNames){
+        add(label+' '+textName+' on '+surfaceName,foreground,required(tokens,surfaceName,label));
+      }
+    }
+    add(label+' white text on --accent','#ffffff',required(tokens,'--accent',label));
+  }
+  const softSurfaces=['--ik-soft-bg','--ik-soft-panel','--ik-soft-blue-pale'];
+  for(const textName of ['--ik-soft-ink','--ik-soft-muted','--ik-soft-blue']){
+    const foreground=required(soft,textName,'soft theme');
+    for(const surfaceName of softSurfaces){
+      add('soft '+textName+' on '+surfaceName,foreground,required(soft,surfaceName,'soft theme'));
+    }
+  }
+  add('soft white text on --ik-soft-blue','#ffffff',required(soft,'--ik-soft-blue','soft theme'));
+  // Placeholder text is still text under WCAG 1.4.3. Audit the low-contrast
+  // field surfaces used by search and the mobile composer, plus theme surfaces.
+  const placeholder=required(soft,'--ik-soft-muted','soft theme');
+  const placeholderSurfaces=[
+    ['search field','#f0f2f8'],
+    ['message composer','#f3f5fa'],
+    ['soft background',required(soft,'--ik-soft-bg','soft theme')],
+    ['soft panel',required(soft,'--ik-soft-panel','soft theme')],
+    ['soft accent surface',required(soft,'--ik-soft-blue-pale','soft theme')]
+  ];
+  for(const [label,surface] of placeholderSurfaces){
+    add('soft placeholder on '+label,placeholder,surface);
+  }
+  add('authenticated incoming direct timestamp on white',required(authenticated,'--subdued','authenticated'),'#ffffff');
+  add('authenticated outgoing direct timestamp on #dbe7ff','#52638b','#dbe7ff');
+  return {checks,failures};
+}
+
+function run(){
+  const root=new URL('../',import.meta.url);
+  const globals=readFileSync(new URL('app/globals.css',root),'utf8');
+  const softTheme=readFileSync(new URL('app/light-telegram-theme.css',root),'utf8');
+  const {checks,failures}=auditTheme(globals,softTheme);
+  for(const check of checks){
+    console.log(check.label+': '+check.ratio.toFixed(2)+':1 '+(check.pass?'PASS':'FAIL'));
+  }
+  console.log('WCAG AA text contrast: '+(failures.length?'FAIL':'PASS')+' ('+checks.length+' pairs)');
+  if(failures.length)process.exitCode=1;
+}
+
+if(process.argv[1]&&pathToFileURL(process.argv[1]).href===import.meta.url){
+  run();
 }
