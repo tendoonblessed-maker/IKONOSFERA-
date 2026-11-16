@@ -18,6 +18,9 @@ let sessionRefreshPromise:PendingRefresh|null=null;
 // Invalidate old async responses after logout, a new login, or another token
 // rotation. Another browser tab is covered by rechecking localStorage.
 let sessionGeneration=0;
+// If browser storage refuses both removal and a tombstone write, keep this
+// tab signed out anyway. A successful new login clears the in-memory guard.
+let sessionClearedInMemory=false;
 
 function ensureReady() { if (!backendReady) throw Error('Сервер пока не подключён'); }
 function headers(token?: string, extras?: Record<string,string>) {
@@ -43,17 +46,30 @@ async function http<T>(path: string, options: { method?: string; token?: string;
   return value as T;
 }
 export function loadSession(): Session | null {
-  if (typeof window === 'undefined') return null;
+  if (typeof window === 'undefined' || sessionClearedInMemory) return null;
   try { const s = JSON.parse(localStorage.getItem(STORAGE) || 'null') as Session | null; return s?.access_token && s.refresh_token ? s : null; } catch { return null; }
 }
 export function saveSession(s: { access_token: string; refresh_token: string; expires_in?: number; expires_at?: number }) {
   if(!s.access_token||!s.refresh_token)throw Error('Сервер не выдал действительную сессию.');
   const session: Session = { access_token: s.access_token, refresh_token: s.refresh_token, expires_at: s.expires_at ?? (Math.floor(Date.now()/1000) + (s.expires_in ?? 3600) - 60) };
   localStorage.setItem(STORAGE, JSON.stringify(session));
+  sessionClearedInMemory=false;
   sessionGeneration++;
   return session;
 }
-export function clearSession() { sessionGeneration++; localStorage.removeItem(STORAGE); }
+export function clearSession() {
+  sessionGeneration++;
+  // Block this tab immediately, even if a privacy mode or storage fault makes
+  // both removeItem() and the best-effort persistent tombstone unavailable.
+  sessionClearedInMemory=true;
+  try {
+    localStorage.removeItem(STORAGE);
+  } catch {
+    // Some constrained browsers can still accept a replacement value even
+    // when removeItem() fails. "null" is intentionally not a valid session.
+    try { localStorage.setItem(STORAGE, 'null'); } catch { /* in-memory guard remains active */ }
+  }
+}
 export async function validSession(): Promise<Session | null> {
   const s=loadSession();
   if(!s)return null;
