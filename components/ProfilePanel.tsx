@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
-import {restoreDialogFocus,trapDialogTab} from "@/lib/dialog-focus";
+import {restoreDialogFocus,restoreDialogFocusInside,trapDialogTab} from "@/lib/dialog-focus";
 import { changeProfile, explainProfileError, validateUsername } from "@/lib/supabase-rest";
 import {getUserActivities,activityLabel,type UserActivity} from "@/lib/activity";
 import {useStoryProgress} from "@/lib/use-story-progress";
