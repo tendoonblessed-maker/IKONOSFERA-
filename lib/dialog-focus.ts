@@ -4,6 +4,21 @@ export type DialogTabEvent = {
   preventDefault: () => void;
 };
 
+function isDialogTabStop(element: HTMLElement): boolean {
+  if (element.tabIndex < 0) return false;
+  if (element.matches(':disabled,[hidden],[aria-hidden="true"]')) return false;
+  if (element.closest('[hidden],[inert],[aria-hidden="true"]')) return false;
+
+  // getClientRects catches display:none on the element or one of its ancestors.
+  if (element.getClientRects().length === 0) return false;
+
+  const style = element.ownerDocument.defaultView?.getComputedStyle(element);
+  if (style && (style.display === 'none' || style.visibility === 'hidden' || style.visibility === 'collapse')) {
+    return false;
+  }
+  return true;
+}
+
 /** Keep keyboard Tab navigation inside a modal dialog. */
 export function trapDialogTab(
   event: DialogTabEvent,
@@ -13,8 +28,8 @@ export function trapDialogTab(
   if (event.key !== 'Tab' || !dialog) return false;
 
   const controls = Array.from(dialog.querySelectorAll<HTMLElement>(
-    'a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])'
-  ));
+    'a[href],area[href],button,input,select,textarea,summary,iframe,audio[controls],video[controls],[contenteditable="true"],[contenteditable="plaintext-only"],[tabindex]'
+  )).filter(isDialogTabStop);
   if (!controls.length) {
     event.preventDefault();
     return true;
