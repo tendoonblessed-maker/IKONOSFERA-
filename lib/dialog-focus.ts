@@ -4,8 +4,7 @@ export type DialogTabEvent = {
   preventDefault: () => void;
 };
 
-function isDialogTabStop(element: HTMLElement): boolean {
-  if (element.tabIndex < 0) return false;
+function isDialogElementAvailable(element: HTMLElement): boolean {
   if (element.matches(':disabled,[hidden],[aria-hidden="true"]')) return false;
   if (element.closest('[hidden],[inert],[aria-hidden="true"]')) return false;
 
@@ -17,6 +16,16 @@ function isDialogTabStop(element: HTMLElement): boolean {
     return false;
   }
   return true;
+}
+
+function isDialogTabStop(element: HTMLElement): boolean {
+  return element.tabIndex >= 0 && isDialogElementAvailable(element);
+}
+
+function isDialogFocusTarget(element: HTMLElement): boolean {
+  // A previously focused element may deliberately use tabindex="-1"; it is
+  // programmatically focusable even though it is not part of sequential Tab order.
+  return isDialogElementAvailable(element) && (element.tabIndex >= 0 || element.hasAttribute('tabindex'));
 }
 
 /** Keep keyboard Tab navigation inside a modal dialog. */
@@ -54,8 +63,8 @@ export function trapDialogTab(
 /** Return focus to the opener without jumping the underlying chat/profile scroll. */
 export function restoreDialogFocus(previousFocus: HTMLElement | null): void {
   // The opener can become disabled, hidden or inert while the dialog is open.
-  // Reuse the tab-stop guard so focus is never restored behind an inaccessible ancestor.
-  if (previousFocus?.isConnected && isDialogTabStop(previousFocus)) {
+  // Validate availability, but preserve programmatic focus for explicit tabindex="-1" targets.
+  if (previousFocus?.isConnected && isDialogFocusTarget(previousFocus)) {
     previousFocus.focus({preventScroll: true});
   }
 }

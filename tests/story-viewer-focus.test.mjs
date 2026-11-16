@@ -118,12 +118,15 @@ test('a dialog with no rendered tab stops still prevents focus from escaping',()
 function makeOpener(focused,name,options={}) {
   const control=makeControl(focused,name,options);
   control.isConnected=options.connected!==false;
-  control.hasAttribute=attribute=>attribute==='hidden'&&Boolean(options.hidden);
+  control.hasAttribute=attribute=>(
+    (attribute==='hidden'&&Boolean(options.hidden))||
+    (attribute==='tabindex'&&Boolean(options.explicitTabIndex))
+  );
   control.focus=focusOptions=>focused.push({name,options:focusOptions});
   return control;
 }
 
-test('focus restoration only returns to a connected, visible and enabled opener',()=>{
+test('focus restoration skips unavailable openers but preserves explicit programmatic focus targets',()=>{
   const focused=[];
   const candidates=[
     makeOpener(focused,'disconnected',{connected:false}),
@@ -134,11 +137,15 @@ test('focus restoration only returns to a connected, visible and enabled opener'
     makeOpener(focused,'aria-hidden-ancestor',{ancestorAriaHidden:true}),
     makeOpener(focused,'display-none',{display:'none'}),
     makeOpener(focused,'visibility-hidden',{visibility:'hidden'}),
-    makeOpener(focused,'negative-tabindex',{tabIndex:-1}),
+    makeOpener(focused,'non-focusable',{tabIndex:-1}),
+    makeOpener(focused,'programmatic-tabindex-minus-one',{tabIndex:-1,explicitTabIndex:true}),
     makeOpener(focused,'visible')
   ];
   for(const candidate of candidates)restoreDialogFocus(candidate);
-  assert.deepEqual(focused,[{name:'visible',options:{preventScroll:true}}]);
+  assert.deepEqual(focused,[
+    {name:'programmatic-tabindex-minus-one',options:{preventScroll:true}},
+    {name:'visible',options:{preventScroll:true}}
+  ]);
 });
 
 test('both story viewers wire focus trapping, initial focus and opener restoration',()=>{
