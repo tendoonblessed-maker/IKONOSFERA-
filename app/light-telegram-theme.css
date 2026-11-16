@@ -63,7 +63,7 @@
 .messenger.is-authenticated .pane-search input::placeholder,
 .messenger.is-authenticated .channel-tools input::placeholder,
 .messenger.is-authenticated .ik-contact-lookup input::placeholder{
-  color:#a2a8b7!important;
+  color:var(--ik-soft-muted)!important;
 }
 .messenger.is-authenticated .ik-inbox-filters {
   background:#fff!important;
@@ -236,7 +236,7 @@
   box-shadow:none!important;
 }
 .messenger.is-authenticated .composer textarea::placeholder{
-  color:#a4aab9!important;
+  color:var(--ik-soft-muted)!important;
 }
 .messenger.is-authenticated .composer .send-button,
 .messenger.is-authenticated .group-view .composer .send-button{
