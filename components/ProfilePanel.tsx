@@ -251,7 +251,7 @@ export default function ProfilePanel({token,userId,targetId,onBack,onOwnProfileC
     <p className="profile-privacy">Фото и истории доступны другим зарегистрированным пользователям. Не публикуй личные документы.</p>
     {(error||notice)&&<p role="status" className={error?"profile-error":"profile-success"}>{error||notice}</p>}
    </div>
-   {activeStory&&<div ref={storyDialogRef} className="story-viewer story-viewer-telegram" role="dialog" aria-modal="true" aria-label="Просмотр историй" onPointerDown={()=>setStoryPaused(true)} onPointerUp={()=>setStoryPaused(false)} onPointerCancel={()=>setStoryPaused(false)}>
+   {activeStory&&<div ref={storyDialogRef} tabIndex={-1} className="story-viewer story-viewer-telegram" role="dialog" aria-modal="true" aria-label="Просмотр историй" onPointerDown={()=>setStoryPaused(true)} onPointerUp={()=>setStoryPaused(false)} onPointerCancel={()=>setStoryPaused(false)}>
     <div className="story-viewer-stage">
      <div className="story-progress">{stories.map((st,i)=><span key={st.id} className="story-progress-track"><span className={i<(storyIndex??0)?"done":i===storyIndex?"playing story-progress-fill":""} ref={i===storyIndex?progressRef:undefined}/></span>)}</div>
      <header className="story-viewer-header"><span className="story-viewer-avatar">{avatar?<img src={avatar} alt=""/>:(profile?.display_name||"?").charAt(0)}</span>
