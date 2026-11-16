@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
 import {readFileSync} from 'node:fs';
-import {restoreDialogFocus,trapDialogTab} from '../lib/dialog-focus.ts';
+import {restoreDialogFocus,restoreDialogFocusInside,trapDialogTab} from '../lib/dialog-focus.ts';
 
 function makeControl(focused,name,options={}){
   const {
