@@ -42,13 +42,13 @@ test('activity batching returns no empty requests and caps caller batch sizes at
 test('activity API walks every bounded batch and the contacts tab does not stop at 60 people',()=>{
  const api=read('lib/activity.ts');
  const shell=read('components/AppShell.tsx');
- assert.match(api,/for\\(const batch of batches\\)/);
- assert.match(api,/p_user_ids:batch/);
- assert.match(api,/chunkUserActivityIds\\(ids\\)/);
- assert.doesNotMatch(api,/\\.slice\\(0,100\\)/);
+ assert.ok(api.includes('for(const batch of batches)'));
+ assert.ok(api.includes('p_user_ids:batch'));
+ assert.ok(api.includes('chunkUserActivityIds(ids)'));
+ assert.ok(!api.includes('.slice(0,100)'));
  const start=shell.indexOf("if(tab!=='contacts'||!session||!contactPeople.length)return;");
  const end=shell.indexOf("const active=rows.find",start);
  const effect=shell.slice(start,end);
- assert.match(effect,/getUserActivities\\(session\\.access_token,contactPeople\\.map\\(p=>p\\.id\\)\\)/);
- assert.doesNotMatch(effect,/contactPeople\\.slice\\(0,60\\)/);
+ assert.ok(effect.includes('getUserActivities(session.access_token,contactPeople.map(p=>p.id))'));
+ assert.ok(!effect.includes('contactPeople.slice(0,60)'));
 });
