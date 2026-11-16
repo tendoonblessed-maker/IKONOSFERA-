@@ -32,6 +32,7 @@ export function trapDialogTab(
   )).filter(isDialogTabStop);
   if (!controls.length) {
     event.preventDefault();
+    dialog.focus({preventScroll: true});
     return true;
   }
 
