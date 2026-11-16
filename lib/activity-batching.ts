@@ -4,7 +4,9 @@
  * everyone after the first batch.
  */
 export const USER_ACTIVITY_BATCH_SIZE=100;
-const UUID=/^[0-9a-f-]{36}$/i;
+// Validate the UUID's 8-4-4-4-12 layout. A loose 36-character hex/hyphen
+// pattern also accepts values such as 36 hyphens and can poison the whole RPC.
+const UUID=/^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i;
 
 export function chunkUserActivityIds(ids:string[],batchSize=USER_ACTIVITY_BATCH_SIZE):string[][]{
  const unique=new Map<string,string>();
