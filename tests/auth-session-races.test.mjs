@@ -213,3 +213,66 @@ test('background auth refresh never keeps old userId when a different valid acco
  assert.match(effect,/if\(cancelled\|\|loadSession\(\)\?\.access_token!==valid\.access_token\)return;/);
  assert.match(effect,/if\(owner\.id!==userId\)\{window\.location\.reload\(\);return;\}/);
 });
+
+
+function magicLinkEnvironment({storageBlocked=false,historyFailure=false}={}){
+ const key='ikonosfera-session-v1';
+ const data=new Map();
+ const order=[];
+ const location={hash:'#access_token=magic-access&refresh_token=magic-refresh&expires_in=3600',pathname:'/',search:'?from=mail'};
+ const window={
+  location,
+  history:{
+   replaceState(_state,_title,url){
+    order.push('scrub');
+    if(historyFailure)throw Error('history unavailable');
+    assert.ok(data.has(key),'credentials must be persisted before URL cleanup');
+    assert.equal(url,'/?from=mail');
+    location.hash='';
+   }
+  }
+ };
+ const localStorage={
+  getItem:name=>data.get(name)??null,
+  setItem(name,value){
+   order.push('persist');
+   if(storageBlocked)throw Error('storage blocked');
+   data.set(name,String(value));
+  },
+  removeItem:name=>data.delete(name)
+ };
+ const context={
+  exports:{},
+  process:{env:{NEXT_PUBLIC_SUPABASE_URL:'https://test.supabase.invalid',NEXT_PUBLIC_SUPABASE_ANON_KEY:'anon-test'}},
+  window,localStorage,AbortSignal,URLSearchParams
+ };
+ vm.runInNewContext(compiled,context,{filename:'supabase-rest.cjs',timeout:2500});
+ return {api:context.exports,data,location,order};
+}
+
+test('magic-link credentials remain in the URL when session persistence fails',()=>{
+ const {api,location,order}=magicLinkEnvironment({storageBlocked:true});
+ assert.throws(()=>api.consumeEmailLinkSession(),/storage blocked/);
+ assert.match(location.hash,/access_token=magic-access/);
+ assert.match(location.hash,/refresh_token=magic-refresh/);
+ assert.deepEqual(order,['persist']);
+});
+
+test('magic-link URL is scrubbed only after the session has been persisted',()=>{
+ const {api,data,location,order}=magicLinkEnvironment();
+ const session=api.consumeEmailLinkSession();
+ assert.equal(session.access_token,'magic-access');
+ assert.equal(session.refresh_token,'magic-refresh');
+ assert.equal(JSON.parse(data.get('ikonosfera-session-v1')).access_token,'magic-access');
+ assert.equal(location.hash,'');
+ assert.deepEqual(order,['persist','scrub']);
+});
+
+test('history cleanup failure does not discard an already persisted magic-link session',()=>{
+ const {api,data,location,order}=magicLinkEnvironment({historyFailure:true});
+ const session=api.consumeEmailLinkSession();
+ assert.equal(session.access_token,'magic-access');
+ assert.equal(JSON.parse(data.get('ikonosfera-session-v1')).refresh_token,'magic-refresh');
+ assert.match(location.hash,/access_token=magic-access/);
+ assert.deepEqual(order,['persist','scrub']);
+});
