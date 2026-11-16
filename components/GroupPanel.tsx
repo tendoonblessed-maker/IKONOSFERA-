@@ -12,7 +12,7 @@ import {readGroupDrafts} from '@/lib/group-drafts';
 import {getOrCreateGroupSendAttempt,clearGroupSendAttempt} from '@/lib/group-send-attempts';
 import {subscribeGroupChanges} from '@/lib/group-realtime';
 import {mergeConfirmedGroupMessages,CONFIRMED_GROUP_MESSAGE_GRACE_MS,type ConfirmedGroupMessage} from '@/lib/group-history';
-import {shouldAcknowledgeGroupRead,countNewIncomingBelow} from '@/lib/group-read-position';
+import {shouldAcknowledgeGroupRead,countNewIncomingBelow,getNewIncomingGroupMessages} from '@/lib/group-read-position';
 import {fetchOlderGroupMessages,prependOlderGroupMessages,preserveOlderGroupMessages,GROUP_HISTORY_MAX_LOADED} from '@/lib/group-pagination';
 type Props={token:string;userId:string;group:Group;onBack:()=>void;onShowProfile:(id:string)=>void;onDraftChange:(groupId:string,text:string)=>void};
 export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDraftChange}:Props){
@@ -33,6 +33,7 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
  const [olderError,setOlderError]=useState('');
  const [showJumpToLatest,setShowJumpToLatest]=useState(false);
  const [newMessagesBelow,setNewMessagesBelow]=useState(0);
+ const [incomingAnnouncement,setIncomingAnnouncement]=useState<{id:string;text:string}|null>(null);
  const [searchOpen,setSearchOpen]=useState(false);
  const [searchQuery,setSearchQuery]=useState('');
  const [searchPage,setSearchPage]=useState(0);
@@ -58,6 +59,7 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
  const previousMessageIdsRef=useRef<{groupId:string;ownerId:string;ids:Set<string>}>({
   groupId:group.id,ownerId:userId,ids:new Set()
  });
+ const hasObservedInitialMessagesRef=useRef(false);
  const requestSequenceRef=useRef(0);
  const confirmedGroupMessagesRef=useRef<Map<string,ConfirmedGroupMessage>>(new Map());
  const contextRef=useRef({groupId:group.id,userId,token});
@@ -81,6 +83,8 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
   setSearchResults([]);setSearchLoading(false);setSearchError('');setSearchHasMore(false);
   setSearchLocating(null);setPendingSearchJump(null);
   previousMessageIdsRef.current={groupId:group.id,ownerId:userId,ids:new Set()};
+  hasObservedInitialMessagesRef.current=false;
+  setIncomingAnnouncement(null);
   setShowJumpToLatest(false);
   setNewMessagesBelow(0);
  },[group.id,userId]);
@@ -341,13 +345,36 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
   const previous=previousMessageIdsRef.current;
   if(previous.groupId!==group.id||previous.ownerId!==userId){
     previousMessageIdsRef.current={groupId:group.id,ownerId:userId,ids:new Set(messages.map(m=>m.id))};
+    hasObservedInitialMessagesRef.current=false;
     setNewMessagesBelow(0);
+    setIncomingAnnouncement(null);
     return;
   }
+  // Seed the first successfully loaded page silently. An empty group is still
+  // considered initialized so its very first later message can be announced.
+  if(!initialPageLoadedRef.current){
+    previous.ids=new Set(messages.map(m=>m.id));
+    return;
+  }
+  if(!hasObservedInitialMessagesRef.current){
+    previous.ids=new Set(messages.map(m=>m.id));
+    hasObservedInitialMessagesRef.current=true;
+    return;
+  }
+  const incoming=getNewIncomingGroupMessages(messages,previous.ids,userId);
   const newBelow=countNewIncomingBelow(messages,previous.ids,userId,followNewestRef.current);
   previous.ids=new Set(messages.map(m=>m.id));
   if(newBelow>0)setNewMessagesBelow(n=>Math.min(99,n+newBelow));
- },[messages,group.id,userId]);
+  // Announce only genuinely new incoming messages while the latest timeline
+  // is visible. History paging, own sends and background updates stay silent.
+  if(incoming.length&&followNewestRef.current&&!browsingOlderRef.current&&document.visibilityState==='visible'){
+    const latest=incoming[incoming.length-1];
+    setIncomingAnnouncement({
+      id:latest.id,
+      text:incoming.length===1?'Новое сообщение в группе':`Новых сообщений в группе: ${incoming.length}`
+    });
+  }
+ },[messages,group.id,userId,initialLoading]);
  useEffect(()=>{if(!membersOpen)return;const onKey=(event:KeyboardEvent)=>{if(event.key==='Escape')setMembersOpen(false);};window.addEventListener('keydown',onKey);return()=>window.removeEventListener('keydown',onKey);},[membersOpen]);
   useEffect(()=>{if(!membersOpen||!members.length)return;let gone=false;const load=()=>{if(document.visibilityState==='visible')void getUserActivities(token,members.map(m=>m.id)).then(value=>{if(!gone)setPresence(value);}).catch(()=>{});};load();const t=setInterval(load,40000);return()=>{gone=true;clearInterval(t);};},[token,membersOpen,members]);
  async function send(e:FormEvent){
@@ -420,6 +447,9 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
   </svg>
  </button>
  </header>
+ <div className="sr-only" role="status" aria-live="polite" aria-atomic="true">
+  {incomingAnnouncement&&<span key={incomingAnnouncement.id}>{incomingAnnouncement.text}</span>}
+ </div>
  {searchOpen&&<GroupSearchPanel query={searchQuery} onQueryChange={changeSearch}
   onClose={closeSearch} results={searchResults} loading={searchLoading}
   error={searchError} hasMore={searchHasMore} locatingId={searchLocating}
