@@ -83,3 +83,24 @@ test('ChatMedia pauses its player on page hide and removes lifecycle listeners o
  assert.match(componentSource,/mediaLifecycleCleanupRef\.current\?\.\(\)/);
  assert.match(componentSource,/mediaLifecycleCleanupRef\.current=null/);
 });
+
+test('browser freeze stops private chat playback and cleanup removes the freeze listener',()=>{
+ const {watchChatMediaPageLifecycle}=load();
+ const listeners=new Map();
+ const doc={
+  visibilityState:'hidden',
+  addEventListener(type,listener){listeners.set('doc:'+type,listener);},
+  removeEventListener(type,listener){if(listeners.get('doc:'+type)===listener)listeners.delete('doc:'+type);}
+ };
+ const win={
+  addEventListener(type,listener){listeners.set('win:'+type,listener);},
+  removeEventListener(type,listener){if(listeners.get('win:'+type)===listener)listeners.delete('win:'+type);}
+ };
+ let pauses=0;
+ const cleanup=watchChatMediaPageLifecycle({pause(){pauses++;}},doc,win);
+ listeners.get('doc:freeze')();
+ assert.equal(pauses,1);
+ cleanup();
+ assert.equal(listeners.has('doc:freeze'),false);
+ assert.equal(listeners.size,0);
+});
