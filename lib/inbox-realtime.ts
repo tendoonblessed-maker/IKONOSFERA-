@@ -36,6 +36,9 @@ export function subscribeInboxChanges(
    .on('postgres_changes',{schema:'public',table:'messages',event:'INSERT'},direct)
    .on('postgres_changes',{schema:'public',table:'messages',event:'UPDATE'},direct)
    .on('postgres_changes',{schema:'public',table:'group_messages',event:'INSERT'},group)
+   // Editing the latest group message changes its inbox preview too. Treat
+   // UPDATE as a wake-up hint and re-read the RLS-scoped overview over HTTPS.
+   .on('postgres_changes',{schema:'public',table:'group_messages',event:'UPDATE'},group)
    .subscribe(status=>{
     // A reconnect can miss inserts while offline: resynchronize both lists.
     if(status==='SUBSCRIBED'){direct();group();}

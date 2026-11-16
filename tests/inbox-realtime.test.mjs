@@ -37,10 +37,21 @@ test('inbox Realtime only wakes RLS-backed server fetches',()=>{
  assert.match(rt,/table:'messages',event:'INSERT'/);
  assert.match(rt,/table:'messages',event:'UPDATE'/);
  assert.match(rt,/table:'group_messages',event:'INSERT'/);
+ assert.match(rt,/table:'group_messages',event:'UPDATE'/);
  assert.match(rt,/if\(status==='SUBSCRIBED'\)\{direct\(\);group\(\);\}/);
  assert.match(rt,/client\.removeChannel\(channel\)/);
  assert.match(rt,/client\.realtime\.disconnect\(\)/);
  assert.doesNotMatch(rt,/\.from\('messages'\)|\.from\('group_messages'\)|payload\.new|service_role/i);
+});
+
+test('group inbox previews refresh on inserts and edits without consuming Realtime payloads',()=>{
+ const rt=load('lib/inbox-realtime.ts');
+ assert.match(rt,/\.on\('postgres_changes',\{schema:'public',table:'group_messages',event:'INSERT'\},group\)/);
+ assert.match(rt,/\.on\('postgres_changes',\{schema:'public',table:'group_messages',event:'UPDATE'\},group\)/);
+ assert.match(rt,/Global inbox notifications are \*wake-up hints\*/);
+ const shell=load('components/AppShell.tsx');
+ assert.match(shell,/if\(kind==='direct'\)pendingDirect=true;\s*else pendingGroup=true;/);
+ assert.match(shell,/listGroupOverviews\(token\)\.then\(summaries=>/);
 });
 
 test('updates to inbox and group unread badges are debounced and network-resilient',()=>{
@@ -48,7 +59,7 @@ test('updates to inbox and group unread badges are debounced and network-resilie
  const effect=shell.slice(shell.indexOf('// Realtime wakes the unread counters'),shell.indexOf('  useEffect(()=>{\n    if(!selected||!session?.access_token||!userId)return;'));
  assert.match(effect,/subscribeInboxChanges\(token,userId,onChanged\)/);
  assert.match(effect,/const direct=pendingDirect,group=pendingGroup/);
- assert.match(effect,/if\(direct\)work\.push\(refreshInbox\(token,userId\)\.catch\(\(\)=>\{\}\)\)/);
+ assert.match(effect,/if\(direct\)work.push\(refreshInbox\(token,userId\)\.catch\(\(\)=>\{\}\)\)/);
  assert.match(effect,/if\(group\)\{/);
  assert.match(effect,/listGroupOverviews\(token\)\.then\(summaries=>/);
  assert.match(effect,/isLatestAccountSnapshot\(requestId,groupOverviewRequestRef\.current,userId,inboxOwnerRef\.current\)/);
