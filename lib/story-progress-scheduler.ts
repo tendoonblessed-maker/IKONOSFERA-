@@ -1,6 +1,7 @@
 export type StoryProgressSchedulerOptions={
  durationMs:number;
  isPaused:()=>boolean;
+ isMotionReduced:()=>boolean;
  isVisible:()=>boolean;
  requestFrame:(callback:(time:number)=>void)=>number;
  cancelFrame:(handle:number)=>void;
@@ -14,9 +15,9 @@ export type StoryProgressScheduler={
 };
 
 /**
- * Owns one story's animation clock. Pausing or hiding cancels the pending
- * animation frame without counting background time; resuming starts a fresh
- * frame and keeps the elapsed foreground time.
+ * Owns one story's animation clock. Pausing, reduced motion or hiding cancels
+ * the pending animation frame without counting paused time; resuming starts a
+ * fresh frame and keeps the elapsed foreground time.
  */
 export function createStoryProgressScheduler(options:StoryProgressSchedulerOptions):StoryProgressScheduler{
  let elapsedMs=0;
@@ -38,7 +39,7 @@ export function createStoryProgressScheduler(options:StoryProgressSchedulerOptio
  const tick=(time:number,run:number)=>{
   if(run!==generation)return;
   frameId=null;
-  if(disposed||completed||options.isPaused()||!options.isVisible()){
+  if(disposed||completed||options.isPaused()||options.isMotionReduced()||!options.isVisible()){
    previousTime=null;
    return;
   }
@@ -60,7 +61,7 @@ export function createStoryProgressScheduler(options:StoryProgressSchedulerOptio
 
  const sync=()=>{
   if(disposed||completed)return;
-  if(options.isPaused()||!options.isVisible()){
+  if(options.isPaused()||options.isMotionReduced()||!options.isVisible()){
    stop();
    return;
   }
