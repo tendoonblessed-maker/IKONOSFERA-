@@ -1059,11 +1059,11 @@ test('private photo attachments open a modal inside the chat without leaking pre
  assert.match(viewer,/className="ik-chat-photo-backdrop"/);
  assert.match(viewer,/role="dialog"/);
  assert.match(viewer,/aria-modal="true"/);
- assert.match(viewer,/if\(event\.key==='Escape'\)/);
+ assert.match(viewer,/shouldClosePhotoViewerOnKeydown\(event\)/);
  assert.match(viewer,/if\(event\.key!=='Tab'\)return/);
  assert.match(viewer,/document\.body\.style\.overflow='hidden'/);
  assert.match(viewer,/document\.body\.style\.overflow=previousOverflow/);
- assert.match(viewer,/previousFocus\?\.isConnected/);
+ assert.match(viewer,/restorePhotoViewerFocus\(previousFocus\)/);
  assert.match(viewer,/if\(event\.target===event\.currentTarget\)onClose\(\)/);
  assert.match(viewer,/onError=\{onImageError\}/);
  assert.match(css,/\.ik-chat-photo-backdrop/);
