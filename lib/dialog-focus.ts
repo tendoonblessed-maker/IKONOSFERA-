@@ -47,12 +47,21 @@ export function trapDialogTab(
 
   const first = controls[0];
   const last = controls[controls.length - 1];
-  if (event.shiftKey && (activeElement === first || !dialog.contains(activeElement))) {
+  // A dialog container or an explicit tabindex="-1" descendant can receive
+  // programmatic focus, but is not in the sequential Tab order. Treat it like
+  // an out-of-list focus position so Tab cannot escape to the background page.
+  const activeIndex = activeElement ? controls.indexOf(activeElement as HTMLElement) : -1;
+  if (activeIndex === -1) {
+    event.preventDefault();
+    (event.shiftKey ? last : first).focus();
+    return true;
+  }
+  if (event.shiftKey && activeIndex === 0) {
     event.preventDefault();
     last.focus();
     return true;
   }
-  if (!event.shiftKey && (activeElement === last || !dialog.contains(activeElement))) {
+  if (!event.shiftKey && activeIndex === controls.length - 1) {
     event.preventDefault();
     first.focus();
     return true;
