@@ -115,15 +115,30 @@ test('a dialog with no rendered tab stops still prevents focus from escaping',()
   assert.deepEqual(f.focused,['dialog']);
 });
 
-test('focus restoration avoids disconnected or hidden openers and prevents scroll jumps',()=>{
-  const calls=[];
-  const visible={isConnected:true,hasAttribute:()=>false,focus:options=>calls.push(options)};
-  const disconnected={isConnected:false,hasAttribute:()=>false,focus:()=>calls.push('disconnected')};
-  const hidden={isConnected:true,hasAttribute:name=>name==='hidden',focus:()=>calls.push('hidden')};
-  restoreDialogFocus(visible);
-  restoreDialogFocus(disconnected);
-  restoreDialogFocus(hidden);
-  assert.deepEqual(calls,[{preventScroll:true}]);
+function makeOpener(focused,name,options={}) {
+  const control=makeControl(focused,name,options);
+  control.isConnected=options.connected!==false;
+  control.hasAttribute=attribute=>attribute==='hidden'&&Boolean(options.hidden);
+  control.focus=focusOptions=>focused.push({name,options:focusOptions});
+  return control;
+}
+
+test('focus restoration only returns to a connected, visible and enabled opener',()=>{
+  const focused=[];
+  const candidates=[
+    makeOpener(focused,'disconnected',{connected:false}),
+    makeOpener(focused,'hidden',{hidden:true}),
+    makeOpener(focused,'disabled',{disabled:true}),
+    makeOpener(focused,'disabled-fieldset',{ancestorDisabled:true}),
+    makeOpener(focused,'inert-ancestor',{ancestorInert:true}),
+    makeOpener(focused,'aria-hidden-ancestor',{ancestorAriaHidden:true}),
+    makeOpener(focused,'display-none',{display:'none'}),
+    makeOpener(focused,'visibility-hidden',{visibility:'hidden'}),
+    makeOpener(focused,'negative-tabindex',{tabIndex:-1}),
+    makeOpener(focused,'visible')
+  ];
+  for(const candidate of candidates)restoreDialogFocus(candidate);
+  assert.deepEqual(focused,[{name:'visible',options:{preventScroll:true}}]);
 });
 
 test('both story viewers wire focus trapping, initial focus and opener restoration',()=>{

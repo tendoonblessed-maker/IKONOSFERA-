@@ -53,7 +53,9 @@ export function trapDialogTab(
 
 /** Return focus to the opener without jumping the underlying chat/profile scroll. */
 export function restoreDialogFocus(previousFocus: HTMLElement | null): void {
-  if (previousFocus?.isConnected && !previousFocus.hasAttribute('hidden')) {
+  // The opener can become disabled, hidden or inert while the dialog is open.
+  // Reuse the tab-stop guard so focus is never restored behind an inaccessible ancestor.
+  if (previousFocus?.isConnected && isDialogTabStop(previousFocus)) {
     previousFocus.focus({preventScroll: true});
   }
 }
