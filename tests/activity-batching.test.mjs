@@ -21,6 +21,16 @@ test('activity batching filters invalid IDs and deduplicates UUIDs case-insensit
  assert.deepEqual(batches,[[first,second]]);
 });
 
+test('activity batching rejects malformed 36-character values that are not UUID-shaped',()=>{
+ const malformed=[
+  '-'.repeat(36),
+  '1'.repeat(36),
+  '111111111-1111-4111-8111-11111111111'
+ ];
+ assert.ok(malformed.every(value=>value.length===36));
+ assert.deepEqual(chunkUserActivityIds(malformed),[]);
+});
+
 test('activity batching returns no empty requests and caps caller batch sizes at the RPC limit',()=>{
  assert.deepEqual(chunkUserActivityIds([]),[]);
  assert.deepEqual(chunkUserActivityIds(['invalid']),[]);
@@ -32,13 +42,13 @@ test('activity batching returns no empty requests and caps caller batch sizes at
 test('activity API walks every bounded batch and the contacts tab does not stop at 60 people',()=>{
  const api=read('lib/activity.ts');
  const shell=read('components/AppShell.tsx');
- assert.match(api,/for\(const batch of batches\)/);
+ assert.match(api,/for\\(const batch of batches\\)/);
  assert.match(api,/p_user_ids:batch/);
- assert.match(api,/chunkUserActivityIds\(ids\)/);
- assert.doesNotMatch(api,/\.slice\(0,100\)/);
+ assert.match(api,/chunkUserActivityIds\\(ids\\)/);
+ assert.doesNotMatch(api,/\\.slice\\(0,100\\)/);
  const start=shell.indexOf("if(tab!=='contacts'||!session||!contactPeople.length)return;");
  const end=shell.indexOf("const active=rows.find",start);
  const effect=shell.slice(start,end);
- assert.match(effect,/getUserActivities\(session\.access_token,contactPeople\.map\(p=>p\.id\)\)/);
- assert.doesNotMatch(effect,/contactPeople\.slice\(0,60\)/);
+ assert.match(effect,/getUserActivities\\(session\\.access_token,contactPeople\\.map\\(p=>p\\.id\\)\\)/);
+ assert.doesNotMatch(effect,/contactPeople\\.slice\\(0,60\\)/);
 });
