@@ -119,8 +119,16 @@ export function consumeEmailLinkSession(): Session | null {
  const refresh_token=params.get('refresh_token');
  if(!access_token||!refresh_token)return null;
  const expires_in=Number(params.get('expires_in')||3600);
- window.history.replaceState({},'',window.location.pathname+window.location.search);
- return saveSession({access_token,refresh_token,expires_in:Number.isFinite(expires_in)?expires_in:3600});
+ // Persist the one-time credentials before removing them from the URL.
+ // If Web Storage is blocked, keep the fragment so the user can retry after
+ // restoring storage access instead of losing the only sign-in response.
+ const session=saveSession({access_token,refresh_token,expires_in:Number.isFinite(expires_in)?expires_in:3600});
+ // URL cleanup is best-effort: a history API failure must not invalidate a
+ // session that has already been persisted successfully.
+ try{
+  window.history.replaceState({},'',window.location.pathname+window.location.search);
+ }catch{}
+ return session;
 }
 export async function verifyEmailCode(email: string, token: string) {
   const response = await http<{access_token:string;refresh_token:string;expires_in:number}>(`/auth/v1/verify`,{method:'POST',body:{email,token,type:'email'}});
