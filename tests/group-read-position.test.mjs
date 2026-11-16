@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
 import {readFileSync} from 'node:fs';
-import {shouldAcknowledgeGroupRead,countNewIncomingBelow} from '../lib/group-read-position.ts';
+import {shouldAcknowledgeGroupRead,countNewIncomingBelow,getNewIncomingGroupMessages} from '../lib/group-read-position.ts';
 
 const GROUP='11111111-1111-4111-8111-111111111111';
 const A='22222222-2222-4222-8222-222222222222';
@@ -71,4 +71,28 @@ test('group jump is scoped to group/account and new message badge saturates at 9
  assert.match(panel,/setNewMessagesBelow\(n=>Math\.min\(99,n\+newBelow\)\)/);
  assert.match(panel,/newMessagesBelow<99\?newMessagesBelow:'99\+'/);
  assert.match(panel,/aria-label=\{newMessagesBelow>0/);
+});
+
+
+test('new group-message announcements include only previously unseen messages from other participants',()=>{
+ const previous=new Set(['1','2']);
+ const next=[message('1'),message('2'),message('3'),message('4',A),message('5','44444444-4444-4444-8444-444444444444')];
+ assert.deepEqual(getNewIncomingGroupMessages(next,previous,A).map(item=>item.id),['3','5']);
+ assert.deepEqual(getNewIncomingGroupMessages(next,new Set(next.map(item=>item.id)),A),[]);
+});
+
+test('the first message in an initialized empty group is a valid announcement candidate',()=>{
+ assert.deepEqual(getNewIncomingGroupMessages([message('first')],new Set(),A).map(item=>item.id),['first']);
+});
+
+test('group live announcements skip initial history, older-page browsing and hidden documents',()=>{
+ const panel=file('components/GroupPanel.tsx');
+ assert.match(panel,/hasObservedInitialMessagesRef=useRef\(false\)/);
+ assert.match(panel,/if\(!initialPageLoadedRef\.current\)/);
+ assert.match(panel,/if\(!hasObservedInitialMessagesRef\.current\)/);
+ assert.match(panel,/getNewIncomingGroupMessages\(messages,previous\.ids,userId\)/);
+ assert.match(panel,/followNewestRef\.current&&!browsingOlderRef\.current&&document\.visibilityState==='visible'/);
+ assert.match(panel,/role="status" aria-live="polite" aria-atomic="true"/);
+ assert.match(panel,/key=\{incomingAnnouncement\.id\}/);
+ assert.match(panel,/setIncomingAnnouncement\(null\)/);
 });
