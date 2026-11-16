@@ -1,32 +1,3 @@
-
-
-test('programmatic focus escapes return to the close control or a safe dialog fallback',()=>{
-  const f=fixture();
-  const outside={name:'outside'};
-  assert.equal(restoreDialogFocusInside(f.dialog,outside,f.first),true);
-  assert.deepEqual(f.focused,['first']);
-
-  // Focus already inside the modal is left untouched.
-  assert.equal(restoreDialogFocusInside(f.dialog,f.middle,f.first),false);
-  assert.deepEqual(f.focused,['first']);
-
-  const onlyHidden=[makeControl(f.focused,'hidden',{hidden:true})];
-  const empty=fixture(onlyHidden,f.focused);
-  assert.equal(restoreDialogFocusInside(empty.dialog,outside,f.first),true);
-  assert.deepEqual(f.focused,['first','dialog']);
-});
-
-test('both story viewers guard programmatic focusin escapes and clean up the listener',()=>{
-  const home=source('components/StoriesStrip.tsx');
-  const profile=source('components/ProfilePanel.tsx');
-  for(const component of [home,profile]){
-    assert.match(component,/const onFocusIn=\(event:FocusEvent\)=>\{/);
-    assert.match(component,/event\.target instanceof Element&&!dialog\.contains\(event\.target\)/);
-    assert.match(component,/restoreDialogFocusInside\(dialog,event\.target,storyCloseRef\.current\)/);
-    assert.match(component,/document\.addEventListener\('focusin',onFocusIn\)/);
-    assert.match(component,/document\.removeEventListener\('focusin',onFocusIn\)/);
-  }
-});
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
 import {readFileSync} from 'node:fs';
@@ -204,5 +175,34 @@ test('both story viewers wire focus trapping, initial focus and opener restorati
     assert.match(component,/ref=\{storyDialogRef\}/);
     assert.match(component,/ref=\{storyDialogRef\}\s+tabIndex=\{-1\}/);
     assert.match(component,/ref=\{storyCloseRef\}/);
+  }
+});
+
+
+test('programmatic focus escapes return to the close control or a safe dialog fallback',()=>{
+  const f=fixture();
+  const outside={name:'outside'};
+  assert.equal(restoreDialogFocusInside(f.dialog,outside,f.first),true);
+  assert.deepEqual(f.focused,['first']);
+
+  // Focus already inside the modal is left untouched.
+  assert.equal(restoreDialogFocusInside(f.dialog,f.middle,f.first),false);
+  assert.deepEqual(f.focused,['first']);
+
+  const onlyHidden=[makeControl(f.focused,'hidden',{hidden:true})];
+  const empty=fixture(onlyHidden,f.focused);
+  assert.equal(restoreDialogFocusInside(empty.dialog,outside,f.first),true);
+  assert.deepEqual(f.focused,['first','dialog']);
+});
+
+test('both story viewers guard programmatic focusin escapes and clean up the listener',()=>{
+  const home=source('components/StoriesStrip.tsx');
+  const profile=source('components/ProfilePanel.tsx');
+  for(const component of [home,profile]){
+    assert.match(component,/const onFocusIn=\(event:FocusEvent\)=>\{/);
+    assert.match(component,/event\.target instanceof Element&&!dialog\.contains\(event\.target\)/);
+    assert.match(component,/restoreDialogFocusInside\(dialog,event\.target,storyCloseRef\.current\)/);
+    assert.match(component,/document\.addEventListener\('focusin',onFocusIn\)/);
+    assert.match(component,/document\.removeEventListener\('focusin',onFocusIn\)/);
   }
 });
