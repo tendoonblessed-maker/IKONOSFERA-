@@ -70,6 +70,19 @@ export function auditTheme(globals,softTheme){
     }
   }
   add('soft white text on --ik-soft-blue','#ffffff',required(soft,'--ik-soft-blue','soft theme'));
+  // Placeholder text is still text under WCAG 1.4.3. Audit the low-contrast
+  // field surfaces used by search and the mobile composer, plus theme surfaces.
+  const placeholder=required(soft,'--ik-soft-muted','soft theme');
+  const placeholderSurfaces=[
+    ['search field','#f0f2f8'],
+    ['message composer','#f3f5fa'],
+    ['soft background',required(soft,'--ik-soft-bg','soft theme')],
+    ['soft panel',required(soft,'--ik-soft-panel','soft theme')],
+    ['soft accent surface',required(soft,'--ik-soft-blue-pale','soft theme')]
+  ];
+  for(const [label,surface] of placeholderSurfaces){
+    add('soft placeholder on '+label,placeholder,surface);
+  }
   add('authenticated incoming direct timestamp on white',required(authenticated,'--subdued','authenticated'),'#ffffff');
   add('authenticated outgoing direct timestamp on #dbe7ff','#52638b','#dbe7ff');
   return {checks,failures};
