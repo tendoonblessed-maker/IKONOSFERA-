@@ -25,8 +25,8 @@ function makeControl(focused,name,options={}){
     ownerDocument:{defaultView:{getComputedStyle(){return {display,visibility};}}}
   };
 }
-function fixture(customControls){
-  const focused=[];
+function fixture(customControls,sharedFocused){
+  const focused=sharedFocused??[];
   const controls=customControls??[
     makeControl(focused,'first'),
     makeControl(focused,'middle'),
@@ -93,7 +93,7 @@ test('hidden, inert, disabled and non-rendered controls are excluded from the ta
     makeControl(focused,'visible-first'),
     makeControl(focused,'visible-last')
   ];
-  const f=fixture(controls);
+  const f=fixture(controls,focused);
   const forward=key();
   assert.equal(trapDialogTab(forward,f.dialog,controls.at(-1)),true);
   assert.deepEqual(f.focused,['visible-first']);
@@ -108,7 +108,7 @@ test('a dialog with no rendered tab stops still prevents focus from escaping',()
     makeControl(focused,'hidden',{hidden:true}),
     makeControl(focused,'offscreen',{visible:false}),
     makeControl(focused,'disabled',{disabled:true})
-  ]);
+  ],focused);
   const tab=key();
   assert.equal(trapDialogTab(tab,f.dialog,null),true);
   assert.equal(tab.prevented,true);
