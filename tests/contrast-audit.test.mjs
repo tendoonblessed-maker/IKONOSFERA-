@@ -15,8 +15,13 @@ test('WCAG relative luminance and contrast ratio use sRGB linearization',()=>{
 test('base, authenticated and soft messenger text tokens meet WCAG AA on their actual surfaces',()=>{
   const result=auditTheme(read('app/globals.css'),read('app/light-telegram-theme.css'));
   assert.equal(result.failures.length,0,result.failures.map(item=>item.label+': '+item.ratio.toFixed(2)+':1').join('\n'));
-  assert.ok(result.checks.length>=46,'the audit must cover all active palettes and direct-message timestamps');
+  assert.ok(result.checks.length>=51,'the audit must cover active palettes, timestamps and placeholder text');
+  const placeholders=result.checks.filter(item=>item.label.startsWith('soft placeholder'));
+  assert.equal(placeholders.length,5);
+  assert.ok(placeholders.every(item=>item.pass),'all active light-theme placeholders must meet 4.5:1');
   const theme=read('app/light-telegram-theme.css');
+  assert.match(theme,/\.pane-search input::placeholder,[\s\S]*?\.ik-contact-lookup input::placeholder\{\s*color:var\(--ik-soft-muted\)!important/);
+  assert.match(theme,/\.composer textarea::placeholder\{\s*color:var\(--ik-soft-muted\)!important/);
   assert.match(theme,/\.messenger\.is-authenticated \.conversation-history>\.chat-message-row>\.bubble time\{\s*opacity:1!important/);
   assert.match(theme,/\.messenger\.is-authenticated \.conversation-history \.chat-message-row\.mine \.bubble time,[^}]*color:#52638b!important/);
 });
