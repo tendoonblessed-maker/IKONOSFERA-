@@ -10,6 +10,7 @@ import {clearAllGroupSendAttempts} from "@/lib/group-send-attempts";
 import ChatMedia from "@/components/ChatMedia";
 import ChatMessageText from "@/components/ChatMessageText";
 import {subscribeDirectChatChanges} from "@/lib/direct-realtime";
+import {countNewIncomingDirectMessages,rememberDirectMessageIds} from "@/lib/direct-message-announcements";
 import {subscribeInboxChanges,type InboxChangeKind} from "@/lib/inbox-realtime";
 import {isLatestAccountSnapshot} from "@/lib/inbox-snapshot";
 import {shouldOpenDirectChatSearch} from "@/lib/chat-shortcuts";
@@ -85,6 +86,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
   const [channelSlug,setChannelSlug]=useState("");
   const [channelDescription,setChannelDescription]=useState("");
   const [chatMessages,setChatMessages]=useState<ChatMessage[]>([]);
+  const [directMessageAnnouncement,setDirectMessageAnnouncement]=useState<{version:number;text:string}>({version:0,text:''});
   const [chatLoad,setChatLoad]=useState<{id:string;status:'loading'|'ready'|'error'}|null>(null);
   const [chatReloadNonce,setChatReloadNonce]=useState(0);
   const [hasOlderMessages,setHasOlderMessages]=useState(false);
@@ -155,6 +157,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
   const messageSearchRequestRef=useRef(0);
   const composerRef=useRef<HTMLTextAreaElement|null>(null);
   const confirmedMessagesRef=useRef<Map<string,ConfirmedMessage>>(new Map());
+  const directMessageAnnouncementRef=useRef<{chatId:string;userId:string;initialized:boolean;seenIds:Set<string>}>({chatId:'',userId:'',initialized:false,seenIds:new Set()});
   const attachmentDragDepthRef=useRef(0);
 
   // In-memory edits belong to one signed-in user; never reuse across accounts.
@@ -519,6 +522,8 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
     let realtimeTimer:number|null=null;
     const chatId=selected;
     const token=session.access_token;
+    directMessageAnnouncementRef.current={chatId,userId,initialized:false,seenIds:new Set()};
+    setDirectMessageAnnouncement(previous=>({version:previous.version+1,text:''}));
     setChatLoad({id:chatId,status:'loading'});
     setChatMessages([]);
     setHasOlderMessages(false);
@@ -539,6 +544,19 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
       try{
         const messages=(await listMessages(token,chatId)).reverse();
         if(cancelled)return;
+        const tracker=directMessageAnnouncementRef.current;
+        if(tracker.chatId===chatId&&tracker.userId===userId){
+          if(!tracker.initialized)tracker.initialized=true;
+          else{
+            const count=countNewIncomingDirectMessages(messages,tracker.seenIds,userId);
+            if(count>0&&document.visibilityState==='visible'&&selectedRef.current===chatId){
+              const announcement=count===1?'Новое входящее сообщение':
+                count>99?'Получено более 99 новых сообщений':'Получено сообщений: '+count;
+              setDirectMessageAnnouncement(previous=>({version:previous.version+1,text:announcement}));
+            }
+          }
+          tracker.seenIds=rememberDirectMessageIds(tracker.seenIds,messages);
+        }
         setChatMessages(current=>mergeConfirmedRecentPage(
           current,messages,CHAT_MESSAGE_PAGE_SIZE,confirmedMessagesRef.current,chatId,userId
         ));
@@ -1527,7 +1545,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
         onOpen={id=>{void jumpToOriginalMessage(id,true);}}
         userId={userId} partnerName={active.other?.display_name||active.other?.username||'Собеседник'}
         locatingId={locatingReply}
-      />}{selectedMessages.length>0&&<div className="ik-selection-toolbar"><span>Выбрано: {selectedMessages.length}</span><button type="button" onClick={()=>{const text=chatMessages.filter(m=>selectedMessages.includes(m.id)).map(m=>m.body).join("\n\n");void navigator.clipboard.writeText(text).then(()=>setNotice("Сообщения скопированы")).catch(()=>setError("Не удалось скопировать"));}}>Копировать</button><button type="button" onClick={()=>setSelectedMessages([])}>Отмена</button></div>}<div className="conversation-history" ref={conversationHistoryRef} aria-live="polite" aria-busy={activeChatLoading} onScroll={event=>{
+      />}{selectedMessages.length>0&&<div className="ik-selection-toolbar"><span>Выбрано: {selectedMessages.length}</span><button type="button" onClick={()=>{const text=chatMessages.filter(m=>selectedMessages.includes(m.id)).map(m=>m.body).join("\n\n");void navigator.clipboard.writeText(text).then(()=>setNotice("Сообщения скопированы")).catch(()=>setError("Не удалось скопировать"));}}>Копировать</button><button type="button" onClick={()=>setSelectedMessages([])}>Отмена</button></div>}<div className="ik-visually-hidden" role="status" aria-live="polite" aria-atomic="true"><span key={directMessageAnnouncement.version}>{directMessageAnnouncement.text}</span></div><div className="conversation-history" ref={conversationHistoryRef} aria-busy={activeChatLoading} onScroll={event=>{
         const area=event.currentTarget;
         const distance=area.scrollHeight-area.scrollTop-area.clientHeight;
         chatAutoScrollRef.current=distance<120;
