@@ -1,0 +1,31 @@
+import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
+import {test} from 'node:test';
+
+const source=readFileSync(
+  new URL('../components/DirectMessageSearchPanel.tsx',import.meta.url),
+  'utf8'
+);
+
+test('Escape closes direct-message search without leaking to parent shortcuts',()=>{
+  assert.match(source,/if\(event\.key==='Escape'\)\{event\.preventDefault\(\);event\.stopPropagation\(\);onClose\(\);\}/);
+});
+
+test('direct-message search focuses its input and restores the invoking control on close',()=>{
+  assert.match(source,/previousFocusRef=useRef<HTMLElement\|null>\(null\)/);
+  assert.match(source,/const active=document\.activeElement/);
+  assert.match(source,/previousFocusRef\.current=active instanceof HTMLElement\?active:null/);
+  assert.match(source,/inputRef\.current\?\.focus\(\)/);
+  assert.match(source,/if\(target\?\.isConnected\)target\.focus\(\)/);
+  assert.match(source,/previousFocusRef\.current=null/);
+});
+
+test('focus restoration is safe when the invoking control was removed',()=>{
+  assert.match(source,/if\(target\?\.isConnected\)target\.focus\(\)/);
+  assert.doesNotMatch(source,/target\.focus\(\);[^}]*else/);
+});
+
+test('search input keeps its accessible name and avoids competing autoFocus',()=>{
+  assert.match(source,/<input ref=\{inputRef\} aria-label="Поиск сообщений в текущем чате"/);
+  assert.doesNotMatch(source,/autoFocus/);
+});
