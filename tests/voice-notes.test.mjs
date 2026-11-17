@@ -64,7 +64,9 @@ test('voice recorder uses only microphone, stops tracks on cancel, unmount and p
  assert.match(ui,/VOICE_PERMISSION_TIMEOUT_MS/);
  assert.match(ui,/late grants become stale/);
  assert.match(ui,/capture\.recorder\.onstop=null/);
- assert.match(ui,/if\(capture\.recorder\.state!=='inactive'\)/);
+ assert.match(ui,/function stopRecorderBestEffort\(recorder:MediaRecorder\)/);
+ assert.equal((ui.match(/stopRecorderBestEffort\(capture\.recorder\)/g)||[]).length,2,
+  'both disposal and startup-failure cleanup must use the guarded recorder stop helper');
  assert.match(ui,/liveRef\.current=false;dispose\(true\)/);
  assert.match(ui,/capture\.discard=discard/);
  assert.match(ui,/if\(capture\.discard\|\|captureRef\.current!==capture\)return/);
