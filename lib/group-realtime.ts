@@ -31,7 +31,11 @@ export function subscribeGroupChanges(token:string,groupId:string,onChanged:()=>
     // polling continues as the fallback when the subscription stays offline.
     if(shouldRefreshChatAfterRealtimeFailure(status))changed();
    });
- }).catch(()=>{/* The periodic HTTPS refresh remains active. */});
+ }).catch(()=>{
+  // If the JWT cannot authorize Realtime, wake the existing authenticated
+  // HTTP read now; polling remains the durable fallback.
+  changed();
+ });
  return()=>{
   disposed=true;
   void client.removeChannel(channel)
