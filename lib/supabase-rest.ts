@@ -24,22 +24,29 @@ function headers(token?: string, extras?: Record<string,string>) {
   return { apikey: anonKey, Authorization: `Bearer ${token || anonKey}`, 'Content-Type': 'application/json', ...extras };
 }
 export function createHttpRequestSignal(external?:AbortSignal):{signal:AbortSignal;dispose:()=>void}{
-  const timeout=AbortSignal.timeout(18000);
-  if(!external)return {signal:timeout,dispose:()=>{}};
-  if(typeof AbortSignal.any==='function')
-    return {signal:AbortSignal.any([external,timeout]),dispose:()=>{}};
+  // Compose caller cancellation and the request deadline with the portable
+  // AbortController API. AbortSignal.timeout/any are missing in older Safari
+  // and embedded Android WebViews.
   const controller=new AbortController();
-  const abort=()=>controller.abort();
+  let timeoutId:ReturnType<typeof setTimeout>|null=null;
+  let disposed=false;
+  const abortFromExternal=()=>controller.abort();
   const dispose=()=>{
-    external.removeEventListener('abort',abort);
-    timeout.removeEventListener('abort',abort);
+    if(disposed)return;
+    disposed=true;
+    if(timeoutId!==null){clearTimeout(timeoutId);timeoutId=null;}
+    external?.removeEventListener('abort',abortFromExternal);
+    controller.signal.removeEventListener('abort',dispose);
   };
   controller.signal.addEventListener('abort',dispose,{once:true});
-  if(external.aborted||timeout.aborted)abort();
-  else{
-    external.addEventListener('abort',abort,{once:true});
-    timeout.addEventListener('abort',abort,{once:true});
-  }
+  if(external?.aborted)controller.abort();
+  else external?.addEventListener('abort',abortFromExternal,{once:true});
+  if(!disposed)timeoutId=setTimeout(()=>{
+    const reason=typeof DOMException==='function'
+      ?new DOMException('The operation timed out','TimeoutError')
+      :undefined;
+    controller.abort(reason);
+  },18000);
   return {signal:controller.signal,dispose};
 }
 
