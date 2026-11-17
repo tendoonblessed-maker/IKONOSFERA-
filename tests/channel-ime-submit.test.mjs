@@ -37,8 +37,8 @@ test('both channel discussion and post-comment inputs guard IME confirmation',()
 test('direct and group chat composers ignore IME confirmation Enter',()=>{
   const shell=source('components/AppShell.tsx');
   const group=source('components/GroupPanel.tsx');
-  assert.match(shell,/shouldPreventImeFormSubmit\\(e\\.nativeEvent\\)/);
-  assert.match(group,/shouldPreventImeFormSubmit\\(e\\.nativeEvent\\)/);
-  assert.match(shell,/if\\(e\\.key==='Enter'&&!e\\.shiftKey/);
-  assert.match(group,/if\\(e\\.key!=='Enter'\\|\\|shouldPreventImeFormSubmit/);
+  assert.ok(shell.includes('shouldPreventImeFormSubmit(e.nativeEvent)'));
+  assert.ok(group.includes('shouldPreventImeFormSubmit(e.nativeEvent)'));
+  assert.ok(shell.includes("if(e.key==='Enter'&&!e.shiftKey"));
+  assert.ok(group.includes("if(e.key!=='Enter'||shouldPreventImeFormSubmit"));
 });
