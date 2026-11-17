@@ -40,7 +40,8 @@ export default function DirectMessageSearchPanel({
       const active=document.activeElement;
       // Do not steal focus if another control (for example, a dialog opened
       // above the chat) received it while search was mounted.
-      if(target?.isConnected&&panel?.contains(active))target.focus();
+      // Restoring without scrolling keeps the mobile conversation viewport stable.
+      if(target?.isConnected&&panel?.contains(active))target.focus({preventScroll:true});
       previousFocusRef.current=null;
     };
   },[]);
