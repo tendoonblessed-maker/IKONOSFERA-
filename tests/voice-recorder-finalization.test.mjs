@@ -96,13 +96,21 @@ function harness({
    return mimeDetection==='supported'&&type==='audio/webm';
   }
   constructor(_stream,options={}){
-   this.state='inactive';
+   this._state='inactive';
+   this.stopCalls=0;
+   this.throwOnStateRead=false;
+   Object.defineProperty(this,'state',{
+    configurable:true,
+    get(){if(this.throwOnStateRead)throw Error('MediaRecorder state unavailable');return this._state;},
+    set(value){this._state=value;}
+   });
    this.options=options;
    this.mimeType=options.mimeType||defaultMimeType;
    recorders.push(this);
   }
   start(){if(startThrows)throw Error('MediaRecorder.start failed');this.state='recording';}
   stop(){
+   this.stopCalls+=1;
    this.state='inactive';
    if(deliverStop){
     this.ondataavailable?.({data:new Blob(['audio bytes'])});
@@ -249,6 +257,21 @@ test('a failing track-listener removal cannot block the remaining microphone cle
  h.tracks[0].end(); // A listener that could not be removed is already invalidated.
  assert.equal(h.recorded.length,0);
  assert.deepEqual(h.errors,[]);
+});
+
+test('a throwing MediaRecorder state getter cannot interrupt microphone teardown',async()=>{
+ const h=harness();
+ await h.start();
+ const recorder=h.recorders[0];
+ recorder.throwOnStateRead=true;
+ assert.doesNotThrow(()=>h.button(h.render(),'Отменить').props.onClick());
+ assert.equal(recorder.stopCalls,1,'cleanup must still attempt to stop a recorder whose state cannot be read');
+ assert.equal(recorder._state,'inactive');
+ assert.equal(h.tracks[0].stopped,true,'microphone tracks must be released after a state getter failure');
+ assert.equal(h.recorded.length,0);
+ assert.equal(h.timers.size,0);
+ assert.equal(h.intervals.size,0);
+ assert.equal(h.button(h.render(),'Отменить'),null);
 });
 
 test('a hung mobile MediaRecorder stop releases microphone and returns to idle',async()=>{
