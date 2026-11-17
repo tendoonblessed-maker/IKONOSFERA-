@@ -13,7 +13,7 @@ function compile(sourceFile,bindings={}){
   const context={exports:result,process:{env:{
     NEXT_PUBLIC_SUPABASE_URL:'https://example.supabase.co',
     NEXT_PUBLIC_SUPABASE_ANON_KEY:'public-key'
-  }},Date,Promise,Math,JSON,URLSearchParams,AbortSignal,Error,Map,Set,...bindings};
+  }},Date,Promise,Math,JSON,URLSearchParams,AbortSignal,AbortController,setTimeout,clearTimeout,DOMException,Error,Map,Set,...bindings};
   vm.runInNewContext(compiled,context,{timeout:1000});
   return result;
 }
