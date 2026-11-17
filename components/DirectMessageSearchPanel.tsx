@@ -1,6 +1,7 @@
 'use client';
 
 import {useLayoutEffect,useRef} from 'react';
+import {shouldCloseSearchOnEscape} from '@/lib/search-keyboard';
 import type {DirectMessageSearchResult} from '@/lib/supabase-rest';
 
 type Props={
@@ -46,7 +47,8 @@ export default function DirectMessageSearchPanel({
 
   return <section ref={panelRef} className="ik-direct-search" aria-label="Поиск по всей переписке"
     onKeyDown={event=>{
-      if(event.key==='Escape'){event.preventDefault();event.stopPropagation();onClose();}
+      // Escape cancels an active IME candidate on some mobile/desktop keyboards.
+      if(shouldCloseSearchOnEscape(event.nativeEvent)){event.preventDefault();event.stopPropagation();onClose();}
     }}>
     <div className="ik-conversation-search">
       <input ref={inputRef} aria-label="Поиск сообщений в текущем чате"
