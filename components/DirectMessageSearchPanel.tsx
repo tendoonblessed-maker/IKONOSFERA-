@@ -47,10 +47,10 @@ export default function DirectMessageSearchPanel({
       <input ref={inputRef} aria-label="Поиск сообщений в текущем чате"
         placeholder="Поиск по всей истории…" maxLength={120} value={query}
         onChange={event=>onQueryChange(event.target.value)}/>
-      <span aria-live="polite">{needle.length<2?'От 2 символов':loading?'Ищем…':failed?'Ошибка':results.length+(hasMore?'+':'')+' найдено'}</span>
+      <span role="status" aria-live="polite">{needle.length<2?'От 2 символов':loading?'Ищем…':failed?'Ошибка':results.length+(hasMore?'+':'')+' найдено'}</span>
       <button type="button" aria-label="Закрыть поиск" onClick={onClose}>✕</button>
     </div>
-    {needle.length>=2&&<div className="ik-direct-search-results" aria-live="polite" aria-busy={loading}>
+    {needle.length>=2&&<div className="ik-direct-search-results" role="region" aria-label="Результаты поиска" aria-busy={loading}>
       {results.map(message=>{
         const full=message.body.replace(/\s+/g,' ').trim();
         const index=full.toLocaleLowerCase('ru').indexOf(needle.toLocaleLowerCase('ru'));
