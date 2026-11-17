@@ -37,8 +37,9 @@ test('opened message search uses managed focus and closes on Escape',()=>{
   const panel=source('components/DirectMessageSearchPanel.tsx');
   const shell=source('components/AppShell.tsx');
   assert.match(panel,/inputRef=useRef<HTMLInputElement\|null>\(null\)/);
+  assert.match(panel,/useLayoutEffect\(\(\)=>\{/);
   assert.match(panel,/inputRef\.current\?\.focus\(\)/);
-  assert.match(panel,/if\(target\?\.isConnected\)target\.focus\(\)/);
+  assert.match(panel,/if\(target\?\.isConnected&&panel\?\.contains\(active\)\)target\.focus\(\)/);
   assert.match(panel,/<input ref=\{inputRef\} aria-label="Поиск сообщений в текущем чате"/);
   assert.doesNotMatch(panel,/autoFocus/);
   assert.match(panel,/if\(event\.key==='Escape'\)\{event\.preventDefault\(\);event\.stopPropagation\(\);onClose\(\);\}/);
