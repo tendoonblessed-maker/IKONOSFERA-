@@ -138,7 +138,7 @@ test('Telegram-inspired inbox keeps IKONOSFERA branding and supplies private pre
  assert.ok(shell.includes('listChatPreviews(token)'));
  assert.ok(shell.includes("chatFilter==='unread'"));
  assert.ok(shell.includes('createMenuOpen'));
- assert.ok(shell.includes('e.nativeEvent.isComposing'));
+ assert.ok(shell.includes('shouldPreventImeFormSubmit(e.nativeEvent)'));
  assert.ok(inbox.includes('ik-unread-count'));
  assert.ok(inbox.includes('ik-chat-preview'));
  assert.ok(api.includes('/rest/v1/rpc/list_chat_previews'));
@@ -867,7 +867,7 @@ test('mobile Enter inserts line breaks while desktop Enter sends and Shift+Enter
  assert.match(shell,/enterKeyHint="enter"/);
  assert.match(shell,/const softKeyboard=\/iPhone\|iPad\|iPod\|Android\/i\.test\(navigator\.userAgent\)/);
  assert.match(shell,/window\.matchMedia\('\(pointer:coarse\) and \(hover:none\)'\)/);
- assert.match(shell,/!e\.nativeEvent\.isComposing&&!softKeyboard/);
+ assert.ok(shell.includes('!shouldPreventImeFormSubmit(e.nativeEvent)&&!softKeyboard'));
  assert.match(shell,/if\(draft\.trim\(\)&&!sending\)e\.currentTarget\.form\?\.requestSubmit\(\)/);
 });
 test('message long press never interferes with swipe, scrolling or media controls',()=>{
