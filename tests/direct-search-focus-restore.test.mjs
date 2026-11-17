@@ -29,3 +29,9 @@ test('search input keeps its accessible name and avoids competing autoFocus',()=
   assert.match(source,/<input ref=\{inputRef\} aria-label="Поиск сообщений в текущем чате"/);
   assert.doesNotMatch(source,/autoFocus/);
 });
+
+test('search announces a concise status without live-reading every result',()=>{
+  assert.match(source,/<span role="status" aria-live="polite">/);
+  assert.match(source,/className="ik-direct-search-results" role="region" aria-label="Результаты поиска" aria-busy=\{loading\}/);
+  assert.doesNotMatch(source,/ik-direct-search-results"[^>]*aria-live=/);
+});
