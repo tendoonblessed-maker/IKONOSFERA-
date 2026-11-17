@@ -6,6 +6,7 @@ import ProfilePanel from "@/components/ProfilePanel";
 import {mergeConfirmedRecentPage,prependEarlierPage,CONFIRMED_MESSAGE_GRACE_MS,type ConfirmedMessage} from "@/lib/chat-history";
 import {readChatDrafts,writeChatDrafts,clearChatDrafts,updateChatDraftEntry,type ChatDrafts} from "@/lib/chat-drafts";
 import {readGroupDrafts,writeGroupDraft,clearGroupDrafts,type GroupDrafts} from "@/lib/group-drafts";
+import {clearDirectOfflineHint,DIRECT_MESSAGE_OFFLINE_ERROR,DIRECT_ATTACHMENT_OFFLINE_ERROR} from '@/lib/direct-network';
 import {clearAllGroupSendAttempts} from "@/lib/group-send-attempts";
 import ChatMedia from "@/components/ChatMedia";
 import ChatMessageText from "@/components/ChatMessageText";
@@ -166,7 +167,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
     const update=()=>{
       const connected=navigator.onLine;
       setNetworkOnline(connected);
-      if(connected)setError(previous=>previous.startsWith('Нет соединения с интернетом.')?'':previous);
+      if(connected)setError(previous=>clearDirectOfflineHint(previous,connected));
     };
     update();
     window.addEventListener('online',update);
@@ -1012,7 +1013,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
   async function sendMessage(e:React.FormEvent){
     e.preventDefault();if(!session||!selected||!userId||sending||activePartnerBlocked)return;
     if(!networkOnline||!navigator.onLine){
-      setError('Нет соединения с интернетом. Сообщение осталось в черновике.');
+      setError(DIRECT_MESSAGE_OFFLINE_ERROR);
       return;
     }
     const chatId=selected,plainText=draft.trim(),token=session.access_token;
@@ -1161,7 +1162,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
   async function sendAttachment(file:File|undefined,caption=''){
     if(!file||!session||!selected||!userId||sending||activePartnerBlocked)return;
     if(!networkOnline||!navigator.onLine){
-      setError('Нет соединения с интернетом. Вложение осталось в предпросмотре.');
+      setError(DIRECT_ATTACHMENT_OFFLINE_ERROR);
       return;
     }
     const chatId=selected,token=session.access_token;
