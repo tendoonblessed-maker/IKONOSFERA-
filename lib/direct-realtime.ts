@@ -44,8 +44,8 @@ export function subscribeDirectChatChanges(
     if(shouldRefreshChatAfterRealtimeFailure(status))changed();
    });
  }).catch(()=>{
-  // If the JWT cannot authorize Realtime, wake the existing authenticated
-  // HTTP read now; the regular six-second poll remains the durable fallback.
+  // A 6-second HTTP polling fallback remains active; wake the authenticated
+  // HTTP read immediately when the Realtime auth handshake fails.
   changed();
  });
 
