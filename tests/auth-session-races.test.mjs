@@ -27,7 +27,7 @@ function scenario(handler){
  const calls=[];
  const ctx={
   exports:{},process:{env:{NEXT_PUBLIC_SUPABASE_URL:'https://test.supabase.invalid',NEXT_PUBLIC_SUPABASE_ANON_KEY:'anon-test'}},
-  window:{},localStorage:storage,AbortSignal,URLSearchParams,
+  window:{},localStorage:storage,AbortSignal,AbortController,URLSearchParams,setTimeout,clearTimeout,DOMException,
   fetch:(url,options)=>{
    calls.push({url,options});
    return handler(url,options,calls.length);
