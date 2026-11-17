@@ -7,6 +7,11 @@ const publishableKey=process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY??'';
 const UUID=/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
 export type InboxChangeKind='direct'|'group';
 
+/** Reconcile the inbox when its Realtime subscription can no longer be trusted. */
+export function shouldRefreshInboxAfterRealtimeFailure(status:string):boolean{
+ return status==='CHANNEL_ERROR'||status==='TIMED_OUT'||status==='CLOSED';
+}
+
 /**
  * Global inbox notifications are *wake-up hints*, not message content.
  * PostgreSQL SELECT RLS filters both tables to conversations the current
@@ -29,6 +34,7 @@ export function subscribeInboxChanges(
  const channel=client.channel('inbox-db:'+userId);
  const direct=()=>{if(!disposed)onChanged('direct');};
  const group=()=>{if(!disposed)onChanged('group');};
+ const wakeBoth=()=>{direct();group();};
 
  void client.realtime.setAuth(token).then(()=>{
   if(disposed)return;
@@ -37,10 +43,13 @@ export function subscribeInboxChanges(
    .on('postgres_changes',{schema:'public',table:'messages',event:'UPDATE'},direct)
    .on('postgres_changes',{schema:'public',table:'group_messages',event:'INSERT'},group)
    .subscribe(status=>{
-    // A reconnect can miss inserts while offline: resynchronize both lists.
-    if(status==='SUBSCRIBED'){direct();group();}
+    // Reconcile after joins and every transport failure; HTTP/RLS remains authoritative.
+    if(status==='SUBSCRIBED'||shouldRefreshInboxAfterRealtimeFailure(status))wakeBoth();
    });
- }).catch(()=>{/* Periodic inbox polling continues without Realtime. */});
+ }).catch(()=>{
+  // setAuth can fail before subscribe() exists; wake both HTTP-backed inbox views now.
+  if(!disposed)wakeBoth();
+ });
 
  return()=>{
   disposed=true;
