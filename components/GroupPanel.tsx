@@ -94,7 +94,14 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
   update();
   window.addEventListener('online',update);
   window.addEventListener('offline',update);
-  return()=>{window.removeEventListener('online',update);window.removeEventListener('offline',update);};
+  window.addEventListener('pageshow',update);
+  document.addEventListener('visibilitychange',update);
+  return()=>{
+   window.removeEventListener('online',update);
+   window.removeEventListener('offline',update);
+   window.removeEventListener('pageshow',update);
+   document.removeEventListener('visibilitychange',update);
+  };
  },[]);
  function changeDraft(text:string){
   draftVersionRef.current+=1;
