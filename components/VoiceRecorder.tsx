@@ -36,6 +36,13 @@ function clearCaptureResources(capture:Capture){
  }
 }
 
+/** Never let a broken host state getter prevent microphone release. */
+function stopRecorderBestEffort(recorder:MediaRecorder){
+ let shouldStop=true;
+ try{shouldStop=recorder.state!=='inactive';}catch{}
+ if(shouldStop){try{recorder.stop();}catch{}}
+}
+
 export default function VoiceRecorder({disabled,onRecorded,onError}:Props){
  const [phase,setPhase]=useState<Phase>('idle');
  const [elapsed,setElapsed]=useState(0);
@@ -75,9 +82,7 @@ export default function VoiceRecorder({disabled,onRecorded,onError}:Props){
    capture.recorder.ondataavailable=null;
    capture.recorder.onstop=null;
    capture.recorder.onerror=null;
-   if(capture.recorder.state!=='inactive'){
-    try{capture.recorder.stop();}catch{}
-   }
+   stopRecorderBestEffort(capture.recorder);
    stopMediaStreamTracks(capture.stream);
   }
  };
@@ -276,9 +281,7 @@ export default function VoiceRecorder({disabled,onRecorded,onError}:Props){
      capture.recorder.ondataavailable=null;
      capture.recorder.onstop=null;
      capture.recorder.onerror=null;
-     if(capture.recorder.state!=='inactive'){
-      try{capture.recorder.stop();}catch{}
-     }
+     stopRecorderBestEffort(capture.recorder);
     }
    }
    if(stream)stopMediaStreamTracks(stream);
