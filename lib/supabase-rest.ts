@@ -23,24 +23,49 @@ function ensureReady() { if (!backendReady) throw Error('Сервер пока �
 function headers(token?: string, extras?: Record<string,string>) {
   return { apikey: anonKey, Authorization: `Bearer ${token || anonKey}`, 'Content-Type': 'application/json', ...extras };
 }
-async function http<T>(path: string, options: { method?: string; token?: string; body?: unknown; extraHeaders?: Record<string,string> } = {}): Promise<T> {
-  ensureReady();
-  const response = await fetch(`${apiUrl}${path}`, {
-    method: options.method ?? 'GET',
-    headers: headers(options.token, options.extraHeaders),
-    body: options.body === undefined ? undefined : JSON.stringify(options.body),
-    cache: 'no-store',
-    // Fail visibly instead of showing a perpetual spinner during network stalls.
-    signal: AbortSignal.timeout(18000),
-  });
-  const raw = await response.text();
-  let value: unknown;
-  try { value = raw ? JSON.parse(raw) : null; } catch { value = raw; }
-  if (!response.ok) {
-    const error = value && typeof value === 'object' ? (value as { msg?: string; message?: string; error_description?: string }).message ?? (value as { msg?: string }).msg ?? (value as { error_description?: string }).error_description : null;
-    throw new SupabaseHttpError(error || `Запрос не выполнен (${response.status})`,response.status);
+function createHttpRequestSignal(external?:AbortSignal):{signal:AbortSignal;dispose:()=>void}{
+  const timeout=AbortSignal.timeout(18000);
+  if(!external)return {signal:timeout,dispose:()=>{}};
+  if(typeof AbortSignal.any==='function')
+    return {signal:AbortSignal.any([external,timeout]),dispose:()=>{}};
+  const controller=new AbortController();
+  const abort=()=>controller.abort();
+  const dispose=()=>{
+    external.removeEventListener('abort',abort);
+    timeout.removeEventListener('abort',abort);
+  };
+  controller.signal.addEventListener('abort',dispose,{once:true});
+  if(external.aborted||timeout.aborted)abort();
+  else{
+    external.addEventListener('abort',abort,{once:true});
+    timeout.addEventListener('abort',abort,{once:true});
   }
-  return value as T;
+  return {signal:controller.signal,dispose};
+}
+
+async function http<T>(path: string, options: { method?: string; token?: string; body?: unknown; extraHeaders?: Record<string,string>; signal?:AbortSignal } = {}): Promise<T> {
+  ensureReady();
+  const request=createHttpRequestSignal(options.signal);
+  try{
+    const response = await fetch(`${apiUrl}${path}`, {
+      method: options.method ?? 'GET',
+      headers: headers(options.token, options.extraHeaders),
+      body: options.body === undefined ? undefined : JSON.stringify(options.body),
+      cache: 'no-store',
+      // Preserve the 18-second network bound while allowing obsolete UI reads to abort.
+      signal: request.signal,
+    });
+    const raw = await response.text();
+    let value: unknown;
+    try { value = raw ? JSON.parse(raw) : null; } catch { value = raw; }
+    if (!response.ok) {
+      const error = value && typeof value === 'object' ? (value as { msg?: string; message?: string; error_description?: string }).message ?? (value as { msg?: string }).msg ?? (value as { error_description?: string }).error_description : null;
+      throw new SupabaseHttpError(error || `Запрос не выполнен (${response.status})`,response.status);
+    }
+    return value as T;
+  }finally{
+    request.dispose();
+  }
 }
 export function loadSession(): Session | null {
   if (typeof window === 'undefined') return null;
@@ -205,12 +230,12 @@ export async function listReplyTargets(token:string,chatId:string,ids:string[]):
 export type DirectMessageSearchResult=Pick<ChatMessage,'id'|'sender_id'|'body'|'created_at'>;
 export const DIRECT_MESSAGE_SEARCH_PAGE_SIZE=30;
 export async function searchDirectMessages(
- token:string,chatId:string,query:string,offset=0
+ token:string,chatId:string,query:string,offset=0,signal?:AbortSignal
 ):Promise<DirectMessageSearchResult[]>{
  const term=query.trim();
  if(term.length<2||term.length>120)return [];
  return http<DirectMessageSearchResult[]>('/rest/v1/rpc/search_direct_messages',{
-  token,method:'POST',body:{
+  token,method:'POST',signal,body:{
    p_chat_id:chatId,p_query:term,
    p_limit:DIRECT_MESSAGE_SEARCH_PAGE_SIZE+1,
    p_offset:Math.max(0,Math.min(600,Math.floor(offset)))
