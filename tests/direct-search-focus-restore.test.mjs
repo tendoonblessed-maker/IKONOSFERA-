@@ -39,8 +39,10 @@ test('search input keeps its accessible name and avoids competing autoFocus',()=
   assert.doesNotMatch(source,/autoFocus/);
 });
 
-test('search announces a concise status without live-reading every result',()=>{
+test('search announces one concise status and keeps the visual loading hint silent',()=>{
   assert.match(source,/<span role="status" aria-live="polite">/);
   assert.match(source,/className="ik-direct-search-results" role="region" aria-label="Результаты поиска" aria-busy=\{loading\}/);
   assert.doesNotMatch(source,/ik-direct-search-results"[^>]*aria-live=/);
+  assert.equal((source.match(/role="status"/g)||[]).length,1);
+  assert.match(source,/<p className="ik-direct-search-hint" aria-hidden="true">Ищем сообщения…<\/p>/);
 });
