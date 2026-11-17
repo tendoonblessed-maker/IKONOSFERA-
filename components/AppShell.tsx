@@ -274,11 +274,12 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
     }
     const token=session.access_token;
     const generation=chatContextGenerationRef.current;
+    const controller=new AbortController();
     const belongs=()=>messageSearchRequestRef.current===requestId
       &&chatContextGenerationRef.current===generation&&selectedRef.current===chatId;
     setMessageSearchLoading(true);setMessageSearchError(false);
     const timer=window.setTimeout(()=>{
-      void searchDirectMessages(token,chatId,term,offset).then(matches=>{
+      void searchDirectMessages(token,chatId,term,offset,controller.signal).then(matches=>{
         if(!belongs())return;
         const page=matches.slice(0,DIRECT_MESSAGE_SEARCH_PAGE_SIZE);
         setMessageSearchOwner({chatId,userId,query:term});
@@ -288,12 +289,16 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
         setMessageSearchHasMore(matches.length>DIRECT_MESSAGE_SEARCH_PAGE_SIZE
           &&offset+DIRECT_MESSAGE_SEARCH_PAGE_SIZE<=600);
       }).catch(()=>{
-        if(belongs())setMessageSearchError(true);
+        if(belongs()&&!controller.signal.aborted)setMessageSearchError(true);
       }).finally(()=>{
-        if(belongs())setMessageSearchLoading(false);
+        if(belongs()&&!controller.signal.aborted)setMessageSearchLoading(false);
       });
     },messageSearchPage===0?320:0);
-    return()=>window.clearTimeout(timer);
+    return()=>{
+      window.clearTimeout(timer);
+      if(messageSearchRequestRef.current===requestId)messageSearchRequestRef.current++;
+      controller.abort();
+    };
   },[searchInConversation,messageSearch,messageSearchPage,messageSearchRetry,selected,session?.access_token,userId]);
 
   function resetMessageSearch(){
