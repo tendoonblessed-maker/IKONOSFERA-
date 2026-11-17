@@ -43,7 +43,11 @@ export function subscribeDirectChatChanges(
     // the regular six-second poll remains active if Realtime cannot recover.
     if(shouldRefreshChatAfterRealtimeFailure(status))changed();
    });
- }).catch(()=>{/* A 6-second HTTP polling fallback remains active. */});
+ }).catch(()=>{
+  // If the JWT cannot authorize Realtime, wake the existing authenticated
+  // HTTP read now; the regular six-second poll remains the durable fallback.
+  changed();
+ });
 
  return()=>{
   stopped=true;
