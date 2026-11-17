@@ -24,3 +24,25 @@ test('all network lifecycle listeners are removed when the app shell unmounts', 
   assert.match(effect, /window\.removeEventListener\('pageshow',update\)/);
   assert.match(effect, /document\.removeEventListener\('visibilitychange',update\)/);
 });
+
+
+const groupPanel = readFileSync(new URL('../components/GroupPanel.tsx', import.meta.url), 'utf8');
+const groupNetworkEffect = groupPanel.match(/useEffect\(\(\)=>\{\s*const update=\(\)=>setOnline\(navigator\.onLine\);[\s\S]*?\n \},\[\]\);/);
+
+test('group composer refreshes connectivity after BFCache restore and PWA visibility changes', () => {
+  assert.ok(groupNetworkEffect, 'the group network lifecycle effect should exist');
+  const effect = groupNetworkEffect[0];
+  assert.match(effect, /window\.addEventListener\('online',update\)/);
+  assert.match(effect, /window\.addEventListener\('offline',update\)/);
+  assert.match(effect, /window\.addEventListener\('pageshow',update\)/);
+  assert.match(effect, /document\.addEventListener\('visibilitychange',update\)/);
+});
+
+test('group network lifecycle listeners are removed when GroupPanel unmounts', () => {
+  assert.ok(groupNetworkEffect, 'the group network lifecycle effect should exist');
+  const effect = groupNetworkEffect[0];
+  assert.match(effect, /window\.removeEventListener\('online',update\)/);
+  assert.match(effect, /window\.removeEventListener\('offline',update\)/);
+  assert.match(effect, /window\.removeEventListener\('pageshow',update\)/);
+  assert.match(effect, /document\.removeEventListener\('visibilitychange',update\)/);
+});
