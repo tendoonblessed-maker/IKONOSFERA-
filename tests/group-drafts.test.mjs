@@ -81,7 +81,7 @@ test('group messages are not sent on reconnect, and stay in drafts after failed 
  const group=load('components/GroupPanel.tsx');
  assert.match(group,/if\(!online\|\|!navigator\.onLine\)\{/);
  assert.match(group,/GROUP_OFFLINE_DRAFT_ERROR/);
- assert.match(load('lib/group-network.ts'),/Нет интернета\\. Сообщение осталось в черновике/);
+ assert.match(load('lib/group-network.ts'),/Нет интернета\. Сообщение осталось в черновике/);
  assert.match(group,/Черновик сохранён/);
  assert.match(group,/disabled=\{busy\|\|!draft\.trim\(\)\|\|!online\}/);
  assert.match(group,/window\.addEventListener\('online',update\)/);
