@@ -28,7 +28,7 @@ test('all network lifecycle listeners are removed when the app shell unmounts', 
 
 
 const groupPanel = readFileSync(new URL('../components/GroupPanel.tsx', import.meta.url), 'utf8');
-const groupNetworkEffect = groupPanel.match(/useEffect\(\(\)=>\{\s*const update=\(\)=>setOnline\(navigator\.onLine\);[\s\S]*?\n \},\[\]\);/);
+const groupNetworkEffect = groupPanel.match(/useEffect\(\(\)=>\{\s*const update=\(\)=>\{[\s\S]*?navigator\.onLine[\s\S]*?\n \},\[\]\);/);
 
 test('group composer refreshes connectivity after BFCache restore and PWA visibility changes', () => {
   assert.ok(groupNetworkEffect, 'the group network lifecycle effect should exist');
