@@ -7,8 +7,9 @@ const source=readFileSync(
   'utf8'
 );
 
-test('Escape closes direct-message search without leaking to parent shortcuts',()=>{
-  assert.match(source,/if\(event\.key==='Escape'\)\{event\.preventDefault\(\);event\.stopPropagation\(\);onClose\(\);\}/);
+test('Escape closes direct-message search only when the IME does not own the key',()=>{
+  assert.match(source,/shouldCloseSearchOnEscape\(event\.nativeEvent\)/);
+  assert.match(source,/event\.preventDefault\(\);event\.stopPropagation\(\);onClose\(\)/);
 });
 
 test('direct-message search focuses its input and restores the invoking control on close',()=>{
