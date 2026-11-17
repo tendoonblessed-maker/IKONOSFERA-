@@ -75,8 +75,7 @@ function createHarness(kind,setAuth=()=>Promise.resolve()){
  };
 }
 async function flushMicrotasks(){
- await Promise.resolve();
- await Promise.resolve();
+ for(let i=0;i<5;i++)await Promise.resolve();
 }
 
 for(const kind of ['direct','group']){
@@ -119,6 +118,36 @@ for(const kind of ['direct','group']){
   const h=createHarness(kind,()=>pending);
   h.unsubscribe();
   resolveAuth();
+  await flushMicrotasks();
+  assert.equal(h.subscribeCount,0);
+  assert.equal(h.changeCount,0);
+  assert.equal(h.removeCount,1);
+  assert.equal(h.disconnectCount,1);
+ });
+}
+
+for(const kind of ['direct','group']){
+ test(kind+' subscription wakes authenticated HTTP reconciliation when Realtime auth fails',async()=>{
+  const h=createHarness(kind,()=>Promise.reject(new Error('synthetic auth failure')));
+  await flushMicrotasks();
+  assert.deepEqual(h.authOptions,[TOKEN]);
+  assert.equal(h.subscribeCount,0);
+  assert.equal(h.changeCount,1);
+  h.unsubscribe();
+  await flushMicrotasks();
+  assert.equal(h.changeCount,1);
+  assert.equal(h.removeCount,1);
+  assert.equal(h.disconnectCount,1);
+ });
+}
+
+for(const kind of ['direct','group']){
+ test(kind+' subscription suppresses auth-failure wake when cleanup wins the rejection race',async()=>{
+  let rejectAuth;
+  const pending=new Promise((_,reject)=>{rejectAuth=reject;});
+  const h=createHarness(kind,()=>pending);
+  h.unsubscribe();
+  rejectAuth(new Error('synthetic auth failure'));
   await flushMicrotasks();
   assert.equal(h.subscribeCount,0);
   assert.equal(h.changeCount,0);
