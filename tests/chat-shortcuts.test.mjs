@@ -33,10 +33,15 @@ test('private chat header exposes an accessible search action with active state'
   assert.match(css,/\.ik-conversation-search-trigger:focus-visible/);
 });
 
-test('opened message search focuses its field and closes on Escape',()=>{
+test('opened message search uses managed focus and IME-safe Escape handling',()=>{
   const panel=source('components/DirectMessageSearchPanel.tsx');
   const shell=source('components/AppShell.tsx');
-  assert.match(panel,/<input autoFocus aria-label="Поиск сообщений в текущем чате"/);
-  assert.match(panel,/if\(event.key==='Escape'\)\{event.preventDefault\(\);event.stopPropagation\(\);onClose\(\);\}/);
+  assert.match(panel,/inputRef=useRef<HTMLInputElement\|null>\(null\)/);
+  assert.match(panel,/useLayoutEffect\(\(\)=>\{/);
+  assert.match(panel,/inputRef\.current\?\.focus\(\)/);
+  assert.match(panel,/if\(target\?\.isConnected&&panel\?\.contains\(active\)\)target\.focus\(\{preventScroll:true\}\)/);
+  assert.match(panel,/<input ref=\{inputRef\} aria-label="Поиск сообщений в текущем чате"/);
+  assert.doesNotMatch(panel,/autoFocus/);
+  assert.match(panel,/shouldCloseSearchOnEscape\(event\.nativeEvent\)/);
   assert.match(shell,/input\?\.focus\(\);input\?\.select\(\)/);
 });

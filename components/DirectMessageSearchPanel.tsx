@@ -1,5 +1,7 @@
 'use client';
 
+import {useLayoutEffect,useRef} from 'react';
+import {shouldCloseSearchOnEscape} from '@/lib/search-keyboard';
 import type {DirectMessageSearchResult} from '@/lib/supabase-rest';
 
 type Props={
@@ -24,18 +26,41 @@ export default function DirectMessageSearchPanel({
   onOpen,userId,partnerName,locatingId
 }:Props){
   const needle=query.trim();
-  return <section className="ik-direct-search" aria-label="Поиск по всей переписке"
+  const inputRef=useRef<HTMLInputElement|null>(null);
+  const panelRef=useRef<HTMLElement|null>(null);
+  const previousFocusRef=useRef<HTMLElement|null>(null);
+
+  useLayoutEffect(()=>{
+    const active=document.activeElement;
+    previousFocusRef.current=active instanceof HTMLElement?active:null;
+    // Capture the node while the ref is attached; React may detach refs before
+    // running an unmount cleanup, but the captured element remains inspectable.
+    const panel=panelRef.current;
+    inputRef.current?.focus();
+    return()=>{
+      const target=previousFocusRef.current;
+      const active=document.activeElement;
+      // Do not steal focus if another control (for example, a dialog opened
+      // above the chat) received it while search was mounted.
+      // Restoring without scrolling keeps the mobile conversation viewport stable.
+      if(target?.isConnected&&panel?.contains(active))target.focus({preventScroll:true});
+      previousFocusRef.current=null;
+    };
+  },[]);
+
+  return <section ref={panelRef} className="ik-direct-search" aria-label="Поиск по всей переписке"
     onKeyDown={event=>{
-      if(event.key==='Escape'){event.preventDefault();event.stopPropagation();onClose();}
+      // Escape cancels an active IME candidate on some mobile/desktop keyboards.
+      if(shouldCloseSearchOnEscape(event.nativeEvent)){event.preventDefault();event.stopPropagation();onClose();}
     }}>
     <div className="ik-conversation-search">
-      <input autoFocus aria-label="Поиск сообщений в текущем чате"
+      <input ref={inputRef} aria-label="Поиск сообщений в текущем чате"
         placeholder="Поиск по всей истории…" maxLength={120} value={query}
         onChange={event=>onQueryChange(event.target.value)}/>
-      <span aria-live="polite">{needle.length<2?'От 2 символов':loading?'Ищем…':failed?'Ошибка':results.length+(hasMore?'+':'')+' найдено'}</span>
+      <span role="status" aria-live="polite">{needle.length<2?'От 2 символов':loading?'Ищем…':failed?'Ошибка':results.length+(hasMore?'+':'')+' найдено'}</span>
       <button type="button" aria-label="Закрыть поиск" onClick={onClose}>✕</button>
     </div>
-    {needle.length>=2&&<div className="ik-direct-search-results" aria-live="polite" aria-busy={loading}>
+    {needle.length>=2&&<div className="ik-direct-search-results" role="region" aria-label="Результаты поиска" aria-busy={loading}>
       {results.map(message=>{
         const full=message.body.replace(/\s+/g,' ').trim();
         const index=full.toLocaleLowerCase('ru').indexOf(needle.toLocaleLowerCase('ru'));
@@ -52,7 +77,7 @@ export default function DirectMessageSearchPanel({
           <span className="ik-direct-search-result-arrow" aria-hidden="true">{isLocating?'◌':'›'}</span>
         </button>;
       })}
-      {loading&&<p className="ik-direct-search-hint" role="status">Ищем сообщения…</p>}
+      {loading&&<p className="ik-direct-search-hint" aria-hidden="true">Ищем сообщения…</p>}
       {failed&&!loading&&<button type="button" className="ik-direct-search-retry" onClick={onMore}>Не удалось найти сообщения. Повторить</button>}
       {!loading&&!failed&&!results.length&&<p className="ik-direct-search-hint">По этому запросу сообщений не найдено.</p>}
       {!loading&&!failed&&hasMore&&<button type="button" className="ik-direct-search-more" onClick={onMore}>Показать ещё совпадения</button>}
