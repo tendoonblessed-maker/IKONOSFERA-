@@ -14,6 +14,7 @@ import {subscribeGroupChanges} from '@/lib/group-realtime';
 import {mergeConfirmedGroupMessages,CONFIRMED_GROUP_MESSAGE_GRACE_MS,type ConfirmedGroupMessage} from '@/lib/group-history';
 import {shouldAcknowledgeGroupRead,countNewIncomingBelow} from '@/lib/group-read-position';
 import {fetchOlderGroupMessages,prependOlderGroupMessages,preserveOlderGroupMessages,GROUP_HISTORY_MAX_LOADED} from '@/lib/group-pagination';
+import {clearGroupOfflineDraftError,GROUP_OFFLINE_DRAFT_ERROR} from '@/lib/group-network';
 type Props={token:string;userId:string;group:Group;onBack:()=>void;onShowProfile:(id:string)=>void;onDraftChange:(groupId:string,text:string)=>void};
 export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDraftChange}:Props){
  const [messages,setMessages]=useState<GroupMessage[]>([]);
@@ -90,7 +91,11 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
   setDraft(readGroupDrafts(userId)[group.id]??'');
  },[group.id,userId]);
  useEffect(()=>{
-  const update=()=>setOnline(navigator.onLine);
+  const update=()=>{
+   const connected=navigator.onLine;
+   setOnline(connected);
+   if(connected)setError(current=>clearGroupOfflineDraftError(current,connected));
+  };
   update();
   window.addEventListener('online',update);
   window.addEventListener('offline',update);
@@ -361,7 +366,7 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
  e.preventDefault();
  if(busy||!draft.trim())return;
  // Never queue a surprise send on reconnect. Let the user retry manually.
- if(!online||!navigator.onLine){setError('Нет интернета. Сообщение осталось в черновике.');return;}
+ if(!online||!navigator.onLine){setError(GROUP_OFFLINE_DRAFT_ERROR);return;}
  const body=draft.trim(),groupId=group.id,accountId=userId,requestToken=token;
  const sentDraftVersion=draftVersionRef.current;
  setBusy(true);setError('');setRetryAvailable(false);
