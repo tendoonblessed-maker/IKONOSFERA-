@@ -23,7 +23,7 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
  const [membersOpen,setMembersOpen]=useState(false);
  const [memberSearch,setMemberSearch]=useState('');
  const [draft,setDraft]=useState(()=>readGroupDrafts(userId)[group.id]??'');
- const [online,setOnline]=useState(true);
+ const [online,setOnline]=useState(false);
  const draftVersionRef=useRef(0);
  const [busy,setBusy]=useState(false);
  const [error,setError]=useState('');
