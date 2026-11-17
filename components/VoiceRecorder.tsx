@@ -54,8 +54,11 @@ export default function VoiceRecorder({disabled,onRecorded,onError}:Props){
  const clearPermissionTimer=(generation?:number)=>{
   const pending=permissionTimerRef.current;
   if(!pending||(generation!==undefined&&pending.generation!==generation))return;
-  window.clearTimeout(pending.id);
+  // Invalidate the handle before calling a host API that may fail during teardown.
+  // If clearTimeout throws, the request-generation guard still makes the queued
+  // callback harmless and the rest of microphone cleanup can continue.
   permissionTimerRef.current=null;
+  try{window.clearTimeout(pending.id);}catch{}
  };
 
  // Cancel an in-flight permission prompt and stop all microphone tracks on
