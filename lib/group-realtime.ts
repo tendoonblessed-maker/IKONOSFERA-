@@ -2,7 +2,7 @@
 
 import {createClient} from '@supabase/supabase-js';
 import {apiUrl,backendReady} from './supabase-rest';
-import {shouldRefreshChatAfterRealtimeFailure} from './chat-realtime-status';
+import {createRealtimeRefreshGate,shouldRefreshChatAfterRealtimeFailure} from './chat-realtime-status';
 
 const publishableKey=process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY??'';
 const UUID=/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
@@ -18,8 +18,9 @@ export function subscribeGroupChanges(token:string,groupId:string,onChanged:()=>
   auth:{persistSession:false,autoRefreshToken:false,detectSessionInUrl:false}
  });
  let disposed=false;
+ const refreshGate=createRealtimeRefreshGate(onChanged);
+ const changed=()=>{if(!disposed)refreshGate.trigger();};
  const channel=client.channel('group-db:'+groupId);
- const changed=()=>{if(!disposed)onChanged();};
  const scope={schema:'public' as const,table:'group_messages',filter:'group_id=eq.'+groupId};
  void client.realtime.setAuth(token).then(()=>{
   if(disposed)return;
@@ -28,7 +29,7 @@ export function subscribeGroupChanges(token:string,groupId:string,onChanged:()=>
    .subscribe(status=>{
     if(status==='SUBSCRIBED')changed(); // reconcile events missed during join
     // A socket error/timeout/close must wake the authenticated HTTP refresh;
-    // polling continues as the fallback when the subscription stays offline.
+    // repeated status transitions are coalesced by the per-subscription gate.
     if(shouldRefreshChatAfterRealtimeFailure(status))changed();
    });
  }).catch(()=>{
@@ -38,6 +39,7 @@ export function subscribeGroupChanges(token:string,groupId:string,onChanged:()=>
  });
  return()=>{
   disposed=true;
+  refreshGate.dispose();
   void client.removeChannel(channel)
    .finally(()=>{client.realtime.disconnect();})
    .catch(()=>{client.realtime.disconnect();});
