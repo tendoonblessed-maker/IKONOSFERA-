@@ -33,10 +33,12 @@ export default function DirectMessageSearchPanel({
   useLayoutEffect(()=>{
     const active=document.activeElement;
     previousFocusRef.current=active instanceof HTMLElement?active:null;
+    // Capture the node while the ref is attached; React may detach refs before
+    // running an unmount cleanup, but the captured element remains inspectable.
+    const panel=panelRef.current;
     inputRef.current?.focus();
     return()=>{
       const target=previousFocusRef.current;
-      const panel=panelRef.current;
       const active=document.activeElement;
       // Do not steal focus if another control (for example, a dialog opened
       // above the chat) received it while search was mounted.

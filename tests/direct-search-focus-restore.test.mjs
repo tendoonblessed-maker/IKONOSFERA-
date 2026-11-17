@@ -34,6 +34,14 @@ test('focus restoration does not steal focus from a control outside the closing 
   assert.ok(source.includes('if(target?.isConnected&&panel?.contains(active))target.focus({preventScroll:true})'));
 });
 
+test('focus restoration captures the panel before cleanup so detached refs cannot disable it',()=>{
+  const effect=source.slice(source.indexOf('useLayoutEffect(()=>{'),source.indexOf('\n\n  return <section'));
+  const cleanup=effect.slice(effect.indexOf('return()=>'));
+  assert.ok(effect.indexOf('const panel=panelRef.current')<effect.indexOf('return()=>'));
+  assert.ok(cleanup.includes('panel?.contains(active)'));
+  assert.ok(!cleanup.includes('panelRef.current'));
+});
+
 test('restoring the opener does not scroll the mobile conversation viewport',()=>{
   assert.ok(source.includes('target.focus({preventScroll:true})'));
 });
