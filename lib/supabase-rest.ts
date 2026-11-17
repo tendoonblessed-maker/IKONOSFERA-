@@ -23,7 +23,7 @@ function ensureReady() { if (!backendReady) throw Error('Сервер пока �
 function headers(token?: string, extras?: Record<string,string>) {
   return { apikey: anonKey, Authorization: `Bearer ${token || anonKey}`, 'Content-Type': 'application/json', ...extras };
 }
-function createHttpRequestSignal(external?:AbortSignal):{signal:AbortSignal;dispose:()=>void}{
+export function createHttpRequestSignal(external?:AbortSignal):{signal:AbortSignal;dispose:()=>void}{
   const timeout=AbortSignal.timeout(18000);
   if(!external)return {signal:timeout,dispose:()=>{}};
   if(typeof AbortSignal.any==='function')

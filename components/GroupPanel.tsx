@@ -187,10 +187,11 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
   const term=normalizeGroupSearch(searchQuery);
   if(!searchOpen||term.length<2){setSearchLoading(false);setSearchError('');return;}
   let cancelled=false;
+  const controller=new AbortController();
   setSearchLoading(true);setSearchError('');
   const timeout=window.setTimeout(()=>{
    const requestGroup=group.id,requestOwner=userId,requestToken=token;
-   void searchGroupMessages(token,group.id,term,searchPage*GROUP_SEARCH_PAGE_SIZE)
+   void searchGroupMessages(token,group.id,term,searchPage*GROUP_SEARCH_PAGE_SIZE,controller.signal)
     .then(rows=>{
      if(cancelled||id!==searchRequestRef.current
         ||contextRef.current.groupId!==requestGroup
@@ -204,14 +205,14 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
       &&(searchPage+1)*GROUP_SEARCH_PAGE_SIZE<=GROUP_SEARCH_MAX_OFFSET);
     })
     .catch(e=>{
-     if(!cancelled&&id===searchRequestRef.current)
+     if(!cancelled&&id===searchRequestRef.current&&!controller.signal.aborted)
        setSearchError(e instanceof Error?e.message:'Ошибка поиска');
     })
     .finally(()=>{
      if(!cancelled&&id===searchRequestRef.current)setSearchLoading(false);
     });
   },searchPage===0?320:0);
-  return()=>{cancelled=true;searchRequestRef.current++;window.clearTimeout(timeout);};
+  return()=>{cancelled=true;searchRequestRef.current++;controller.abort();window.clearTimeout(timeout);};
  },[searchOpen,searchQuery,searchPage,searchRetry,group.id,userId,token]);
  function closeSearch(){searchRequestRef.current++;setSearchOpen(false);setSearchQuery('');
   setSearchResults([]);setSearchPage(0);setSearchError('');setSearchHasMore(false);

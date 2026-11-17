@@ -21,7 +21,28 @@ function setup(handler=()=>({ok:true,json:async()=>[]})){
   fetch:async(url,options)=>{calls.push({url,options});return handler(url,options,calls.length);},
   require(name){
    assert.equal(name,'./supabase-rest');
-   return {apiUrl:'https://test.invalid'};
+   return {
+    apiUrl:'https://test.invalid',
+    createHttpRequestSignal(external){
+     const timeout=AbortSignal.timeout(18000);
+     if(!external)return {signal:timeout,dispose:()=>{}};
+     if(typeof AbortSignal.any==='function')
+      return {signal:AbortSignal.any([external,timeout]),dispose:()=>{}};
+     const controller=new AbortController();
+     const abort=()=>controller.abort();
+     const dispose=()=>{
+      external.removeEventListener('abort',abort);
+      timeout.removeEventListener('abort',abort);
+     };
+     controller.signal.addEventListener('abort',dispose,{once:true});
+     if(external.aborted||timeout.aborted)abort();
+     else{
+      external.addEventListener('abort',abort,{once:true});
+      timeout.addEventListener('abort',abort,{once:true});
+     }
+     return {signal:controller.signal,dispose};
+    }
+   };
   }
  };
  vm.runInNewContext(compiled,ctx,{filename:'group-search.cjs',timeout:2500});
@@ -47,6 +68,23 @@ test('group search queries ONLY requested group, with RLS token and bounded pagi
  assert.equal(url.searchParams.get('limit'),'25');
  assert.equal(url.searchParams.get('offset'),'0');
  assert.ok(url.searchParams.get('body').includes('ilike.'));
+});
+
+test('group search forwards caller cancellation and keeps the built-in timeout',async()=>{
+ const {api,calls}=setup((_url,options)=>new Promise((_resolve,reject)=>{
+  options.signal.addEventListener('abort',()=>{
+   reject(options.signal.reason??new DOMException('Aborted','AbortError'));
+  },{once:true});
+ }));
+ const controller=new AbortController();
+ const pending=api.searchGroupMessages('user-jwt',GROUP,'привет',0,controller.signal);
+ await Promise.resolve();
+ assert.equal(calls.length,1);
+ assert.notEqual(calls[0].options.signal,controller.signal);
+ assert.equal(calls[0].options.signal.aborted,false);
+ controller.abort();
+ await assert.rejects(pending,error=>['AbortError','TimeoutError'].includes(error.name));
+ assert.equal(calls[0].options.signal.aborted,true);
 });
 
 test('search queries with quotes, commas and Unicode are quoted/encoded, not operators',()=>{
@@ -117,7 +155,9 @@ test('search panel is account scoped, shows complete history results and never e
  assert.match(ui,/onClick=\{onMore\}/);
  assert.match(ui,/onClick=\{onClose\}/);
  assert.doesNotMatch(ui,/dangerouslySetInnerHTML|innerHTML|service_role/);
- assert.match(panel,/searchGroupMessages\(token,group\.id,term,searchPage\*GROUP_SEARCH_PAGE_SIZE\)/);
+ assert.match(panel,/const controller=new AbortController\(\)/);
+ assert.match(panel,/searchGroupMessages\(token,group\.id,term,searchPage\*GROUP_SEARCH_PAGE_SIZE,controller\.signal\)/);
+ assert.match(panel,/controller\.abort\(\)/);
  assert.match(panel,/contextRef\.current\.groupId!==requestGroup/);
  assert.match(panel,/contextRef\.current\.userId!==requestOwner/);
  assert.match(panel,/contextRef\.current\.token!==requestToken/);
