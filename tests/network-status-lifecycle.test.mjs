@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 import {clearGroupOfflineDraftError,GROUP_OFFLINE_DRAFT_ERROR} from '../lib/group-network.ts';
+import {clearDirectOfflineHint,DIRECT_MESSAGE_OFFLINE_ERROR,DIRECT_ATTACHMENT_OFFLINE_ERROR} from '../lib/direct-network.ts';
 
 const shell = readFileSync(new URL('../components/AppShell.tsx', import.meta.url), 'utf8');
 const networkEffect = shell.match(/useEffect\(\(\)=>\{\s*\/\/ Browser online\/offline[\s\S]*?\n  \},\[\]\);/);
@@ -57,4 +58,22 @@ test('group network lifecycle listeners are removed when GroupPanel unmounts', (
   assert.match(effect, /window\.removeEventListener\('offline',update\)/);
   assert.match(effect, /window\.removeEventListener\('pageshow',update\)/);
   assert.match(effect, /document\.removeEventListener\('visibilitychange',update\)/);
+});
+
+
+test('direct reconnect clears only the exact local message and attachment offline hints', () => {
+  assert.equal(clearDirectOfflineHint(DIRECT_MESSAGE_OFFLINE_ERROR, true), '');
+  assert.equal(clearDirectOfflineHint(DIRECT_ATTACHMENT_OFFLINE_ERROR, true), '');
+  assert.equal(clearDirectOfflineHint(DIRECT_MESSAGE_OFFLINE_ERROR, false), DIRECT_MESSAGE_OFFLINE_ERROR);
+  assert.equal(clearDirectOfflineHint(DIRECT_ATTACHMENT_OFFLINE_ERROR, false), DIRECT_ATTACHMENT_OFFLINE_ERROR);
+  assert.equal(clearDirectOfflineHint('Нет соединения с интернетом. Ошибка сервера.', true), 'Нет соединения с интернетом. Ошибка сервера.');
+  assert.equal(clearDirectOfflineHint(DIRECT_MESSAGE_OFFLINE_ERROR + ' Дополнительная информация.', true), DIRECT_MESSAGE_OFFLINE_ERROR + ' Дополнительная информация.');
+  assert.equal(clearDirectOfflineHint('Ошибка отправки сообщения.', true), 'Ошибка отправки сообщения.');
+});
+
+test('AppShell uses shared exact-match direct offline hints instead of clearing by prefix', () => {
+  assert.match(networkEffect[0], /clearDirectOfflineHint\(previous,connected\)/);
+  assert.doesNotMatch(networkEffect[0], /startsWith\('Нет соединения с интернетом\.'\)/);
+  assert.match(shell, /setError\(DIRECT_MESSAGE_OFFLINE_ERROR\)/);
+  assert.match(shell, /setError\(DIRECT_ATTACHMENT_OFFLINE_ERROR\)/);
 });
