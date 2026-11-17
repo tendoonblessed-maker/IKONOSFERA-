@@ -13,7 +13,7 @@ const compiled=ts.transpileModule(source,{
 
 function harness({
  deliverStop=false,mimeDetection='supported',startThrows=false,
- removeTrackListenerThrows=false,
+ removeTrackListenerThrows=false,clearPermissionTimerThrows=false,
  defaultMimeType='audio/webm;codecs=opus',getUserMedia
 }={}){
  const hooks=[];
@@ -54,8 +54,15 @@ function harness({
   map.set(id,{fn,ms});
   return id;
  };
+ let permissionTimerClearAttempted=false;
  const win={
-  setTimeout:schedule(timers),clearTimeout:id=>timers.delete(id),
+  setTimeout:schedule(timers),clearTimeout:id=>{
+   if(clearPermissionTimerThrows&&!permissionTimerClearAttempted){
+    permissionTimerClearAttempted=true;
+    throw Error('permission timer host cleanup failed');
+   }
+   timers.delete(id);
+  },
   setInterval:schedule(intervals),clearInterval:id=>intervals.delete(id),
   addEventListener(name,handler){windowEvents.set(name,handler);},
   removeEventListener(name,handler){if(windowEvents.get(name)===handler)windowEvents.delete(name);}
@@ -203,6 +210,30 @@ test('a MediaRecorder.start failure detaches listeners, timers and microphone be
  assert.equal(h.errors.length,1);
  assert.match(h.errors[0],/Микрофон недоступен/);
  assert.equal(h.button(h.render(),'Отменить'),null,'the composer returns to idle');
+});
+
+test('a throwing permission-timer cleanup cannot revive a canceled microphone request',async()=>{
+ let resolvePermission;
+ const h=harness({
+  clearPermissionTimerThrows:true,
+  getUserMedia:()=>new Promise(resolve=>{resolvePermission=resolve;})
+ });
+ h.clickStart();
+ await h.flush();
+ assert.equal(h.pending(VOICE_PERMISSION_TIMEOUT_MS).length,1);
+ assert.doesNotThrow(()=>h.button(h.render(),'Отменить').props.onClick(),
+  'a host clearTimeout failure must not interrupt request invalidation');
+ const lateTrack={stopped:false,stop(){this.stopped=true;}};
+ resolvePermission({getTracks:()=>[lateTrack]});
+ await h.flush();
+ assert.equal(lateTrack.stopped,true,'a late permission grant is stopped after cancellation');
+ assert.equal(h.recorders.length,0,'a canceled permission request never starts MediaRecorder');
+ assert.equal(h.recorded.length,0,'no partial recording reaches preview');
+ assert.equal(h.errors.length,0,'manual cancellation remains silent');
+ // The host refused to clear the original timer, but its callback is now inert.
+ assert.equal(h.fireTimeout(VOICE_PERMISSION_TIMEOUT_MS),true);
+ assert.equal(h.button(h.render(),'Отменить'),null,'the stale timer cannot revive the recorder UI');
+ assert.equal(h.recorders.length,0);
 });
 
 test('a failing track-listener removal cannot block the remaining microphone cleanup',async()=>{
