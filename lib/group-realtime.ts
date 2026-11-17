@@ -2,6 +2,7 @@
 
 import {createClient} from '@supabase/supabase-js';
 import {apiUrl,backendReady} from './supabase-rest';
+import {shouldRefreshChatAfterRealtimeFailure} from './chat-realtime-status';
 
 const publishableKey=process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY??'';
 const UUID=/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
@@ -26,6 +27,9 @@ export function subscribeGroupChanges(token:string,groupId:string,onChanged:()=>
    .on('postgres_changes',{...scope,event:'INSERT'},changed)
    .subscribe(status=>{
     if(status==='SUBSCRIBED')changed(); // reconcile events missed during join
+    // A socket error/timeout/close must wake the authenticated HTTP refresh;
+    // polling continues as the fallback when the subscription stays offline.
+    if(shouldRefreshChatAfterRealtimeFailure(status))changed();
    });
  }).catch(()=>{/* The periodic HTTPS refresh remains active. */});
  return()=>{
