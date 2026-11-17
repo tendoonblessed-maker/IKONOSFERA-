@@ -32,8 +32,8 @@ export function subscribeGroupChanges(token:string,groupId:string,onChanged:()=>
     if(shouldRefreshChatAfterRealtimeFailure(status))changed();
    });
  }).catch(()=>{
-  // If the JWT cannot authorize Realtime, wake the existing authenticated
-  // HTTP read now; polling remains the durable fallback.
+  // The periodic HTTPS refresh remains active; wake the authenticated HTTP
+  // read immediately when the Realtime auth handshake fails.
   changed();
  });
  return()=>{
