@@ -99,7 +99,9 @@ test('group send API uses INSERT DO NOTHING + read back the original ID under RL
  assert.match(method,/resolution=ignore-duplicates,return=representation/);
  assert.match(method,/on_conflict=id/);
  assert.match(method,/readGroupSendResult\(token,id,userId,messageId\)/);
- assert.match(method,/AbortSignal\.timeout\(18000\)/);
+ assert.match(method,/\},\{Prefer:'resolution=ignore-duplicates,return=representation'\},true\)/);
+ assert.match(api,/createHttpRequestSignal\(\)/);
+ assert.match(api,/requestSignal\?\.dispose\(\)/);
  assert.match(api,/return \(await request<GroupMessage\[\]>\(token,url\)\)\[0\]/);
  assert.match(api,/row\.id!==messageId\|\|row\.group_id!==groupId\|\|row\.sender_id!==userId\|\|row\.body!==body/);
  assert.doesNotMatch(method,/resolution=merge-duplicates/);
