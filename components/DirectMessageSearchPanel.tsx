@@ -1,5 +1,6 @@
 'use client';
 
+import {useEffect,useRef} from 'react';
 import type {DirectMessageSearchResult} from '@/lib/supabase-rest';
 
 type Props={
@@ -24,12 +25,26 @@ export default function DirectMessageSearchPanel({
   onOpen,userId,partnerName,locatingId
 }:Props){
   const needle=query.trim();
+  const inputRef=useRef<HTMLInputElement|null>(null);
+  const previousFocusRef=useRef<HTMLElement|null>(null);
+
+  useEffect(()=>{
+    const active=document.activeElement;
+    previousFocusRef.current=active instanceof HTMLElement?active:null;
+    inputRef.current?.focus();
+    return()=>{
+      const target=previousFocusRef.current;
+      if(target?.isConnected)target.focus();
+      previousFocusRef.current=null;
+    };
+  },[]);
+
   return <section className="ik-direct-search" aria-label="Поиск по всей переписке"
     onKeyDown={event=>{
       if(event.key==='Escape'){event.preventDefault();event.stopPropagation();onClose();}
     }}>
     <div className="ik-conversation-search">
-      <input autoFocus aria-label="Поиск сообщений в текущем чате"
+      <input ref={inputRef} aria-label="Поиск сообщений в текущем чате"
         placeholder="Поиск по всей истории…" maxLength={120} value={query}
         onChange={event=>onQueryChange(event.target.value)}/>
       <span aria-live="polite">{needle.length<2?'От 2 символов':loading?'Ищем…':failed?'Ошибка':results.length+(hasMore?'+':'')+' найдено'}</span>
