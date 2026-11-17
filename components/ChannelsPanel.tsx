@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { listProfiles, type Profile } from "@/lib/supabase-rest";
 import StatusEmoji from "@/components/StatusEmoji";
+import {shouldPreventImeFormSubmit} from "@/lib/ime-form";
 import {
  addPostComment, deletePost, editChannelPost, manageChannelComment, imageUrl, listChannelPosts, listPostComments, listPostReactions, setPostReaction, REACTION_EMOJIS, publishPost,
  removeUpload, uploadChannelAttachment, updateChannel, updateChannelAvatar, deleteChannel, getChannelSubscriberCounts, listDiscussionMessages, sendDiscussionMessage, deleteDiscussionMessage, listDiscussionComments,
@@ -186,7 +187,7 @@ export default function ChannelsPanel({token,userId,channel,onBack,onShowProfile
       {(mine||item.author_id===userId)&&<button type="button" disabled={busy} className="channel-delete-comment" onClick={()=>void (item.kind==="comment"?eraseComment(item):eraseDiscussion(item.id))}>Удалить</button>}
      </div>)}
     </div>
-    <form onSubmit={sendDiscussion} style={{display:"flex",gap:8}}><input aria-label="Сообщение в обсуждении" placeholder="Сообщение участникам…" value={discussionDraft} maxLength={1500} onChange={e=>setDiscussionDraft(e.target.value)} style={{flex:1,minWidth:0}}/><button className="accent-button" type="submit" disabled={busy||!discussionDraft.trim()}>Отправить</button></form>
+    <form onSubmit={sendDiscussion} style={{display:"flex",gap:8}}><input aria-label="Сообщение в обсуждении" placeholder="Сообщение участникам…" value={discussionDraft} maxLength={1500} onChange={e=>setDiscussionDraft(e.target.value)} onKeyDown={e=>{if(shouldPreventImeFormSubmit(e.nativeEvent))e.preventDefault();}} style={{flex:1,minWidth:0}}/><button className="accent-button" type="submit" disabled={busy||!discussionDraft.trim()}>Отправить</button></form>
    </section>}
 
    <div className="channel-cover-card"><div className="channel-emblem">{currentChannel.avatar_path?<img src={imageUrl(currentChannel.avatar_path) ?? undefined} alt="" className="ik-channel-avatar-img"/>:"#"}{mine&&<label className="ik-channel-avatar-edit" title="Изменить аватарку канала"><input type="file" accept="image/jpeg,image/png,image/webp" disabled={avatarBusy} onChange={e=>{void changeChannelAvatar(e.target.files?.[0]);e.target.value="";}}/><span>{avatarBusy?"…":"✎"}</span></label>}</div><h1>{currentChannel.title}</h1><p>@{currentChannel.slug}</p>{subscriberCount!==null&&<p className="channel-subscribers">{subscriberCount.toLocaleString("ru-RU")} подписчиков</p>}
@@ -223,7 +224,7 @@ export default function ChannelsPanel({token,userId,channel,onBack,onShowProfile
        {comments.length===0?<p className="channel-no-comments">Будь первым, кто оставит комментарий.</p>:
         comments.map(comment=><div className="channel-comment" key={comment.id}><div className="channel-comment-head"><button type="button" onClick={()=>onShowProfile(comment.author_id)}><span className="ik-name-with-status"><span>{authors[comment.author_id]?.display_name||"Пользователь"}</span><StatusEmoji index={authors[comment.author_id]?.status_emoji} decorative/></span></button><time dateTime={comment.created_at}>{formattedDate(comment.created_at)}</time></div>{editingCommentId===comment.id?<form className="channel-inline-editor" onSubmit={e=>{e.preventDefault();void saveCommentEdit(comment.id);}}><input value={editingBody} maxLength={1500} onChange={e=>setEditingBody(e.target.value)}/><button type="submit">Сохранить</button><button type="button" onClick={()=>setEditingCommentId(null)}>Отмена</button></form>:<p>{comment.body}</p>}
         {comment.author_id===userId&&<button className="channel-delete-comment" type="button" onClick={()=>{setEditingCommentId(comment.id);setEditingBody(comment.body);}}>Редактировать</button>}{(comment.author_id===userId||mine)&&<button className="channel-delete-comment" disabled={busy} onClick={()=>void eraseComment(comment)} type="button">Удалить</button>}</div>)}
-       <form className="channel-comment-form" onSubmit={writeComment}><input aria-label="Написать комментарий" maxLength={1500} placeholder="Написать комментарий…" value={commentDraft} onChange={e=>setCommentDraft(e.target.value)}/><button type="submit" className="accent-button" disabled={busy||!commentDraft.trim()}>➤</button></form>
+       <form className="channel-comment-form" onSubmit={writeComment}><input aria-label="Написать комментарий" maxLength={1500} placeholder="Написать комментарий…" value={commentDraft} onChange={e=>setCommentDraft(e.target.value)} onKeyDown={e=>{if(shouldPreventImeFormSubmit(e.nativeEvent))e.preventDefault();}}/><button type="submit" className="accent-button" disabled={busy||!commentDraft.trim()}>➤</button></form>
       </div>}
    </article>)}
    {(error||notice)&&<p role="status" className={error?"profile-error":"profile-success"}>{error||notice}</p>}

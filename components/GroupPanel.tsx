@@ -14,6 +14,7 @@ import {subscribeGroupChanges} from '@/lib/group-realtime';
 import {mergeConfirmedGroupMessages,CONFIRMED_GROUP_MESSAGE_GRACE_MS,type ConfirmedGroupMessage} from '@/lib/group-history';
 import {shouldAcknowledgeGroupRead,countNewIncomingBelow} from '@/lib/group-read-position';
 import {fetchOlderGroupMessages,prependOlderGroupMessages,preserveOlderGroupMessages,GROUP_HISTORY_MAX_LOADED} from '@/lib/group-pagination';
+import {shouldPreventImeFormSubmit} from '@/lib/ime-form';
 type Props={token:string;userId:string;group:Group;onBack:()=>void;onShowProfile:(id:string)=>void;onDraftChange:(groupId:string,text:string)=>void};
 export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDraftChange}:Props){
  const [messages,setMessages]=useState<GroupMessage[]>([]);
@@ -490,7 +491,7 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
  <textarea aria-label="Сообщение группе" placeholder={online?"Сообщение группе…":"Нет сети · черновик сохранён"} rows={1} enterKeyHint="enter" maxLength={4000} value={draft}
  onChange={e=>{changeDraft(e.target.value);if(error)setError('');}}
  onKeyDown={e=>{
-   if(e.key!=='Enter'||e.nativeEvent.isComposing)return;
+   if(e.key!=='Enter'||shouldPreventImeFormSubmit(e.nativeEvent))return;
    // Desktop: Enter sends, Shift+Enter inserts a newline.
    // Mobile: Enter inserts a newline; Cmd/Ctrl+Enter always sends.
    const sendKey=e.ctrlKey||e.metaKey||(!e.shiftKey&&window.matchMedia('(pointer:fine)').matches);
