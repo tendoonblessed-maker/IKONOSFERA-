@@ -74,7 +74,7 @@ export default function DirectMessageSearchPanel({
           <span className="ik-direct-search-result-arrow" aria-hidden="true">{isLocating?'◌':'›'}</span>
         </button>;
       })}
-      {loading&&<p className="ik-direct-search-hint" role="status">Ищем сообщения…</p>}
+      {loading&&<p className="ik-direct-search-hint" aria-hidden="true">Ищем сообщения…</p>}
       {failed&&!loading&&<button type="button" className="ik-direct-search-retry" onClick={onMore}>Не удалось найти сообщения. Повторить</button>}
       {!loading&&!failed&&!results.length&&<p className="ik-direct-search-hint">По этому запросу сообщений не найдено.</p>}
       {!loading&&!failed&&hasMore&&<button type="button" className="ik-direct-search-more" onClick={onMore}>Показать ещё совпадения</button>}
