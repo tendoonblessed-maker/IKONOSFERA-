@@ -1,6 +1,6 @@
 'use client';
 
-import {useEffect,useRef} from 'react';
+import {useLayoutEffect,useRef} from 'react';
 import type {DirectMessageSearchResult} from '@/lib/supabase-rest';
 
 type Props={
@@ -26,20 +26,25 @@ export default function DirectMessageSearchPanel({
 }:Props){
   const needle=query.trim();
   const inputRef=useRef<HTMLInputElement|null>(null);
+  const panelRef=useRef<HTMLElement|null>(null);
   const previousFocusRef=useRef<HTMLElement|null>(null);
 
-  useEffect(()=>{
+  useLayoutEffect(()=>{
     const active=document.activeElement;
     previousFocusRef.current=active instanceof HTMLElement?active:null;
     inputRef.current?.focus();
     return()=>{
       const target=previousFocusRef.current;
-      if(target?.isConnected)target.focus();
+      const panel=panelRef.current;
+      const active=document.activeElement;
+      // Do not steal focus if another control (for example, a dialog opened
+      // above the chat) received it while search was mounted.
+      if(target?.isConnected&&panel?.contains(active))target.focus();
       previousFocusRef.current=null;
     };
   },[]);
 
-  return <section className="ik-direct-search" aria-label="Поиск по всей переписке"
+  return <section ref={panelRef} className="ik-direct-search" aria-label="Поиск по всей переписке"
     onKeyDown={event=>{
       if(event.key==='Escape'){event.preventDefault();event.stopPropagation();onClose();}
     }}>
