@@ -2,6 +2,7 @@
 
 import {createClient} from '@supabase/supabase-js';
 import {apiUrl,backendReady} from './supabase-rest';
+import {shouldRefreshChatAfterRealtimeFailure} from './chat-realtime-status';
 
 const key=process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY??'';
 const UUID=/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
@@ -38,6 +39,9 @@ export function subscribeDirectChatChanges(
    .on('postgres_changes',{...scope,event:'UPDATE'},changed)
    .subscribe(status=>{
     if(status==='SUBSCRIBED')changed(); // close join/read race and resubscribe gaps
+    // Reconcile immediately over RLS-protected HTTP when the socket degrades;
+    // the regular six-second poll remains active if Realtime cannot recover.
+    if(shouldRefreshChatAfterRealtimeFailure(status))changed();
    });
  }).catch(()=>{/* A 6-second HTTP polling fallback remains active. */});
 
