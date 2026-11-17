@@ -32,3 +32,13 @@ test('both channel discussion and post-comment inputs guard IME confirmation',()
   assert.match(panel,/aria-label="Сообщение в обсуждении"/);
   assert.match(panel,/aria-label="Написать комментарий"/);
 });
+
+
+test('direct and group chat composers ignore IME confirmation Enter',()=>{
+  const shell=source('components/AppShell.tsx');
+  const group=source('components/GroupPanel.tsx');
+  assert.match(shell,/shouldPreventImeFormSubmit\\(e\\.nativeEvent\\)/);
+  assert.match(group,/shouldPreventImeFormSubmit\\(e\\.nativeEvent\\)/);
+  assert.match(shell,/if\\(e\\.key==='Enter'&&!e\\.shiftKey/);
+  assert.match(group,/if\\(e\\.key!=='Enter'\\|\\|shouldPreventImeFormSubmit/);
+});
