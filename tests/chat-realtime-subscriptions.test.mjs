@@ -3,7 +3,9 @@ import {test} from 'node:test';
 import {readFileSync} from 'node:fs';
 import vm from 'node:vm';
 import ts from 'typescript';
-import {shouldRefreshChatAfterRealtimeFailure} from '../lib/chat-realtime-status.ts';
+import {
+ createRealtimeRefreshGate,shouldRefreshChatAfterRealtimeFailure
+} from '../lib/chat-realtime-status.ts';
 
 const CHAT='11111111-1111-4111-8111-111111111111';
 const TOKEN='synthetic-user-jwt';
@@ -59,7 +61,7 @@ function createHarness(kind,setAuth=()=>Promise.resolve()){
   require(specifier){
    if(specifier==='@supabase/supabase-js')return {createClient:()=>client};
    if(specifier==='./supabase-rest')return {apiUrl:'https://unit.test',backendReady:true};
-   if(specifier==='./chat-realtime-status')return {shouldRefreshChatAfterRealtimeFailure};
+   if(specifier==='./chat-realtime-status')return {createRealtimeRefreshGate,shouldRefreshChatAfterRealtimeFailure};
    throw new Error('Unexpected module: '+specifier);
   }
  },{timeout:1000,filename:path});
@@ -79,7 +81,7 @@ async function flushMicrotasks(){
 }
 
 for(const kind of ['direct','group']){
- test(kind+' subscription reconciles failures and ignores callbacks after cleanup',async()=>{
+ test(kind+' subscription reconciles failures and cancels coalesced callbacks after cleanup',async()=>{
   const h=createHarness(kind);
   await flushMicrotasks();
   assert.equal(h.subscribeCount,1);
@@ -100,12 +102,12 @@ for(const kind of ['direct','group']){
   h.emit('TIMED_OUT');
   h.emit('CLOSED');
   h.emit('SUBSCRIBING');
-  assert.equal(h.changeCount,4);
+  assert.equal(h.changeCount,1,'first signal refreshes immediately; burst is coalesced');
   h.unsubscribe();
   h.emit('CHANNEL_ERROR');
   h.emit('CLOSED');
   await flushMicrotasks();
-  assert.equal(h.changeCount,4);
+  assert.equal(h.changeCount,1,'cleanup cancels the trailing refresh');
   assert.equal(h.removeCount,1);
   assert.equal(h.disconnectCount,1);
  });
