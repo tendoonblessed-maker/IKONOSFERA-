@@ -79,8 +79,8 @@ test('AppShell uses shared exact-match direct offline hints instead of clearing 
 });
 
 test('group composer starts offline-safe until browser connectivity is measured', () => {
-  assert.match(groupPanel, /const \\[online,setOnline\\]=useState\\(false\\)/);
-  assert.match(groupNetworkEffect[0], /const connected=navigator\\.onLine/);
-  assert.match(groupPanel, /if\\(!online\\|\\|!navigator\\.onLine\\)\\{setError\\(GROUP_OFFLINE_DRAFT_ERROR\\);return;\\}/);
-  assert.match(groupPanel, /disabled=\\{busy\\|\\|!draft\\.trim\\(\\)\\|\\|!online\\}/);
+  assert.match(groupPanel, /const \[online,setOnline\]=useState\(false\)/);
+  assert.match(groupNetworkEffect[0], /const connected=navigator\.onLine/);
+  assert.match(groupPanel, /if\(!online\|\|!navigator\.onLine\)\{setError\(GROUP_OFFLINE_DRAFT_ERROR\);return;\}/);
+  assert.match(groupPanel, /disabled=\{busy\|\|!draft\.trim\(\)\|\|!online\}/);
 });
