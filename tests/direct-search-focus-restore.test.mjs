@@ -16,13 +16,21 @@ test('direct-message search focuses its input and restores the invoking control 
   assert.match(source,/const active=document\.activeElement/);
   assert.match(source,/previousFocusRef\.current=active instanceof HTMLElement\?active:null/);
   assert.match(source,/inputRef\.current\?\.focus\(\)/);
-  assert.match(source,/if\(target\?\.isConnected\)target\.focus\(\)/);
+  assert.match(source,/if\(target\?\.isConnected&&panel\?\.contains\(active\)\)target\.focus\(\)/);
   assert.match(source,/previousFocusRef\.current=null/);
+  assert.match(source,/useLayoutEffect\(\(\)=>\{/);
 });
 
 test('focus restoration is safe when the invoking control was removed',()=>{
-  assert.match(source,/if\(target\?\.isConnected\)target\.focus\(\)/);
+  assert.match(source,/if\(target\?\.isConnected&&panel\?\.contains\(active\)\)target\.focus\(\)/);
   assert.doesNotMatch(source,/target\.focus\(\);[^}]*else/);
+});
+
+test('focus restoration does not steal focus from a control outside the closing search panel',()=>{
+  assert.match(source,/panelRef=useRef<HTMLElement\|null>\(null\)/);
+  assert.match(source,/<section ref=\{panelRef\}/);
+  assert.match(source,/const panel=panelRef\.current/);
+  assert.match(source,/if\(target\?\.isConnected&&panel\?\.contains\(active\)\)target\.focus\(\)/);
 });
 
 test('search input keeps its accessible name and avoids competing autoFocus',()=>{
