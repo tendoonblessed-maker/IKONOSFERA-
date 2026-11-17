@@ -2,7 +2,7 @@
 
 import {createClient} from '@supabase/supabase-js';
 import {apiUrl,backendReady} from './supabase-rest';
-import {shouldRefreshChatAfterRealtimeFailure} from './chat-realtime-status';
+import {createRealtimeRefreshGate,shouldRefreshChatAfterRealtimeFailure} from './chat-realtime-status';
 
 const key=process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY??'';
 const UUID=/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
@@ -26,8 +26,9 @@ export function subscribeDirectChatChanges(
   auth:{persistSession:false,autoRefreshToken:false,detectSessionInUrl:false}
  });
  let stopped=false;
+ const refreshGate=createRealtimeRefreshGate(onChanged);
+ const changed=()=>{if(!stopped)refreshGate.trigger();};
  const channel=client.channel('direct-db:'+chatId);
- const changed=()=>{if(!stopped)onChanged();};
  const scope={schema:'public' as const,table:'messages',filter:'chat_id=eq.'+chatId};
 
  // Must authorize the socket with the existing login JWT. The SDK does not
@@ -40,7 +41,7 @@ export function subscribeDirectChatChanges(
    .subscribe(status=>{
     if(status==='SUBSCRIBED')changed(); // close join/read race and resubscribe gaps
     // Reconcile immediately over RLS-protected HTTP when the socket degrades;
-    // the regular six-second poll remains active if Realtime cannot recover.
+    // bursty status transitions are coalesced by the per-subscription gate.
     if(shouldRefreshChatAfterRealtimeFailure(status))changed();
    });
  }).catch(()=>{
@@ -51,6 +52,7 @@ export function subscribeDirectChatChanges(
 
  return()=>{
   stopped=true;
+  refreshGate.dispose();
   void client.removeChannel(channel)
    .finally(()=>{client.realtime.disconnect();})
    .catch(()=>{client.realtime.disconnect();});
