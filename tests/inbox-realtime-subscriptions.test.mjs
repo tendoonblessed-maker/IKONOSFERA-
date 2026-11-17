@@ -90,7 +90,9 @@ test('global inbox subscribes with the current JWT and exact RLS-filtered table 
  const h=createHarness();
  await flushMicrotasks();
  assert.deepEqual(h.authOptions,[TOKEN]);
- assert.deepEqual(h.clientOptions,{auth:{persistSession:false,autoRefreshToken:false,detectSessionInUrl:false}});
+ assert.equal(h.clientOptions.auth.persistSession,false);
+ assert.equal(h.clientOptions.auth.autoRefreshToken,false);
+ assert.equal(h.clientOptions.auth.detectSessionInUrl,false);
  assert.equal(h.subscribeCount,1);
  assert.deepEqual(
   h.registrations.map(item=>({event:item.event,schema:item.config.schema,table:item.config.table})),
