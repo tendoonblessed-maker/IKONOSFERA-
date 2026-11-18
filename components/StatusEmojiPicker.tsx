@@ -18,7 +18,10 @@ export default function StatusEmojiPicker({value,disabled=false,onSelect}:Props)
  function handleGridKeyDown(event:KeyboardEvent<HTMLButtonElement>,index:number){
   const grid=event.currentTarget.parentElement;
   if(!grid)return;
-  const columns=window.getComputedStyle(grid).gridTemplateColumns.split(/\\s+/).filter(Boolean).length||8;
+  const buttons=Array.from(grid.querySelectorAll('button'));
+  const firstTop=buttons[0]?.getBoundingClientRect().top;
+  const firstRowEnd=buttons.findIndex((button,i)=>i>0&&button.getBoundingClientRect().top>firstTop+1);
+  const columns=firstRowEnd===-1?buttons.length:firstRowEnd;
   const next=getStatusEmojiGridTarget(index,event.key,STATUS_EMOJI_COUNT+1,columns);
   if(next===null||next===index)return;
   const target=buttonRefs.current[next];
