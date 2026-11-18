@@ -21,6 +21,31 @@ export async function copyTextToClipboard(text: string): Promise<void> {
   const activeElement = document.activeElement as HTMLElement | null;
   const selection = document.getSelection();
   const savedRanges: Range[] = [];
+  // DOM Selection does not represent the caret/range inside an input or
+  // textarea. Preserve that control-specific selection separately.
+  let controlSelection: {
+    element: HTMLInputElement | HTMLTextAreaElement;
+    start: number;
+    end: number;
+    direction: 'forward' | 'backward' | 'none' | null;
+  } | null = null;
+  if (activeElement && 'selectionStart' in activeElement && 'selectionEnd' in activeElement) {
+    const control = activeElement as HTMLInputElement | HTMLTextAreaElement;
+    try {
+      const start = control.selectionStart;
+      const end = control.selectionEnd;
+      if (typeof start === 'number' && typeof end === 'number') {
+        controlSelection = {
+          element: control,
+          start,
+          end,
+          direction: control.selectionDirection
+        };
+      }
+    } catch {
+      // Some input types (for example, number) do not expose text selection.
+    }
+  }
   if (selection) {
     for (let index = 0; index < selection.rangeCount; index += 1) {
       try {
@@ -70,6 +95,15 @@ export async function copyTextToClipboard(text: string): Promise<void> {
         savedRanges.forEach(range => selection.addRange(range));
       } catch {
         // Restoring a stale browser selection is best-effort.
+      }
+    }
+    if (controlSelection?.element.isConnected) {
+      try {
+        const { element, start, end, direction } = controlSelection;
+        if (direction) element.setSelectionRange(start, end, direction);
+        else element.setSelectionRange(start, end);
+      } catch {
+        // Selection restoration is best-effort for unsupported input types.
       }
     }
   }
