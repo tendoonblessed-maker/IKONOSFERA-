@@ -41,3 +41,27 @@ export async function sendThenRefresh<T>(
     return { value, refreshed: false, refreshError };
   }
 }
+
+
+/**
+ * Track edits independently of their text. Comparing only draft strings can
+ * erase a user's newly retyped text when it happens to equal the sent draft.
+ */
+export function createDraftRevisionGuard() {
+  let revision = 0;
+  return {
+    snapshot(): number {
+      return revision;
+    },
+    markEdited(): number {
+      revision += 1;
+      return revision;
+    },
+    clearIfUnchanged(expectedRevision: number, clear: () => void): boolean {
+      if (revision !== expectedRevision) return false;
+      clear();
+      revision += 1;
+      return true;
+    },
+  };
+}
