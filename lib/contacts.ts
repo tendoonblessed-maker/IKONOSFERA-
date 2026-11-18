@@ -3,8 +3,6 @@
 import {apiUrl} from "@/lib/supabase-rest";
 
 const publishableKey=process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY??"";
-type ContactRow={contact_id:string};
-type BlockRow={blocked_id:string};
 const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /** Validate and canonicalize IDs before they become PostgREST filter/body values. */
