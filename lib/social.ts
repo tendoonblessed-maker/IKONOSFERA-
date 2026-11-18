@@ -105,7 +105,7 @@ function normalizeChannelSubscriberCounts(value:unknown,requestedIds:string[]):R
   if(!requested.has(channelId)||seen.has(channelId))continue;
   const raw=item.subscribers;
   const count=typeof raw==="number"?raw:
-   typeof raw==="string"&&/^\\d+$/.test(raw)?Number(raw):NaN;
+   typeof raw==="string"&&/^\d+$/.test(raw)?Number(raw):NaN;
   if(!Number.isSafeInteger(count)||count<0)continue;
   seen.add(channelId);
   counts[channelId]=count;
