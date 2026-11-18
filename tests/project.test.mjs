@@ -1059,7 +1059,7 @@ test('private photo attachments open a modal inside the chat without leaking pre
  assert.match(viewer,/className="ik-chat-photo-backdrop"/);
  assert.match(viewer,/role="dialog"/);
  assert.match(viewer,/aria-modal="true"/);
- assert.match(viewer,/if\(event\.key==='Escape'\)/);
+ assert.match(viewer,/shouldCloseChatPhotoViewer\(event\)/);
  assert.match(viewer,/if\(event\.key!=='Tab'\)return/);
  assert.match(viewer,/document\.body\.style\.overflow='hidden'/);
  assert.match(viewer,/document\.body\.style\.overflow=previousOverflow/);
