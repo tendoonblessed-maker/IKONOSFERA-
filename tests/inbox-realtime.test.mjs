@@ -30,6 +30,22 @@ test('a late request after logout or an account switch is rejected',()=>{
  assert.equal(isLatestAccountSnapshot(requestId,revision,OWNER,owner),false);
 });
 
+test('invalid request generations fail closed even when both counters match',()=>{
+ const invalid=[0,-1,1.5,NaN,Infinity,-Infinity,Number.MAX_SAFE_INTEGER+1];
+ for(const generation of invalid){
+  assert.equal(isLatestAccountSnapshot(generation,generation,OWNER,OWNER),false);
+ }
+ assert.equal(isLatestAccountSnapshot(1,0,OWNER,OWNER),false);
+ assert.equal(isLatestAccountSnapshot(0,1,OWNER,OWNER),false);
+ assert.equal(isLatestAccountSnapshot(1,1,OWNER,OWNER),true);
+});
+
+test('blank account owners cannot authorize a cached inbox snapshot',()=>{
+ assert.equal(isLatestAccountSnapshot(1,1,'',''),false);
+ assert.equal(isLatestAccountSnapshot(1,1,'   ','   '),false);
+ assert.equal(isLatestAccountSnapshot(1,1,OWNER,OWNER),true);
+});
+
 test('inbox Realtime only wakes RLS-backed server fetches',()=>{
  const rt=load('lib/inbox-realtime.ts');
  assert.match(rt,/client\.realtime\.setAuth\(token\)/);
