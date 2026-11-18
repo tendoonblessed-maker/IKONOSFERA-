@@ -123,7 +123,7 @@ test('search panel is account scoped, shows complete history results and never e
  assert.match(panel,/contextRef\.current\.token!==requestToken/);
  assert.match(panel,/getGroupMessageContext\(token,groupId,message\.id,message\.created_at\)/);
  assert.match(panel,/browsingOlderRef\.current=true/);
- assert.match(panel,/if\(cancelled\|\|document\.visibilityState==='hidden'\|\|!navigator\.onLine\|\|browsingOlderRef\.current\)return/);
+ assert.match(panel,/if\(cancelled\)return;\s*if\(document\.visibilityState==='hidden'\|\|!navigator\.onLine\|\|browsingOlderRef\.current\)\{/);
  assert.match(panel,/data-group-message-id=\{m\.id\}/);
  assert.match(panel,/target\.getBoundingClientRect\(\)/);
  assert.doesNotMatch(panel,/scrollIntoView/);
@@ -133,7 +133,7 @@ test('search panel is account scoped, shows complete history results and never e
 
 test('older search results cannot silently count as read before latest page is rendered',()=>{
  const panel=read('components/GroupPanel.tsx');
- assert.match(panel,/if\(browsingOlderRef\.current\|\|!shouldAcknowledgeGroupRead/);
+ assert.match(panel,/latestGroupMessageRef\.current!==pending\.latestMessageId\|\|browsingOlderRef\.current/);\n assert.match(panel,/!shouldAcknowledgeGroupRead\(pending\.latestMessageId,lastReadRef\.current/);
  assert.match(panel,/latestGroupMessageRef\.current=null/);
  assert.match(panel,/useLayoutEffect\(\(\)=>\{\n  const history=historyRef\.current;\n  if\(history&&followNewestRef\.current\)\{/);
  assert.match(panel,/acknowledgeLatestIfVisible\(\)/);
