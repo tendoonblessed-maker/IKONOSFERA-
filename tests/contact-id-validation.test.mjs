@@ -2,19 +2,29 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {test} from 'node:test';
 import vm from 'node:vm';
+import ts from 'typescript';
 
 const source=readFileSync(new URL('../lib/contacts.ts',import.meta.url),'utf8');
+const compiled=ts.transpileModule(source,{
+ compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}
+}).outputText;
 const OWNER='AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAAA';
 const CONTACT='BBBBBBBB-BBBB-4BBB-8BBB-BBBBBBBBBBBB';
 const OTHER='CCCCCCCC-CCCC-4CCC-8CCC-CCCCCCCCCCCC';
 function setup(fetcher){
- const code=source.replace(/import\s+\{apiUrl\}\s+from\s+['"]@\/lib\/supabase-rest['"];?\s*/,'')
-  .replace(/export\s+async\s+function/g,'async function')
-  +'\n globalThis.__api={listSavedContacts,addSavedContact,removeSavedContact,listBlockedUsers,addBlockedUser,removeBlockedUser};';
  const calls=[];
- const context={apiUrl:'https://unit.test',process:{env:{NEXT_PUBLIC_SUPABASE_ANON_KEY:'public-key'}},fetch:async(url,options)=>{calls.push({url,options});return fetcher(url,options,calls.length);}};
- vm.runInNewContext(code,context,{timeout:2500,filename:'contacts.ts'});
- return {api:context.__api,calls};
+ const exports={};
+ const context={
+  exports,
+  process:{env:{NEXT_PUBLIC_SUPABASE_ANON_KEY:'public-key'}},
+  fetch:async(url,options)=>{calls.push({url,options});return fetcher(url,options,calls.length);},
+  require(name){
+   if(name==='@/lib/supabase-rest')return {apiUrl:'https://unit.test'};
+   throw new Error('Unexpected module: '+name);
+  }
+ };
+ vm.runInNewContext(compiled,context,{timeout:2500,filename:'contacts.cjs'});
+ return {api:exports,calls};
 }
 const response=(body,status=200)=>({ok:true,status,json:async()=>body});
 const jsonBody=call=>JSON.parse(call.options.body);
