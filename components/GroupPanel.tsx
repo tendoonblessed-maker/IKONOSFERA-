@@ -12,11 +12,12 @@ import {readGroupDrafts} from '@/lib/group-drafts';
 import {getOrCreateGroupSendAttempt,clearGroupSendAttempt} from '@/lib/group-send-attempts';
 import {subscribeGroupChanges} from '@/lib/group-realtime';
 import {mergeConfirmedGroupMessages,CONFIRMED_GROUP_MESSAGE_GRACE_MS,type ConfirmedGroupMessage} from '@/lib/group-history';
-import {shouldAcknowledgeGroupRead,countNewIncomingBelow} from '@/lib/group-read-position';
+import {getIncomingGroupMessageIds,isGroupAtLatest,isGroupReadSnapshotCurrent,shouldAcknowledgeGroupRead,countNewIncomingBelow} from '@/lib/group-read-position';
 import {fetchOlderGroupMessages,prependOlderGroupMessages,preserveOlderGroupMessages,GROUP_HISTORY_MAX_LOADED} from '@/lib/group-pagination';
 type Props={token:string;userId:string;group:Group;onBack:()=>void;onShowProfile:(id:string)=>void;onDraftChange:(groupId:string,text:string)=>void};
 export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDraftChange}:Props){
  const [messages,setMessages]=useState<GroupMessage[]>([]);
+ const [pendingGroupRead,setPendingGroupRead]=useState<{groupId:string;userId:string;token:string;latestMessageId:string;messageIds:string[];revision:number}|null>(null);
  const [members,setMembers]=useState<Profile[]>([]);
  const [presence,setPresence]=useState<Record<string,UserActivity>>({});
  const [membersOpen,setMembersOpen]=useState(false);
@@ -54,6 +55,7 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
  const searchRequestRef=useRef(0);
  const searchJumpRequestRef=useRef(0);
  const lastReadRef=useRef<string|null>(null);
+ const groupReadRevisionRef=useRef(0);
  const latestGroupMessageRef=useRef<string|null>(null);
  const previousMessageIdsRef=useRef<{groupId:string;ownerId:string;ids:Set<string>}>({
   groupId:group.id,ownerId:userId,ids:new Set()
@@ -73,6 +75,8 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
   setInitialLoading(true);
   latestGroupMessageRef.current=null;
   lastReadRef.current=null;
+  groupReadRevisionRef.current++;
+  setPendingGroupRead(null);
   followNewestRef.current=true;
   browsingOlderRef.current=false;
   searchRequestRef.current++;
@@ -104,18 +108,41 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
  }
 
  const acknowledgeLatestIfVisible=useCallback(()=>{
-  const last=latestGroupMessageRef.current;
-  if(browsingOlderRef.current||!shouldAcknowledgeGroupRead(last,lastReadRef.current,
-     followNewestRef.current,document.visibilityState==='visible'))return;
-  // The outgoing read RPC is scoped to this membership and never runs while
-  // the user is reading older items, even if Realtime has delivered new ones.
-  lastReadRef.current=last;
-  void markGroupRead(token,group.id).catch(()=>{
-    if(lastReadRef.current===last)lastReadRef.current=null;
+  const pending=pendingGroupRead;
+  if(!pending)return;
+  if(pending.groupId!==group.id||pending.userId!==userId||pending.token!==token){
+   setPendingGroupRead(null);
+   return;
+  }
+  if(!isGroupReadSnapshotCurrent(pending.revision,groupReadRevisionRef.current)
+     ||latestGroupMessageRef.current!==pending.latestMessageId||browsingOlderRef.current){
+   setPendingGroupRead(null);
+   return;
+  }
+  if(pending.latestMessageId===lastReadRef.current){
+   setPendingGroupRead(null);
+   return;
+  }
+  const history=historyRef.current;
+  if(!history)return;
+  const latestRendered=Boolean(history.querySelector('[data-group-message-id="'+pending.latestMessageId+'"]'));
+  const allRendered=pending.messageIds.every(id=>
+   Boolean(history.querySelector('[data-group-message-id="'+id+'"]'))
+  );
+  if(!latestRendered||!allRendered)return;
+  const atLatest=isGroupAtLatest(history.scrollHeight,history.scrollTop,history.clientHeight);
+  if(!shouldAcknowledgeGroupRead(pending.latestMessageId,lastReadRef.current,
+     atLatest&&followNewestRef.current,document.visibilityState==='visible'&&navigator.onLine))return;
+  setPendingGroupRead(null);
+  lastReadRef.current=pending.latestMessageId;
+  void markGroupRead(pending.token,pending.groupId).catch(()=>{
+    if(lastReadRef.current===pending.latestMessageId)lastReadRef.current=null;
   });
- },[token,group.id]);
+ },[pendingGroupRead,token,group.id,userId]);
 
  const refresh=useCallback(async()=>{
+  const readRevision=++groupReadRevisionRef.current;
+  setPendingGroupRead(null);
   const requestId=++requestSequenceRef.current;
   const msgs=await groupMessages(token,group.id);
   // When a slower poll finishes after a newer one, do not replace the newer
@@ -123,7 +150,7 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
   if(requestId!==requestSequenceRef.current
    ||contextRef.current.groupId!==group.id
    ||contextRef.current.userId!==userId
-   ||contextRef.current.token!==token||browsingOlderRef.current)return;
+   ||contextRef.current.token!==token||browsingOlderRef.current)return null;
   if(!initialPageLoadedRef.current){
    initialPageLoadedRef.current=true;
    // Current API returns at most 150 latest rows. Only allow paging
@@ -135,7 +162,13 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
    confirmedGroupMessagesRef.current,group.id,userId
   ));
   setInitialLoading(false);
-  latestGroupMessageRef.current=msgs.length?msgs[msgs.length-1].id:null;
+  const latestMessageId=msgs.length?msgs[msgs.length-1].id:null;
+  latestGroupMessageRef.current=latestMessageId;
+  const messageIds=getIncomingGroupMessageIds(msgs,userId);
+  setPendingGroupRead(latestMessageId&&messageIds.length?{
+   groupId:group.id,userId,token,latestMessageId,messageIds,revision:readRevision
+  }:null);
+  return msgs;
  },[token,group.id,userId]);
  useEffect(()=>{
   let cancelled=false;
@@ -144,8 +177,18 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
   let realtimeTimer:number|null=null;
   setInitialLoading(true);
   const sync=()=>{
-    if(cancelled||document.visibilityState==='hidden'||!navigator.onLine||browsingOlderRef.current)return;
-    if(inFlight){queuedSync=true;return;}
+    if(cancelled)return;
+    if(document.visibilityState==='hidden'||!navigator.onLine||browsingOlderRef.current){
+      groupReadRevisionRef.current++;
+      setPendingGroupRead(null);
+      return;
+    }
+    if(inFlight){
+      groupReadRevisionRef.current++;
+      setPendingGroupRead(null);
+      queuedSync=true;
+      return;
+    }
     inFlight=true;
     void refresh().then(()=>{if(!cancelled)setError('');}).catch(e=>{
       if(!cancelled){setInitialLoading(false);setError(e instanceof Error?e.message:'Не удалось загрузить сообщения группы');}
@@ -157,7 +200,10 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
   };
   sync();
   const onRealtimeChanged=()=>{
-    if(cancelled||document.visibilityState==='hidden'||!navigator.onLine)return;
+    if(cancelled)return;
+    groupReadRevisionRef.current++;
+    setPendingGroupRead(null);
+    if(document.visibilityState==='hidden'||!navigator.onLine)return;
     if(realtimeTimer!==null)window.clearTimeout(realtimeTimer);
     realtimeTimer=window.setTimeout(()=>{
       realtimeTimer=null;
@@ -168,8 +214,10 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
   // Polling is a fallback and heals any missed WebSocket notifications.
   const timer=window.setInterval(sync,6000);
   const onOnline=()=>sync();
+  const onOffline=()=>{if(cancelled)return;groupReadRevisionRef.current++;setPendingGroupRead(null);};
   document.addEventListener('visibilitychange',sync);
   window.addEventListener('online',onOnline);
+  window.addEventListener('offline',onOffline);
   return()=>{
     cancelled=true;
     requestSequenceRef.current++;
@@ -178,6 +226,7 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
     unsubscribeRealtime();
     document.removeEventListener('visibilitychange',sync);
     window.removeEventListener('online',onOnline);
+    window.removeEventListener('offline',onOffline);
   };
  },[refresh,token,group.id]);
  // Search runs against the full group history via the existing RLS-filtered
@@ -225,6 +274,8 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
   const requestId=++searchJumpRequestRef.current;
   setSearchLocating(message.id);
   // Pause recent-page polling so it cannot overwrite a historical jump.
+  groupReadRevisionRef.current++;
+  setPendingGroupRead(null);
   browsingOlderRef.current=true;
   followNewestRef.current=false;
   setShowJumpToLatest(true);
@@ -333,7 +384,7 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
   const history=historyRef.current;
   if(history&&followNewestRef.current){
    history.scrollTop=history.scrollHeight;
-   // Only acknowledge after the new messages have been painted into history.
+   // Only acknowledge after every staged incoming row exists in the committed DOM.
    acknowledgeLatestIfVisible();
   }
  },[messages,initialLoading,acknowledgeLatestIfVisible]);
