@@ -1136,7 +1136,8 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
   }
   async function reactToMessage(messageId:string,emoji:ReactionEmoji){
     if(!session||!selected||!userId||sending||!messageReactionGateRef.current.acquire())return;
-    const chatId=selected,token=session.access_token,generation=chatContextGenerationRef.current;
+    const chatId=selected,token=session.access_token;
+    const generation=chatContextGenerationRef.current;
     const stillInChat=()=>selectedRef.current===chatId&&chatContextGenerationRef.current===generation;
     const previous=messageReactions.find(r=>r.message_id===messageId&&r.user_id===userId);
     setSending(true);setError("");
