@@ -91,11 +91,33 @@ export async function addStory(token:string,userId:string,image_path:string,capt
 export async function deleteStory(token:string,id:string):Promise<void>{
   await api("/rest/v1/stories?id=eq."+encodeURIComponent(id),token,"DELETE");
 }
+/** Ignore malformed or unexpected rows returned by the social count RPC. */
+function normalizeChannelSubscriberCounts(value:unknown,requestedIds:string[]):Record<string,number>{
+ if(!Array.isArray(value))return {};
+ const requested=new Set(requestedIds.map(id=>id.toLowerCase()));
+ const seen=new Set<string>();
+ const counts:Record<string,number>={};
+ for(const row of value){
+  if(!row||typeof row!=="object"||Array.isArray(row))continue;
+  const item=row as {channel_id?:unknown;subscribers?:unknown};
+  if(!isCanonicalUuid(item.channel_id))continue;
+  const channelId=item.channel_id.toLowerCase();
+  if(!requested.has(channelId)||seen.has(channelId))continue;
+  const raw=item.subscribers;
+  const count=typeof raw==="number"?raw:
+   typeof raw==="string"&&/^\\d+$/.test(raw)?Number(raw):NaN;
+  if(!Number.isSafeInteger(count)||count<0)continue;
+  seen.add(channelId);
+  counts[channelId]=count;
+ }
+ return counts;
+}
+
 export async function getChannelSubscriberCounts(token:string,ids:string[]):Promise<Record<string,number>>{
  const unique=uniqueCanonicalUuids(ids);
  if(!unique.length)return {};
- const counts=await api<{channel_id:string;subscribers:number}[]>('/rest/v1/rpc/channel_subscriber_counts',token,'POST',{p_ids:unique});
- return Object.fromEntries(counts.map(row=>[row.channel_id,Number(row.subscribers)]));
+ const counts=await api<unknown>('/rest/v1/rpc/channel_subscriber_counts',token,'POST',{p_ids:unique});
+ return normalizeChannelSubscriberCounts(counts,unique);
 }
 export async function listChannels(token:string):Promise<Channel[]>{
   return api<Channel[]>("/rest/v1/channels?select=*&order=created_at.desc&limit=100",token);
