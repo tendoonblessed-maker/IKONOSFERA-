@@ -17,6 +17,16 @@ export function compareGroupMessages(a:GroupMessage,b:GroupMessage):number{
  const fraction=subMillisecondFraction(a.created_at)-subMillisecondFraction(b.created_at);
  return fraction||a.id.localeCompare(b.id);
 }
+function isValidOlderGroupMessage(value:unknown,groupId:string):value is GroupMessage{
+ if(!value||typeof value!=='object'||Array.isArray(value))return false;
+ const item=value as Partial<GroupMessage>;
+ return item.group_id===groupId
+  &&typeof item.id==='string'&&UUID.test(item.id)
+  &&typeof item.sender_id==='string'&&UUID.test(item.sender_id)
+  &&typeof item.body==='string'&&item.body.trim().length>0&&item.body.length<=4000
+  &&typeof item.created_at==='string'&&TIMESTAMP.test(item.created_at)
+  &&Number.isFinite(Date.parse(item.created_at));
+}
 /** A stable cursor includes ID: many messages can have the same timestamp. */
 export function olderGroupMessagesPath(groupId:string,oldest:Pick<GroupMessage,'created_at'|'id'>):string{
  if(!UUID.test(groupId)||!UUID.test(oldest.id)||!TIMESTAMP.test(oldest.created_at)
@@ -45,7 +55,15 @@ export async function fetchOlderGroupMessages(
  });
  const data:unknown=await response.json().catch(()=>null);
  if(!response.ok||!Array.isArray(data))throw Error('Не удалось загрузить ранние сообщения.');
- const rows=(data as GroupMessage[]).filter(item=>item.group_id===groupId);
+ const rows:GroupMessage[]=[];
+ for(const item of data){
+  if(!item||typeof item!=='object'||Array.isArray(item))throw Error('Не удалось загрузить ранние сообщения.');
+  const record=item as {group_id?:unknown};
+  if(typeof record.group_id!=='string'||!UUID.test(record.group_id))throw Error('Не удалось загрузить ранние сообщения.');
+  if(record.group_id!==groupId)continue;
+  if(!isValidOlderGroupMessage(item,groupId))throw Error('Не удалось загрузить ранние сообщения.');
+  rows.push(item);
+ }
  // The extra result is a has-more sentinel; it must be fetched next time.
  const page=rows.slice(0,GROUP_OLDER_PAGE_SIZE);
  page.reverse();
