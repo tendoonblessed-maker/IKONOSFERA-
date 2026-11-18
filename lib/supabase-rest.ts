@@ -44,7 +44,24 @@ async function http<T>(path: string, options: { method?: string; token?: string;
 }
 export function loadSession(): Session | null {
   if (typeof window === 'undefined') return null;
-  try { const s = JSON.parse(localStorage.getItem(STORAGE) || 'null') as Session | null; return s?.access_token && s.refresh_token ? s : null; } catch { return null; }
+  try {
+    const raw=localStorage.getItem(STORAGE);
+    if(!raw)return null;
+    const value:unknown=JSON.parse(raw);
+    if(!value||typeof value!=='object'||Array.isArray(value))return null;
+    const stored=value as Record<string,unknown>;
+    if(typeof stored.access_token!=='string'||!stored.access_token.trim()
+       ||typeof stored.refresh_token!=='string'||!stored.refresh_token.trim()
+       ||typeof stored.expires_at!=='number'||!Number.isFinite(stored.expires_at)
+       ||stored.expires_at<0||stored.expires_at>Number.MAX_SAFE_INTEGER)return null;
+    // Return only the fields used by Auth; malformed or extra storage fields
+    // must not be trusted as a Session object.
+    return {
+      access_token:stored.access_token,
+      refresh_token:stored.refresh_token,
+      expires_at:stored.expires_at
+    };
+  } catch { return null; }
 }
 export function saveSession(s: { access_token: string; refresh_token: string; expires_in?: number; expires_at?: number }) {
   if(!s.access_token||!s.refresh_token)throw Error('Сервер не выдал действительную сессию.');
@@ -119,8 +136,16 @@ export function consumeEmailLinkSession(): Session | null {
  const refresh_token=params.get('refresh_token');
  if(!access_token||!refresh_token)return null;
  const expires_in=Number(params.get('expires_in')||3600);
- window.history.replaceState({},'',window.location.pathname+window.location.search);
- return saveSession({access_token,refresh_token,expires_in:Number.isFinite(expires_in)?expires_in:3600});
+ // Persist the one-time credentials before removing them from the URL.
+ // If Web Storage is blocked, keep the fragment so the user can retry after
+ // restoring storage access instead of losing the only sign-in response.
+ const session=saveSession({access_token,refresh_token,expires_in:Number.isFinite(expires_in)?expires_in:3600});
+ // URL cleanup is best-effort: a history API failure must not invalidate a
+ // session that has already been persisted successfully.
+ try{
+  window.history.replaceState({},'',window.location.pathname+window.location.search);
+ }catch{}
+ return session;
 }
 export async function verifyEmailCode(email: string, token: string) {
   const response = await http<{access_token:string;refresh_token:string;expires_in:number}>(`/auth/v1/verify`,{method:'POST',body:{email,token,type:'email'}});

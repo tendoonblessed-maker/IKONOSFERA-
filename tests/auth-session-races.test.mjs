@@ -40,6 +40,44 @@ const expired=(access_token,refresh_token)=>({access_token,refresh_token,expires
 const future=(access_token,refresh_token)=>({access_token,refresh_token,expires_at:Date.now()/1000+7200});
 const tokenResponse=(access_token,refresh_token)=>reply({access_token,refresh_token,expires_in:3600});
 
+test('loadSession rejects malformed persisted records before any refresh request',async()=>{
+ const {api,storage,calls}=scenario(()=>{throw Error('malformed session must not reach Auth');});
+ const invalid=[
+  'null','[]','true','{}',
+  JSON.stringify({access_token:123,refresh_token:'refresh',expires_at:123}),
+  JSON.stringify({access_token:'access',refresh_token:'',expires_at:123}),
+  JSON.stringify({access_token:' ',refresh_token:'refresh',expires_at:123}),
+  JSON.stringify({access_token:'access',refresh_token:'refresh',expires_at:'9999999999'}),
+  JSON.stringify({access_token:'access',refresh_token:'refresh'}),
+  JSON.stringify({access_token:'access',refresh_token:'refresh',expires_at:null}),
+  '{"access_token":"access","refresh_token":"refresh","expires_at":1e999}',
+  JSON.stringify({access_token:'access',refresh_token:'refresh',expires_at:-1}),
+  JSON.stringify({access_token:'access',refresh_token:'refresh',expires_at:Number.MAX_SAFE_INTEGER+1})
+ ];
+ for(const raw of invalid){
+  storage.setItem('ikonosfera-session-v1',raw);
+  assert.equal(api.loadSession(),null,raw);
+  assert.equal(await api.validSession(),null,raw);
+ }
+ assert.equal(calls.length,0,'invalid local records must not trigger refresh or reuse malformed tokens');
+});
+
+test('loadSession accepts a valid expired session so the normal refresh flow can recover it',()=>{
+ const {api}=scenario(()=>{throw Error('refresh is not needed for this parsing test');});
+ api.saveSession(expired('expired-access','expired-refresh'));
+ const loaded=api.loadSession();
+ assert.equal(loaded?.access_token,'expired-access');
+ assert.equal(loaded?.refresh_token,'expired-refresh');
+ assert.equal(loaded?.expires_at,0);
+});
+
+test('loadSession fails closed when browser storage access throws',()=>{
+ const {api,storage}=scenario(()=>{throw Error('no network expected');});
+ storage.getItem=()=>{throw Error('storage denied');};
+ assert.equal(api.loadSession(),null);
+});
+
+
 test('concurrent validSession calls rotate the same refresh token only once',async()=>{
  const pending=defer();
  const {api,calls}=scenario(()=>pending.promise);
@@ -212,4 +250,67 @@ test('background auth refresh never keeps old userId when a different valid acco
  assert.match(effect,/const owner=await currentUser\(valid\.access_token\)/);
  assert.match(effect,/if\(cancelled\|\|loadSession\(\)\?\.access_token!==valid\.access_token\)return;/);
  assert.match(effect,/if\(owner\.id!==userId\)\{window\.location\.reload\(\);return;\}/);
+});
+
+
+function magicLinkEnvironment({storageBlocked=false,historyFailure=false}={}){
+ const key='ikonosfera-session-v1';
+ const data=new Map();
+ const order=[];
+ const location={hash:'#access_token=magic-access&refresh_token=magic-refresh&expires_in=3600',pathname:'/',search:'?from=mail'};
+ const window={
+  location,
+  history:{
+   replaceState(_state,_title,url){
+    order.push('scrub');
+    if(historyFailure)throw Error('history unavailable');
+    assert.ok(data.has(key),'credentials must be persisted before URL cleanup');
+    assert.equal(url,'/?from=mail');
+    location.hash='';
+   }
+  }
+ };
+ const localStorage={
+  getItem:name=>data.get(name)??null,
+  setItem(name,value){
+   order.push('persist');
+   if(storageBlocked)throw Error('storage blocked');
+   data.set(name,String(value));
+  },
+  removeItem:name=>data.delete(name)
+ };
+ const context={
+  exports:{},
+  process:{env:{NEXT_PUBLIC_SUPABASE_URL:'https://test.supabase.invalid',NEXT_PUBLIC_SUPABASE_ANON_KEY:'anon-test'}},
+  window,localStorage,AbortSignal,URLSearchParams
+ };
+ vm.runInNewContext(compiled,context,{filename:'supabase-rest.cjs',timeout:2500});
+ return {api:context.exports,data,location,order};
+}
+
+test('magic-link credentials remain in the URL when session persistence fails',()=>{
+ const {api,location,order}=magicLinkEnvironment({storageBlocked:true});
+ assert.throws(()=>api.consumeEmailLinkSession(),/storage blocked/);
+ assert.match(location.hash,/access_token=magic-access/);
+ assert.match(location.hash,/refresh_token=magic-refresh/);
+ assert.deepEqual(order,['persist']);
+});
+
+test('magic-link URL is scrubbed only after the session has been persisted',()=>{
+ const {api,data,location,order}=magicLinkEnvironment();
+ const session=api.consumeEmailLinkSession();
+ assert.equal(session.access_token,'magic-access');
+ assert.equal(session.refresh_token,'magic-refresh');
+ assert.equal(JSON.parse(data.get('ikonosfera-session-v1')).access_token,'magic-access');
+ assert.equal(location.hash,'');
+ assert.deepEqual(order,['persist','scrub']);
+});
+
+test('history cleanup failure does not discard an already persisted magic-link session',()=>{
+ const {api,data,location,order}=magicLinkEnvironment({historyFailure:true});
+ const session=api.consumeEmailLinkSession();
+ assert.equal(session.access_token,'magic-access');
+ assert.equal(JSON.parse(data.get('ikonosfera-session-v1')).refresh_token,'magic-refresh');
+ assert.match(location.hash,/access_token=magic-access/);
+ assert.deepEqual(order,['persist','scrub']);
 });
