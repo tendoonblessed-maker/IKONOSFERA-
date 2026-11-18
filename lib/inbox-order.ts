@@ -1,13 +1,13 @@
 /**
- * Sort direct-chat inbox rows by their latest activity, newest first.
+ * Sort direct and group inbox rows by their latest activity, newest first.
  *
  * Date.parse() intentionally exposes millisecond precision only. Postgres
  * timestamps can carry microseconds, so compare the remaining three digits
  * when both instants fall in the same millisecond. Invalid timestamps sort
- * after valid ones; chat ID is a deterministic final tie-breaker.
+ * after valid ones; conversation ID is a deterministic final tie-breaker.
  */
 export type InboxActivity = {
-  chatId: string;
+  conversationId: string;
   timestamp: string;
 };
 
@@ -35,8 +35,8 @@ export function compareInboxActivityDescending(
     return leftValid ? -1 : 1;
   }
 
-  const leftId = left.chatId.toLowerCase();
-  const rightId = right.chatId.toLowerCase();
+  const leftId = left.conversationId.toLowerCase();
+  const rightId = right.conversationId.toLowerCase();
   if (leftId === rightId) return 0;
   return leftId < rightId ? -1 : 1;
 }
