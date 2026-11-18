@@ -133,7 +133,8 @@ test('search panel is account scoped, shows complete history results and never e
 
 test('older search results cannot silently count as read before latest page is rendered',()=>{
  const panel=read('components/GroupPanel.tsx');
- assert.match(panel,/latestGroupMessageRef\.current!==pending\.latestMessageId\|\|browsingOlderRef\.current/);\n assert.match(panel,/!shouldAcknowledgeGroupRead\(pending\.latestMessageId,lastReadRef\.current/);
+ assert.match(panel,/latestGroupMessageRef\.current!==pending\.latestMessageId\|\|browsingOlderRef\.current/);
+ assert.match(panel,/!shouldAcknowledgeGroupRead\(pending\.latestMessageId,lastReadRef\.current/);
  assert.match(panel,/latestGroupMessageRef\.current=null/);
  assert.match(panel,/useLayoutEffect\(\(\)=>\{\n  const history=historyRef\.current;\n  if\(history&&followNewestRef\.current\)\{/);
  assert.match(panel,/acknowledgeLatestIfVisible\(\)/);
