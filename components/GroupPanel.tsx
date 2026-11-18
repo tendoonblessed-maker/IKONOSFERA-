@@ -14,6 +14,7 @@ import {subscribeGroupChanges} from '@/lib/group-realtime';
 import {mergeConfirmedGroupMessages,CONFIRMED_GROUP_MESSAGE_GRACE_MS,type ConfirmedGroupMessage} from '@/lib/group-history';
 import {shouldAcknowledgeGroupRead,countNewIncomingBelow} from '@/lib/group-read-position';
 import {fetchOlderGroupMessages,prependOlderGroupMessages,preserveOlderGroupMessages,GROUP_HISTORY_MAX_LOADED} from '@/lib/group-pagination';
+import {resetGroupMemberDialogState} from '@/lib/group-member-dialog-reset.mjs';
 type Props={token:string;userId:string;group:Group;onBack:()=>void;onShowProfile:(id:string)=>void;onDraftChange:(groupId:string,text:string)=>void};
 export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDraftChange}:Props){
  const [messages,setMessages]=useState<GroupMessage[]>([]);
@@ -63,6 +64,9 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
  const contextRef=useRef({groupId:group.id,userId,token});
  contextRef.current={groupId:group.id,userId,token};
  useEffect(()=>{
+  const memberDialogState=resetGroupMemberDialogState();
+  setMembersOpen(memberDialogState.open);
+  setMemberSearch(memberDialogState.query);
   confirmedGroupMessagesRef.current.clear();
   olderRequestRef.current++;
   olderLoadingRef.current=false;
