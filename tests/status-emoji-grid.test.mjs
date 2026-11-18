@@ -37,10 +37,11 @@ test('invalid indices, dimensions and unrelated keys do not move focus',()=>{
 });
 
 test('status picker exposes one tab stop and responsive arrow-key navigation',()=>{
- assert.match(picker,/tabIndex=\\{tabStopIndex===0\\?0:-1\\}/);
- assert.match(picker,/tabIndex=\\{tabStopIndex===i\\+1\\?0:-1\\}/);
- assert.match(picker,/window\\.getComputedStyle\\(grid\\)\\.gridTemplateColumns/);
- assert.match(picker,/getStatusEmojiGridTarget\\(index,event\\.key,STATUS_EMOJI_COUNT\\+1,columns\\)/);
- assert.match(picker,/target\\.focus\\(\\)/);
- assert.match(picker,/Home и End/);
+ assert.ok(picker.includes('tabIndex={tabStopIndex===0?0:-1}'));
+ assert.ok(picker.includes('tabIndex={tabStopIndex===i+1?0:-1}'));
+ assert.ok(picker.includes("grid.querySelectorAll('button')"));
+ assert.ok(picker.includes('getBoundingClientRect().top'));
+ assert.ok(picker.includes('getStatusEmojiGridTarget(index,event.key,STATUS_EMOJI_COUNT+1,columns)'));
+ assert.ok(picker.includes('target.focus()'));
+ assert.ok(picker.includes('Home и End'));
 });
