@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {test} from 'node:test';
-import {createSingleFlightGate,sendThenRefresh} from '../lib/channel-discussion-send.ts';
+import {createDraftRevisionGuard,createSingleFlightGate,sendThenRefresh} from '../lib/channel-discussion-send.ts';
 
 const source=path=>readFileSync(new URL('../'+path,import.meta.url),'utf8');
 
@@ -74,6 +74,46 @@ test('channel discussion and comment forms use the single-flight confirmed-send 
  assert.equal((panel.match(/sendThenRefresh\(/g)||[]).length,2);
  assert.match(panel,/Сообщение отправлено, но обсуждение не обновилось/);
  assert.match(panel,/Комментарий отправлен, но список не обновился/);
- assert.match(panel,/setDiscussionDraft\(current=>current===draft\?"":current\)/);
- assert.match(panel,/setCommentDraft\(current=>current===draft\?"":current\)/);
+ assert.match(panel,/discussionDraftRevision\.clearIfUnchanged\(draftRevision/);
+ assert.match(panel,/commentDraftRevision\.clearIfUnchanged\(draftRevision/);
+});
+
+
+test('an untouched draft is cleared after the matching send is acknowledged',()=>{
+ const guard=createDraftRevisionGuard();
+ const revision=guard.snapshot();
+ let draft='sent text';
+ assert.equal(guard.clearIfUnchanged(revision,()=>{draft='';}),true);
+ assert.equal(draft,'');
+ assert.equal(guard.snapshot(),revision+1);
+});
+
+test('editing away and retyping the same text while a send is pending preserves the new draft',()=>{
+ const guard=createDraftRevisionGuard();
+ let draft='same text';
+ const sentRevision=guard.snapshot();
+ draft='temporary edit';guard.markEdited();
+ draft='same text';guard.markEdited();
+ let clears=0;
+ assert.equal(guard.clearIfUnchanged(sentRevision,()=>{draft='';clears++;}),false);
+ assert.equal(draft,'same text');
+ assert.equal(clears,0);
+});
+
+test('discussion and comment inputs advance independent draft revisions',()=>{
+ const discussion=createDraftRevisionGuard();
+ const comment=createDraftRevisionGuard();
+ const discussionSnapshot=discussion.snapshot();
+ const commentSnapshot=comment.snapshot();
+ discussion.markEdited();
+ assert.equal(discussion.clearIfUnchanged(discussionSnapshot,()=>{}),false);
+ assert.equal(comment.clearIfUnchanged(commentSnapshot,()=>{}),true);
+});
+
+test('channel send callbacks clear drafts only through revision guards',()=>{
+ const panel=source('components/ChannelsPanel.tsx');
+ assert.match(panel,/discussionDraftRevision\.markEdited\(\)/);
+ assert.match(panel,/commentDraftRevision\.markEdited\(\)/);
+ assert.match(panel,/discussionDraftRevision\.clearIfUnchanged\(draftRevision/);
+ assert.match(panel,/commentDraftRevision\.clearIfUnchanged\(draftRevision/);
 });
