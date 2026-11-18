@@ -409,8 +409,8 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
         const pinned=Number(Boolean(b.pinned_for?.includes(id)))-Number(Boolean(a.pinned_for?.includes(id)));
         if(pinned)return pinned;
         return compareInboxActivityDescending(
-          {chatId:a.id,timestamp:overview.get(a.id)?.last_created_at||a.created_at},
-          {chatId:b.id,timestamp:overview.get(b.id)?.last_created_at||b.created_at}
+          {conversationId:a.id,timestamp:overview.get(a.id)?.last_created_at||a.created_at},
+          {conversationId:b.id,timestamp:overview.get(b.id)?.last_created_at||b.created_at}
         );
       })
       .map(chat=>({chat,other:chatById.get(chat.user_a===id?chat.user_b:chat.user_a)??null,preview:overview.get(chat.id)??null,previewUnavailable:previewResult.failed&&!overview.has(chat.id)})));
@@ -457,8 +457,8 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
         const pinned=Number(Boolean(b.pinned_for?.includes(id)))-Number(Boolean(a.pinned_for?.includes(id)));
         if(pinned)return pinned;
         return compareInboxActivityDescending(
-          {chatId:a.id,timestamp:overview.get(a.id)?.last_created_at||a.created_at},
-          {chatId:b.id,timestamp:overview.get(b.id)?.last_created_at||b.created_at}
+          {conversationId:a.id,timestamp:overview.get(a.id)?.last_created_at||a.created_at},
+          {conversationId:b.id,timestamp:overview.get(b.id)?.last_created_at||b.created_at}
         );
       })
       .map(chat=>({chat,other:byId.get(chat.user_a===id?chat.user_b:chat.user_a)??null,preview:overview.get(chat.id)??null,previewUnavailable:previewResult.failed&&!overview.has(chat.id)})));
