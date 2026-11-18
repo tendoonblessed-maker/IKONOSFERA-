@@ -3,11 +3,11 @@ import {test} from 'node:test';
 import {readFileSync} from 'node:fs';
 import {copyTextToClipboard} from '../lib/clipboard.ts';
 
-function installBrowser({clipboard,copyResult=true}={}) {
+function installBrowser({clipboard,copyResult=true,activeElement}={}) {
   const previousNavigator=Object.getOwnPropertyDescriptor(globalThis,'navigator');
   const previousDocument=Object.getOwnPropertyDescriptor(globalThis,'document');
   const calls={writeText:[],execCommand:[],removed:false,selected:false,range:null,focused:false};
-  const originalActive={isConnected:true,focus(){calls.focused=true;}};
+  const originalActive=activeElement??{isConnected:true,focus(){calls.focused=true;}};
   let documentRef;
   const textarea={
     value:'',
@@ -88,6 +88,26 @@ test('cleans up the temporary element and rejects when the fallback reports fail
     await assert.rejects(copyTextToClipboard('not copied'),/unavailable/);
     assert.equal(env.calls.removed,true);
     assert.equal(env.calls.focused,true);
+  }finally{env.restore();}
+});
+
+test('restores the focused input selection and direction after fallback copy',async()=>{
+  const input={
+    isConnected:true,
+    selectionStart:3,
+    selectionEnd:8,
+    selectionDirection:'backward',
+    focus(){this.focused=true;},
+    setSelectionRange(start,end,direction){
+      this.restoredSelection=[start,end,direction??null];
+    }
+  };
+  const env=installBrowser({clipboard:undefined,activeElement:input});
+  try{
+    await copyTextToClipboard('copied text');
+    assert.deepEqual(input.restoredSelection,[3,8,'backward']);
+    assert.equal(input.focused,true);
+    assert.equal(env.calls.removed,true);
   }finally{env.restore();}
 });
 
