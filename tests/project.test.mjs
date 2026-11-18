@@ -550,12 +550,12 @@ test('opening and polling group chats avoids overlapping requests and stale resp
  const group=load('components/GroupPanel.tsx');
  assert.match(group,/requestSequenceRef=useRef\(0\)/);
  assert.match(group,/requestId!==requestSequenceRef\.current/);
- assert.match(group,/if\(cancelled\|\|document\.visibilityState==='hidden'\|\|!navigator\.onLine\)return/);
- assert.match(group,/if\(inFlight\)\{queuedSync=true;return;\}/);
+ assert.match(group,/if\(cancelled\)return/);\n assert.match(group,/if\(document\.visibilityState==='hidden'\|\|!navigator\.onLine\|\|browsingOlderRef\.current\)\{/);
+ assert.match(group,/if\(inFlight\)\{\s*groupReadRevisionRef\.current\+\+;\s*setPendingGroupRead\(null\);\s*queuedSync=true;\s*return;/);
  assert.match(group,/requestSequenceRef\.current\+\+;/);
  assert.match(group,/window\.clearInterval\(timer\)/);
  assert.match(group,/unsubscribeRealtime\(\)/);
- assert.match(group,/lastReadRef\.current===last/);
+ assert.match(group,/lastReadRef\.current===pending\.latestMessageId/);
 });
 test('new incoming messages never force scrolling when reading chat history',()=>{
  const personal=load('components/AppShell.tsx');
