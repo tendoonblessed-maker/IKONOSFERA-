@@ -19,7 +19,9 @@ export default function StatusEmojiPicker({value,disabled=false,onSelect}:Props)
   const grid=event.currentTarget.parentElement;
   if(!grid)return;
   const buttons=Array.from(grid.querySelectorAll('button'));
-  const firstTop=buttons[0]?.getBoundingClientRect().top;
+  const firstButton=buttons[0];
+  if(!firstButton)return;
+  const firstTop=firstButton.getBoundingClientRect().top;
   const firstRowEnd=buttons.findIndex((button,i)=>i>0&&button.getBoundingClientRect().top>firstTop+1);
   const columns=firstRowEnd===-1?buttons.length:firstRowEnd;
   const next=getStatusEmojiGridTarget(index,event.key,STATUS_EMOJI_COUNT+1,columns);
