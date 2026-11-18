@@ -2,6 +2,7 @@
 
 import {useEffect,useRef} from 'react';
 import {createPortal} from 'react-dom';
+import {shouldCloseChatPhotoViewer} from '@/lib/chat-photo-viewer-keyboard';
 
 type Props={
   src:string;
@@ -25,7 +26,7 @@ export default function ChatPhotoViewer({src,onClose,onImageError}:Props){
     closeButtonRef.current?.focus();
 
     const handleKeyboard=(event:KeyboardEvent)=>{
-      if(event.key==='Escape'){
+      if(shouldCloseChatPhotoViewer(event)){
         event.preventDefault();
         onCloseRef.current();
         return;
