@@ -12,6 +12,7 @@ import ChatMessageText from "@/components/ChatMessageText";
 import {subscribeDirectChatChanges} from "@/lib/direct-realtime";
 import {subscribeInboxChanges,type InboxChangeKind} from "@/lib/inbox-realtime";
 import {isLatestAccountSnapshot} from "@/lib/inbox-snapshot";
+import {compareInboxActivityDescending} from "@/lib/inbox-order";
 import {shouldOpenDirectChatSearch} from "@/lib/chat-shortcuts";
 import {reconcileRecentChannelUpdates,CHANNEL_UPDATE_GRACE_MS,type RecentChannelUpdate} from "@/lib/channel-sync";
 import ChatAttachmentPreview from "@/components/ChatAttachmentPreview";
@@ -407,8 +408,10 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
       .sort((a,b)=>{
         const pinned=Number(Boolean(b.pinned_for?.includes(id)))-Number(Boolean(a.pinned_for?.includes(id)));
         if(pinned)return pinned;
-        return Date.parse(overview.get(b.id)?.last_created_at||b.created_at)
-          -Date.parse(overview.get(a.id)?.last_created_at||a.created_at);
+        return compareInboxActivityDescending(
+          {conversationId:a.id,timestamp:overview.get(a.id)?.last_created_at||a.created_at},
+          {conversationId:b.id,timestamp:overview.get(b.id)?.last_created_at||b.created_at}
+        );
       })
       .map(chat=>({chat,other:chatById.get(chat.user_a===id?chat.user_b:chat.user_a)??null,preview:overview.get(chat.id)??null,previewUnavailable:previewResult.failed&&!overview.has(chat.id)})));
     // Chat list may now render, even if discovery or membership queries are slow.
@@ -453,8 +456,10 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
       .sort((a,b)=>{
         const pinned=Number(Boolean(b.pinned_for?.includes(id)))-Number(Boolean(a.pinned_for?.includes(id)));
         if(pinned)return pinned;
-        return Date.parse(overview.get(b.id)?.last_created_at||b.created_at)
-          -Date.parse(overview.get(a.id)?.last_created_at||a.created_at);
+        return compareInboxActivityDescending(
+          {conversationId:a.id,timestamp:overview.get(a.id)?.last_created_at||a.created_at},
+          {conversationId:b.id,timestamp:overview.get(b.id)?.last_created_at||b.created_at}
+        );
       })
       .map(chat=>({chat,other:byId.get(chat.user_a===id?chat.user_b:chat.user_a)??null,preview:overview.get(chat.id)??null,previewUnavailable:previewResult.failed&&!overview.has(chat.id)})));
   },[loadInboxPreviews]);
@@ -1246,9 +1251,13 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
   const unreadTotal=rows.reduce((sum,row)=>sum+Number(row.preview?.unread_count||0),0)+groups.reduce((sum,group)=>sum+Number(groupOverviews[group.id]?.unread_count||0),0);
   const visibleGroups=groups.filter(g=>chatFilter!=='private'&&chatFilter!=='bots'&&(chatFilter!=='unread'||Number(groupOverviews[g.id]?.unread_count||0)>0)&&(!search.trim()||((g.title+' '+(groupOverviews[g.id]?.last_body||'')).toLowerCase().includes(search.trim().toLowerCase()))));
   const inboxItems=[
-    ...filtered.map(row=>({kind:'chat' as const,row,pinned:Boolean(row.chat.pinned_for?.includes(userId)),time:Date.parse(row.preview?.last_created_at||row.chat.created_at)})),
-    ...visibleGroups.map(group=>({kind:'group' as const,group,pinned:false,time:Date.parse(groupOverviews[group.id]?.last_created_at||group.created_at)}))
-  ].sort((a,b)=>Number(b.pinned)-Number(a.pinned)||(b.time||0)-(a.time||0));
+    ...filtered.map(row=>({kind:'chat' as const,row,pinned:Boolean(row.chat.pinned_for?.includes(userId)),conversationId:row.chat.id,timestamp:row.preview?.last_created_at||row.chat.created_at})),
+    ...visibleGroups.map(group=>({kind:'group' as const,group,pinned:false,conversationId:group.id,timestamp:groupOverviews[group.id]?.last_created_at||group.created_at}))
+  ].sort((a,b)=>{
+    const pinned=Number(b.pinned)-Number(a.pinned);
+    if(pinned)return pinned;
+    return compareInboxActivityDescending(a,b);
+  });
   const activeChatLoading=Boolean(selected&&(chatLoad?.id!==selected||chatLoad.status==='loading'));
   const activeChatLoadError=Boolean(selected&&chatLoad?.id===selected&&chatLoad.status==='error');
   const messageById=new Map(chatMessages.map(message=>[message.id,message]));
