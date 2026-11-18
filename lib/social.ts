@@ -1,5 +1,6 @@
 /* IKONOSFERA social API. All writes use the signed-in user's JWT and Supabase RLS. */
 import { apiUrl } from "@/lib/supabase-rest";
+import { fetchWithTimeout, CHANNEL_ATTACHMENT_UPLOAD_TIMEOUT_MS } from "./channel-attachment-timeout";
 const publicKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "";
 export type FullProfile = { id:string; username:string; display_name:string; avatar_path:string|null; cover_path:string|null; bio:string; featured_channel_id:string|null; status_emoji:number|null; age_years:number|null };
 export type ProfilePhoto = { id:string; user_id:string; image_path:string; caption:string; created_at:string };
@@ -182,7 +183,7 @@ export async function uploadChannelAttachment(token:string,userId:string,file:Fi
  if(!ext)throw Error("Неподдерживаемый формат вложения.");
  if(file.size===0||file.size>25*1024*1024)throw Error("Максимальный размер вложения — 25 МБ.");
  const path=userId+"/"+crypto.randomUUID()+"."+ext;
- const res=await fetch(apiUrl+"/storage/v1/object/ikonosfera-media/"+path,{method:"POST",headers:{apikey:publicKey,Authorization:"Bearer "+token,"Content-Type":file.type,"x-upsert":"false"},body:file});
+ const res=await fetchWithTimeout(apiUrl+"/storage/v1/object/ikonosfera-media/"+path,{method:"POST",headers:{apikey:publicKey,Authorization:"Bearer "+token,"Content-Type":file.type,"x-upsert":"false"},body:file},CHANNEL_ATTACHMENT_UPLOAD_TIMEOUT_MS);
  if(!res.ok)throw Error("Не удалось загрузить вложение.");
  return {path,type:file.type.startsWith("image/")?"image":file.type.startsWith("video/")?"video":file.type.startsWith("audio/")?"audio":"file"};
 }
