@@ -4,6 +4,7 @@ import { backendReady, createTemporaryAccount, consumeEmailLinkSession, loadSess
 
 import ProfilePanel from "@/components/ProfilePanel";
 import {mergeConfirmedRecentPage,prependEarlierPage,CONFIRMED_MESSAGE_GRACE_MS,type ConfirmedMessage} from "@/lib/chat-history";
+import {createMessageReactionSingleFlightGate} from "@/lib/message-reaction-single-flight.mjs";
 import {readChatDrafts,writeChatDrafts,clearChatDrafts,updateChatDraftEntry,type ChatDrafts} from "@/lib/chat-drafts";
 import {readGroupDrafts,writeGroupDraft,clearGroupDrafts,type GroupDrafts} from "@/lib/group-drafts";
 import {clearAllGroupSendAttempts} from "@/lib/group-send-attempts";
@@ -140,6 +141,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
   const loadingOlderRef=useRef(false);
   const prependScrollRef=useRef<{chatId:string;height:number;top:number}|null>(null);
   const selectedRef=useRef<string|null>(null);
+  const messageReactionGateRef=useRef(createMessageReactionSingleFlightGate());
   const searchInputRef=useRef<HTMLInputElement|null>(null);
   const previewCacheRef=useRef<{ownerId:string;previews:Map<string,ChatPreview>}>({ownerId:'',previews:new Map()});
   const inboxRequestRef=useRef(0);
@@ -1133,20 +1135,24 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
     }catch(e){setError(userFacingError(e));}
   }
   async function reactToMessage(messageId:string,emoji:ReactionEmoji){
-    if(!session||!selected||!userId||sending)return;
-    const chatId=selected,token=session.access_token;
+    if(!session||!selected||!userId||sending||!messageReactionGateRef.current.acquire())return;
+    const chatId=selected,token=session.access_token,generation=chatContextGenerationRef.current;
+    const stillInChat=()=>selectedRef.current===chatId&&chatContextGenerationRef.current===generation;
     const previous=messageReactions.find(r=>r.message_id===messageId&&r.user_id===userId);
     setSending(true);setError("");
     try{
       await setMessageReaction(token,userId,messageId,previous?.emoji===emoji?null:emoji);
-      if(selectedRef.current===chatId)setMessageReactionPicker(null);
+      if(stillInChat())setMessageReactionPicker(null);
       try{
         const updated=await listMessageReactions(token,[messageId]);
-        if(selectedRef.current===chatId)setMessageReactions(current=>[
+        if(stillInChat())setMessageReactions(current=>[
           ...current.filter(reaction=>reaction.message_id!==messageId),...updated
         ]);
       }catch{/* Reaction was saved; the chat poll will reload its state. */}
-    }catch(e){setError(userFacingError(e));}finally{setSending(false);}
+    }catch(e){if(stillInChat())setError(userFacingError(e));}finally{
+      messageReactionGateRef.current.release();
+      setSending(false);
+    }
   }
   function queueAttachment(file:File|undefined){
     if(!file||!selected||!userId||sending||activePartnerBlocked)return;
