@@ -1,6 +1,23 @@
 /* IKONOSFERA social API. All writes use the signed-in user's JWT and Supabase RLS. */
 import { apiUrl } from "@/lib/supabase-rest";
 const publicKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "";
+const CANONICAL_UUID=/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i;
+
+function isCanonicalUuid(value:unknown):value is string{
+  return typeof value==="string"&&CANONICAL_UUID.test(value);
+}
+
+/** Keep PostgREST UUID filters canonical and deduplicate case-insensitively. */
+function uniqueCanonicalUuids(values:unknown[]):string[]{
+  const unique=new Map<string,string>();
+  for(const value of values){
+    if(!isCanonicalUuid(value))continue;
+    const normalized=value.toLowerCase();
+    if(!unique.has(normalized))unique.set(normalized,value);
+    if(unique.size>=100)break;
+  }
+  return Array.from(unique.values());
+}
 export type FullProfile = { id:string; username:string; display_name:string; avatar_path:string|null; cover_path:string|null; bio:string; featured_channel_id:string|null; status_emoji:number|null; age_years:number|null };
 export type ProfilePhoto = { id:string; user_id:string; image_path:string; caption:string; created_at:string };
 export type Story = { id:string; user_id:string; image_path:string; caption:string; created_at:string; expires_at:string };
@@ -63,7 +80,7 @@ export async function getStories(token:string,userId:string):Promise<Story[]>{
 }
 export async function getContactsStories(token:string,userIds:string[]):Promise<Story[]>{
  if(!userIds.length)return [];
- const ids=Array.from(new Set(userIds)).filter(id=>/^[0-9a-f-]{36}$/i.test(id)).slice(0,100);
+ const ids=uniqueCanonicalUuids(userIds);
  if(!ids.length)return [];
  return api<Story[]>("/rest/v1/stories?select=*&user_id=in.("+ids.map(encodeURIComponent).join(",")+")&expires_at=gt."+encodeURIComponent(new Date().toISOString())+"&order=created_at.desc&limit=200",token);
 }
@@ -74,18 +91,40 @@ export async function addStory(token:string,userId:string,image_path:string,capt
 export async function deleteStory(token:string,id:string):Promise<void>{
   await api("/rest/v1/stories?id=eq."+encodeURIComponent(id),token,"DELETE");
 }
+/** Ignore malformed or unexpected rows returned by the social count RPC. */
+function normalizeChannelSubscriberCounts(value:unknown,requestedIds:string[]):Record<string,number>{
+ if(!Array.isArray(value))return {};
+ const requested=new Set(requestedIds.map(id=>id.toLowerCase()));
+ const seen=new Set<string>();
+ const counts:Record<string,number>={};
+ for(const row of value){
+  if(!row||typeof row!=="object"||Array.isArray(row))continue;
+  const item=row as {channel_id?:unknown;subscribers?:unknown};
+  if(!isCanonicalUuid(item.channel_id))continue;
+  const channelId=item.channel_id.toLowerCase();
+  if(!requested.has(channelId)||seen.has(channelId))continue;
+  const raw=item.subscribers;
+  const count=typeof raw==="number"?raw:
+   typeof raw==="string"&&/^\d+$/.test(raw)?Number(raw):NaN;
+  if(!Number.isSafeInteger(count)||count<0)continue;
+  seen.add(channelId);
+  counts[channelId]=count;
+ }
+ return counts;
+}
+
 export async function getChannelSubscriberCounts(token:string,ids:string[]):Promise<Record<string,number>>{
- const unique=Array.from(new Set(ids)).filter(id=>/^[0-9a-f-]{36}$/i.test(id)).slice(0,100);
+ const unique=uniqueCanonicalUuids(ids);
  if(!unique.length)return {};
- const counts=await api<{channel_id:string;subscribers:number}[]>('/rest/v1/rpc/channel_subscriber_counts',token,'POST',{p_ids:unique});
- return Object.fromEntries(counts.map(row=>[row.channel_id,Number(row.subscribers)]));
+ const counts=await api<unknown>('/rest/v1/rpc/channel_subscriber_counts',token,'POST',{p_ids:unique});
+ return normalizeChannelSubscriberCounts(counts,unique);
 }
 export async function listChannels(token:string):Promise<Channel[]>{
   return api<Channel[]>("/rest/v1/channels?select=*&order=created_at.desc&limit=100",token);
 }
 /** Fetch one selected channel even if it is outside the first page of discovery. */
 export async function getChannelById(token:string,channelId:string):Promise<Channel|null>{
- if(!/^[a-f0-9-]{36}$/i.test(channelId))return null;
+ if(!isCanonicalUuid(channelId))return null;
  const channels=await api<Channel[]>("/rest/v1/channels?select=*&id=eq."+encodeURIComponent(channelId)+"&limit=1",token);
  return channels[0]??null;
 }
