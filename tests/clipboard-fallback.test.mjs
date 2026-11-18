@@ -65,6 +65,7 @@ test('uses a readonly off-screen textarea when the Clipboard API is unavailable'
     assert.equal(env.textarea.readonly,'');
     assert.equal(env.textarea['aria-hidden'],'true');
     assert.equal(env.textarea.tabIndex,-1);
+    assert.equal(env.textarea.style.left,'0');
     assert.deepEqual(env.calls.range,[0,'Привет 👋'.length]);
     assert.deepEqual(env.calls.execCommand,['copy']);
     assert.equal(env.calls.removed,true);
