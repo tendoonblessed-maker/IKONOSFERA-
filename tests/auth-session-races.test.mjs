@@ -40,6 +40,45 @@ const expired=(access_token,refresh_token)=>({access_token,refresh_token,expires
 const future=(access_token,refresh_token)=>({access_token,refresh_token,expires_at:Date.now()/1000+7200});
 const tokenResponse=(access_token,refresh_token)=>reply({access_token,refresh_token,expires_in:3600});
 
+test('loadSession rejects malformed persisted records before any refresh request',async()=>{
+ const {api,storage,calls}=scenario(()=>{throw Error('malformed session must not reach Auth');});
+ const invalid=[
+  'null','[]','true','{}',
+  JSON.stringify({access_token:123,refresh_token:'refresh',expires_at:123}),
+  JSON.stringify({access_token:'access',refresh_token:'',expires_at:123}),
+  JSON.stringify({access_token:' ',refresh_token:'refresh',expires_at:123}),
+  JSON.stringify({access_token:'access',refresh_token:'refresh',expires_at:'9999999999'}),
+  JSON.stringify({access_token:'access',refresh_token:'refresh'}),
+  JSON.stringify({access_token:'access',refresh_token:'refresh',expires_at:null}),
+  '{"access_token":"access","refresh_token":"refresh","expires_at":1e999}',
+  JSON.stringify({access_token:'access',refresh_token:'refresh',expires_at:-1}),
+  JSON.stringify({access_token:'access',refresh_token:'refresh',expires_at:Number.MAX_SAFE_INTEGER+1})
+ ];
+ for(const raw of invalid){
+  storage.setItem('ikonosfera-session-v1',raw);
+  assert.equal(api.loadSession(),null,raw);
+  assert.equal(await api.validSession(),null,raw);
+ }
+ assert.equal(calls.length,0,'invalid local records must not trigger refresh or reuse malformed tokens');
+});
+
+test('loadSession accepts a valid expired session so the normal refresh flow can recover it',()=>{
+ const {api}=scenario(()=>{throw Error('refresh is not needed for this parsing test');});
+ api.saveSession(expired('expired-access','expired-refresh'));
+ assert.deepEqual(api.loadSession(),{
+  access_token:'expired-access',
+  refresh_token:'expired-refresh',
+  expires_at:0
+ });
+});
+
+test('loadSession fails closed when browser storage access throws',()=>{
+ const {api,storage}=scenario(()=>{throw Error('no network expected');});
+ storage.getItem=()=>{throw Error('storage denied');};
+ assert.equal(api.loadSession(),null);
+});
+
+
 test('concurrent validSession calls rotate the same refresh token only once',async()=>{
  const pending=defer();
  const {api,calls}=scenario(()=>pending.promise);
