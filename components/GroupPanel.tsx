@@ -119,6 +119,10 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
    setPendingGroupRead(null);
    return;
   }
+  if(pending.latestMessageId===lastReadRef.current){
+   setPendingGroupRead(null);
+   return;
+  }
   const history=historyRef.current;
   if(!history)return;
   const latestRendered=Boolean(history.querySelector('[data-group-message-id="'+pending.latestMessageId+'"]'));
