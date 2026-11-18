@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
 import {readFileSync} from 'node:fs';
-import {shouldAcknowledgeGroupRead,countNewIncomingBelow} from '../lib/group-read-position.ts';
+import {getIncomingGroupMessageIds,isGroupAtLatest,isGroupReadSnapshotCurrent,shouldAcknowledgeGroupRead,countNewIncomingBelow} from '../lib/group-read-position.ts';
 
 const GROUP='11111111-1111-4111-8111-111111111111';
 const A='22222222-2222-4222-8222-222222222222';
@@ -38,12 +38,15 @@ test('group read RPC is called from visibility-safe and bottom-safe action, not 
  const refresh=panel.slice(panel.indexOf('const refresh=useCallback('),panel.indexOf(' useEffect(()=>{\n  let cancelled=false'));
  assert.match(panel,/const acknowledgeLatestIfVisible=useCallback\(\(\)=>\{/);
  assert.match(panel,/shouldAcknowledgeGroupRead\(last,lastReadRef\.current,/);
- assert.match(panel,/followNewestRef\.current,document\.visibilityState==='visible'/);
- assert.match(panel,/markGroupRead\(token,group\.id\)/);
+ assert.match(panel,/atLatest&&followNewestRef\.current,document\.visibilityState==='visible'&&navigator\.onLine/);
+ assert.match(panel,/markGroupRead\(pending\.token,pending\.groupId\)/);
+ assert.match(panel,/pending\.messageIds\.every/);
+ assert.match(panel,/isGroupReadSnapshotCurrent\(pending\.revision,groupReadRevisionRef\.current\)/);
+ assert.match(panel,/isGroupAtLatest\(history\.scrollHeight,history\.scrollTop,history\.clientHeight\)/);
  assert.match(refresh,/latestGroupMessageRef\.current=msgs\.length\?msgs\[msgs\.length-1\]\.id:null/);
  assert.doesNotMatch(refresh,/acknowledgeLatestIfVisible\(\)/,'do not acknowledge before React commits the fetched page');
  assert.match(panel,/useLayoutEffect\(\(\)=>\{\n  const history=historyRef\.current;/);
- assert.match(panel,/history\.scrollTop=history\.scrollHeight;\n   \/\/ Only acknowledge after/);
+ assert.match(panel,/history\.scrollTop=history\.scrollHeight;\n   \/\/ Only acknowledge after every staged incoming row exists in the committed DOM/);
  assert.doesNotMatch(refresh,/void markGroupRead\(/,'refresh never marks read unconditionally');
  assert.match(panel,/if\(nearBottom\)\{setNewMessagesBelow\(0\);acknowledgeLatestIfVisible\(\);\}/);
 });
@@ -71,4 +74,50 @@ test('group jump is scoped to group/account and new message badge saturates at 9
  assert.match(panel,/setNewMessagesBelow\(n=>Math\.min\(99,n\+newBelow\)\)/);
  assert.match(panel,/newMessagesBelow<99\?newMessagesBelow:'99\+'/);
  assert.match(panel,/aria-label=\{newMessagesBelow>0/);
+});
+
+
+test('group read snapshots are invalidated by newer Realtime and overlapping refreshes',()=>{
+ assert.equal(isGroupReadSnapshotCurrent(0,0),true);
+ assert.equal(isGroupReadSnapshotCurrent(12,12),true);
+ assert.equal(isGroupReadSnapshotCurrent(12,13),false,'a newer Realtime hint invalidates the fetched page');
+ assert.equal(isGroupReadSnapshotCurrent(12,14),false,'an overlapping poll invalidates the earlier page');
+ assert.equal(isGroupReadSnapshotCurrent(-1,-1),false);
+ assert.equal(isGroupReadSnapshotCurrent(1.5,1.5),false);
+ assert.equal(isGroupReadSnapshotCurrent(Number.NaN,0),false);
+ const panel=file('components/GroupPanel.tsx');
+ const realtime=panel.slice(panel.indexOf('const onRealtimeChanged=()=>{'),panel.indexOf('const unsubscribeRealtime='));
+ assert.ok(realtime.indexOf('groupReadRevisionRef.current++')<realtime.indexOf("document.visibilityState==='hidden'"));
+ assert.match(panel,/if\(inFlight\)\{\s*groupReadRevisionRef\.current\+\+;\s*setPendingGroupRead\(null\);\s*queuedSync=true/);
+});
+
+test('group read receipts wait for all incoming page rows to be committed and viewport to remain latest',()=>{
+ const panel=file('components/GroupPanel.tsx');
+ const ack=panel.slice(panel.indexOf('const acknowledgeLatestIfVisible=useCallback'),panel.indexOf('const refresh=useCallback'));
+ assert.match(ack,/pendingGroupRead/);
+ assert.match(ack,/pending\.groupId!==group\.id\|\|pending\.userId!==userId\|\|pending\.token!==token/);
+ assert.match(ack,/pending\.messageIds\.every/);
+ assert.match(ack,/latestGroupMessageRef\.current!==pending\.latestMessageId/);
+ assert.match(ack,/latestRendered/);
+ assert.match(ack,/document\.visibilityState==='visible'&&navigator\.onLine/);
+ assert.match(panel,/setPendingGroupRead\(latestMessageId&&messageIds\.length\?/);
+ assert.match(panel,/groupReadRevisionRef\.current\+\+/);
+});
+
+test('incoming group read candidates are unique and exclude the current user and malformed IDs',()=>{
+ assert.deepEqual(getIncomingGroupMessageIds([
+  message('one',B),message('one',B),message('mine',A),message('  ',B),message('two',B)
+ ],A),['one','two']);
+ assert.deepEqual(getIncomingGroupMessageIds([message('one',B)],''),[]);
+});
+
+test('group latest-page geometry rejects invalid viewports and tolerates iOS overscroll',()=>{
+ assert.equal(isGroupAtLatest(1200,900,300),true);
+ assert.equal(isGroupAtLatest(1200,781,300),true);
+ assert.equal(isGroupAtLatest(1200,780,300),false);
+ assert.equal(isGroupAtLatest(1200,500,300),false);
+ assert.equal(isGroupAtLatest(100,0,300),true,'short histories fit in the viewport');
+ assert.equal(isGroupAtLatest(1200,0,0),false,'zero-height history cannot acknowledge');
+ assert.equal(isGroupAtLatest(Number.NaN,0,300),false);
+ assert.equal(isGroupAtLatest(1200,950,300),true,'iOS bounce beyond the bottom is clamped');
 });
