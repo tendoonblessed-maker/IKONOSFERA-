@@ -2,6 +2,7 @@
 
 import {useEffect,useRef,useState} from 'react';
 import {chooseVoiceMimeType,createVoiceFile,formatVoiceTime,VOICE_RECORD_MAX_MS,VOICE_RECORD_MAX_BYTES} from '@/lib/voice-notes';
+import {shouldDiscardVoiceRecordingOnBackground} from '@/lib/voice-recording-lifecycle';
 
 type Props={
  disabled:boolean;
@@ -31,6 +32,9 @@ function clearCaptureTimers(capture:Capture){
 
 export default function VoiceRecorder({disabled,onRecorded,onError}:Props){
  const [phase,setPhase]=useState<Phase>('idle');
+ const phaseRef=useRef<Phase>('idle');
+ phaseRef.current=phase;
+ const cancelRef=useRef<()=>void>(()=>{});
  const [elapsed,setElapsed]=useState(0);
  const captureRef=useRef<Capture|null>(null);
  const requestRef=useRef(0);
@@ -77,6 +81,17 @@ export default function VoiceRecorder({disabled,onRecorded,onError}:Props){
   setElapsed(0);
   setPhase('idle');
  };
+ cancelRef.current=cancel;
+ useEffect(()=>{
+  const onVisibilityChange=()=>{
+   if(shouldDiscardVoiceRecordingOnBackground(document.visibilityState,phaseRef.current)){
+    cancelRef.current();
+    errorRef.current('Запись отменена при переходе приложения в фон.');
+   }
+  };
+  document.addEventListener('visibilitychange',onVisibilityChange);
+  return()=>document.removeEventListener('visibilitychange',onVisibilityChange);
+ },[]);
  const finish=()=>{
   const capture=captureRef.current;
   if(!capture||capture.discard||capture.recorder.state!=='recording')return;
