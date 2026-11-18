@@ -10,7 +10,7 @@ function compile(sourceFile,bindings={}){
     module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022
   }}).outputText;
   const result={};
-  const context={exports:result,process:{env:{
+  const context={exports:result,require:(id)=>id==='@/lib/message-reaction-validation'?{normalizeMessageReactions:()=>[]}:(()=>{throw Error('Unexpected VM dependency: '+id);})(),process:{env:{
     NEXT_PUBLIC_SUPABASE_URL:'https://example.supabase.co',
     NEXT_PUBLIC_SUPABASE_ANON_KEY:'public-key'
   }},Date,Promise,Math,JSON,URLSearchParams,AbortSignal,Error,Map,Set,...bindings};
