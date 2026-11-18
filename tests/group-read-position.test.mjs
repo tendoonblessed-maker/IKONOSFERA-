@@ -43,7 +43,8 @@ test('group read RPC is called from visibility-safe and bottom-safe action, not 
  assert.match(panel,/pending\.messageIds\.every/);
  assert.match(panel,/isGroupReadSnapshotCurrent\(pending\.revision,groupReadRevisionRef\.current\)/);
  assert.match(panel,/isGroupAtLatest\(history\.scrollHeight,history\.scrollTop,history\.clientHeight\)/);
- assert.match(refresh,/const latestMessageId=msgs\.length\?msgs\[msgs\.length-1\]\.id:null/);\n assert.match(refresh,/latestGroupMessageRef\.current=latestMessageId/);
+ assert.match(refresh,/const latestMessageId=msgs\.length\?msgs\[msgs\.length-1\]\.id:null/);
+ assert.match(refresh,/latestGroupMessageRef\.current=latestMessageId/);
  assert.doesNotMatch(refresh,/acknowledgeLatestIfVisible\(\)/,'do not acknowledge before React commits the fetched page');
  assert.match(panel,/useLayoutEffect\(\(\)=>\{\n  const history=historyRef\.current;/);
  assert.match(panel,/history\.scrollTop=history\.scrollHeight;\n   \/\/ Only acknowledge after every staged incoming row exists in the committed DOM/);
