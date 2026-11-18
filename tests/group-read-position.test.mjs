@@ -98,6 +98,7 @@ test('group read receipts wait for all incoming page rows to be committed and vi
  assert.match(ack,/pending\.groupId!==group\.id\|\|pending\.userId!==userId\|\|pending\.token!==token/);
  assert.match(ack,/pending\.messageIds\.every/);
  assert.match(ack,/latestGroupMessageRef\.current!==pending\.latestMessageId/);
+ assert.match(ack,/pending\.latestMessageId===lastReadRef\.current/);
  assert.match(ack,/latestRendered/);
  assert.match(ack,/document\.visibilityState==='visible'&&navigator\.onLine/);
  assert.match(panel,/setPendingGroupRead\(latestMessageId&&messageIds\.length\?/);
@@ -120,4 +121,14 @@ test('group latest-page geometry rejects invalid viewports and tolerates iOS ove
  assert.equal(isGroupAtLatest(1200,0,0),false,'zero-height history cannot acknowledge');
  assert.equal(isGroupAtLatest(Number.NaN,0,300),false);
  assert.equal(isGroupAtLatest(1200,950,300),true,'iOS bounce beyond the bottom is clamped');
+});
+
+test('group offline and hidden lifecycle invalidates staged read receipts and cleans listeners',()=>{
+ const panel=file('components/GroupPanel.tsx');
+ const sync=panel.slice(panel.indexOf('const sync=()=>{'),panel.indexOf('const onRealtimeChanged=()=>{'));
+ assert.match(sync,/document\.visibilityState==='hidden'\|\|!navigator\.onLine/);
+ assert.match(sync,/groupReadRevisionRef\.current\+\+/);
+ assert.match(panel,/const onOffline=\(\)=>\{if\(cancelled\)return;groupReadRevisionRef\.current\+\+;setPendingGroupRead\(null\);\}/);
+ assert.match(panel,/window\.addEventListener\('offline',onOffline\)/);
+ assert.match(panel,/window\.removeEventListener\('offline',onOffline\)/);
 });
