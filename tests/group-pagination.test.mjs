@@ -156,3 +156,24 @@ test('paged history does not change message schema or database privileges',()=>{
  assert.match(pagination,/const GROUP_/g);
  assert.doesNotMatch(pagination,/service_role|ALTER TABLE|GRANT |dangerouslySetInnerHTML/i);
 });
+
+
+test('older pages reject malformed target-group message rows before rendering',async()=>{
+ const invalid=[
+  row('not-a-uuid'),
+  row(id(1),stamp,{sender_id:'not-a-uuid'}),
+  row(id(1),stamp,{body:''}),
+  row(id(1),stamp,{body:'x'.repeat(4001)}),
+  row(id(1),stamp,{created_at:'not-a-timestamp'}),
+  row(id(1),stamp,{group_id:GROUP+'x'})
+ ];
+ for(const item of invalid){
+  const {api}=setup(()=>success([item]));
+  await assert.rejects(()=>api.fetchOlderGroupMessages('jwt',GROUP,row(id(2))),/ранние сообщения/);
+ }
+});
+
+test('older pages reject non-object response entries instead of trusting network types',async()=>{
+ const {api}=setup(()=>success([null]));
+ await assert.rejects(()=>api.fetchOlderGroupMessages('jwt',GROUP,row(id(2))),/ранние сообщения/);
+});
