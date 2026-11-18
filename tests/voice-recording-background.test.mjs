@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
 import {readFileSync} from 'node:fs';
-import {shouldDiscardVoiceRecordingOnBackground} from '../lib/voice-recording-lifecycle.mjs';
+import {shouldDiscardVoiceRecordingOnBackground} from '../lib/voice-recording-lifecycle.ts';
 
 const load=path=>readFileSync(new URL('../'+path,import.meta.url),'utf8');
 
