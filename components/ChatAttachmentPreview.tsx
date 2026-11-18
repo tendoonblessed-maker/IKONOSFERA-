@@ -2,6 +2,7 @@
 
 import {useEffect,useRef,useState} from 'react';
 import {createPortal} from 'react-dom';
+import {shouldSendAttachmentPreviewOnShortcut} from '@/lib/attachment-preview-ime';
 
 type Props={
  file:File;
@@ -22,7 +23,7 @@ export default function ChatAttachmentPreview({file,caption,sending,online,onCap
  closeRef.current=onCancel;
  const busyRef=useRef(sending);
  busyRef.current=sending;
- const canPreview=/^(image\/|video\/|audio\/)/.test(file.type);
+ const canPreview=/^(image\\/|video\\/|audio\\/)/.test(file.type);
  const src=preview?.file===file?preview.url:null;
 
  useEffect(()=>{
@@ -92,7 +93,7 @@ export default function ChatAttachmentPreview({file,caption,sending,online,onCap
        disabled={sending} value={caption} onChange={event=>onCaptionChange(event.target.value)}
        placeholder="Добавить подпись…"
        onKeyDown={event=>{
-        if(event.key==='Enter'&&(event.ctrlKey||event.metaKey)&&!event.nativeEvent.isComposing){
+        if(shouldSendAttachmentPreviewOnShortcut(event.nativeEvent)){
          event.preventDefault();
          sendRef.current?.click();
         }
