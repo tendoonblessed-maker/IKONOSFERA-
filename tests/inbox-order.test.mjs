@@ -49,7 +49,7 @@ test('valid timestamps sort ahead of malformed values and malformed ties remain 
 test('both inbox refresh paths use precise activity ordering after pinned priority',()=>{
   const shell=source('components/AppShell.tsx');
   assert.equal((shell.match(/return compareInboxActivityDescending\(/g)||[]).length,3);
-  assert.equal((shell.match(/if\(pinned\)return pinned;\s*return compareInboxActivityDescending/g)||[]).length,2);
+  assert.equal((shell.match(/if\(pinned\)return pinned;\s*return compareInboxActivityDescending/g)||[]).length,3);
   assert.equal((shell.match(/timestamp:overview\.get\([ab]\.id\)\?\.last_created_at\|\|[ab]\.created_at/g)||[]).length,4);
   assert.doesNotMatch(shell,/Date\.parse\(overview\.get\(/);
 });
