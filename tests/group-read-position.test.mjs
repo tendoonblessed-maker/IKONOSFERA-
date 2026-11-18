@@ -37,7 +37,7 @@ test('group read RPC is called from visibility-safe and bottom-safe action, not 
  const panel=file('components/GroupPanel.tsx');
  const refresh=panel.slice(panel.indexOf('const refresh=useCallback('),panel.indexOf(' useEffect(()=>{\n  let cancelled=false'));
  assert.match(panel,/const acknowledgeLatestIfVisible=useCallback\(\(\)=>\{/);
- assert.match(panel,/shouldAcknowledgeGroupRead\(last,lastReadRef\.current,/);
+ assert.match(panel,/shouldAcknowledgeGroupRead\(pending\.latestMessageId,lastReadRef\.current,/);
  assert.match(panel,/atLatest&&followNewestRef\.current,document\.visibilityState==='visible'&&navigator\.onLine/);
  assert.match(panel,/markGroupRead\(pending\.token,pending\.groupId\)/);
  assert.match(panel,/pending\.messageIds\.every/);
