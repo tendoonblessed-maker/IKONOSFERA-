@@ -550,7 +550,8 @@ test('opening and polling group chats avoids overlapping requests and stale resp
  const group=load('components/GroupPanel.tsx');
  assert.match(group,/requestSequenceRef=useRef\(0\)/);
  assert.match(group,/requestId!==requestSequenceRef\.current/);
- assert.match(group,/if\(cancelled\)return/);\n assert.match(group,/if\(document\.visibilityState==='hidden'\|\|!navigator\.onLine\|\|browsingOlderRef\.current\)\{/);
+ assert.match(group,/if\(cancelled\)return/);
+ assert.match(group,/if\(document\.visibilityState==='hidden'\|\|!navigator\.onLine\|\|browsingOlderRef\.current\)\{/);
  assert.match(group,/if\(inFlight\)\{\s*groupReadRevisionRef\.current\+\+;\s*setPendingGroupRead\(null\);\s*queuedSync=true;\s*return;/);
  assert.match(group,/requestSequenceRef\.current\+\+;/);
  assert.match(group,/window\.clearInterval\(timer\)/);
