@@ -1,5 +1,6 @@
 /* Dependency-free Supabase Auth + PostgREST client.
    Never put a service-role or database password in NEXT_PUBLIC_* variables. */
+import {normalizeMessageReactions,type MessageReactionRecord} from '@/lib/message-reaction-validation';
 export const apiUrl = (process.env.NEXT_PUBLIC_SUPABASE_URL ?? '').replace(/\/$/, '');
 const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? '';
 export const backendReady = Boolean(apiUrl && anonKey);
@@ -311,10 +312,11 @@ export async function markChatRead(token:string,chatId:string):Promise<number>{
  return http<number>('/rest/v1/rpc/mark_chat_messages_read',{token,method:'POST',body:{p_chat_id:chatId}});
 }
 
-export type MessageReaction={message_id:string;user_id:string;emoji:string};
+export type MessageReaction=MessageReactionRecord;
 export async function listMessageReactions(token:string,messageIds:string[]):Promise<MessageReaction[]>{
  if(!messageIds.length)return [];
- return http<MessageReaction[]>('/rest/v1/message_reactions?select=message_id,user_id,emoji&message_id=in.('+messageIds.map(encodeURIComponent).join(',')+')&limit=3000',{token});
+ const rows=await http<unknown>('/rest/v1/message_reactions?select=message_id,user_id,emoji&message_id=in.('+messageIds.map(encodeURIComponent).join(',')+')&limit=3000',{token});
+ return normalizeMessageReactions(rows,messageIds);
 }
 export async function setMessageReaction(token:string,userId:string,messageId:string,emoji:string|null):Promise<void>{
  await http('/rest/v1/message_reactions?message_id=eq.'+encodeURIComponent(messageId)+'&user_id=eq.'+encodeURIComponent(userId),{token,method:'DELETE'});

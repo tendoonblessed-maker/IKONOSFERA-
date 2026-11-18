@@ -26,7 +26,7 @@ function scenario(handler){
  };
  const calls=[];
  const ctx={
-  exports:{},process:{env:{NEXT_PUBLIC_SUPABASE_URL:'https://test.supabase.invalid',NEXT_PUBLIC_SUPABASE_ANON_KEY:'anon-test'}},
+  exports:{},require:(id)=>id==='@/lib/message-reaction-validation'?{normalizeMessageReactions:()=>[]}:(()=>{throw Error('Unexpected VM dependency: '+id);})(),process:{env:{NEXT_PUBLIC_SUPABASE_URL:'https://test.supabase.invalid',NEXT_PUBLIC_SUPABASE_ANON_KEY:'anon-test'}},
   window:{},localStorage:storage,AbortSignal,URLSearchParams,
   fetch:(url,options)=>{
    calls.push({url,options});

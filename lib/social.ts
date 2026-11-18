@@ -1,5 +1,7 @@
 /* IKONOSFERA social API. All writes use the signed-in user's JWT and Supabase RLS. */
 import { apiUrl } from "@/lib/supabase-rest";
+import { REACTION_EMOJIS } from "@/lib/message-reaction-validation";
+export { REACTION_EMOJIS };
 const publicKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "";
 export type FullProfile = { id:string; username:string; display_name:string; avatar_path:string|null; cover_path:string|null; bio:string; featured_channel_id:string|null; status_emoji:number|null; age_years:number|null };
 export type ProfilePhoto = { id:string; user_id:string; image_path:string; caption:string; created_at:string };
@@ -157,7 +159,6 @@ export async function listOwnedChannels(token:string,ownerId:string):Promise<Cha
  return api<Channel[]>("/rest/v1/channels?select=*&owner_id=eq."+encodeURIComponent(ownerId)+"&order=created_at.desc&limit=100",token);
 }
 
-export const REACTION_EMOJIS=['👍🏻','👎🏻','✌🏻','👌🏻','🖕🏻','🫶🏻','🕊️'] as const;
 export type ReactionEmoji=typeof REACTION_EMOJIS[number];
 export type PostReaction={post_id:string;user_id:string;emoji:ReactionEmoji};
 export async function listPostReactions(token:string,postIds:string[]):Promise<PostReaction[]>{
