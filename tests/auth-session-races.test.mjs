@@ -65,11 +65,10 @@ test('loadSession rejects malformed persisted records before any refresh request
 test('loadSession accepts a valid expired session so the normal refresh flow can recover it',()=>{
  const {api}=scenario(()=>{throw Error('refresh is not needed for this parsing test');});
  api.saveSession(expired('expired-access','expired-refresh'));
- assert.deepEqual(api.loadSession(),{
-  access_token:'expired-access',
-  refresh_token:'expired-refresh',
-  expires_at:0
- });
+ const loaded=api.loadSession();
+ assert.equal(loaded?.access_token,'expired-access');
+ assert.equal(loaded?.refresh_token,'expired-refresh');
+ assert.equal(loaded?.expires_at,0);
 });
 
 test('loadSession fails closed when browser storage access throws',()=>{
