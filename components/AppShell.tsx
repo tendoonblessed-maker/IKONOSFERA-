@@ -1251,9 +1251,13 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
   const unreadTotal=rows.reduce((sum,row)=>sum+Number(row.preview?.unread_count||0),0)+groups.reduce((sum,group)=>sum+Number(groupOverviews[group.id]?.unread_count||0),0);
   const visibleGroups=groups.filter(g=>chatFilter!=='private'&&chatFilter!=='bots'&&(chatFilter!=='unread'||Number(groupOverviews[g.id]?.unread_count||0)>0)&&(!search.trim()||((g.title+' '+(groupOverviews[g.id]?.last_body||'')).toLowerCase().includes(search.trim().toLowerCase()))));
   const inboxItems=[
-    ...filtered.map(row=>({kind:'chat' as const,row,pinned:Boolean(row.chat.pinned_for?.includes(userId)),time:Date.parse(row.preview?.last_created_at||row.chat.created_at)})),
-    ...visibleGroups.map(group=>({kind:'group' as const,group,pinned:false,time:Date.parse(groupOverviews[group.id]?.last_created_at||group.created_at)}))
-  ].sort((a,b)=>Number(b.pinned)-Number(a.pinned)||(b.time||0)-(a.time||0));
+    ...filtered.map(row=>({kind:'chat' as const,row,pinned:Boolean(row.chat.pinned_for?.includes(userId)),conversationId:row.chat.id,timestamp:row.preview?.last_created_at||row.chat.created_at})),
+    ...visibleGroups.map(group=>({kind:'group' as const,group,pinned:false,conversationId:group.id,timestamp:groupOverviews[group.id]?.last_created_at||group.created_at}))
+  ].sort((a,b)=>{
+    const pinned=Number(b.pinned)-Number(a.pinned);
+    if(pinned)return pinned;
+    return compareInboxActivityDescending(a,b);
+  });
   const activeChatLoading=Boolean(selected&&(chatLoad?.id!==selected||chatLoad.status==='loading'));
   const activeChatLoadError=Boolean(selected&&chatLoad?.id===selected&&chatLoad.status==='error');
   const messageById=new Map(chatMessages.map(message=>[message.id,message]));
