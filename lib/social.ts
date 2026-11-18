@@ -1,5 +1,6 @@
 /* IKONOSFERA social API. All writes use the signed-in user's JWT and Supabase RLS. */
 import { apiUrl } from "@/lib/supabase-rest";
+import { createSocialUploadId } from "@/lib/social-upload-id";
 const publicKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "";
 export type FullProfile = { id:string; username:string; display_name:string; avatar_path:string|null; cover_path:string|null; bio:string; featured_channel_id:string|null; status_emoji:number|null; age_years:number|null };
 export type ProfilePhoto = { id:string; user_id:string; image_path:string; caption:string; created_at:string };
@@ -27,7 +28,7 @@ export async function uploadPhoto(token:string,userId:string,file:File):Promise<
   if(file.size>3*1024*1024)throw Error("Фото должно быть меньше 3 МБ.");
   if(file.size===0)throw Error("Файл пустой.");
   const ext=file.type==="image/png"?"png":file.type==="image/webp"?"webp":"jpg";
-  const path=userId+"/"+crypto.randomUUID()+"."+ext;
+  const path=userId+"/"+createSocialUploadId()+"."+ext;
   const res=await fetch(apiUrl+"/storage/v1/object/ikonosfera-media/"+path,{
     method:"POST",headers:{apikey:publicKey,Authorization:"Bearer "+token,"Content-Type":file.type,
       "Cache-Control":"max-age=31536000","x-upsert":"false"},body:file});
