@@ -86,6 +86,39 @@ test('canonical selected channel IDs still use the authenticated scoped query',a
   assert.equal(calls[0].options.headers.Authorization,'Bearer signed-user-jwt');
 });
 
+const THIRD='fedcba98-7654-4321-8abc-fedcba987654';
+const FOURTH='aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee';
+const UNREQUESTED='99999999-8888-4777-8666-555555555555';
+
+test('channel subscriber counts fail closed on malformed and unrequested RPC rows',async()=>{
+  const {api,calls}=setup(async()=>({
+    ok:true,
+    json:async()=>[
+      {channel_id:VALID,subscribers:7},
+      {channel_id:SECOND,subscribers:'12'},
+      {channel_id:THIRD,subscribers:-1},
+      {channel_id:FOURTH,subscribers:'1.5'},
+      {channel_id:VALID,subscribers:99},
+      {channel_id:UNREQUESTED,subscribers:4},
+      {channel_id:'not-a-uuid',subscribers:2},
+      null,
+      {channel_id:THIRD,subscribers:'9007199254740992'},
+      {channel_id:FOURTH,subscribers:true}
+    ]
+  }));
+  const counts=await api.getChannelSubscriberCounts('signed-user-jwt',[VALID,SECOND,THIRD,FOURTH]);
+  assert.deepEqual({...counts},{[VALID]:7,[SECOND]:12});
+  assert.equal(calls.length,1);
+  assert.equal(calls[0].options.headers.Authorization,'Bearer signed-user-jwt');
+});
+
+test('channel subscriber counts return an empty map for a non-array RPC response',async()=>{
+  const {api,calls}=setup(async()=>({ok:true,json:async()=>({unexpected:true})}));
+  assert.deepEqual({...await api.getChannelSubscriberCounts('jwt',[VALID])},{});
+  assert.equal(calls.length,1);
+});
+
+
 test('invalid-only social ID batches avoid empty PostgREST requests',async()=>{
   const {api,calls}=setup();
   assert.deepEqual(Array.from(await api.getContactsStories('jwt',INVALID)),[]);
