@@ -11,7 +11,7 @@ test('declared Node engine matches Supabase runtime requirement', () => {
 });
 
 test('README documents the same minimum Node runtime as package metadata', () => {
-  assert.match(readme, /Node\\.js \\*\\*22 или новее\\*\\*/);
+  assert.match(readme, /Node\.js \*\*22 или новее\*\*/);
 });
 
 test('CI tests the minimum supported Node runtime and builds on Node 24', () => {
