@@ -247,3 +247,16 @@ test("manual retry remains available and recovery does not poll or store data", 
   assert.doesNotMatch(script, /setInterval|localStorage|sessionStorage/);
   assert.match(script, /RECONNECT_PROBE_TIMEOUT_MS\s*=\s*5000/);
 });
+
+
+test("offline shell keeps its retry content inside mobile safe areas and supports older viewport units", () => {
+  const mainRule = html.match(/main\\{([^}]*)\\}/)?.[1] ?? "";
+  assert.ok(mainRule, "expected the offline shell main layout rule");
+  assert.match(mainRule, /min-height:100vh;min-height:100dvh/, "100vh remains as a fallback when dynamic viewport units are unsupported");
+  assert.match(mainRule, /box-sizing:border-box/, "safe-area padding must remain inside the viewport-sized layout");
+  assert.match(mainRule, /padding:24px;/, "older browsers retain a fixed-padding fallback");
+  for (const edge of ["top", "right", "bottom", "left"]) {
+    assert.ok(mainRule.includes(`env(safe-area-inset-${edge}, 0px)`), `expected safe-area padding for ${edge}`);
+  }
+  assert.ok(html.includes("viewport-fit=cover"), "the viewport must expose safe-area insets on supported iOS browsers");
+});
