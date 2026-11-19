@@ -7,7 +7,7 @@ const PREFIX='ikonosfera-drafts-tab-v1:';
 const MAX_CHATS=48;
 const MAX_TEXT=4000;
 const UUID=/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
-import {truncateDraftText} from './draft-text';
+import {truncateDraftText} from './draft-text.mjs';
 
 export type ChatDrafts=Record<string,string>;
 
