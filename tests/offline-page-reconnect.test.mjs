@@ -250,7 +250,7 @@ test("manual retry remains available and recovery does not poll or store data", 
 
 
 test("offline shell keeps its retry content inside mobile safe areas and supports older viewport units", () => {
-  const mainRule = html.match(/main\\{([^}]*)\\}/)?.[1] ?? "";
+    const mainRule = html.match(/main\{([^}]*)\}/)?.[1] ?? "";
   assert.ok(mainRule, "expected the offline shell main layout rule");
   assert.match(mainRule, /min-height:100vh;min-height:100dvh/, "100vh remains as a fallback when dynamic viewport units are unsupported");
   assert.match(mainRule, /box-sizing:border-box/, "safe-area padding must remain inside the viewport-sized layout");
