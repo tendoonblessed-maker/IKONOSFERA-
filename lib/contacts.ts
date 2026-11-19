@@ -20,11 +20,18 @@ type TableName="user_contacts"|"user_blocks";
  * reported but never retried automatically because its server outcome may be
  * unknown; add/delete operations remain safe for an explicit user retry.
  */
-async function fetchContactsWithTimeout(input:RequestInfo|URL,init:RequestInit):Promise<Response>{
+async function fetchContactsWithTimeout<T>(
+ input:RequestInfo|URL,
+ init:RequestInit,
+ consume:(response:Response)=>Promise<T>
+):Promise<T>{
  const controller=new AbortController();
  const timeoutId=setTimeout(()=>controller.abort(),CONTACT_REQUEST_TIMEOUT_MS);
  try{
-  return await fetch(input,{...init,signal:controller.signal});
+  const response=await fetch(input,{...init,signal:controller.signal});
+  // Keep the deadline active until the body is consumed: fetch resolves when
+  // headers arrive, but response.json() can still stall on a mobile connection.
+  return await consume(response);
  }catch(error){
   if(controller.signal.aborted)
    throw Error("Запрос контактов не завершился вовремя. Проверь подключение и повтори попытку.");
@@ -36,7 +43,7 @@ async function fetchContactsWithTimeout(input:RequestInfo|URL,init:RequestInit):
 
 async function request<T>(path:string,token:string,method:"GET"|"POST"|"DELETE"="GET",body?:unknown):Promise<T>{
  if(!apiUrl||!publishableKey||!token)throw Error("Требуется подключение к аккаунту.");
- const response=await fetchContactsWithTimeout(apiUrl+path,{
+ return fetchContactsWithTimeout<T>(apiUrl+path,{
   method,
   headers:{
    apikey:publishableKey,Authorization:"Bearer "+token,
@@ -45,13 +52,14 @@ async function request<T>(path:string,token:string,method:"GET"|"POST"|"DELETE"=
   },
   body:body===undefined?undefined:JSON.stringify(body),
   cache:"no-store"
+ },async response=>{
+  if(!response.ok){
+   const value=await response.json().catch(()=>null) as {message?:string;details?:string}|null;
+   throw Error(value?.message||"Не удалось обновить контакты ("+response.status+").");
+  }
+  if(response.status===204||response.status===201||method!=="GET")return undefined as T;
+  return response.json() as Promise<T>;
  });
- if(!response.ok){
-  const value=await response.json().catch(()=>null) as {message?:string;details?:string}|null;
-  throw Error(value?.message||"Не удалось обновить контакты ("+response.status+").");
- }
- if(response.status===204||response.status===201||method!=="GET")return undefined as T;
- return response.json() as Promise<T>;
 }
 
 async function requestPage<T extends CursorRow>(
@@ -72,7 +80,7 @@ async function requestPage<T extends CursorRow>(
  const cursorFilter=buildPostgrestCursorFilter(cursor,idColumn);
  if(cursorFilter)params.set("or",cursorFilter);
 
- const response=await fetchContactsWithTimeout(apiUrl+"/rest/v1/"+table+"?"+params.toString(),{
+ return fetchContactsWithTimeout(apiUrl+"/rest/v1/"+table+"?"+params.toString(),{
   method:"GET",
   headers:{
    apikey:publishableKey,Authorization:"Bearer "+token,
@@ -80,14 +88,15 @@ async function requestPage<T extends CursorRow>(
    Prefer:"count=exact"
   },
   cache:"no-store"
+ },async response=>{
+  if(!response.ok){
+   const value=await response.json().catch(()=>null) as {message?:string}|null;
+   throw Error(value?.message||"Не удалось загрузить контакты ("+response.status+").");
+  }
+  const rows=await response.json() as unknown;
+  if(!Array.isArray(rows))throw Error("Сервер вернул некорректный список контактов.");
+  return {rows:rows as T[],contentRange:response.headers.get("content-range")};
  });
- if(!response.ok){
-  const value=await response.json().catch(()=>null) as {message?:string}|null;
-  throw Error(value?.message||"Не удалось загрузить контакты ("+response.status+").");
- }
- const rows=await response.json() as unknown;
- if(!Array.isArray(rows))throw Error("Сервер вернул некорректный список контактов.");
- return {rows:rows as T[],contentRange:response.headers.get("content-range")};
 }
 
 async function listAllRows<T extends CursorRow>(
