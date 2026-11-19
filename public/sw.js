@@ -8,7 +8,7 @@ self.addEventListener("install", (event) => {
     // Cache.addAll() reject the whole batch and discard that useful shell.
     try {
       const cache = await caches.open(CACHE_NAME);
-      for (const asset of [OFFLINE_URL, "/icon-192.png", "/status-emojis.webp?v=2"]) {
+      for (const asset of [OFFLINE_URL, "/branding/ikonosfera.svg", "/icon-192.png", "/status-emojis.webp?v=2"]) {
         try {
           await cache.add(asset);
         } catch {
