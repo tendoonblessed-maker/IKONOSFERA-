@@ -23,7 +23,7 @@ type TableName="user_contacts"|"user_blocks";
 async function fetchContactsWithTimeout<T>(
  input:RequestInfo|URL,
  init:RequestInit,
- consume:(response:Response)=>Promise<T>
+ consume:(response:Response,signal:AbortSignal)=>Promise<T>
 ):Promise<T>{
  const controller=new AbortController();
  const timeoutId=setTimeout(()=>controller.abort(),CONTACT_REQUEST_TIMEOUT_MS);
@@ -31,7 +31,7 @@ async function fetchContactsWithTimeout<T>(
   const response=await fetch(input,{...init,signal:controller.signal});
   // Keep the deadline active until the body is consumed: fetch resolves when
   // headers arrive, but response.json() can still stall on a mobile connection.
-  return await consume(response);
+  return await consume(response,controller.signal);
  }catch(error){
   if(controller.signal.aborted)
    throw Error("Запрос контактов не завершился вовремя. Проверь подключение и повтори попытку.");
@@ -52,10 +52,10 @@ async function request<T>(path:string,token:string,method:"GET"|"POST"|"DELETE"=
   },
   body:body===undefined?undefined:JSON.stringify(body),
   cache:"no-store"
- },async response=>{
+ },async (response,signal)=>{
   if(!response.ok){
    const value=await response.json().catch(error=>{
-    if(controller.signal.aborted)throw error;
+    if(signal.aborted)throw error;
     return null;
    }) as {message?:string;details?:string}|null;
    throw Error(value?.message||"Не удалось обновить контакты ("+response.status+").");
@@ -91,10 +91,10 @@ async function requestPage<T extends CursorRow>(
    Prefer:"count=exact"
   },
   cache:"no-store"
- },async response=>{
+ },async (response,signal)=>{
   if(!response.ok){
    const value=await response.json().catch(error=>{
-    if(controller.signal.aborted)throw error;
+    if(signal.aborted)throw error;
     return null;
    }) as {message?:string}|null;
    throw Error(value?.message||"Не удалось загрузить контакты ("+response.status+").");
