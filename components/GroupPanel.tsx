@@ -15,6 +15,7 @@ import {mergeConfirmedGroupMessages,CONFIRMED_GROUP_MESSAGE_GRACE_MS,type Confir
 import {shouldAcknowledgeGroupRead,countNewIncomingBelow} from '@/lib/group-read-position';
 import {fetchOlderGroupMessages,prependOlderGroupMessages,preserveOlderGroupMessages,GROUP_HISTORY_MAX_LOADED} from '@/lib/group-pagination';
 import {clearGroupOfflineDraftError,GROUP_OFFLINE_DRAFT_ERROR} from '@/lib/group-network';
+import {useNetworkOnline} from '@/lib/network-online';
 type Props={token:string;userId:string;group:Group;onBack:()=>void;onShowProfile:(id:string)=>void;onDraftChange:(groupId:string,text:string)=>void};
 export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDraftChange}:Props){
  const [messages,setMessages]=useState<GroupMessage[]>([]);
@@ -23,7 +24,7 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
  const [membersOpen,setMembersOpen]=useState(false);
  const [memberSearch,setMemberSearch]=useState('');
  const [draft,setDraft]=useState(()=>readGroupDrafts(userId)[group.id]??'');
- const [online,setOnline]=useState(false);
+ const online=useNetworkOnline();
  const draftVersionRef=useRef(0);
  const [busy,setBusy]=useState(false);
  const [error,setError]=useState('');
@@ -91,21 +92,18 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
   setDraft(readGroupDrafts(userId)[group.id]??'');
  },[group.id,userId]);
  useEffect(()=>{
-  const update=()=>{
-   const connected=navigator.onLine;
-   setOnline(connected);
-   if(connected)setError(current=>clearGroupOfflineDraftError(current,connected));
+  // The external store owns connectivity; this effect only clears a stale
+  // local offline hint when the app resumes with a usable browser signal.
+  const clearOfflineHint=()=>{
+   if(navigator.onLine)setError(current=>clearGroupOfflineDraftError(current,true));
   };
-  update();
-  window.addEventListener('online',update);
-  window.addEventListener('offline',update);
-  window.addEventListener('pageshow',update);
-  document.addEventListener('visibilitychange',update);
+  window.addEventListener('online',clearOfflineHint);
+  window.addEventListener('pageshow',clearOfflineHint);
+  document.addEventListener('visibilitychange',clearOfflineHint);
   return()=>{
-   window.removeEventListener('online',update);
-   window.removeEventListener('offline',update);
-   window.removeEventListener('pageshow',update);
-   document.removeEventListener('visibilitychange',update);
+   window.removeEventListener('online',clearOfflineHint);
+   window.removeEventListener('pageshow',clearOfflineHint);
+   document.removeEventListener('visibilitychange',clearOfflineHint);
   };
  },[]);
  function changeDraft(text:string){
