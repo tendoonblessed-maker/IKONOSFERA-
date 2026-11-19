@@ -7,6 +7,7 @@ import {mergeConfirmedRecentPage,prependEarlierPage,CONFIRMED_MESSAGE_GRACE_MS,t
 import {readChatDrafts,writeChatDrafts,clearChatDrafts,updateChatDraftEntry,type ChatDrafts} from "@/lib/chat-drafts";
 import {readGroupDrafts,writeGroupDraft,clearGroupDrafts,type GroupDrafts} from "@/lib/group-drafts";
 import {clearDirectOfflineHint,DIRECT_MESSAGE_OFFLINE_ERROR,DIRECT_ATTACHMENT_OFFLINE_ERROR} from '@/lib/direct-network';
+import {useNetworkOnline} from '@/lib/network-online';
 import {clearAllGroupSendAttempts} from "@/lib/group-send-attempts";
 import ChatMedia from "@/components/ChatMedia";
 import ChatMessageText from "@/components/ChatMessageText";
@@ -128,7 +129,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
   const [emailSent,setEmailSent]=useState(false);
   const [busy,setBusy]=useState(false);
   const [sending,setSending]=useState(false);
-  const [networkOnline,setNetworkOnline]=useState(true);
+  const networkOnline=useNetworkOnline();
   const [bootstrapRetryNonce,setBootstrapRetryNonce]=useState(0);
   const [loading,setLoading]=useState(true);
   const [error,setError]=useState('');
@@ -162,23 +163,18 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
   useEffect(()=>{recentChannelUpdatesRef.current.clear();},[userId]);
 
   useEffect(()=>{
-    // Browser online/offline is only a connectivity hint, not a guarantee
-    // that Supabase is reachable. Never auto-send unsent chat drafts.
-    const update=()=>{
-      const connected=navigator.onLine;
-      setNetworkOnline(connected);
-      if(connected)setError(previous=>clearDirectOfflineHint(previous,connected));
+    // Connectivity state comes from the hydration-safe external store.
+    // Clear only local preflight hints; never auto-send unsent chat drafts.
+    const clearOfflineHint=()=>{
+      if(navigator.onLine)setError(previous=>clearDirectOfflineHint(previous,true));
     };
-    update();
-    window.addEventListener('online',update);
-    window.addEventListener('offline',update);
-    window.addEventListener('pageshow',update); // iOS Safari back/forward cache
-    document.addEventListener('visibilitychange',update); // Refresh the connectivity hint when a mobile PWA resumes.
+    window.addEventListener('online',clearOfflineHint);
+    window.addEventListener('pageshow',clearOfflineHint);
+    document.addEventListener('visibilitychange',clearOfflineHint);
     return()=>{
-      window.removeEventListener('online',update);
-      window.removeEventListener('offline',update);
-      window.removeEventListener('pageshow',update);
-      document.removeEventListener('visibilitychange',update);
+      window.removeEventListener('online',clearOfflineHint);
+      window.removeEventListener('pageshow',clearOfflineHint);
+      document.removeEventListener('visibilitychange',clearOfflineHint);
     };
   },[]);
 
