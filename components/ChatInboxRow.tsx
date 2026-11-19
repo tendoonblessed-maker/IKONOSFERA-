@@ -4,6 +4,7 @@ import {imageUrl} from '@/lib/social';
 import FloatingActionMenu from '@/components/FloatingActionMenu';
 import StatusEmoji from '@/components/StatusEmoji';
 import type {ChatPreview,DirectChat,Profile} from '@/lib/supabase-rest';
+import {formatUnreadBadge} from '@/lib/unread-count.mjs';
 
 type Row={chat:DirectChat;other:Profile|null;preview:ChatPreview|null;previewUnavailable?:boolean};
 type Props={
@@ -36,7 +37,7 @@ function timeLabel(input:string|null){
 export default function ChatInboxRow({row,currentUserId,active,selectionMode=false,selectedForBulk=false,isSavedContact=false,isBlocked=false,draft='',onOpen,onContactAction,onBlockAction,onAction}:Props){
  const {chat,other,preview}=row;
  const pinned=Boolean(chat.pinned_for?.includes(currentUserId));
- const unread=Math.max(0,Number(preview?.unread_count||0));
+ const unreadBadge=formatUnreadBadge(preview?.unread_count);
  const previewText=preview?.last_body?.trim()||(row.previewUnavailable?'Не удалось обновить сообщения':'Начало переписки');
  const draftText=draft.trim().replace(/\s+/g,' ').slice(0,110);
  const outgoing=preview?.last_sender_id===currentUserId;
@@ -53,7 +54,7 @@ export default function ChatInboxRow({row,currentUserId,active,selectionMode=fal
      </span>
      <span className="ik-chat-meta">
        {stamp&&<time dateTime={preview?.last_created_at||undefined}>{stamp}</time>}
-       {unread>0&&<span className="ik-unread-count" aria-label={'Непрочитанных: '+unread}>{unread>99?'99+':unread}</span>}
+       {unreadBadge&&<span className="ik-unread-count" aria-label={unreadBadge.ariaLabel}>{unreadBadge.visible}</span>}
      </span>
    </button>
    {!selectionMode&&<FloatingActionMenu
