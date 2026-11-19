@@ -4,6 +4,7 @@ import vm from 'node:vm';
 import { test } from 'node:test';
 
 const source = readFileSync(new URL('../public/sw.js', import.meta.url), 'utf8');
+const offlineSource = readFileSync(new URL('../public/offline.html', import.meta.url), 'utf8');
 const ORIGIN = 'https://ikonosfera.test';
 
 function createWorker({
@@ -143,14 +144,26 @@ test('worker installation attempts the offline shell first and isolates optional
     cacheOpen: async () => ({
       add: async (asset) => {
         attempted.push(asset);
-        if (asset === '/icon-192.png') throw new Error('NotFoundError');
+        if (asset === '/branding/ikonosfera.svg') throw new Error('NotFoundError');
       },
     }),
     skipWaiting: async () => { skipWaitingCalls++; },
   });
   await dispatchLifecycle(listeners, 'install');
-  assert.deepEqual(attempted, ['/offline.html', '/icon-192.png', '/status-emojis.webp?v=2']);
+  assert.deepEqual(attempted, ['/offline.html', '/branding/ikonosfera.svg', '/icon-192.png', '/status-emojis.webp?v=2']);
   assert.equal(skipWaitingCalls, 1);
+});
+
+test('offline document branding is included in the app-shell precache', async () => {
+  const attempted = [];
+  const listeners = createWorker({
+    cacheOpen: async () => ({
+      add: async (asset) => { attempted.push(asset); },
+    }),
+  });
+  await dispatchLifecycle(listeners, 'install');
+  assert.ok(attempted.includes('/branding/ikonosfera.svg'));
+  assert.match(offlineSource, /src="\\/branding\\/ikonosfera\\.svg"/);
 });
 
 test('worker installation still completes when the offline shell itself cannot be cached', async () => {
@@ -166,7 +179,7 @@ test('worker installation still completes when the offline shell itself cannot b
     skipWaiting: async () => { skipWaitingCalls++; },
   });
   await dispatchLifecycle(listeners, 'install');
-  assert.deepEqual(attempted, ['/offline.html', '/icon-192.png', '/status-emojis.webp?v=2']);
+  assert.deepEqual(attempted, ['/offline.html', '/branding/ikonosfera.svg', '/icon-192.png', '/status-emojis.webp?v=2']);
   assert.equal(skipWaitingCalls, 1);
 });
 
