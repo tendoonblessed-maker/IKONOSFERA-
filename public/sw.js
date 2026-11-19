@@ -4,11 +4,17 @@ const OFFLINE_URL = "/offline.html";
 
 self.addEventListener("install", (event) => {
   event.waitUntil((async () => {
-    // Pre-caching is an offline enhancement, not a prerequisite for installing
-    // the worker. Storage restrictions must not prevent the app from updating.
+    // Cache the offline document first. Optional public artwork must not make
+    // Cache.addAll() reject the whole batch and discard that useful shell.
     try {
       const cache = await caches.open(CACHE_NAME);
-      await cache.addAll([OFFLINE_URL, "/icon-192.png", "/status-emojis.webp?v=2"]);
+      for (const asset of [OFFLINE_URL, "/icon-192.png", "/status-emojis.webp?v=2"]) {
+        try {
+          await cache.add(asset);
+        } catch {
+          // Each public asset is best-effort; keep trying the remaining entries.
+        }
+      }
     } catch {
       // The worker can still serve network requests without an offline cache.
     }
