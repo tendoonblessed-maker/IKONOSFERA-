@@ -8,7 +8,7 @@ export const GROUP_OLDER_PAGE_SIZE=70;
 export const GROUP_HISTORY_MAX_LOADED=1500;
 /** Stop requesting older pages once the retained in-memory window reaches its cap. */
 export function canLoadOlderGroupMessages(hasMore:boolean,loadedCount:number):boolean{
- return hasMore&&Number.isFinite(loadedCount)&&loadedCount>=0&&loadedCount<GROUP_HISTORY_MAX_LOADED;
+ return hasMore&&Number.isSafeInteger(loadedCount)&&loadedCount>=0&&loadedCount<GROUP_HISTORY_MAX_LOADED;
 }
 
 function subMillisecondFraction(timestamp:string):number{
