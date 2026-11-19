@@ -30,6 +30,27 @@ test('a supplementary character is preserved when its full pair fits',()=>{
  assert.equal(hasUnpairedSurrogate(truncated),false);
 });
 
+test('grapheme segmentation keeps combining marks, flags, modifiers and ZWJ emoji together',()=>{
+ assert.equal(truncateDraftText('abc e\u0301tail',5),'abc ');
+ assert.equal(truncateDraftText('x🇪🇪y',3),'x');
+ assert.equal(truncateDraftText('x👍🏽y',3),'x');
+ assert.equal(truncateDraftText('ab👨‍👩‍👧‍👦z',6),'ab');
+});
+
+test('portable fallback preserves common grapheme clusters without Intl.Segmenter',()=>{
+ const descriptor=Object.getOwnPropertyDescriptor(Intl,'Segmenter');
+ try{
+  Object.defineProperty(Intl,'Segmenter',{value:undefined,configurable:true,writable:true});
+  assert.equal(truncateDraftText('abc e\u0301tail',5),'abc ');
+  assert.equal(truncateDraftText('x🇪🇪y',3),'x');
+  assert.equal(truncateDraftText('x👍🏽y',3),'x');
+  assert.equal(truncateDraftText('ab👨‍👩‍👧‍👦z',6),'ab');
+ }finally{
+  if(descriptor)Object.defineProperty(Intl,'Segmenter',descriptor);
+  else delete Intl.Segmenter;
+ }
+});
+
 test('small boundaries and already-short drafts remain unchanged',()=>{
  assert.equal(truncateDraftText('a😀b',2),'a');
  assert.equal(truncateDraftText('a😀b',3),'a😀');
