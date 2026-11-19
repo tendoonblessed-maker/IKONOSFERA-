@@ -19,12 +19,14 @@ export function subscribeNetworkOnline(
  targetWindow.addEventListener('online',onStoreChange);
  targetWindow.addEventListener('offline',onStoreChange);
  targetWindow.addEventListener('pageshow',onStoreChange);
+ targetWindow.addEventListener('focus',onStoreChange);
  targetDocument.addEventListener('visibilitychange',onStoreChange);
 
  return ()=>{
   targetWindow.removeEventListener('online',onStoreChange);
   targetWindow.removeEventListener('offline',onStoreChange);
   targetWindow.removeEventListener('pageshow',onStoreChange);
+  targetWindow.removeEventListener('focus',onStoreChange);
   targetDocument.removeEventListener('visibilitychange',onStoreChange);
  };
 }
