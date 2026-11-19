@@ -46,6 +46,30 @@ test('rejects invalid timestamps, media types, sender IDs and body types',()=>{
  ])assert.throws(()=>validateChatPreviewRows([row]),/Некорректный ответ/);
 });
 
+test('rejects impossible calendar dates and out-of-range timestamp fields',()=>{
+ for(const last_created_at of [
+  '2026-02-31T17:00:00Z',
+  '2025-02-29T17:00:00Z',
+  '2026-04-31T17:00:00Z',
+  '2026-11-15T24:00:00Z',
+  '2026-11-15T17:60:00Z',
+  '2026-11-15T17:00:00+25:00',
+  '2026-11-15T17:00:00+02:60'
+ ]){
+  assert.throws(()=>validateChatPreviewRows([recent({last_created_at})]),/Некорректный ответ/,last_created_at);
+ }
+});
+
+test('accepts leap days, month ends, fractional seconds and valid timezone offsets',()=>{
+ for(const last_created_at of [
+  '2024-02-29T23:59:59Z',
+  '2026-04-30T00:00:00.000001+03:30',
+  '2026-11-15T17:00:00-08:00'
+ ]){
+  assert.equal(validateChatPreviewRows([recent({last_created_at})]).length,1,last_created_at);
+ }
+});
+
 test('rejects negative, fractional, string and unsafe unread counts',()=>{
  for(const unread_count of [-1,0.5,'2',Number.MAX_SAFE_INTEGER+1]){
   assert.throws(()=>validateChatPreviewRows([recent({unread_count})]),/Некорректный ответ/);
