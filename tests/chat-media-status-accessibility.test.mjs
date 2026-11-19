@@ -4,15 +4,23 @@ import {test} from 'node:test';
 
 const component=readFileSync(new URL('../components/ChatMedia.tsx',import.meta.url),'utf8');
 
-test('private attachment loading is announced as a polite status',()=>{
- assert.match(component,/className="chat-media-loading"\s+role="status"\s+aria-atomic="true"/);
- assert.match(component,/Загружаем вложение…/);
+test('loading and error live regions stay mounted outside conditional media content',()=>{
+ assert.match(component,/return <>\s*<span className="sr-only" role="status" aria-live="polite" aria-atomic="true">\{statusMessage\}<\/span>\s*<span className="sr-only" role="alert" aria-live="assertive" aria-atomic="true">\{alertMessage\}<\/span>\s*\{mediaContent\}\s*<\/>;/);
+ assert.match(component,/const statusMessage=loadingScope===scope\?/);
+ assert.match(component,/const alertMessage=error\?/);
 });
 
-test('private attachment failures are announced without removing the retry action',()=>{
- assert.match(component,/<span role="alert" aria-atomic="true">\s*<button type="button" className="chat-media-retry"/);
+test('loading is announced after the request effect starts and clears on completion',()=>{
+ assert.match(component,/const \[loadingScope,setLoadingScope\]=useState<string\|null>\(null\)/);
+ assert.match(component,/setLoadingScope\(scope\)/);
+ assert.match(component,/setLoadingScope\(null\)/);
+ assert.match(component,/className="chat-media-loading" aria-hidden="true">Загружаем вложение…/);
+});
+
+test('private attachment failures are announced while the retry action remains available',()=>{
+ assert.match(component,/if\(error\)mediaContent=<button type="button" className="chat-media-retry"/);
  assert.match(component,/Не удалось загрузить вложение · Повторить/);
- assert.match(component,/onClick=\{\(\)=>setRetry\(value=>value\+1\)\}/);
+ assert.match(component,/setErrorScope\(scope\);\s*setLoadingScope\(null\)/);
 });
 
 test('media accessibility states do not expose signed URLs or change account scoping',()=>{
