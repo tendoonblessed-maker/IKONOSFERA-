@@ -129,3 +129,27 @@ test('contact and blocklist writes use the same bounded request path',async()=>{
  assert.equal(timers.size,0);
  assert.deepEqual(cleared,[1,2]);
 });
+
+test('contact request deadline also covers a response body that stalls after headers',async()=>{
+ const {api,timers,cleared,calls}=setup(async(_url,options)=>({
+  ok:true,status:200,
+  headers:{get:name=>name==='content-range'?'0-0/1':null},
+  json:()=>new Promise((_resolve,reject)=>{
+   options.signal.addEventListener('abort',()=>{
+    const error=new Error('response body aborted');
+    error.name='AbortError';
+    reject(error);
+   },{once:true});
+  })
+ }));
+ const pending=api.listSavedContacts('signed-user-jwt',OWNER);
+ assert.equal(calls.length,1);
+ assert.equal(timers.size,1);
+ const [timerId,timer]=[...timers.entries()][0];
+ assert.equal(timer.delay,18000);
+ timer.callback();
+ await assert.rejects(pending,/Запрос контактов не завершился вовремя/);
+ assert.equal(calls[0].options.signal.aborted,true);
+ assert.equal(timers.size,0);
+ assert.deepEqual(cleared,[timerId]);
+});
