@@ -12,8 +12,14 @@ test('CI workflow grants only read access to repository contents', () => {
 });
 
 test('verify job has a finite runner timeout', () => {
-  const verify = workflow.match(/^  verify:\n([\s\S]*?)(?=^  [a-zA-Z0-9_-]+:\n|\s*$)/m)?.[1];
-  assert.ok(verify, 'verify job must exist');
+  const lines = workflow.split('\n');
+  const start = lines.indexOf('  verify:');
+  assert.notEqual(start, -1, 'verify job must exist');
+  const verifyLines = lines.slice(start + 1).filter((line, index, all) => {
+    const nextTopLevelJob = all.slice(0, index).some(previous => /^  [a-zA-Z0-9_-]+:$/.test(previous));
+    return !nextTopLevelJob && !/^  [a-zA-Z0-9_-]+:$/.test(line);
+  });
+  const verify = verifyLines.join('\n');
   assert.match(verify, /^    timeout-minutes:\s*30\s*$/m);
 });
 
