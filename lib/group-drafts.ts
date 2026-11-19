@@ -7,7 +7,7 @@ const PREFIX='ikonosfera-group-drafts-tab-v1:';
 const UUID=/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
 const MAX_GROUPS=48;
 const MAX_TEXT=4000;
-import {truncateDraftText} from './draft-text';
+import {truncateDraftText} from './draft-text.mjs';
 export type GroupDrafts=Record<string,string>;
 function store():Storage|null{
  try{return typeof window==='undefined'?null:window.sessionStorage;}
