@@ -8,7 +8,7 @@ const ORIGIN = 'https://ikonosfera.test';
 
 function createWorker({
   cacheMatch = async () => null,
-  cacheOpen = async () => ({ match: async () => null, put: async () => {}, addAll: async () => {} }),
+  cacheOpen = async () => ({ match: async () => null, put: async () => {}, add: async () => {} }),
   cacheKeys = async () => [],
   cacheDelete = async () => true,
   clientsClaim = async () => {},
@@ -136,13 +136,37 @@ test('worker installation succeeds when Cache Storage cannot be opened', async (
   assert.equal(skipWaitingCalls, 1);
 });
 
-test('worker installation succeeds when pre-caching fails', async () => {
+test('worker installation attempts the offline shell first and isolates optional asset failures', async () => {
+  const attempted = [];
   let skipWaitingCalls = 0;
   const listeners = createWorker({
-    cacheOpen: async () => ({ match: async () => null, addAll: async () => { throw new Error('QuotaExceededError'); } }),
+    cacheOpen: async () => ({
+      add: async (asset) => {
+        attempted.push(asset);
+        if (asset === '/icon-192.png') throw new Error('NotFoundError');
+      },
+    }),
     skipWaiting: async () => { skipWaitingCalls++; },
   });
   await dispatchLifecycle(listeners, 'install');
+  assert.deepEqual(attempted, ['/offline.html', '/icon-192.png', '/status-emojis.webp?v=2']);
+  assert.equal(skipWaitingCalls, 1);
+});
+
+test('worker installation still completes when the offline shell itself cannot be cached', async () => {
+  const attempted = [];
+  let skipWaitingCalls = 0;
+  const listeners = createWorker({
+    cacheOpen: async () => ({
+      add: async (asset) => {
+        attempted.push(asset);
+        if (asset === '/offline.html') throw new Error('NetworkError');
+      },
+    }),
+    skipWaiting: async () => { skipWaitingCalls++; },
+  });
+  await dispatchLifecycle(listeners, 'install');
+  assert.deepEqual(attempted, ['/offline.html', '/icon-192.png', '/status-emojis.webp?v=2']);
   assert.equal(skipWaitingCalls, 1);
 });
 
