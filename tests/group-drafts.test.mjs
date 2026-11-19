@@ -84,8 +84,8 @@ test('group messages are not sent on reconnect, and stay in drafts after failed 
  assert.match(load('lib/group-network.ts'),/Нет интернета\. Сообщение осталось в черновике/);
  assert.match(group,/Черновик сохранён/);
  assert.match(group,/disabled=\{busy\|\|!draft\.trim\(\)\|\|!online\}/);
- assert.match(group,/window\.addEventListener\('online',update\)/);
- assert.match(group,/window\.addEventListener\('offline',update\)/);
+ assert.match(group,/import \{useNetworkOnline\} from '@\/lib\/network-online';/);
+ assert.match(group,/const online=useNetworkOnline\(\)/);
  const errorBranch=group.slice(group.indexOf('}catch(e){\n   setError((e instanceof Error?e.message'),group.indexOf(' const names='));
  assert.doesNotMatch(errorBranch,/onDraftChange\(groupId,''\)/);
 });
