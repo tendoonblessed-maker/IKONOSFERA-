@@ -15,6 +15,8 @@ const UUID=/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
 export const GROUP_SEND_ATTEMPT_TTL_MS=TTL;
 export type GroupSendAttempt={id:string;body:string;createdAt:number};
 const inMemory=new Map<string,GroupSendAttempt>();
+// A failed sessionStorage write leaves this runtime's new attempt authoritative.
+const memoryOnly=new Set<string>();
 
 function storage():Storage|null{
  try{return typeof window==='undefined'?null:window.sessionStorage;}
@@ -33,17 +35,18 @@ function valid(value:unknown,now:number):value is GroupSendAttempt{
 export function readGroupSendAttempt(owner:string,group:string,now=Date.now()):GroupSendAttempt|null{
  if(!UUID.test(owner)||!UUID.test(group))return null;
  const k=key(owner,group);
- // In-memory state is the newest write in this runtime. sessionStorage may
- // still contain an older attempt if setItem failed (quota/private mode).
- let candidate:unknown=inMemory.get(k);
- if(candidate===undefined){
+ let candidate:unknown;
+ if(memoryOnly.has(k)){
+  candidate=inMemory.get(k);
+ }else{
   try{
    const raw=storage()?.getItem(k);
-   candidate=raw?JSON.parse(raw):null;
-  }catch{candidate=null;}
+   candidate=raw?JSON.parse(raw):inMemory.get(k);
+  }catch{candidate=inMemory.get(k);}
  }
  if(!valid(candidate,now)){
   inMemory.delete(k);
+  memoryOnly.delete(k);
   try{storage()?.removeItem(k);}catch{}
   return null;
  }
@@ -61,7 +64,15 @@ export function getOrCreateGroupSendAttempt(
  const attempt:GroupSendAttempt={id:createSecureUuid(),body:trimmed,createdAt:now};
  const k=key(owner,group);
  inMemory.set(k,attempt);
- try{storage()?.setItem(k,JSON.stringify(attempt));}catch{}
+ const s=storage();
+ if(!s){
+  memoryOnly.add(k);
+ }else{
+  try{
+   s.setItem(k,JSON.stringify(attempt));
+   memoryOnly.delete(k);
+  }catch{memoryOnly.add(k);}
+ }
  return attempt;
 }
 /** A late acknowledgment must not clear a different, newer attempt. */
@@ -71,12 +82,14 @@ export function clearGroupSendAttempt(owner:string,group:string,attemptId:string
  if(current?.id!==attemptId)return;
  const k=key(owner,group);
  inMemory.delete(k);
+ memoryOnly.delete(k);
  try{storage()?.removeItem(k);}catch{}
 }
 export function clearAllGroupSendAttempts(owner:string):void{
  if(!UUID.test(owner))return;
  const prefix=PREFIX+owner+':';
  for(const k of inMemory.keys())if(k.startsWith(prefix))inMemory.delete(k);
+ for(const k of memoryOnly)if(k.startsWith(prefix))memoryOnly.delete(k);
  try{
   const s=storage();
   if(!s)return;
