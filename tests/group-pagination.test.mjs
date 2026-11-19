@@ -174,3 +174,26 @@ test('GroupPanel derives older-page availability from the committed merged histo
  assert.ok(panel.includes('setServerHasOlder(page.hasMore)'));
  assert.ok(!panel.includes('messages.length+page.messages.length'));
 });
+
+
+test('older-page availability rejects non-integer retained counts',()=>{
+ const {api}=setup();
+ for(const value of [Number.NaN,Number.POSITIVE_INFINITY,-1,1.5,Number.MAX_SAFE_INTEGER+1]){
+  assert.equal(api.canLoadOlderGroupMessages(true,value),false,'invalid loaded count '+String(value));
+ }
+ assert.equal(api.canLoadOlderGroupMessages(true,1499),true);
+ assert.equal(api.canLoadOlderGroupMessages(true,1500),false);
+});
+
+test('prepending an older page retains the newest 1,500 messages and closes pagination at the cap',()=>{
+ const {api}=setup();
+ const timestamp=seconds=>new Date(Date.UTC(2026,9,29,9,0,seconds)).toISOString();
+ const older=Array.from({length:70},(_,i)=>row(id(10000+i),timestamp(i)));
+ const current=Array.from({length:1490},(_,i)=>row(id(20000+i),timestamp(70+i)));
+ const merged=api.prependOlderGroupMessages(current,older);
+ assert.equal(merged.length,1500);
+ assert.equal(merged[0].id,id(10060),'only the 10 newest rows from the fetched older page fit');
+ assert.equal(merged[10].id,id(20000),'all already-retained newer messages remain');
+ assert.equal(merged.at(-1).id,id(21489),'the newest current message is never evicted');
+ assert.equal(api.canLoadOlderGroupMessages(true,merged.length),false);
+});
