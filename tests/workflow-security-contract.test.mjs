@@ -15,11 +15,8 @@ test('verify job has a finite runner timeout', () => {
   const lines = workflow.split('\n');
   const start = lines.indexOf('  verify:');
   assert.notEqual(start, -1, 'verify job must exist');
-  const verifyLines = lines.slice(start + 1).filter((line, index, all) => {
-    const nextTopLevelJob = all.slice(0, index).some(previous => /^  [a-zA-Z0-9_-]+:$/.test(previous));
-    return !nextTopLevelJob && !/^  [a-zA-Z0-9_-]+:$/.test(line);
-  });
-  const verify = verifyLines.join('\n');
+  const end = lines.findIndex((line, index) => index > start && /^  [a-zA-Z0-9_-]+:$/.test(line));
+  const verify = lines.slice(start + 1, end === -1 ? lines.length : end).join('\n');
   assert.match(verify, /^    timeout-minutes:\s*30\s*$/m);
 });
 
