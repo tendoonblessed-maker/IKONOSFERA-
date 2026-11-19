@@ -80,8 +80,8 @@ test('private media signing uses a portable deadline without AbortSignal.timeout
  assert.equal(calls[0].options.headers.Authorization,'Bearer signed-user-jwt');
  assert.ok(calls[0].options.signal instanceof AbortSignal);
  const start=source.indexOf('export async function getDirectMediaUrl');
- const end=source.indexOf('\\n}\\n',start)+3;
+ const end=source.indexOf('\n}\n',start)+3;
  const implementation=source.slice(start,end);
- assert.match(implementation,/fetchWithTimeout\\(fetch,/);
- assert.doesNotMatch(implementation,/AbortSignal\\.timeout/);
+ assert.match(implementation,/fetchWithTimeout\(fetch,/);
+ assert.doesNotMatch(implementation,/AbortSignal\.timeout/);
 });
