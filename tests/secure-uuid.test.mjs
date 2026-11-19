@@ -22,7 +22,7 @@ test('falls back when native UUID generation throws or returns malformed data',(
 });
 
 test('fails closed when secure randomness is unavailable or fails',()=>{
- assert.throws(()=>createSecureUuid(undefined),/Безопасная генерация идентификатора/);
+ assert.throws(()=>createSecureUuid(null),/Безопасная генерация идентификатора/);
  assert.throws(()=>createSecureUuid({getRandomValues(){throw Error('blocked');}}),/Безопасная генерация идентификатора/);
 });
 
