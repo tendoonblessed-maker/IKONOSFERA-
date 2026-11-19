@@ -14,6 +14,8 @@ import {subscribeGroupChanges} from '@/lib/group-realtime';
 import {mergeConfirmedGroupMessages,CONFIRMED_GROUP_MESSAGE_GRACE_MS,type ConfirmedGroupMessage} from '@/lib/group-history';
 import {shouldAcknowledgeGroupRead,countNewIncomingBelow} from '@/lib/group-read-position';
 import {fetchOlderGroupMessages,prependOlderGroupMessages,preserveOlderGroupMessages,GROUP_HISTORY_MAX_LOADED} from '@/lib/group-pagination';
+import {clearGroupOfflineDraftError,GROUP_OFFLINE_DRAFT_ERROR} from '@/lib/group-network';
+import {useNetworkOnline} from '@/lib/network-online';
 type Props={token:string;userId:string;group:Group;onBack:()=>void;onShowProfile:(id:string)=>void;onDraftChange:(groupId:string,text:string)=>void};
 export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDraftChange}:Props){
  const [messages,setMessages]=useState<GroupMessage[]>([]);
@@ -22,7 +24,7 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
  const [membersOpen,setMembersOpen]=useState(false);
  const [memberSearch,setMemberSearch]=useState('');
  const [draft,setDraft]=useState(()=>readGroupDrafts(userId)[group.id]??'');
- const [online,setOnline]=useState(true);
+ const online=useNetworkOnline();
  const draftVersionRef=useRef(0);
  const [busy,setBusy]=useState(false);
  const [error,setError]=useState('');
@@ -90,11 +92,21 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
   setDraft(readGroupDrafts(userId)[group.id]??'');
  },[group.id,userId]);
  useEffect(()=>{
-  const update=()=>setOnline(navigator.onLine);
-  update();
-  window.addEventListener('online',update);
-  window.addEventListener('offline',update);
-  return()=>{window.removeEventListener('online',update);window.removeEventListener('offline',update);};
+  // The external store owns connectivity; this effect only clears a stale
+  // local offline hint when the app resumes with a usable browser signal.
+  const clearOfflineHint=()=>{
+   if(navigator.onLine)setError(current=>clearGroupOfflineDraftError(current,true));
+  };
+  window.addEventListener('online',clearOfflineHint);
+  window.addEventListener('pageshow',clearOfflineHint);
+  window.addEventListener('focus',clearOfflineHint);
+  document.addEventListener('visibilitychange',clearOfflineHint);
+  return()=>{
+   window.removeEventListener('online',clearOfflineHint);
+   window.removeEventListener('pageshow',clearOfflineHint);
+   window.removeEventListener('focus',clearOfflineHint);
+   document.removeEventListener('visibilitychange',clearOfflineHint);
+  };
  },[]);
  function changeDraft(text:string){
   draftVersionRef.current+=1;
@@ -354,7 +366,7 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
  e.preventDefault();
  if(busy||!draft.trim())return;
  // Never queue a surprise send on reconnect. Let the user retry manually.
- if(!online||!navigator.onLine){setError('Нет интернета. Сообщение осталось в черновике.');return;}
+ if(!online||!navigator.onLine){setError(GROUP_OFFLINE_DRAFT_ERROR);return;}
  const body=draft.trim(),groupId=group.id,accountId=userId,requestToken=token;
  const sentDraftVersion=draftVersionRef.current;
  setBusy(true);setError('');setRetryAvailable(false);

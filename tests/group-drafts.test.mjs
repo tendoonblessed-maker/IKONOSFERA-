@@ -80,11 +80,12 @@ test('group composer preserves a more recent edit after an in-flight send',()=>{
 test('group messages are not sent on reconnect, and stay in drafts after failed send',()=>{
  const group=load('components/GroupPanel.tsx');
  assert.match(group,/if\(!online\|\|!navigator\.onLine\)\{/);
- assert.match(group,/Сообщение осталось в черновике/);
+ assert.match(group,/GROUP_OFFLINE_DRAFT_ERROR/);
+ assert.match(load('lib/group-network.ts'),/Нет интернета\. Сообщение осталось в черновике/);
  assert.match(group,/Черновик сохранён/);
  assert.match(group,/disabled=\{busy\|\|!draft\.trim\(\)\|\|!online\}/);
- assert.match(group,/window\.addEventListener\('online',update\)/);
- assert.match(group,/window\.addEventListener\('offline',update\)/);
+ assert.match(group,/import \{useNetworkOnline\} from '@\/lib\/network-online';/);
+ assert.match(group,/const online=useNetworkOnline\(\)/);
  const errorBranch=group.slice(group.indexOf('}catch(e){\n   setError((e instanceof Error?e.message'),group.indexOf(' const names='));
  assert.doesNotMatch(errorBranch,/onDraftChange\(groupId,''\)/);
 });

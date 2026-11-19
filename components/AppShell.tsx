@@ -6,6 +6,8 @@ import ProfilePanel from "@/components/ProfilePanel";
 import {mergeConfirmedRecentPage,prependEarlierPage,CONFIRMED_MESSAGE_GRACE_MS,type ConfirmedMessage} from "@/lib/chat-history";
 import {readChatDrafts,writeChatDrafts,clearChatDrafts,updateChatDraftEntry,type ChatDrafts} from "@/lib/chat-drafts";
 import {readGroupDrafts,writeGroupDraft,clearGroupDrafts,type GroupDrafts} from "@/lib/group-drafts";
+import {clearDirectOfflineHint,DIRECT_MESSAGE_OFFLINE_ERROR,DIRECT_ATTACHMENT_OFFLINE_ERROR} from '@/lib/direct-network';
+import {useNetworkOnline} from '@/lib/network-online';
 import {clearAllGroupSendAttempts} from "@/lib/group-send-attempts";
 import ChatMedia from "@/components/ChatMedia";
 import ChatMessageText from "@/components/ChatMessageText";
@@ -127,7 +129,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
   const [emailSent,setEmailSent]=useState(false);
   const [busy,setBusy]=useState(false);
   const [sending,setSending]=useState(false);
-  const [networkOnline,setNetworkOnline]=useState(true);
+  const networkOnline=useNetworkOnline();
   const [bootstrapRetryNonce,setBootstrapRetryNonce]=useState(0);
   const [loading,setLoading]=useState(true);
   const [error,setError]=useState('');
@@ -161,21 +163,20 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
   useEffect(()=>{recentChannelUpdatesRef.current.clear();},[userId]);
 
   useEffect(()=>{
-    // Browser online/offline is only a connectivity hint, not a guarantee
-    // that Supabase is reachable. Never auto-send unsent chat drafts.
-    const update=()=>{
-      const connected=navigator.onLine;
-      setNetworkOnline(connected);
-      if(connected)setError(previous=>previous.startsWith('Нет соединения с интернетом.')?'':previous);
+    // Connectivity state comes from the hydration-safe external store.
+    // Clear only local preflight hints; never auto-send unsent chat drafts.
+    const clearOfflineHint=()=>{
+      if(navigator.onLine)setError(previous=>clearDirectOfflineHint(previous,true));
     };
-    update();
-    window.addEventListener('online',update);
-    window.addEventListener('offline',update);
-    window.addEventListener('pageshow',update); // iOS Safari back/forward cache
+    window.addEventListener('online',clearOfflineHint);
+    window.addEventListener('pageshow',clearOfflineHint);
+    window.addEventListener('focus',clearOfflineHint);
+    document.addEventListener('visibilitychange',clearOfflineHint);
     return()=>{
-      window.removeEventListener('online',update);
-      window.removeEventListener('offline',update);
-      window.removeEventListener('pageshow',update);
+      window.removeEventListener('online',clearOfflineHint);
+      window.removeEventListener('pageshow',clearOfflineHint);
+      window.removeEventListener('focus',clearOfflineHint);
+      document.removeEventListener('visibilitychange',clearOfflineHint);
     };
   },[]);
 
@@ -1010,7 +1011,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
   async function sendMessage(e:React.FormEvent){
     e.preventDefault();if(!session||!selected||!userId||sending||activePartnerBlocked)return;
     if(!networkOnline||!navigator.onLine){
-      setError('Нет соединения с интернетом. Сообщение осталось в черновике.');
+      setError(DIRECT_MESSAGE_OFFLINE_ERROR);
       return;
     }
     const chatId=selected,plainText=draft.trim(),token=session.access_token;
@@ -1159,7 +1160,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
   async function sendAttachment(file:File|undefined,caption=''){
     if(!file||!session||!selected||!userId||sending||activePartnerBlocked)return;
     if(!networkOnline||!navigator.onLine){
-      setError('Нет соединения с интернетом. Вложение осталось в предпросмотре.');
+      setError(DIRECT_ATTACHMENT_OFFLINE_ERROR);
       return;
     }
     const chatId=selected,token=session.access_token;
