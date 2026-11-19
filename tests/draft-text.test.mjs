@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
-import {truncateDraftText} from '../lib/draft-text.ts';
+import {truncateDraftText} from '../lib/draft-text.mjs';
 
 function hasUnpairedSurrogate(text){
  for(let i=0;i<text.length;i++){
