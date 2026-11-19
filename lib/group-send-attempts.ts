@@ -10,7 +10,6 @@
 import {createSecureUuid} from './secure-uuid.mjs';
 
 const PREFIX='ikonosfera-group-send-v1:';
-const MAX_CHATS=48;
 const TTL=48*60*60*1000;
 const UUID=/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
 export const GROUP_SEND_ATTEMPT_TTL_MS=TTL;
