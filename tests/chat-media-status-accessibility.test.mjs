@@ -16,7 +16,7 @@ test('private attachment failures are announced without removing the retry actio
 });
 
 test('media accessibility states do not expose signed URLs or change account scoping',()=>{
- assert.match(component,/const scope=token\+':'+path/);
+ assert.ok(component.includes("const scope=token+':'+path;"));
  assert.match(component,/signed\?\.scope===scope\?signed\.url:null/);
  assert.doesNotMatch(component,/aria-label=\{[^}]*url/);
 });
