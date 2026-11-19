@@ -153,3 +153,23 @@ test('contact request deadline also covers a response body that stalls after hea
  assert.equal(timers.size,0);
  assert.deepEqual(cleared,[timerId]);
 });
+
+test('a stalled error response body remains a timeout instead of being swallowed as invalid JSON',async()=>{
+ const {api,timers,cleared,calls}=setup(async(_url,options)=>({
+  ok:false,status:503,
+  json:()=>new Promise((_resolve,reject)=>{
+   options.signal.addEventListener('abort',()=>{
+    const error=new Error('error body aborted');
+    error.name='AbortError';
+    reject(error);
+   },{once:true});
+  })
+ }));
+ const pending=api.listBlockedUsers('signed-user-jwt',OWNER);
+ assert.equal(calls.length,1);
+ const [timerId,timer]=[...timers.entries()][0];
+ timer.callback();
+ await assert.rejects(pending,/Запрос контактов не завершился вовремя/);
+ assert.equal(calls[0].options.signal.aborted,true);
+ assert.deepEqual(cleared,[timerId]);
+});
