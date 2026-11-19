@@ -134,3 +134,26 @@ test('group send IDs remain available when randomUUID is missing on mobile Web C
   else delete globalThis.crypto;
  }
 });
+
+test('latest in-memory attempt wins when sessionStorage write fails over a stale value',()=>{
+ const group='55555555-5555-4555-8555-555555555555';
+ const key='ikonosfera-group-send-v1:'+OWNER+':'+group;
+ const stale={id:'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',body:'Старый текст',createdAt:Date.now()};
+ memory.set(key,JSON.stringify(stale));
+ const originalSet=storage.setItem;
+ storage.setItem=()=>{throw Error('quota exceeded');};
+ try{
+  const current=getOrCreateGroupSendAttempt(OWNER,group,'Новый текст');
+  assert.notEqual(current.id,stale.id);
+  assert.equal(current.body,'Новый текст');
+  assert.deepEqual(readGroupSendAttempt(OWNER,group),current,
+   'a failed persistence write must not let stale sessionStorage override this runtime attempt');
+  assert.equal(getOrCreateGroupSendAttempt(OWNER,group,'Новый текст').id,current.id,
+   'manual retry within the same runtime must retain the idempotency UUID');
+  clearGroupSendAttempt(OWNER,group,current.id);
+  assert.equal(readGroupSendAttempt(OWNER,group),null);
+ }finally{
+  storage.setItem=originalSet;
+  memory.delete(key);
+ }
+});
