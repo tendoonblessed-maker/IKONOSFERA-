@@ -66,3 +66,19 @@ test('group draft normalization ignores malformed records ahead of valid drafts'
   input[id(3)]='valid';
   assert.deepEqual(cleanGroupDrafts(input),{[id(1)]:'  Nice\n  ',[id(3)]:'valid'});
 });
+
+
+test('direct and group draft storage truncates without splitting emoji',()=>{
+  data.clear();
+  const prefix='x'.repeat(3999);
+  const text=prefix+'😀tail';
+  const direct=cleanChatDrafts({[id(60)]:text});
+  assert.equal(direct[id(60)],prefix);
+  const updated=updateChatDraftEntry({},id(61),text);
+  assert.equal(updated[id(61)],prefix);
+  writeChatDrafts(USER,updated);
+  assert.equal(readChatDrafts(USER)[id(61)],prefix);
+  const group=writeGroupDraft(USER,id(62),text);
+  assert.equal(group[id(62)],prefix);
+  assert.equal(readGroupDrafts(USER)[id(62)],prefix);
+});
