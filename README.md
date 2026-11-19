@@ -138,7 +138,7 @@ IKONOSFERA — адаптивный веб-мессенджер/PWA на **Next.
 
 ## Локальный запуск
 
-Нужны Node.js (версию уточняйте по `package.json`) и npm. Создайте `.env.local` самостоятельно:
+Нужны Node.js **22 или новее** и npm. Создайте `.env.local` самостоятельно:
 
 ```dotenv
 NEXT_PUBLIC_SUPABASE_URL=https://YOUR_PROJECT.supabase.co
