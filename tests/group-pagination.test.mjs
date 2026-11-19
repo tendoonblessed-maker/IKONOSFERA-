@@ -156,3 +156,21 @@ test('paged history does not change message schema or database privileges',()=>{
  assert.match(pagination,/const GROUP_/g);
  assert.doesNotMatch(pagination,/service_role|ALTER TABLE|GRANT |dangerouslySetInnerHTML/i);
 });
+
+
+test('group history pagination stops at the retained-message cap even when the server has more rows',()=>{
+ const {api}=setup();
+ assert.equal(api.canLoadOlderGroupMessages(true,1499),true);
+ assert.equal(api.canLoadOlderGroupMessages(true,1500),false);
+ assert.equal(api.canLoadOlderGroupMessages(true,1501),false);
+ assert.equal(api.canLoadOlderGroupMessages(false,100),false);
+ assert.equal(api.canLoadOlderGroupMessages(true,Number.NaN),false);
+});
+
+test('GroupPanel derives older-page availability from the committed merged history length',()=>{
+ const panel=read('components/GroupPanel.tsx');
+ assert.match(panel,/const \\[serverHasOlder,setServerHasOlder\\]=useState\\(false\\)/);
+ assert.match(panel,/canLoadOlderGroupMessages\\(serverHasOlder,messages\\.length\\)/);
+ assert.match(panel,/setServerHasOlder\\(page\\.hasMore\\)/);
+ assert.doesNotMatch(panel,/messages\\.length\\+page\\.messages\\.length/);
+});
