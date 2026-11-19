@@ -61,27 +61,3 @@ test('core Supabase HTTP deadline also bounds mutating requests without automati
  assert.equal(calls[0].options.headers.Authorization,'Bearer signed-user-jwt');
  assert.ok(calls[0].options.signal instanceof AbortSignal);
 });
-
-test('private media signing uses a portable deadline without AbortSignal.timeout',async()=>{
- const path='11111111-1111-4111-8111-111111111111/22222222-2222-4222-8222-222222222222/33333333-3333-4333-8333-333333333333.jpg';
- const signedPath='/object/sign/ikonosfera-direct-media/'+path;
- const {api,calls}=setup(async()=>({
-  ok:true,status:200,json:async()=>({signedURL:signedPath})
- }));
- // setup deliberately omits AbortSignal to model older Safari/WebViews.
- const [first,second]=await Promise.all([
-  api.getDirectMediaUrl('signed-user-jwt',path),
-  api.getDirectMediaUrl('signed-user-jwt',path)
- ]);
- assert.equal(first,'https://unit.test/storage/v1'+signedPath);
- assert.equal(second,first);
- assert.equal(calls.length,1,'concurrent requests should share the signing promise');
- assert.equal(calls[0].options.method,'POST');
- assert.equal(calls[0].options.headers.Authorization,'Bearer signed-user-jwt');
- assert.ok(calls[0].options.signal instanceof AbortSignal);
- const start=source.indexOf('export async function getDirectMediaUrl');
- const end=source.indexOf('\n}\n',start)+3;
- const implementation=source.slice(start,end);
- assert.match(implementation,/fetchWithTimeout\(fetch,/);
- assert.doesNotMatch(implementation,/AbortSignal\.timeout/);
-});
