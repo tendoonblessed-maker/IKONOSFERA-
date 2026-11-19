@@ -1046,7 +1046,7 @@ test('private photo attachments open a modal inside the chat without leaking pre
  assert.match(media,/const scope=token\+':'\+path/);
  assert.match(media,/signed\?\.scope===scope\?signed\.url:null/);
  assert.match(media,/const error=errorScope===scope/);
- assert.match(media,/if\(active\)setSigned\(\{scope,url:value\}\)/);
+ assert.match(media,/\.then\(value=>\{if\(active\)\{setSigned\(\{scope,url:value\}\);setLoadingScope\(null\);\}\}\)/);
  assert.match(media,/return\(\)=>\{active=false;\}/);
  assert.match(media,/setPreviewOpen\(false\)/);
  assert.match(media,/className="chat-media-open"/);
