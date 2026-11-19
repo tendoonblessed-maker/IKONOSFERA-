@@ -54,7 +54,10 @@ async function request<T>(path:string,token:string,method:"GET"|"POST"|"DELETE"=
   cache:"no-store"
  },async response=>{
   if(!response.ok){
-   const value=await response.json().catch(()=>null) as {message?:string;details?:string}|null;
+   const value=await response.json().catch(error=>{
+    if(controller.signal.aborted)throw error;
+    return null;
+   }) as {message?:string;details?:string}|null;
    throw Error(value?.message||"Не удалось обновить контакты ("+response.status+").");
   }
   if(response.status===204||response.status===201||method!=="GET")return undefined as T;
@@ -90,7 +93,10 @@ async function requestPage<T extends CursorRow>(
   cache:"no-store"
  },async response=>{
   if(!response.ok){
-   const value=await response.json().catch(()=>null) as {message?:string}|null;
+   const value=await response.json().catch(error=>{
+    if(controller.signal.aborted)throw error;
+    return null;
+   }) as {message?:string}|null;
    throw Error(value?.message||"Не удалось загрузить контакты ("+response.status+").");
   }
   const rows=await response.json() as unknown;
