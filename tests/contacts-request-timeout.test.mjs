@@ -131,18 +131,21 @@ test('contact and blocklist writes use the same bounded request path',async()=>{
 });
 
 test('contact request deadline also covers a response body that stalls after headers',async()=>{
+ let bodyStarted;
+ const started=new Promise(resolve=>{bodyStarted=resolve;});
  const {api,timers,cleared,calls}=setup(async(_url,options)=>({
   ok:true,status:200,
   headers:{get:name=>name==='content-range'?'0-0/1':null},
-  json:()=>new Promise((_resolve,reject)=>{
+  json:()=>{bodyStarted();return new Promise((_resolve,reject)=>{
    options.signal.addEventListener('abort',()=>{
     const error=new Error('response body aborted');
     error.name='AbortError';
     reject(error);
    },{once:true});
-  })
+  });}
  }));
  const pending=api.listSavedContacts('signed-user-jwt',OWNER);
+ await started;
  assert.equal(calls.length,1);
  assert.equal(timers.size,1);
  const [timerId,timer]=[...timers.entries()][0];
@@ -155,17 +158,20 @@ test('contact request deadline also covers a response body that stalls after hea
 });
 
 test('a stalled error response body remains a timeout instead of being swallowed as invalid JSON',async()=>{
+ let bodyStarted;
+ const started=new Promise(resolve=>{bodyStarted=resolve;});
  const {api,timers,cleared,calls}=setup(async(_url,options)=>({
   ok:false,status:503,
-  json:()=>new Promise((_resolve,reject)=>{
+  json:()=>{bodyStarted();return new Promise((_resolve,reject)=>{
    options.signal.addEventListener('abort',()=>{
     const error=new Error('error body aborted');
     error.name='AbortError';
     reject(error);
    },{once:true});
-  })
+  });}
  }));
  const pending=api.listBlockedUsers('signed-user-jwt',OWNER);
+ await started;
  assert.equal(calls.length,1);
  const [timerId,timer]=[...timers.entries()][0];
  timer.callback();
@@ -175,17 +181,20 @@ test('a stalled error response body remains a timeout instead of being swallowed
 });
 
 test('a stalled contact mutation error body remains a timeout and is never retried',async()=>{
+ let bodyStarted;
+ const started=new Promise(resolve=>{bodyStarted=resolve;});
  const {api,timers,cleared,calls}=setup(async(_url,options)=>({
   ok:false,status:503,
-  json:()=>new Promise((_resolve,reject)=>{
+  json:()=>{bodyStarted();return new Promise((_resolve,reject)=>{
    options.signal.addEventListener('abort',()=>{
     const error=new Error('mutation error body aborted');
     error.name='AbortError';
     reject(error);
    },{once:true});
-  })
+  });}
  }));
  const pending=api.addSavedContact('signed-user-jwt',OWNER,CONTACT);
+ await started;
  assert.equal(calls.length,1);
  assert.equal(calls[0].options.method,'POST');
  const [timerId,timer]=[...timers.entries()][0];
