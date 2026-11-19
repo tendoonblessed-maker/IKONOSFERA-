@@ -6,6 +6,10 @@ const UUID=/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
 const TIMESTAMP=/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?(?:Z|[+-]\d{2}:\d{2})$/;
 export const GROUP_OLDER_PAGE_SIZE=70;
 export const GROUP_HISTORY_MAX_LOADED=1500;
+/** Stop requesting older pages once the retained in-memory window reaches its cap. */
+export function canLoadOlderGroupMessages(hasMore:boolean,loadedCount:number):boolean{
+ return hasMore&&Number.isFinite(loadedCount)&&loadedCount>=0&&loadedCount<GROUP_HISTORY_MAX_LOADED;
+}
 
 function subMillisecondFraction(timestamp:string):number{
  const part=/\.(\d{1,6})/.exec(timestamp)?.[1]??'';
