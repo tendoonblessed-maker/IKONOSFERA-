@@ -169,8 +169,8 @@ test('group history pagination stops at the retained-message cap even when the s
 
 test('GroupPanel derives older-page availability from the committed merged history length',()=>{
  const panel=read('components/GroupPanel.tsx');
- assert.match(panel,/const \\[serverHasOlder,setServerHasOlder\\]=useState\\(false\\)/);
- assert.match(panel,/canLoadOlderGroupMessages\\(serverHasOlder,messages\\.length\\)/);
- assert.match(panel,/setServerHasOlder\\(page\\.hasMore\\)/);
- assert.doesNotMatch(panel,/messages\\.length\\+page\\.messages\\.length/);
+ assert.ok(panel.includes('const [serverHasOlder,setServerHasOlder]=useState(false)'));
+ assert.ok(panel.includes('const hasOlder=canLoadOlderGroupMessages(serverHasOlder,messages.length)'));
+ assert.ok(panel.includes('setServerHasOlder(page.hasMore)'));
+ assert.ok(!panel.includes('messages.length+page.messages.length'));
 });
