@@ -3,18 +3,46 @@ const CACHE_NAME = "ikonosfera-shell-v6";
 const OFFLINE_URL = "/offline.html";
 
 self.addEventListener("install", (event) => {
-  event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => cache.addAll([OFFLINE_URL, "/icon-192.png", "/status-emojis.webp?v=2"]))
-  );
-  self.skipWaiting();
+  event.waitUntil((async () => {
+    // Cache the offline document first. Optional public artwork must not make
+    // Cache.addAll() reject the whole batch and discard that useful shell.
+    try {
+      const cache = await caches.open(CACHE_NAME);
+      for (const asset of [OFFLINE_URL, "/branding/ikonosfera.svg", "/icon-192.png", "/status-emojis.webp?v=2"]) {
+        try {
+          await cache.add(asset);
+        } catch {
+          // Each public asset is best-effort; keep trying the remaining entries.
+        }
+      }
+    } catch {
+      // The worker can still serve network requests without an offline cache.
+    }
+    await self.skipWaiting();
+  })());
 });
 
 self.addEventListener("activate", (event) => {
-  event.waitUntil(
-    caches.keys().then((names) =>
-      Promise.all(names.filter((name) => name.startsWith("ikonosfera-") && name !== CACHE_NAME).map((name) => caches.delete(name)))
-    ).then(() => self.clients.claim())
-  );
+  event.waitUntil((async () => {
+    // Only retire previous app-shell versions. Other caches on this origin may
+    // belong to independently deployed features and must remain untouched.
+    try {
+      const names = await caches.keys();
+      const staleNames = names.filter((name) =>
+        /^ikonosfera-shell-v\d+$/.test(name) && name !== CACHE_NAME
+      );
+      await Promise.all(staleNames.map(async (name) => {
+        try {
+          await caches.delete(name);
+        } catch {
+          // Continue cleaning other old shell caches and claim clients below.
+        }
+      }));
+    } catch {
+      // Cache enumeration may be unavailable in private/restricted contexts.
+    }
+    await self.clients.claim();
+  })());
 });
 
 self.addEventListener("fetch", (event) => {
@@ -25,19 +53,40 @@ self.addEventListener("fetch", (event) => {
   if (url.pathname === "/status-emojis.webp") {
     // The single 144KB corrected atlas loads from the local cache after installation.
     // This cache contains only public artwork, never user/profile/chat data.
-    event.respondWith(caches.match(request).then(cached =>
-      cached ?? fetch(request).then(async response => {
-        if (response.ok) {
+    event.respondWith((async () => {
+      // Cache Storage is an optimization only. Safari private mode, quota
+      // pressure, or a transient storage failure must not break the network
+      // response for this public asset.
+      let cached = null;
+      try {
+        cached = await caches.match(request);
+      } catch {
+        // Continue with the network when cache lookup is unavailable.
+      }
+      if (cached) return cached;
+
+      const response = await fetch(request);
+      if (response.ok) {
+        try {
           const cache = await caches.open(CACHE_NAME);
           await cache.put(request, response.clone());
+        } catch {
+          // Do not turn a successful public-asset response into a failed fetch.
         }
-        return response;
-      })
-    ));
+      }
+      return response;
+    })());
     return;
   }
   if (request.mode !== "navigate") return;
   event.respondWith(fetch(request).catch(async () => {
-    return (await caches.match(OFFLINE_URL)) ?? Response.error();
+    try {
+      // Only this app-shell cache may supply the offline document. A global
+      // caches.match() could return a stale or unrelated same-origin entry.
+      const cache = await caches.open(CACHE_NAME);
+      return (await cache.match(OFFLINE_URL)) ?? Response.error();
+    } catch {
+      return Response.error();
+    }
   }));
 });
