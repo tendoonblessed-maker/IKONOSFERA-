@@ -18,7 +18,7 @@ function mockStorage(){
 }
 function library(storage){
  const exports={};
- vm.runInNewContext(source,{exports,window:{sessionStorage:storage},Object,JSON,Array,RegExp,String,require(specifier){if(specifier==='\u002e/draft-text.mjs'||specifier==='\u002e/draft-text.mjs')return {truncateDraftText};throw new Error('Unexpected module: '+specifier);}}, {timeout:1000});
+ vm.runInNewContext(source,{exports,window:{sessionStorage:storage},Object,JSON,Array,RegExp,String,require(specifier){if(specifier==='\u002e/draft-text.mjs')return {truncateDraftText};throw new Error('Unexpected module: '+specifier);}}, {timeout:1000});
  return exports;
 }
 const alice='11111111-1111-4111-a111-111111111111';
