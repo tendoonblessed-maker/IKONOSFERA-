@@ -170,10 +170,12 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
     };
     window.addEventListener('online',clearOfflineHint);
     window.addEventListener('pageshow',clearOfflineHint);
+    window.addEventListener('focus',clearOfflineHint);
     document.addEventListener('visibilitychange',clearOfflineHint);
     return()=>{
       window.removeEventListener('online',clearOfflineHint);
       window.removeEventListener('pageshow',clearOfflineHint);
+      window.removeEventListener('focus',clearOfflineHint);
       document.removeEventListener('visibilitychange',clearOfflineHint);
     };
   },[]);
