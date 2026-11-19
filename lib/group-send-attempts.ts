@@ -10,8 +10,10 @@
 import {createSecureUuid} from './secure-uuid.mjs';
 
 const PREFIX='ikonosfera-group-send-v1:';
+const MAX_CHATS=48;
+const TTL=48*60*60*1000;
 const UUID=/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
-export const GROUP_SEND_ATTEMPT_TTL_MS=48*60*60*1000;
+export const GROUP_SEND_ATTEMPT_TTL_MS=TTL;
 export type GroupSendAttempt={id:string;body:string;createdAt:number};
 const inMemory=new Map<string,GroupSendAttempt>();
 
@@ -27,16 +29,20 @@ function valid(value:unknown,now:number):value is GroupSendAttempt{
   &&typeof a.body==='string'&&a.body.length>0&&a.body.length<=4000
   &&a.body.trim()===a.body
   &&typeof a.createdAt==='number'&&Number.isFinite(a.createdAt)
-  &&a.createdAt<=now+300_000&&a.createdAt>now-GROUP_SEND_ATTEMPT_TTL_MS;
+  &&a.createdAt<=now+300_000&&a.createdAt>now-TTL;
 }
 export function readGroupSendAttempt(owner:string,group:string,now=Date.now()):GroupSendAttempt|null{
  if(!UUID.test(owner)||!UUID.test(group))return null;
  const k=key(owner,group);
- let candidate:unknown;
- try{
-  const raw=storage()?.getItem(k);
-  candidate=raw?JSON.parse(raw):inMemory.get(k);
- }catch{candidate=inMemory.get(k);}
+ // In-memory state is the newest write in this runtime. sessionStorage may
+ // still contain an older attempt if setItem failed (quota/private mode).
+ let candidate:unknown=inMemory.get(k);
+ if(candidate===undefined){
+  try{
+   const raw=storage()?.getItem(k);
+   candidate=raw?JSON.parse(raw):null;
+  }catch{candidate=null;}
+ }
  if(!valid(candidate,now)){
   inMemory.delete(k);
   try{storage()?.removeItem(k);}catch{}
