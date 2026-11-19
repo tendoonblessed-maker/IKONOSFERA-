@@ -289,11 +289,13 @@ export async function getDirectMediaUrl(token:string,path:string):Promise<string
  if(cached&&cached.validUntil>Date.now())return cached.promise;
  if(cached)signedMediaCache.delete(key);
  const request=(async()=>{
-   const res=await fetch(apiUrl+"/storage/v1/object/sign/ikonosfera-direct-media/"+path,{
+   // Signed URL creation is a Supabase Storage request too. Use the same
+   // portable deadline as the other Supabase endpoints; AbortSignal.timeout()
+   // is missing in some older Safari and embedded WebView versions.
+   const res=await fetchWithTimeout(fetch,apiUrl+"/storage/v1/object/sign/ikonosfera-direct-media/"+path,{
     method:"POST",headers:{apikey:anonKey,Authorization:"Bearer "+token,"Content-Type":"application/json"},
-    body:JSON.stringify({expiresIn:3600}),cache:"no-store",
-    signal:AbortSignal.timeout(18000)
-   });
+    body:JSON.stringify({expiresIn:3600}),cache:"no-store"
+   },SUPABASE_HTTP_TIMEOUT_MS,"Не удалось открыть вложение вовремя. Проверь подключение и повтори попытку.");
    const value=await res.json().catch(()=>null);
    if(!res.ok||!value?.signedURL)throw Error("Не удалось открыть вложение");
    const signed=value.signedURL as string;
