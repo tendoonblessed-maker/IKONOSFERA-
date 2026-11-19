@@ -39,9 +39,11 @@ export default function ChatMedia({token,path,type}:Props){
   setPreviewOpen(false);
  };
 
- if(error)return <button type="button" className="chat-media-retry"
-   onClick={()=>setRetry(value=>value+1)}>Не удалось загрузить вложение · Повторить</button>;
- if(!url)return <span className="chat-media-loading">Загружаем вложение…</span>;
+ if(error)return <span role="alert" aria-atomic="true">
+   <button type="button" className="chat-media-retry"
+     onClick={()=>setRetry(value=>value+1)}>Не удалось загрузить вложение · Повторить</button>
+ </span>;
+ if(!url)return <span className="chat-media-loading" role="status" aria-atomic="true">Загружаем вложение…</span>;
 
  if(type==='image')return <>
   <button type="button" className="chat-media-open"
