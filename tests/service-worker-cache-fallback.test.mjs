@@ -163,7 +163,7 @@ test('offline document branding is included in the app-shell precache', async ()
   });
   await dispatchLifecycle(listeners, 'install');
   assert.ok(attempted.includes('/branding/ikonosfera.svg'));
-  assert.match(offlineSource, /src="\\/branding\\/ikonosfera\\.svg"/);
+  assert.ok(offlineSource.includes('src="/branding/ikonosfera.svg"'));
 });
 
 test('worker installation still completes when the offline shell itself cannot be cached', async () => {
