@@ -173,3 +173,25 @@ test('a stalled error response body remains a timeout instead of being swallowed
  assert.equal(calls[0].options.signal.aborted,true);
  assert.deepEqual(cleared,[timerId]);
 });
+
+test('a stalled contact mutation error body remains a timeout and is never retried',async()=>{
+ const {api,timers,cleared,calls}=setup(async(_url,options)=>({
+  ok:false,status:503,
+  json:()=>new Promise((_resolve,reject)=>{
+   options.signal.addEventListener('abort',()=>{
+    const error=new Error('mutation error body aborted');
+    error.name='AbortError';
+    reject(error);
+   },{once:true});
+  })
+ }));
+ const pending=api.addSavedContact('signed-user-jwt',OWNER,CONTACT);
+ assert.equal(calls.length,1);
+ assert.equal(calls[0].options.method,'POST');
+ const [timerId,timer]=[...timers.entries()][0];
+ timer.callback();
+ await assert.rejects(pending,/Запрос контактов не завершился вовремя/);
+ assert.equal(calls.length,1,'uncertain writes must not be retried automatically');
+ assert.equal(calls[0].options.signal.aborted,true);
+ assert.deepEqual(cleared,[timerId]);
+});
