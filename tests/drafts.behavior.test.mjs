@@ -3,6 +3,7 @@ import {test} from 'node:test';
 import {readFileSync} from 'node:fs';
 import vm from 'node:vm';
 import ts from 'typescript';
+import {truncateDraftText} from '../lib/draft-text.mjs';
 
 const file=readFileSync(new URL('../lib/chat-drafts.ts',import.meta.url),'utf8');
 const source=ts.transpileModule(file,{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText;
@@ -17,7 +18,7 @@ function mockStorage(){
 }
 function library(storage){
  const exports={};
- vm.runInNewContext(source,{exports,window:{sessionStorage:storage},Object,JSON,Array,RegExp,String}, {timeout:1000});
+ vm.runInNewContext(source,{exports,window:{sessionStorage:storage},Object,JSON,Array,RegExp,String,require(specifier){if(specifier==='\u002e/draft-text.mjs'||specifier==='\u002e/draft-text.mjs')return {truncateDraftText};throw new Error('Unexpected module: '+specifier);}}, {timeout:1000});
  return exports;
 }
 const alice='11111111-1111-4111-a111-111111111111';
