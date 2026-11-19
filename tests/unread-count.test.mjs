@@ -3,7 +3,7 @@ import {test} from 'node:test';
 import {formatUnreadBadge} from '../lib/unread-count.mjs';
 
 test('unread badge omits zero, negative and invalid values',()=>{
- for(const value of [0,'0',-1,-4,NaN,Infinity,-Infinity,'not-a-count',null,undefined,0.5])
+ for(const value of [0,'0','',-1,-4,NaN,Infinity,-Infinity,'not-a-count',null,undefined,0.5,true,{},Symbol('count')])
   assert.equal(formatUnreadBadge(value),null,'value '+String(value)+' should not create a badge');
 });
 
