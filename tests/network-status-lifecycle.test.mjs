@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 import {clearGroupOfflineDraftError,GROUP_OFFLINE_DRAFT_ERROR} from '../lib/group-network.ts';
+import {subscribeNetworkOnline} from '../lib/network-online.ts';
 import {clearDirectOfflineHint,DIRECT_MESSAGE_OFFLINE_ERROR,DIRECT_ATTACHMENT_OFFLINE_ERROR} from '../lib/direct-network.ts';
 
 const shell = readFileSync(new URL('../components/AppShell.tsx', import.meta.url), 'utf8');
@@ -15,6 +16,7 @@ test('network hint refreshes when a mobile app returns to the foreground', () =>
   assert.match(effect, /window\.addEventListener\('online',update\)/);
   assert.match(effect, /window\.addEventListener\('offline',update\)/);
   assert.match(effect, /window\.addEventListener\('pageshow',update\)/);
+  assert.match(effect, /window\.addEventListener\('focus',update\)/);
   assert.match(effect, /document\.addEventListener\('visibilitychange',update\)/);
 });
 
@@ -24,6 +26,7 @@ test('all network lifecycle listeners are removed when the app shell unmounts', 
   assert.match(effect, /window\.removeEventListener\('online',update\)/);
   assert.match(effect, /window\.removeEventListener\('offline',update\)/);
   assert.match(effect, /window\.removeEventListener\('pageshow',update\)/);
+  assert.match(effect, /window\.removeEventListener\('focus',update\)/);
   assert.match(effect, /document\.removeEventListener\('visibilitychange',update\)/);
 });
 
@@ -37,6 +40,7 @@ test('group composer refreshes connectivity after BFCache restore and PWA visibi
   assert.match(effect, /window\.addEventListener\('online',update\)/);
   assert.match(effect, /window\.addEventListener\('offline',update\)/);
   assert.match(effect, /window\.addEventListener\('pageshow',update\)/);
+  assert.match(effect, /window\.addEventListener\('focus',update\)/);
   assert.match(effect, /document\.addEventListener\('visibilitychange',update\)/);
 });
 
@@ -57,6 +61,7 @@ test('group network lifecycle listeners are removed when GroupPanel unmounts', (
   assert.match(effect, /window\.removeEventListener\('online',update\)/);
   assert.match(effect, /window\.removeEventListener\('offline',update\)/);
   assert.match(effect, /window\.removeEventListener\('pageshow',update\)/);
+  assert.match(effect, /window\.removeEventListener\('focus',update\)/);
   assert.match(effect, /document\.removeEventListener\('visibilitychange',update\)/);
 });
 
@@ -83,4 +88,27 @@ test('group composer starts offline-safe until browser connectivity is measured'
   assert.match(groupNetworkEffect[0], /const connected=navigator\.onLine/);
   assert.match(groupPanel, /if\(!online\|\|!navigator\.onLine\)\{setError\(GROUP_OFFLINE_DRAFT_ERROR\);return;\}/);
   assert.match(groupPanel, /disabled=\{busy\|\|!draft\.trim\(\)\|\|!online\}/);
+});
+
+
+test('window focus refreshes connectivity and is removed during cleanup',()=>{
+ const makeTarget=()=>{
+  const listeners=new Map();
+  return {
+   addEventListener(name,listener){const set=listeners.get(name)??new Set();set.add(listener);listeners.set(name,set);},
+   removeEventListener(name,listener){listeners.get(name)?.delete(listener);},
+   dispatch(name){for(const listener of [...(listeners.get(name)??[])])listener();},
+   listenerCount(name){return listeners.get(name)?.size??0;}
+  };
+ };
+ const win=makeTarget(),doc=makeTarget();
+ let updates=0;
+ const unsubscribe=subscribeNetworkOnline(()=>updates++,win,doc);
+ assert.equal(win.listenerCount('focus'),1);
+ win.dispatch('focus');
+ assert.equal(updates,1);
+ unsubscribe();
+ assert.equal(win.listenerCount('focus'),0);
+ win.dispatch('focus');
+ assert.equal(updates,1,'a removed listener must not notify the store');
 });
