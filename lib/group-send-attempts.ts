@@ -7,6 +7,8 @@
  * submitted body, not a mutable text area. A different body gets a new UUID.
  * No messages or tokens are sent to a remote storage service.
  */
+import {createSecureUuid} from './secure-uuid.mjs';
+
 const PREFIX='ikonosfera-group-send-v1:';
 const UUID=/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
 export const GROUP_SEND_ATTEMPT_TTL_MS=48*60*60*1000;
@@ -51,7 +53,7 @@ export function getOrCreateGroupSendAttempt(
  const trimmed=body.trim();
  const prior=readGroupSendAttempt(owner,group,now);
  if(prior?.body===trimmed)return prior;
- const attempt:GroupSendAttempt={id:crypto.randomUUID(),body:trimmed,createdAt:now};
+ const attempt:GroupSendAttempt={id:createSecureUuid(),body:trimmed,createdAt:now};
  const k=key(owner,group);
  inMemory.set(k,attempt);
  try{storage()?.setItem(k,JSON.stringify(attempt));}catch{}
