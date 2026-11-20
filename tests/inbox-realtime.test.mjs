@@ -97,6 +97,20 @@ test('a group message UPDATE wakes only the group preview refresh and is ignored
  assert.deepEqual(h.changes,['group'],'disposed subscriptions ignore late Realtime callbacks');
 });
 
+test('inbox subscriptions exclude DELETE and wildcard events because DELETE is not RLS-filtered',async()=>{
+ const h=createRealtimeHarness();
+ await flushRealtimeMicrotasks();
+ const subscribed=h.registrations.map(({config})=>config.table+':'+config.event).sort();
+ assert.deepEqual(subscribed,[
+  'group_messages:INSERT',
+  'group_messages:UPDATE',
+  'messages:INSERT',
+  'messages:UPDATE'
+ ]);
+ assert.ok(h.registrations.every(({config})=>config.event!=='DELETE'&&config.event!=='*'));
+ h.unsubscribe();
+});
+
 test('group inbox previews refresh after edits without consuming Realtime payloads',()=>{
  const rt=load('lib/inbox-realtime.ts');
  assert.match(rt,/\.on\('postgres_changes',\{schema:'public',table:'group_messages',event:'INSERT'\},group\)/);
