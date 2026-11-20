@@ -129,7 +129,7 @@ test('older-page deadline works without AbortSignal.timeout and is cleared after
  assert.equal(pendingDeadlines.size,0,'the deadline is disposed after response JSON is consumed');
  assert.equal(cleared.length,1);
  assert.equal(page.messages[0].id,id(4));
- assert.doesNotMatch(read('lib/group-pagination.ts'),/AbortSignal\\.timeout/);
+ assert.doesNotMatch(read('lib/group-pagination.ts'),/AbortSignal\.timeout/);
 });
 
 test('portable deadline also covers a stalled JSON body and retries only once',async()=>{
