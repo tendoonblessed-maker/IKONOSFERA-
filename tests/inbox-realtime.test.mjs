@@ -37,7 +37,8 @@ test('inbox Realtime only wakes RLS-backed server fetches',()=>{
  assert.match(rt,/table:'messages',event:'INSERT'/);
  assert.match(rt,/table:'messages',event:'UPDATE'/);
  assert.match(rt,/table:'group_messages',event:'INSERT'/);
- assert.match(rt,/if\(status==='SUBSCRIBED'\)\{direct\(\);group\(\);\}/);
+ assert.match(rt,/if\(status==='SUBSCRIBED'\|\|shouldRefreshInboxAfterRealtimeFailure\(status\)\)wakeBoth\(\)/);
+ assert.match(rt,/if\(!disposed\)wakeBoth\(\)/);
  assert.match(rt,/client\.removeChannel\(channel\)/);
  assert.match(rt,/client\.realtime\.disconnect\(\)/);
  assert.doesNotMatch(rt,/\.from\('messages'\)|\.from\('group_messages'\)|payload\.new|service_role/i);
