@@ -42,10 +42,13 @@ test('fails closed if secure randomness is unavailable or throws',()=>{
  assert.throws(()=>broken(),/Безопасная генерация/);
 });
 
-test('profile and story uploads use the portable secure ID helper',()=>{
+test('all social storage uploads use the portable secure ID helper',()=>{
  const social=readFileSync(new URL('../lib/social.ts',import.meta.url),'utf8');
  assert.match(social,/import\s*\{\s*createSocialUploadId\s*\}\s*from\s*['"]@\/lib\/social-upload-id['"]/);
- const upload=social.slice(social.indexOf('export async function uploadPhoto'),social.indexOf('export async function removeUpload'));
- assert.match(upload,/createSocialUploadId\(\)/);
- assert.doesNotMatch(upload,/crypto\.randomUUID\(\)/);
+ const photoUpload=social.slice(social.indexOf('export async function uploadPhoto'),social.indexOf('export async function removeUpload'));
+ assert.match(photoUpload,/createSocialUploadId\(\)/);
+ assert.doesNotMatch(photoUpload,/crypto\.randomUUID\(\)/);
+ const attachmentUpload=social.slice(social.indexOf('export async function uploadChannelAttachment'));
+ assert.match(attachmentUpload,/createSocialUploadId\(\)/);
+ assert.doesNotMatch(attachmentUpload,/crypto\.randomUUID\(\)/);
 });
