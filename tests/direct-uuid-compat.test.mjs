@@ -14,7 +14,7 @@ function loadApi(cryptoSource={},fetchImpl=async()=>({ok:true})){
  }).outputText;
  const exports={};
  vm.runInNewContext(compiled,{
-  exports,process:{env:{NEXT_PUBLIC_SUPABASE_URL:'https://test.supabase.invalid',NEXT_PUBLIC_SUPABASE_ANON_KEY:'anon-test'}},globalThis:{crypto:cryptoSource},fetch:fetchImpl
+  exports,process:{env:{NEXT_PUBLIC_SUPABASE_URL:'https://test.supabase.invalid',NEXT_PUBLIC_SUPABASE_ANON_KEY:'anon-test'}},globalThis:{crypto:cryptoSource},AbortSignal,fetch:fetchImpl
  },{timeout:1500,filename:'supabase-rest.cjs'});
  return exports;
 }
