@@ -4,7 +4,7 @@ import {readFileSync} from 'node:fs';
 import vm from 'node:vm';
 import ts from 'typescript';
 import {
- createRealtimeRefreshGate,shouldRefreshChatAfterRealtimeFailure
+ createRealtimeRefreshGate,startRealtimeAuthHandshake,shouldRefreshChatAfterRealtimeFailure
 } from '../lib/chat-realtime-status.ts';
 
 const CHAT='11111111-1111-4111-8111-111111111111';
@@ -61,7 +61,7 @@ function createHarness(kind,setAuth=()=>Promise.resolve()){
   require(specifier){
    if(specifier==='@supabase/supabase-js')return {createClient:()=>client};
    if(specifier==='./supabase-rest')return {apiUrl:'https://unit.test',backendReady:true};
-   if(specifier==='./chat-realtime-status')return {createRealtimeRefreshGate,shouldRefreshChatAfterRealtimeFailure};
+   if(specifier==='./chat-realtime-status')return {createRealtimeRefreshGate,startRealtimeAuthHandshake,shouldRefreshChatAfterRealtimeFailure};
    throw new Error('Unexpected module: '+specifier);
   }
  },{timeout:1000,filename:path});
@@ -138,6 +138,21 @@ for(const kind of ['direct','group']){
   h.unsubscribe();
   await flushMicrotasks();
   assert.equal(h.changeCount,1);
+  assert.equal(h.removeCount,1);
+  assert.equal(h.disconnectCount,1);
+ });
+}
+
+for(const kind of ['direct','group']){
+ test(kind+' subscription wakes authenticated HTTP reconciliation when setAuth throws synchronously',async()=>{
+  const h=createHarness(kind,()=>{throw new Error('synthetic synchronous auth failure');});
+  await flushMicrotasks();
+  assert.deepEqual(h.authOptions,[TOKEN]);
+  assert.equal(h.subscribeCount,0);
+  assert.equal(h.changeCount,1,'sync throw must wake the existing authenticated HTTP refresh');
+  h.unsubscribe();
+  await flushMicrotasks();
+  assert.equal(h.changeCount,1,'cleanup must suppress later callbacks');
   assert.equal(h.removeCount,1);
   assert.equal(h.disconnectCount,1);
  });

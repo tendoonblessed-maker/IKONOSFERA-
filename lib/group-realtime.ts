@@ -2,7 +2,7 @@
 
 import {createClient} from '@supabase/supabase-js';
 import {apiUrl,backendReady} from './supabase-rest';
-import {createRealtimeRefreshGate,shouldRefreshChatAfterRealtimeFailure} from './chat-realtime-status';
+import {createRealtimeRefreshGate,shouldRefreshChatAfterRealtimeFailure,startRealtimeAuthHandshake} from './chat-realtime-status';
 
 const publishableKey=process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY??'';
 const UUID=/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
@@ -22,21 +22,21 @@ export function subscribeGroupChanges(token:string,groupId:string,onChanged:()=>
  const changed=()=>{if(!disposed)refreshGate.trigger();};
  const channel=client.channel('group-db:'+groupId);
  const scope={schema:'public' as const,table:'group_messages',filter:'group_id=eq.'+groupId};
- void client.realtime.setAuth(token).then(()=>{
-  if(disposed)return;
-  channel
-   .on('postgres_changes',{...scope,event:'INSERT'},changed)
-   .subscribe(status=>{
-    if(status==='SUBSCRIBED')changed(); // reconcile events missed during join
-    // A socket error/timeout/close must wake the authenticated HTTP refresh;
-    // repeated status transitions are coalesced by the per-subscription gate.
-    if(shouldRefreshChatAfterRealtimeFailure(status))changed();
-   });
- }).catch(()=>{
-  // The periodic HTTPS refresh remains active; wake the authenticated HTTP
-  // read immediately when the Realtime auth handshake fails.
-  changed();
- });
+ startRealtimeAuthHandshake(
+  ()=>client.realtime.setAuth(token),
+  ()=>{
+   if(disposed)return;
+   channel
+    .on('postgres_changes',{...scope,event:'INSERT'},changed)
+    .subscribe(status=>{
+     if(status==='SUBSCRIBED')changed(); // reconcile events missed during join
+     // A socket error/timeout/close must wake the authenticated HTTP refresh;
+     // repeated status transitions are coalesced by the per-subscription gate.
+     if(shouldRefreshChatAfterRealtimeFailure(status))changed();
+    });
+  },
+  changed
+ );
  return()=>{
   disposed=true;
   refreshGate.dispose();

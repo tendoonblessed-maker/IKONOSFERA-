@@ -1,4 +1,21 @@
 /**
+ * Run the Realtime JWT handoff without assuming setAuth always returns a
+ * Promise. Some SDK shims and older mobile WebViews can throw synchronously.
+ * Both synchronous throws and asynchronous rejections use the same fallback.
+ */
+export function startRealtimeAuthHandshake(
+ setAuth:()=>Promise<unknown>,
+ onAuthorized:()=>void,
+ onFailure:()=>void
+):void{
+ try{
+  void Promise.resolve(setAuth()).then(onAuthorized).catch(onFailure);
+ }catch{
+  onFailure();
+ }
+}
+
+/**
  * A Realtime subscription failure is a wake-up to reconcile over the
  * authenticated HTTP path. The periodic poll remains the durable fallback.
  */

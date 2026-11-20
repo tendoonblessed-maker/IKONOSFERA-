@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import {test} from 'node:test';
 import {readFileSync} from 'node:fs';
 import {
- createRealtimeRefreshGate,shouldRefreshChatAfterRealtimeFailure
+ createRealtimeRefreshGate,startRealtimeAuthHandshake,shouldRefreshChatAfterRealtimeFailure
 } from '../lib/chat-realtime-status.ts';
 
 const load=path=>readFileSync(new URL('../'+path,import.meta.url),'utf8');
@@ -29,6 +29,18 @@ function fakeScheduler(){
  };
 }
 
+test('Realtime auth handshake sends synchronous throws to the fallback exactly once',()=>{
+ let authorized=0;
+ let failed=0;
+ startRealtimeAuthHandshake(
+  ()=>{throw new Error('synthetic synchronous auth failure');},
+  ()=>authorized++,
+  ()=>failed++
+ );
+ assert.equal(authorized,0);
+ assert.equal(failed,1);
+});
+
 test('Realtime channel failures trigger an immediate HTTP reconciliation',()=>{
  for(const status of ['CHANNEL_ERROR','TIMED_OUT','CLOSED'])assert.equal(shouldRefreshChatAfterRealtimeFailure(status),true,status);
  for(const status of ['SUBSCRIBED','SUBSCRIBING','JOINING','unknown'])assert.equal(shouldRefreshChatAfterRealtimeFailure(status),false,status);
@@ -39,6 +51,8 @@ test('direct and group subscriptions wake the RLS-protected refresh on failure',
  const group=load('lib/group-realtime.ts');
  assert.match(direct,/if\(shouldRefreshChatAfterRealtimeFailure\(status\)\)changed\(\)/);
  assert.match(group,/if\(shouldRefreshChatAfterRealtimeFailure\(status\)\)changed\(\)/);
+ assert.match(direct,/startRealtimeAuthHandshake\(/);
+ assert.match(group,/startRealtimeAuthHandshake\(/);
  assert.match(direct,/if\(!stopped\)refreshGate\.trigger\(\)/);
  assert.match(group,/if\(!disposed\)refreshGate\.trigger\(\)/);
  assert.match(direct,/if\(status==='SUBSCRIBED'\)changed\(\)/);
