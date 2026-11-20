@@ -4,6 +4,7 @@ import {imageUrl} from '@/lib/social';
 import FloatingActionMenu from '@/components/FloatingActionMenu';
 import StatusEmoji from '@/components/StatusEmoji';
 import type {ChatPreview,DirectChat,Profile} from '@/lib/supabase-rest';
+import {formatUnreadBadge} from '@/lib/unread-count.mjs';
 
 type Row={chat:DirectChat;other:Profile|null;preview:ChatPreview|null;previewUnavailable?:boolean};
 type Props={
@@ -36,16 +37,17 @@ function timeLabel(input:string|null){
 export default function ChatInboxRow({row,currentUserId,active,selectionMode=false,selectedForBulk=false,isSavedContact=false,isBlocked=false,draft='',onOpen,onContactAction,onBlockAction,onAction}:Props){
  const {chat,other,preview}=row;
  const pinned=Boolean(chat.pinned_for?.includes(currentUserId));
- const unread=Math.max(0,Number(preview?.unread_count||0));
+ const unreadBadge=formatUnreadBadge(preview?.unread_count);
  const previewText=preview?.last_body?.trim()||(row.previewUnavailable?'Не удалось обновить сообщения':'Начало переписки');
  const draftText=draft.trim().replace(/\s+/g,' ').slice(0,110);
  const outgoing=preview?.last_sender_id===currentUserId;
  const lastText=outgoing?'Вы: '+previewText:previewText;
  const name=other?.display_name||other?.username||'Собеседник';
  const stamp=timeLabel(preview?.last_created_at||null);
+ const unreadDescriptionId=unreadBadge?`direct-unread-${chat.id}`:undefined;
  return <div className={'chat-row-wrap ik-inbox-row'+(active?' active':'')+(selectionMode?' ik-chat-selecting':'')}>
    {selectionMode&&<span className={'ik-chat-checkbox'+(selectedForBulk?' checked':'')} aria-hidden="true">{selectedForBulk?'✓':''}</span>}
-   <button type="button" className={'chat-item telegram-chat-row'+(active?' active':'')} onClick={onOpen} aria-label={(selectionMode?'Выбрать чат с ':'Открыть чат с ')+name} aria-pressed={selectionMode?selectedForBulk:undefined}>
+   <button type="button" className={'chat-item telegram-chat-row'+(active?' active':'')} onClick={onOpen} aria-label={(selectionMode?'Выбрать чат с ':'Открыть чат с ')+name} aria-pressed={selectionMode?selectedForBulk:undefined} aria-describedby={unreadDescriptionId}>
      <span className="contact-avatar">{imageUrl(other?.avatar_path)?<img className="avatar-image" src={imageUrl(other?.avatar_path)||''} alt=""/>:name.slice(0,1).toUpperCase()}</span>
      <span className="contact-info">
        <span className="ik-chat-title"><strong className="ik-name-with-status"><span>{name}</span><StatusEmoji index={other?.status_emoji} decorative/></strong>{pinned&&<span className="ik-pin-mark" title="Закреплён"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m15 3 6 6-3 1-3 3-4-4 3-3zM9 11 3 21l10-6M9 11l4 4"/></svg></span>}</span>
@@ -53,7 +55,7 @@ export default function ChatInboxRow({row,currentUserId,active,selectionMode=fal
      </span>
      <span className="ik-chat-meta">
        {stamp&&<time dateTime={preview?.last_created_at||undefined}>{stamp}</time>}
-       {unread>0&&<span className="ik-unread-count" aria-label={'Непрочитанных: '+unread}>{unread>99?'99+':unread}</span>}
+       {unreadBadge&&<><span className="ik-unread-count" aria-hidden="true">{unreadBadge.visible}</span><span id={unreadDescriptionId} className="ik-visually-hidden">{unreadBadge.ariaLabel}</span></>}
      </span>
    </button>
    {!selectionMode&&<FloatingActionMenu
