@@ -3,8 +3,9 @@
  * Intl.Segmenter provides full extended-grapheme segmentation where available;
  * the fallback keeps common combining, flag, modifier, ZWJ and Hangul sequences intact.
  */
+type GraphemeSegment = { segment: string; index: number };
 type GraphemeSegmenter = {
-  segment(value: string): Iterable<{ segment: string }>;
+  segment(value: string): Iterable<GraphemeSegment>;
 };
 type GraphemeSegmenterConstructor = new (
   locales?: string | string[],
@@ -149,15 +150,18 @@ function fallbackGraphemeSegments(value: string): string[] {
   return segments;
 }
 
-export function truncatePreviewText(
+export function slicePreviewText(
   value: string,
+  startCodeUnit: number,
   maxCodeUnits = CHAT_PREVIEW_MAX_CODE_UNITS
 ): string {
+  const start = Number.isFinite(startCodeUnit)
+    ? Math.max(0, Math.floor(startCodeUnit))
+    : 0;
   const limit = Number.isFinite(maxCodeUnits)
     ? Math.max(0, Math.floor(maxCodeUnits))
     : CHAT_PREVIEW_MAX_CODE_UNITS;
-  if (limit === 0 || value.length === 0) return "";
-  if (value.length <= limit) return value;
+  if (limit === 0 || value.length === 0 || start >= value.length) return "";
 
   const Segmenter = typeof Intl === "undefined"
     ? undefined
@@ -167,7 +171,14 @@ export function truncatePreviewText(
     try {
       let result = "";
       let length = 0;
+      let started = false;
       for (const item of new Segmenter(undefined, { granularity: "grapheme" }).segment(value)) {
+        const segmentStart = item.index;
+        const segmentEnd = segmentStart + item.segment.length;
+        if (!started) {
+          if (segmentEnd <= start || segmentStart < start) continue;
+          started = true;
+        }
         if (length + item.segment.length > limit) break;
         result += item.segment;
         length += item.segment.length;
@@ -180,10 +191,26 @@ export function truncatePreviewText(
 
   let result = "";
   let length = 0;
+  let offset = 0;
+  let started = false;
   for (const segment of fallbackGraphemeSegments(value)) {
+    const segmentStart = offset;
+    const segmentEnd = segmentStart + segment.length;
+    offset = segmentEnd;
+    if (!started) {
+      if (segmentEnd <= start || segmentStart < start) continue;
+      started = true;
+    }
     if (length + segment.length > limit) break;
     result += segment;
     length += segment.length;
   }
   return result;
+}
+
+export function truncatePreviewText(
+  value: string,
+  maxCodeUnits = CHAT_PREVIEW_MAX_CODE_UNITS
+): string {
+  return slicePreviewText(value, 0, maxCodeUnits);
 }
