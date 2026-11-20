@@ -5,9 +5,9 @@ export type GroupMessage={id:string;group_id:string;sender_id:string;body:string
 export type GroupOverview={group_id:string;last_body:string|null;last_created_at:string|null;unread_count:number;member_count:number};
 async function request<T>(
  token:string,path:string,method='GET',body?:unknown,
- extraHeaders:Record<string,string>={},timeout=method==='GET'
+ extraHeaders:Record<string,string>={},timeout=method==='GET',signal?:AbortSignal
 ):Promise<T>{
- const requestSignal=timeout?createHttpRequestSignal():null;
+ const requestSignal=timeout?createHttpRequestSignal(signal):null;
  try{
   const res=await fetch(apiUrl+path,{method,headers:{apikey:key,Authorization:'Bearer '+token,'Content-Type':'application/json',...(method==='POST'?{Prefer:'return=representation'}:{}),...extraHeaders},body:body===undefined?undefined:JSON.stringify(body),cache:'no-store',signal:requestSignal?.signal});
   const data=await res.json().catch(()=>null);
@@ -20,9 +20,9 @@ async function request<T>(
 export async function createGroup(token:string,title:string,ids:string[]){return request<string>(token,'/rest/v1/rpc/create_group_chat','POST',{p_title:title,p_members:ids});}
 export async function listGroups(token:string){return request<Group[]>(token,'/rest/v1/group_chats?select=*&order=created_at.desc&limit=100');}
 export async function groupMembers(token:string,id:string){return request<{group_id:string;user_id:string}[]>(token,'/rest/v1/group_members?select=group_id,user_id&group_id=eq.'+encodeURIComponent(id));}
-export async function groupMessages(token:string,id:string){
+export async function groupMessages(token:string,id:string,signal?:AbortSignal){
  // Fetch the newest page, then display it chronologically.
- const latest=await request<GroupMessage[]>(token,'/rest/v1/group_messages?select=*&group_id=eq.'+encodeURIComponent(id)+'&order=created_at.desc,id.desc&limit=150');
+ const latest=await request<GroupMessage[]>(token,'/rest/v1/group_messages?select=*&group_id=eq.'+encodeURIComponent(id)+'&order=created_at.desc,id.desc&limit=150','GET',undefined,{},true,signal);
  return latest.reverse();
 }
 const UUID=/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
