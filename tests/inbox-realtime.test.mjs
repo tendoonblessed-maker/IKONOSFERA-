@@ -1,11 +1,51 @@
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
 import {readFileSync} from 'node:fs';
+import vm from 'node:vm';
+import ts from 'typescript';
 import {isLatestAccountSnapshot} from '../lib/inbox-snapshot.ts';
 
 const load=path=>readFileSync(new URL('../'+path,import.meta.url),'utf8');
 const OWNER='11111111-1111-4111-8111-111111111111';
 const OTHER='22222222-2222-4222-8222-222222222222';
+
+const USER=OWNER;
+const TOKEN='synthetic-user-jwt';
+const REALTIME_SOURCE=load('lib/inbox-realtime.ts');
+const REALTIME_COMPILED=ts.transpileModule(REALTIME_SOURCE,{compilerOptions:{
+ module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022
+}}).outputText;
+
+function createRealtimeHarness(){
+ const registrations=[];
+ const changes=[];
+ const channel={
+  on(_event,config,callback){registrations.push({config,callback});return this;},
+  subscribe(){return this;}
+ };
+ const client={
+  channel(name){assert.equal(name,'inbox-db:'+USER);return channel;},
+  realtime:{setAuth:()=>Promise.resolve(),disconnect(){}},
+  removeChannel:()=>Promise.resolve('ok')
+ };
+ const exports={};
+ vm.runInNewContext(REALTIME_COMPILED,{
+  exports,
+  process:{env:{NEXT_PUBLIC_SUPABASE_ANON_KEY:'public-test-key'}},
+  window:{},Promise,Error,
+  require(specifier){
+   if(specifier==='@supabase/supabase-js')return {createClient:()=>client};
+   if(specifier==='./supabase-rest')return {apiUrl:'https://unit.test',backendReady:true};
+   throw new Error('Unexpected module: '+specifier);
+  }
+ },{timeout:1000,filename:'lib/inbox-realtime.ts'});
+ const unsubscribe=exports.subscribeInboxChanges(TOKEN,USER,kind=>changes.push(kind));
+ return {registrations,changes,unsubscribe};
+}
+
+async function flushRealtimeMicrotasks(){
+ for(let i=0;i<6;i++)await Promise.resolve();
+}
 
 test('a stale HTTP snapshot cannot overwrite a newer Realtime inbox refresh',()=>{
  assert.equal(isLatestAccountSnapshot(10,11,OWNER,OWNER),false);
@@ -37,10 +77,47 @@ test('inbox Realtime only wakes RLS-backed server fetches',()=>{
  assert.match(rt,/table:'messages',event:'INSERT'/);
  assert.match(rt,/table:'messages',event:'UPDATE'/);
  assert.match(rt,/table:'group_messages',event:'INSERT'/);
+ assert.match(rt,/table:'group_messages',event:'UPDATE'/);
  assert.match(rt,/if\(status==='SUBSCRIBED'\)\{direct\(\);group\(\);\}/);
  assert.match(rt,/client\.removeChannel\(channel\)/);
  assert.match(rt,/client\.realtime\.disconnect\(\)/);
  assert.doesNotMatch(rt,/\.from\('messages'\)|\.from\('group_messages'\)|payload\.new|service_role/i);
+});
+
+test('a group message UPDATE wakes only the group preview refresh and is ignored after cleanup',async()=>{
+ const h=createRealtimeHarness();
+ await flushRealtimeMicrotasks();
+ const updates=h.registrations.filter(item=>item.config.schema==='public'
+  &&item.config.table==='group_messages'&&item.config.event==='UPDATE');
+ assert.equal(updates.length,1);
+ updates[0].callback();
+ assert.deepEqual(h.changes,['group']);
+ h.unsubscribe();
+ updates[0].callback();
+ assert.deepEqual(h.changes,['group'],'disposed subscriptions ignore late Realtime callbacks');
+});
+
+test('inbox subscriptions exclude DELETE and wildcard events because DELETE is not RLS-filtered',async()=>{
+ const h=createRealtimeHarness();
+ await flushRealtimeMicrotasks();
+ const subscribed=h.registrations.map(({config})=>config.table+':'+config.event).sort();
+ assert.deepEqual(subscribed,[
+  'group_messages:INSERT',
+  'group_messages:UPDATE',
+  'messages:INSERT',
+  'messages:UPDATE'
+ ]);
+ assert.ok(h.registrations.every(({config})=>config.event!=='DELETE'&&config.event!=='*'));
+ h.unsubscribe();
+});
+
+test('group inbox previews refresh after edits without consuming Realtime payloads',()=>{
+ const rt=load('lib/inbox-realtime.ts');
+ assert.match(rt,/\.on\('postgres_changes',\{schema:'public',table:'group_messages',event:'INSERT'\},group\)/);
+ assert.match(rt,/\.on\('postgres_changes',\{schema:'public',table:'group_messages',event:'UPDATE'\},group\)/);
+ const shell=load('components/AppShell.tsx');
+ assert.match(shell,/if\(kind==='direct'\)pendingDirect=true;\s*else pendingGroup=true;/);
+ assert.match(shell,/listGroupOverviews\(token\)\.then\(summaries=>/);
 });
 
 test('updates to inbox and group unread badges are debounced and network-resilient',()=>{

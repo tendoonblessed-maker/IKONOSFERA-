@@ -15,6 +15,11 @@ export type InboxChangeKind='direct'|'group';
  *
  * Only subscribe while signed in. No secret key, persistent auth session,
  * WebSocket payload rendering, or background notification permission.
+ *
+ * DELETE events are deliberately excluded: Supabase Realtime does not apply
+ * RLS to DELETE, so even an ignored callback could reveal deletion activity
+ * from unrelated conversations. The existing RLS-backed HTTP polling path
+ * reconciles deletions without exposing those events.
  */
 export function subscribeInboxChanges(
  token:string,
@@ -32,10 +37,14 @@ export function subscribeInboxChanges(
 
  void client.realtime.setAuth(token).then(()=>{
   if(disposed)return;
+  // Keep this explicit INSERT/UPDATE allowlist; never use event:'*' here.
   channel
    .on('postgres_changes',{schema:'public',table:'messages',event:'INSERT'},direct)
    .on('postgres_changes',{schema:'public',table:'messages',event:'UPDATE'},direct)
    .on('postgres_changes',{schema:'public',table:'group_messages',event:'INSERT'},group)
+   // Editing the latest group message changes its inbox preview too. Treat
+   // UPDATE as a wake-up hint and re-read the RLS-scoped overview over HTTPS.
+   .on('postgres_changes',{schema:'public',table:'group_messages',event:'UPDATE'},group)
    .subscribe(status=>{
     // A reconnect can miss inserts while offline: resynchronize both lists.
     if(status==='SUBSCRIBED'){direct();group();}
