@@ -14,16 +14,35 @@ function row(id,created_at=stamp,extra={}){
 }
 const id=(n)=>n.toString(16).padStart(8,'0')+'-1111-4111-8111-111111111111';
 const read=path=>readFileSync(new URL('../'+path,import.meta.url),'utf8');
-function setup(handler=()=>({ok:true,json:async()=>[]})){
+function setup(handler=()=>({ok:true,json:async()=>[]}),{abortSignalApi=AbortSignal,autoRunRetryTimers=true}={}){
  const source=read('lib/group-pagination.ts');
  const compiled=ts.transpileModule(source,{
   compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}
  }).outputText;
- const calls=[];
+ const calls=[],delays=[],deadlines=[],cleared=[],pendingDeadlines=new Map(),pendingRetries=new Map();
+ let timerId=0;
+ const setTimer=(callback,delay)=>{
+  const id=++timerId;
+  if(delay===18000){
+   deadlines.push(delay);
+   pendingDeadlines.set(id,callback);
+  }else{
+   delays.push(delay);
+   if(autoRunRetryTimers)callback();
+   else pendingRetries.set(id,callback);
+  }
+  return id;
+ };
+ const clearTimer=id=>{
+  cleared.push(id);
+  pendingDeadlines.delete(id);
+  pendingRetries.delete(id);
+ };
  const exports={};
  const context={
-  exports,URLSearchParams,URL,AbortSignal,
+  exports,URLSearchParams,URL,AbortSignal:abortSignalApi,AbortController,
   process:{env:{NEXT_PUBLIC_SUPABASE_ANON_KEY:'public-test'}},
+  setTimeout:setTimer,clearTimeout:clearTimer,
   fetch:async(url,options)=>{
    calls.push({url,options});
    return handler(url,options,calls.length);
@@ -34,9 +53,32 @@ function setup(handler=()=>({ok:true,json:async()=>[]})){
   }
  };
  vm.runInNewContext(compiled,context,{timeout:2000,filename:'group-pagination.cjs'});
- return {api:exports,calls};
+ return {
+  api:exports,calls,delays,deadlines,cleared,pendingDeadlines,pendingRetries,
+  runDeadline(){
+   const entry=pendingDeadlines.entries().next().value;
+   if(!entry)return false;
+   const [id,callback]=entry;
+   pendingDeadlines.delete(id);
+   callback();
+   return true;
+  },
+  runRetry(){
+   const entry=pendingRetries.entries().next().value;
+   if(!entry)return false;
+   const [id,callback]=entry;
+   pendingRetries.delete(id);
+   callback();
+   return true;
+  }
+ };
 }
-const success=data=>({ok:true,json:async()=>data});
+const success=data=>({ok:true,status:200,json:async()=>data});
+const failure=(status,retryAfter=null)=>({
+ ok:false,status,
+ headers:{get:name=>name.toLowerCase()==='retry-after'?retryAfter:null},
+ json:async()=>({message:'private server detail'})
+});
 
 test('group history keyset cursor queries one group with timestamp + UUID tie breaker',()=>{
  const {api}=setup();
@@ -65,6 +107,15 @@ test('cursor accepts valid 6-digit microsecond timestamps and rejects invalid fi
  assert.throws(()=>api.olderGroupMessagesPath(GROUP,row('not-uuid')),/курсор/);
 });
 
+test('Retry-After parser accepts delta-seconds and HTTP dates but rejects invalid values',()=>{
+ const {api}=setup();
+ assert.equal(api.parseGroupRetryAfter('2',1000),2000);
+ assert.equal(api.parseGroupRetryAfter(new Date(5000).toUTCString(),1000),4000);
+ assert.equal(api.parseGroupRetryAfter(new Date(500).toUTCString(),1000),0);
+ assert.equal(api.parseGroupRetryAfter('not-a-date',1000),null);
+ assert.equal(api.parseGroupRetryAfter('9007199254740992',1000),null);
+});
+
 test('older page uses signed-in user JWT, strict no-store, bounded limit and server RLS',async()=>{
  const old=[row(id(4)),row(id(3)),row(id(2))];
  const {api,calls}=setup(()=>success(old));
@@ -77,6 +128,147 @@ test('older page uses signed-in user JWT, strict no-store, bounded limit and ser
  assert.ok(calls[0].options.signal instanceof AbortSignal);
  assert.deepEqual(Array.from(page.messages,x=>x.id),[id(2),id(3),id(4)]);
  assert.equal(page.hasMore,false);
+});
+
+test('older-page deadline works without AbortSignal.timeout and is cleared after the body is read',async()=>{
+ const {api,calls,deadlines,cleared,pendingDeadlines}=setup(()=>success([row(id(4))]),{abortSignalApi:{}});
+ const page=await api.fetchOlderGroupMessages('jwt',GROUP,row(id(5)));
+ assert.equal(calls.length,1);
+ assert.equal(calls[0].options.signal.aborted,false);
+ assert.deepEqual(deadlines,[18000]);
+ assert.equal(pendingDeadlines.size,0,'the deadline is disposed after response JSON is consumed');
+ assert.equal(cleared.length,1);
+ assert.equal(page.messages[0].id,id(4));
+ assert.doesNotMatch(read('lib/group-pagination.ts'),/AbortSignal\.timeout/);
+});
+
+test('portable deadline also covers a stalled JSON body and retries only once',async()=>{
+ const {api,calls,deadlines,delays,cleared,runDeadline}=setup((_url,options,attempt)=>{
+  if(attempt===1){
+   return {
+    ok:true,status:200,
+    json:()=>new Promise((_resolve,reject)=>{
+     options.signal.addEventListener('abort',()=>reject(Error('body aborted')),{once:true});
+    })
+   };
+  }
+  return success([row(id(4))]);
+ },{abortSignalApi:{}});
+ const pending=api.fetchOlderGroupMessages('jwt',GROUP,row(id(5)));
+ await new Promise(resolve=>setImmediate(resolve));
+ assert.equal(calls.length,1);
+ assert.equal(calls[0].options.signal.aborted,false);
+ assert.equal(runDeadline(),true);
+ const page=await pending;
+ assert.equal(calls.length,2);
+ assert.equal(calls[0].options.signal.aborted,true);
+ assert.equal(calls[1].options.signal.aborted,false);
+ assert.deepEqual(deadlines,[18000,18000]);
+ assert.deepEqual(delays,[350]);
+ assert.equal(cleared.length,2);
+ assert.equal(page.messages[0].id,id(4));
+});
+
+test('one transient 503 retries the identical cursor and honors Retry-After',async()=>{
+ const old=[row(id(4)),row(id(3)),row(id(2))];
+ const {api,calls,delays}=setup((_url,_options,attempt)=>
+  attempt===1?failure(503,'1'):success(old));
+ const page=await api.fetchOlderGroupMessages('jwt',GROUP,row(id(5)));
+ assert.equal(calls.length,2);
+ assert.equal(calls[0].url,calls[1].url,'retry must use the same stable keyset cursor');
+ assert.deepEqual(delays,[1000]);
+ assert.deepEqual(Array.from(page.messages,x=>x.id),[id(2),id(3),id(4)]);
+ assert.equal(page.hasMore,false);
+});
+
+test('429 with a short Retry-After retries once, while a long rate limit stays manual',async()=>{
+ const old=[row(id(4))];
+ const retryable=setup((_url,_options,attempt)=>
+  attempt===1?failure(429,'2'):success(old));
+ const page=await retryable.api.fetchOlderGroupMessages('jwt',GROUP,row(id(5)));
+ assert.equal(retryable.calls.length,2);
+ assert.deepEqual(retryable.delays,[2000]);
+ assert.equal(page.messages.length,1);
+
+ const deferred=setup(()=>failure(429,'10'));
+ await assert.rejects(
+  ()=>deferred.api.fetchOlderGroupMessages('jwt',GROUP,row(id(5))),
+  /временно ограничил загрузку истории/
+ );
+ assert.equal(deferred.calls.length,1,'do not retry before a long server rate limit expires');
+ assert.deepEqual(deferred.delays,[]);
+});
+
+test('transient fetch network errors retry once but aborts and permanent HTTP errors do not',async()=>{
+ const recovered=setup((_url,_options,attempt)=>{
+  if(attempt===1)throw new TypeError('network unavailable');
+  return success([row(id(4))]);
+ });
+ const page=await recovered.api.fetchOlderGroupMessages('jwt',GROUP,row(id(5)));
+ assert.equal(page.messages.length,1);
+ assert.equal(recovered.calls.length,2);
+ assert.deepEqual(recovered.delays,[350]);
+
+ const forbidden=setup(()=>failure(403));
+ await assert.rejects(()=>forbidden.api.fetchOlderGroupMessages('jwt',GROUP,row(id(5))),/Не удалось загрузить ранние сообщения/);
+ assert.equal(forbidden.calls.length,1);
+ assert.deepEqual(forbidden.delays,[]);
+
+ const aborted=setup(()=>{
+  const error=new Error('cancelled');
+  error.name='AbortError';
+  throw error;
+ });
+ await assert.rejects(()=>aborted.api.fetchOlderGroupMessages('jwt',GROUP,row(id(5))),/Проверьте соединение/);
+ assert.equal(aborted.calls.length,1);
+ assert.deepEqual(aborted.delays,[]);
+});
+
+test('caller abort prevents a request when the signal is already cancelled',async()=>{
+ const controller=new AbortController();
+ controller.abort();
+ const {api,calls}=setup();
+ await assert.rejects(
+  ()=>api.fetchOlderGroupMessages('jwt',GROUP,row(id(5)),controller.signal),
+  error=>error?.name==='AbortError'
+ );
+ assert.equal(calls.length,0);
+});
+
+test('caller abort cancels an in-flight page request without retrying',async()=>{
+ const controller=new AbortController();
+ const {api,calls,deadlines,cleared}=setup((_url,options)=>new Promise((_resolve,reject)=>{
+  options.signal.addEventListener('abort',()=>{
+   const error=new Error('request cancelled');
+   error.name='AbortError';
+   reject(error);
+  },{once:true});
+ }));
+ const pending=api.fetchOlderGroupMessages('jwt',GROUP,row(id(5)),controller.signal);
+ await new Promise(resolve=>setImmediate(resolve));
+ assert.equal(calls.length,1);
+ controller.abort();
+ await assert.rejects(pending,error=>error?.name==='AbortError');
+ assert.equal(calls.length,1,'caller cancellation must never trigger an automatic retry');
+ assert.deepEqual(deadlines,[18000]);
+ assert.equal(cleared.length,1,'the per-attempt deadline is released after cancellation');
+});
+
+test('caller abort cancels retry backoff and prevents the second request',async()=>{
+ const controller=new AbortController();
+ const {api,calls,delays,pendingRetries,cleared}=setup(
+  ()=>failure(503),{autoRunRetryTimers:false}
+ );
+ const pending=api.fetchOlderGroupMessages('jwt',GROUP,row(id(5)),controller.signal);
+ await new Promise(resolve=>setImmediate(resolve));
+ assert.equal(calls.length,1);
+ assert.deepEqual(delays,[350]);
+ assert.equal(pendingRetries.size,1);
+ controller.abort();
+ await assert.rejects(pending,error=>error?.name==='AbortError');
+ assert.equal(calls.length,1,'a cancelled backoff must not issue a second HTTP request');
+ assert.equal(pendingRetries.size,0,'the retry timer must be cleared on abort');
+ assert.equal(cleared.length,2,'both the request deadline and retry timer are released');
 });
 
 test('extra row establishes hasMore but never overlaps next page boundary',async()=>{
@@ -92,10 +284,33 @@ test('extra row establishes hasMore but never overlaps next page boundary',async
  assert.ok(nextUrl.searchParams.get('or').includes('id.lt.'+id(11)));
 });
 
-test('return no foreign group rows even if a server response contains a stray row',async()=>{
- const {api}=setup(()=>success([row(id(3)),row(id(2),stamp,{group_id:OTHER})]));
- const page=await api.fetchOlderGroupMessages('jwt',GROUP,row(id(4)));
- assert.deepEqual(Array.from(page.messages,x=>x.id),[id(3)]);
+test('reject the whole older page when the server returns a foreign group row',async()=>{
+ const {api,calls}=setup(()=>success([row(id(3)),row(id(2),stamp,{group_id:OTHER})]));
+ await assert.rejects(()=>api.fetchOlderGroupMessages('jwt',GROUP,row(id(4))),/Не удалось загрузить ранние сообщения/);
+ assert.equal(calls.length,1,'an untrusted successful payload is not retried');
+});
+
+test('malformed and duplicate rows fail closed without returning a partial page',async()=>{
+ const malformed=setup(()=>success([row(id(3)),null]));
+ await assert.rejects(()=>malformed.api.fetchOlderGroupMessages('jwt',GROUP,row(id(4))),/Не удалось загрузить ранние сообщения/);
+ assert.equal(malformed.calls.length,1);
+ const duplicate=setup(()=>success([row(id(3)),row(id(3))]));
+ await assert.rejects(()=>duplicate.api.fetchOlderGroupMessages('jwt',GROUP,row(id(4))),/Не удалось загрузить ранние сообщения/);
+ assert.equal(duplicate.calls.length,1);
+});
+
+test('older page rejects rows at or newer than its cursor and non-descending responses',async()=>{
+ const cursor=row(id(4));
+ const overlaps=setup(()=>success([row(id(4))]));
+ await assert.rejects(()=>overlaps.api.fetchOlderGroupMessages('jwt',GROUP,cursor),/Не удалось загрузить ранние сообщения/);
+ const unordered=setup(()=>success([row(id(2)),row(id(3))]));
+ await assert.rejects(()=>unordered.api.fetchOlderGroupMessages('jwt',GROUP,cursor),/Не удалось загрузить ранние сообщения/);
+});
+
+test('older page rejects a response larger than its bounded request window',async()=>{
+ const oversized=Array.from({length:72},(_,i)=>row(id(200-i)));
+ const {api}=setup(()=>success(oversized));
+ await assert.rejects(()=>api.fetchOlderGroupMessages('jwt',GROUP,row(id(201))),/Не удалось загрузить ранние сообщения/);
 });
 
 test('cursor ordering handles identical milliseconds, microseconds and UUID ties',()=>{
@@ -134,8 +349,15 @@ test('realtime latest page retains paged earlier messages but removes deleted la
 test('group pagination UI restores the history scroll anchor and avoids account crossover',()=>{
  const panel=read('components/GroupPanel.tsx');
  const css=read('app/globals.css');
- assert.match(panel,/fetchOlderGroupMessages\(requestToken,groupId,oldest\)/);
- assert.match(panel,/prependOlderGroupMessages\(current,page.messages\)/);
+ assert.ok(panel.includes('olderAbortControllerRef=useRef<AbortController|null>(null)'));
+ assert.ok(panel.includes('fetchOlderGroupMessages(requestToken,groupId,oldest,controller.signal)'));
+ assert.ok(panel.includes('olderAbortControllerRef.current?.abort()'));
+ assert.ok(panel.includes('controller.signal.aborted'));
+ const contextReset=panel.slice(panel.indexOf('useEffect(()=>{',panel.indexOf('contextRef.current={')),panel.indexOf('// Mounting or switching accounts'));
+ assert.ok(contextReset.includes('return()=>{'));
+ assert.ok(contextReset.includes('olderRequestRef.current++'));
+ assert.ok(contextReset.includes('olderLoadingRef.current=false'));
+ assert.match(panel,/prependOlderGroupMessages\(current,page\.messages\)/);
  assert.match(panel,/preserveOlderGroupMessages\(current,msgs\)/);
  assert.match(panel,/snapshot\.top\+growth/);
  assert.match(panel,/snapshot\.groupId!==group\.id\|\|snapshot\.userId!==userId/);
@@ -147,6 +369,12 @@ test('group pagination UI restores the history scroll anchor and avoids account 
  assert.match(panel,/Показать более ранние сообщения/);
  assert.match(panel,/role="alert"/);
  assert.match(css,/\.ik-group-older-control button/);
+ const loadOlder=panel.slice(panel.indexOf('async function loadOlder'),panel.indexOf('useLayoutEffect(()=>{',panel.indexOf('async function loadOlder')));
+ assert.match(loadOlder,/if\(!page\.messages\.length\)[\s\S]*setHasOlder\(false\)/);
+ const catchBlock=loadOlder.slice(loadOlder.indexOf('}catch(e){'));
+ assert.doesNotMatch(catchBlock,/setHasOlder\(false\)/,
+  'transient failures must keep the older-page cursor available for manual retry');
+ assert.match(catchBlock,/setOlderError/);
 });
 
 test('paged history does not change message schema or database privileges',()=>{
@@ -155,4 +383,12 @@ test('paged history does not change message schema or database privileges',()=>{
  assert.match(groups,/order=created_at\.desc,id\.desc&limit=150/);
  assert.match(pagination,/const GROUP_/g);
  assert.doesNotMatch(pagination,/service_role|ALTER TABLE|GRANT |dangerouslySetInnerHTML/i);
+});
+
+test('message ordering accepts the minimal keyset cursor shape',()=>{
+ const {api}=setup();
+ const cursor={id:id(2),created_at:stamp};
+ const message=row(id(3),'2026-10-29T09:50:12.123457+00:00');
+ assert.ok(api.compareGroupMessages(cursor,message)<0);
+ assert.ok(api.compareGroupMessages(message,cursor)>0);
 });
