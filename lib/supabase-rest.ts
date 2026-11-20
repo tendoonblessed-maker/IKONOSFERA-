@@ -292,6 +292,17 @@ export async function uploadDirectMedia(token:string,chatId:string,userId:string
  if(!res.ok){const err=await res.json().catch(()=>null);throw Error(err?.message||err?.error||"Не удалось загрузить файл");}
  return {path,type:file.type.startsWith("image/")?"image":file.type.startsWith("video/")?"video":file.type.startsWith("audio/")?"audio":"file"};
 }
+/** Delete a private upload only after an explicit, non-timeout 4xx insert rejection.
+ * Network failures, 408/425/499, 5xx, and empty responses are ambiguous: the
+ * message row may already have committed, so deleting its media would break it.
+ */
+export function shouldCleanupDirectMediaUpload(error:unknown):boolean{
+ if(!error||typeof error!=='object')return false;
+ const status=(error as {status?:unknown}).status;
+ return typeof status==='number'&&Number.isInteger(status)
+  &&status>=400&&status<500&&status!==408&&status!==425&&status!==499;
+}
+
 export async function sendDirectMedia(token:string,chatId:string,userId:string,file:File,caption=""){
  const {path,type}=await uploadDirectMedia(token,chatId,userId,file);
  try{
@@ -302,7 +313,12 @@ export async function sendDirectMedia(token:string,chatId:string,userId:string,f
   if(!messages[0])throw Error("Медиа не отправлено");
   return messages[0];
  }catch(e){
-  await fetch(apiUrl+"/storage/v1/object/ikonosfera-direct-media/"+path,{method:"DELETE",headers:{apikey:anonKey,Authorization:"Bearer "+token}}).catch(()=>{});
+  // A network failure, timeout, empty representation, or 5xx can be ambiguous:
+  // PostgREST may have committed the message before the response was lost.
+  // Deleting the object in that case would leave a persisted message broken.
+  if(shouldCleanupDirectMediaUpload(e)){
+   await fetch(apiUrl+"/storage/v1/object/ikonosfera-direct-media/"+path,{method:"DELETE",headers:{apikey:anonKey,Authorization:"Bearer "+token}}).catch(()=>{});
+  }
   throw e;
  }
 }
