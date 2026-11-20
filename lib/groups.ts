@@ -1,14 +1,36 @@
 import {apiUrl} from '@/lib/supabase-rest';
 const key=process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY||'';
+const GROUP_REQUEST_TIMEOUT_MS=18_000;
 export type Group={id:string;owner_id:string;title:string;created_at:string};
 export type GroupMessage={id:string;group_id:string;sender_id:string;body:string;created_at:string};
 export type GroupOverview={group_id:string;last_body:string|null;last_created_at:string|null;unread_count:number;member_count:number};
+function createRequestDeadline(timeoutMs:number):{signal?:AbortSignal;dispose:()=>void}{
+ if(typeof AbortSignal!=='undefined'&&typeof AbortSignal.timeout==='function')
+  return {signal:AbortSignal.timeout(timeoutMs),dispose:()=>{}};
+ if(typeof AbortController==='undefined')return {dispose:()=>{}};
+ const controller=new AbortController();
+ const timer=setTimeout(()=>controller.abort(),timeoutMs);
+ return {signal:controller.signal,dispose:()=>clearTimeout(timer)};
+}
 async function request<T>(
  token:string,path:string,method='GET',body?:unknown,
- extraHeaders:Record<string,string>={},signal?:AbortSignal
+ extraHeaders:Record<string,string>={},signal?:AbortSignal,timeoutMs?:number
 ):Promise<T>{
- const res=await fetch(apiUrl+path,{method,headers:{apikey:key,Authorization:'Bearer '+token,'Content-Type':'application/json',...(method==='POST'?{Prefer:'return=representation'}:{}),...extraHeaders},body:body===undefined?undefined:JSON.stringify(body),cache:'no-store',signal:signal??(method==='GET'?AbortSignal.timeout(18000):undefined)});
- const data=await res.json().catch(()=>null);if(!res.ok)throw Error(data?.message||'Ошибка группы');return data as T;
+ const deadlineMs=timeoutMs??(method==='GET'?GROUP_REQUEST_TIMEOUT_MS:undefined);
+ const deadline=signal||deadlineMs===undefined?undefined:createRequestDeadline(deadlineMs);
+ const requestSignal=signal??deadline?.signal;
+ try{
+  const res=await fetch(apiUrl+path,{method,headers:{apikey:key,Authorization:'Bearer '+token,'Content-Type':'application/json',...(method==='POST'?{Prefer:'return=representation'}:{}),...extraHeaders},body:body===undefined?undefined:JSON.stringify(body),cache:'no-store',signal:requestSignal});
+  const data=await res.json().catch(error=>{
+   // A deadline can abort the response body after headers were received.
+   // Do not silently turn that interrupted read into a successful null result.
+   if(requestSignal?.aborted)throw error;
+   return null;
+  });
+  if(!res.ok)throw Error(data?.message||'Ошибка группы');return data as T;
+ }finally{
+  deadline?.dispose();
+ }
 }
 export async function createGroup(token:string,title:string,ids:string[]){return request<string>(token,'/rest/v1/rpc/create_group_chat','POST',{p_title:title,p_members:ids});}
 export async function listGroups(token:string){return request<Group[]>(token,'/rest/v1/group_chats?select=*&order=created_at.desc&limit=100');}
@@ -49,7 +71,7 @@ export async function sendGroupMessage(
  try{
   const rows=await request<GroupMessage[]>(token,path,'POST',{
    id:messageId,group_id:id,sender_id:userId,body:trimmed
-  },{Prefer:'resolution=ignore-duplicates,return=representation'},AbortSignal.timeout(18000));
+  },{Prefer:'resolution=ignore-duplicates,return=representation'},undefined,GROUP_REQUEST_TIMEOUT_MS);
   if(rows[0])return assertGroupMessage(rows[0],id,userId,trimmed,messageId);
   // On an existing id PostgREST returns [], so fetch its canonical row.
  }catch(error){postError=error;}
@@ -67,7 +89,9 @@ export async function sendGroupMessage(
 }
 
 export async function listGroupOverviews(token:string):Promise<GroupOverview[]>{
- return request<GroupOverview[]>(token,'/rest/v1/rpc/list_group_overviews','POST',{});
+ // This POST is a read-only RPC. Bound it explicitly without timing out
+ // non-idempotent group-creation writes that share the request helper.
+ return request<GroupOverview[]>(token,'/rest/v1/rpc/list_group_overviews','POST',{}, {},undefined,GROUP_REQUEST_TIMEOUT_MS);
 }
 export async function markGroupRead(token:string,id:string):Promise<void>{
  await request(token,'/rest/v1/rpc/mark_group_read','POST',{p_group_id:id});
