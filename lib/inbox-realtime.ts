@@ -42,8 +42,6 @@ export function subscribeInboxChanges(
    .on('postgres_changes',{schema:'public',table:'messages',event:'INSERT'},direct)
    .on('postgres_changes',{schema:'public',table:'messages',event:'UPDATE'},direct)
    .on('postgres_changes',{schema:'public',table:'group_messages',event:'INSERT'},group)
-   // Message edits and soft-deletes also change the latest group preview.
-   .on('postgres_changes',{schema:'public',table:'group_messages',event:'UPDATE'},group)
    .subscribe(status=>{
     // Reconcile after joins and every transport failure; HTTP/RLS remains authoritative.
     if(status==='SUBSCRIBED'||shouldRefreshInboxAfterRealtimeFailure(status))wakeBoth();
