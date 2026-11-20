@@ -35,6 +35,7 @@ export function subscribeGroupChanges(token:string,groupId:string,onChanged:()=>
      if(shouldRefreshChatAfterRealtimeFailure(status))changed();
     });
   },
+  // The periodic HTTPS refresh remains active; wake it immediately on auth failure.
   changed
  );
  return()=>{

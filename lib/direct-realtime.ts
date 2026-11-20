@@ -47,6 +47,7 @@ export function subscribeDirectChatChanges(
      if(shouldRefreshChatAfterRealtimeFailure(status))changed();
     });
   },
+  // The 6-second HTTP polling fallback remains active; wake it immediately on auth failure.
   changed
  );
 
