@@ -75,11 +75,41 @@ function hangulCanJoin(previous: number, current: number): boolean {
 }
 
 /** Best-effort fallback for browsers without Intl.Segmenter. */
+
+const INDIC_LINKER_CODE_POINTS = new Set([
+  0x094d, 0x09cd, 0x0a4d, 0x0acd, 0x0b4d, 0x0bcd,
+  0x0c4d, 0x0ccd, 0x0d4d, 0x0dca, 0x1039, 0x17d2
+]);
+
+const INDIC_CONSONANT_RANGES: ReadonlyArray<readonly [number, number]> = [
+  [0x0915, 0x0939], [0x0958, 0x095f], [0x0978, 0x097f],
+  [0x0995, 0x09b9], [0x09dc, 0x09df], [0x09f0, 0x09f1],
+  [0x0a15, 0x0a39], [0x0a59, 0x0a5e],
+  [0x0a95, 0x0ab9], [0x0af9, 0x0af9],
+  [0x0b15, 0x0b39], [0x0b5c, 0x0b5d], [0x0b5f, 0x0b5f],
+  [0x0b95, 0x0bb9],
+  [0x0c15, 0x0c39], [0x0c58, 0x0c5a],
+  [0x0c95, 0x0cb9], [0x0cdc, 0x0cde],
+  [0x0d15, 0x0d3a], [0x0d54, 0x0d56], [0x0d7a, 0x0d7f],
+  [0x0d9a, 0x0dc6],
+  [0x1000, 0x102a],
+  [0x1780, 0x17a2]
+];
+
+function isIndicLinker(codePoint: number): boolean {
+  return INDIC_LINKER_CODE_POINTS.has(codePoint);
+}
+
+function isIndicConsonant(codePoint: number): boolean {
+  return INDIC_CONSONANT_RANGES.some(([start, end]) => codePoint >= start && codePoint <= end);
+}
+
 function fallbackGraphemeSegments(value: string): string[] {
   const segments: string[] = [];
   let previousCodePoint: number | null = null;
   let regionalIndicatorRun = 0;
   let joinNext = false;
+  let indicLinkerPending = false;
 
   for (const point of value) {
     const codePoint = point.codePointAt(0)!;
@@ -88,13 +118,15 @@ function fallbackGraphemeSegments(value: string): string[] {
     const joinsCrLf = previousCodePoint === 0x000d && codePoint === 0x000a;
     const joinsRegionalIndicators = isRegionalIndicator(codePoint) && regionalIndicatorRun % 2 === 1;
     const joinsHangul = previousCodePoint !== null && hangulCanJoin(previousCodePoint, codePoint);
+    const joinsIndicConjunct = indicLinkerPending && isIndicConsonant(codePoint);
     const shouldJoin = segments.length > 0 && (joinsCrLf ||
       (!previousIsControl && !currentIsControl && (
         isFallbackExtend(point, codePoint) ||
         codePoint === 0x200d ||
         joinNext ||
         joinsRegionalIndicators ||
-        joinsHangul
+        joinsHangul ||
+        joinsIndicConjunct
       )));
 
     if (shouldJoin) segments[segments.length - 1] += point;
@@ -102,6 +134,11 @@ function fallbackGraphemeSegments(value: string): string[] {
 
     if (codePoint === 0x200d) joinNext = true;
     else if (joinNext) joinNext = false;
+
+    if (isIndicLinker(codePoint)) indicLinkerPending = true;
+    else if (joinsIndicConjunct || (!isFallbackExtend(point, codePoint) && codePoint !== 0x200d && codePoint !== 0x200c)) {
+      indicLinkerPending = false;
+    }
 
     if (isRegionalIndicator(codePoint)) regionalIndicatorRun += 1;
     else if (!isFallbackExtend(point, codePoint)) regionalIndicatorRun = 0;
