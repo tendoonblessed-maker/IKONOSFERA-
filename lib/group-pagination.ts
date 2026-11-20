@@ -78,7 +78,7 @@ export async function fetchOlderGroupMessages(
    signal:controller.signal
   });
   // Keep the deadline active through body consumption, not just response headers.
-  data:unknown=await response.json().catch(()=>null);
+  data=await response.json().catch(()=>null);
  }finally{
   clearTimeout(deadline);
  }
