@@ -268,7 +268,7 @@ test('caller abort cancels retry backoff and prevents the second request',async(
  await assert.rejects(pending,error=>error?.name==='AbortError');
  assert.equal(calls.length,1,'a cancelled backoff must not issue a second HTTP request');
  assert.equal(pendingRetries.size,0,'the retry timer must be cleared on abort');
- assert.equal(cleared.length,1);
+ assert.equal(cleared.length,2,'both the request deadline and retry timer are released');
 });
 
 test('extra row establishes hasMore but never overlaps next page boundary',async()=>{
