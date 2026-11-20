@@ -14,7 +14,7 @@ function row(id,created_at=stamp,extra={}){
 }
 const id=(n)=>n.toString(16).padStart(8,'0')+'-1111-4111-8111-111111111111';
 const read=path=>readFileSync(new URL('../'+path,import.meta.url),'utf8');
-function setup(handler=()=>({ok:true,json:async()=>[]})){
+function setup(handler=()=>({ok:true,json:async()=>[]}),scheduler={}){
  const source=read('lib/group-pagination.ts');
  const compiled=ts.transpileModule(source,{
   compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}
@@ -22,7 +22,9 @@ function setup(handler=()=>({ok:true,json:async()=>[]})){
  const calls=[];
  const exports={};
  const context={
-  exports,URLSearchParams,URL,AbortSignal,
+  exports,URLSearchParams,URL,AbortSignal,AbortController,
+  setTimeout:scheduler.setTimeout??setTimeout,
+  clearTimeout:scheduler.clearTimeout??clearTimeout,
   process:{env:{NEXT_PUBLIC_SUPABASE_ANON_KEY:'public-test'}},
   fetch:async(url,options)=>{
    calls.push({url,options});
@@ -77,6 +79,45 @@ test('older page uses signed-in user JWT, strict no-store, bounded limit and ser
  assert.ok(calls[0].options.signal instanceof AbortSignal);
  assert.deepEqual(Array.from(page.messages,x=>x.id),[id(2),id(3),id(4)]);
  assert.equal(page.hasMore,false);
+});
+
+test('older history uses a portable deadline and clears it after the response body is read',async()=>{
+ let cleared=false;
+ const {api,calls}=setup(()=>success([row(id(4))]),{
+  setTimeout(_callback,ms){assert.equal(ms,18000);return 17;},
+  clearTimeout(handle){assert.equal(handle,17);cleared=true;}
+ });
+ const page=await api.fetchOlderGroupMessages('jwt',GROUP,row(id(5)));
+ assert.equal(page.messages.length,1);
+ assert.ok(calls[0].options.signal instanceof AbortSignal);
+ assert.equal(calls[0].options.signal.aborted,false);
+ assert.equal(cleared,true);
+});
+
+test('older history deadline remains active while the response JSON body is pending',async()=>{
+ let fireDeadline;
+ let startedBody;
+ const bodyStarted=new Promise(resolve=>{startedBody=resolve;});
+ let cleared=false;
+ const {api,calls}=setup((url,options)=>({
+  ok:true,
+  json:()=>{
+   startedBody();
+   return new Promise((_resolve,reject)=>{
+    options.signal.addEventListener('abort',()=>reject(new Error('aborted')),{once:true});
+   });
+  }
+ }),{
+  setTimeout(callback,ms){assert.equal(ms,18000);fireDeadline=callback;return 23;},
+  clearTimeout(handle){assert.equal(handle,23);cleared=true;}
+ });
+ const pending=api.fetchOlderGroupMessages('jwt',GROUP,row(id(4)));
+ await bodyStarted;
+ assert.equal(calls[0].options.signal.aborted,false);
+ fireDeadline();
+ await assert.rejects(pending,/Не удалось загрузить ранние сообщения/);
+ assert.equal(calls[0].options.signal.aborted,true);
+ assert.equal(cleared,true);
 });
 
 test('extra row establishes hasMore but never overlaps next page boundary',async()=>{
