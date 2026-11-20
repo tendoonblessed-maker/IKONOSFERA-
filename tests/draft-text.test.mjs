@@ -31,7 +31,7 @@ test('a supplementary character is preserved when its full pair fits',()=>{
 });
 
 test('grapheme segmentation keeps combining marks, flags, modifiers and ZWJ emoji together',()=>{
- assert.equal(truncateDraftText('abc e\\u0301tail',5),'abc ');
+ assert.equal(truncateDraftText('abc e\u0301tail',5),'abc ');
  assert.equal(truncateDraftText('x🇪🇪y',3),'x');
  assert.equal(truncateDraftText('x👍🏽y',3),'x');
  assert.equal(truncateDraftText('ab👨‍👩‍👧‍👦z',6),'ab');
@@ -41,12 +41,14 @@ test('portable fallback preserves common grapheme clusters without Intl.Segmente
  const descriptor=Object.getOwnPropertyDescriptor(Intl,'Segmenter');
  try{
   Object.defineProperty(Intl,'Segmenter',{value:undefined,configurable:true,writable:true});
-  assert.equal(truncateDraftText('abc e\\u0301tail',5),'abc ');
+  assert.equal(truncateDraftText('abc e\u0301tail',5),'abc ');
   assert.equal(truncateDraftText('x🇪🇪y',3),'x');
   assert.equal(truncateDraftText('x👍🏽y',3),'x');
   assert.equal(truncateDraftText('ab👨‍👩‍👧‍👦z',6),'ab');
-  assert.equal(truncateDraftText('x\\u1100\\u1161\\u11a8y',2),'x');
-  assert.equal(truncateDraftText('x\\r\\ny',2),'x');
+  assert.equal(truncateDraftText('x\u1100\u1161\u11a8y',2),'x');
+  assert.equal(truncateDraftText('x\r\ny',2),'x');
+  assert.equal(truncateDraftText('a\u{1e944}b',1),'');
+  assert.equal(truncateDraftText('a\u{1e944}b',3),'a\u{1e944}');
  }finally{
   if(descriptor)Object.defineProperty(Intl,'Segmenter',descriptor);
   else delete Intl.Segmenter;
@@ -62,6 +64,7 @@ test('portable fallback keeps Indic virama conjuncts intact at draft boundaries'
   assert.equal(truncateDraftText('xক্কy',3),'x');
   assert.equal(truncateDraftText('xક્‍ષy',4),'x');
   assert.equal(truncateDraftText('xக்ஷy',3),'x');
+  assert.equal(truncateDraftText('xक्!y',3),'xक्');
  }finally{
   if(descriptor)Object.defineProperty(Intl,'Segmenter',descriptor);
   else delete Intl.Segmenter;
