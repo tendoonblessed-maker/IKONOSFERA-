@@ -215,8 +215,8 @@ export async function listProfiles(token: string, ids: string[]) {
 export const CHAT_MESSAGE_PAGE_SIZE=100;
 const CHAT_MESSAGE_COLUMNS='id,chat_id,sender_id,body,created_at,media_path,media_type,read_at,edited_at,deleted_for,deleted_for_everyone,reply_to_message_id';
 /** Newest page first. Sort ties by ID so pagination has a stable boundary. */
-export async function listMessages(token:string,chatId:string):Promise<ChatMessage[]>{
-  return http<ChatMessage[]>(`/rest/v1/messages?select=${CHAT_MESSAGE_COLUMNS}&chat_id=eq.${encodeURIComponent(chatId)}&order=created_at.desc,id.desc&limit=${CHAT_MESSAGE_PAGE_SIZE}`,{token});
+export async function listMessages(token:string,chatId:string,signal?:AbortSignal):Promise<ChatMessage[]>{
+  return http<ChatMessage[]>(`/rest/v1/messages?select=${CHAT_MESSAGE_COLUMNS}&chat_id=eq.${encodeURIComponent(chatId)}&order=created_at.desc,id.desc&limit=${CHAT_MESSAGE_PAGE_SIZE}`,{token,signal});
 }
 /** Older than the earliest loaded message; server RLS still checks membership. */
 export async function listOlderMessages(token:string,chatId:string,before:Pick<ChatMessage,'id'|'created_at'>):Promise<ChatMessage[]>{
