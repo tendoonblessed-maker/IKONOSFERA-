@@ -42,7 +42,7 @@ function setup(handler=()=>({ok:true,json:async()=>[]}),{abortSignalApi=AbortSig
  const context={
   exports,URLSearchParams,URL,AbortSignal:abortSignalApi,AbortController,
   process:{env:{NEXT_PUBLIC_SUPABASE_ANON_KEY:'public-test'}},
-  setTimeout:setTimer,clearTimeout,
+  setTimeout:setTimer,clearTimeout:clearTimer,
   fetch:async(url,options)=>{
    calls.push({url,options});
    return handler(url,options,calls.length);
