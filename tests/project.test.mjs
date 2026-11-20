@@ -511,7 +511,9 @@ test('group conversations always fetch newest messages and show real loading/err
  const ui=load('components/GroupPanel.tsx');
  assert.match(api,/order=created_at\.desc,id\.desc&limit=150/);
  assert.match(api,/return latest\.reverse\(\)/);
- assert.match(api,/signal:signal\?\?\(method==='GET'\?AbortSignal\.timeout\(18000\):undefined\)/);
+ assert.match(api,/const requestSignal=timeout\?createHttpRequestSignal\(signal\):null/);
+ assert.match(api,/signal:requestSignal\?\.signal/);
+ assert.match(api,/requestSignal\?\.dispose\(\)/);
  assert.ok(!api.includes('order=created_at.asc&limit=150'));
  assert.match(ui,/initialLoading,setInitialLoading/);
  assert.match(ui,/role="status" aria-label="Загружаем сообщения группы"/);
@@ -969,7 +971,7 @@ test('direct-chat search debounces and never renders old account results',()=>{
  assert.match(shell,/messageSearchRequestRef=useRef\(0\)/);
  assert.match(shell,/const requestId=\+\+messageSearchRequestRef\.current/);
  assert.match(shell,/chatContextGenerationRef\.current===generation&&selectedRef\.current===chatId/);
- assert.match(shell,/void searchDirectMessages\(token,chatId,term,offset\)/);
+ assert.match(shell,/void searchDirectMessages\(token,chatId,term,offset,controller\.signal\)/);
  assert.match(shell,/messageSearchPage===0\?320:0/);
  assert.match(shell,/setMessageSearchResults\(previous=>offset===0\?page/);
  assert.match(shell,/resetMessageSearch\(\)/);

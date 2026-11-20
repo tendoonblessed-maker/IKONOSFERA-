@@ -115,9 +115,9 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
   });
  },[token,group.id]);
 
- const refresh=useCallback(async()=>{
+ const refresh=useCallback(async(signal?:AbortSignal)=>{
   const requestId=++requestSequenceRef.current;
-  const msgs=await groupMessages(token,group.id);
+  const msgs=await groupMessages(token,group.id,signal);
   // When a slower poll finishes after a newer one, do not replace the newer
   // messages. The same guard applies after a quick group-switch/unmount.
   if(requestId!==requestSequenceRef.current
@@ -142,14 +142,18 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
   let inFlight=false;
   let queuedSync=false;
   let realtimeTimer:number|null=null;
+  let activeController:AbortController|null=null;
   setInitialLoading(true);
   const sync=()=>{
     if(cancelled||document.visibilityState==='hidden'||!navigator.onLine||browsingOlderRef.current)return;
     if(inFlight){queuedSync=true;return;}
     inFlight=true;
-    void refresh().then(()=>{if(!cancelled)setError('');}).catch(e=>{
-      if(!cancelled){setInitialLoading(false);setError(e instanceof Error?e.message:'Не удалось загрузить сообщения группы');}
+    const controller=new AbortController();
+    activeController=controller;
+    void refresh(controller.signal).then(()=>{if(!cancelled)setError('');}).catch(e=>{
+      if(!cancelled&&!controller.signal.aborted){setInitialLoading(false);setError(e instanceof Error?e.message:'Не удалось загрузить сообщения группы');}
     }).finally(()=>{
+      if(activeController===controller)activeController=null;
       inFlight=false;
       // A Realtime event arriving during an older GET must not be discarded.
       if(queuedSync&&!cancelled){queuedSync=false;sync();}
@@ -172,6 +176,7 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
   window.addEventListener('online',onOnline);
   return()=>{
     cancelled=true;
+    activeController?.abort();
     requestSequenceRef.current++;
     window.clearInterval(timer);
     if(realtimeTimer!==null)window.clearTimeout(realtimeTimer);
@@ -187,10 +192,11 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
   const term=normalizeGroupSearch(searchQuery);
   if(!searchOpen||term.length<2){setSearchLoading(false);setSearchError('');return;}
   let cancelled=false;
+  const controller=new AbortController();
   setSearchLoading(true);setSearchError('');
   const timeout=window.setTimeout(()=>{
    const requestGroup=group.id,requestOwner=userId,requestToken=token;
-   void searchGroupMessages(token,group.id,term,searchPage*GROUP_SEARCH_PAGE_SIZE)
+   void searchGroupMessages(token,group.id,term,searchPage*GROUP_SEARCH_PAGE_SIZE,controller.signal)
     .then(rows=>{
      if(cancelled||id!==searchRequestRef.current
         ||contextRef.current.groupId!==requestGroup
@@ -204,14 +210,14 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
       &&(searchPage+1)*GROUP_SEARCH_PAGE_SIZE<=GROUP_SEARCH_MAX_OFFSET);
     })
     .catch(e=>{
-     if(!cancelled&&id===searchRequestRef.current)
+     if(!cancelled&&id===searchRequestRef.current&&!controller.signal.aborted)
        setSearchError(e instanceof Error?e.message:'Ошибка поиска');
     })
     .finally(()=>{
      if(!cancelled&&id===searchRequestRef.current)setSearchLoading(false);
     });
   },searchPage===0?320:0);
-  return()=>{cancelled=true;searchRequestRef.current++;window.clearTimeout(timeout);};
+  return()=>{cancelled=true;searchRequestRef.current++;controller.abort();window.clearTimeout(timeout);};
  },[searchOpen,searchQuery,searchPage,searchRetry,group.id,userId,token]);
  function closeSearch(){searchRequestRef.current++;setSearchOpen(false);setSearchQuery('');
   setSearchResults([]);setSearchPage(0);setSearchError('');setSearchHasMore(false);

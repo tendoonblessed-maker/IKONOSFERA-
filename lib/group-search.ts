@@ -1,4 +1,4 @@
-import {apiUrl} from './supabase-rest';
+import {apiUrl,createHttpRequestSignal} from './supabase-rest';
 import type {GroupMessage} from './groups';
 
 const anonKey=process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY??'';
@@ -50,17 +50,22 @@ async function getRows(token:string,params:URLSearchParams):Promise<GroupMessage
 }
 
 export async function searchGroupMessages(
- token:string,groupId:string,query:string,offset:number
+ token:string,groupId:string,query:string,offset:number,signal?:AbortSignal
 ):Promise<GroupMessage[]>{
  const path=buildGroupSearchPath(groupId,query,offset);
- const res=await fetch(apiUrl+path,{
-  method:'GET',
-  headers:{apikey:anonKey,Authorization:'Bearer '+token},
-  cache:'no-store',signal:AbortSignal.timeout(18000)
- });
- const data=await res.json().catch(()=>null);
- if(!res.ok||!Array.isArray(data))throw Error('Не удалось выполнить поиск по группе.');
- return data as GroupMessage[];
+ const requestSignal=createHttpRequestSignal(signal);
+ try{
+  const res=await fetch(apiUrl+path,{
+   method:'GET',
+   headers:{apikey:anonKey,Authorization:'Bearer '+token},
+   cache:'no-store',signal:requestSignal.signal
+  });
+  const data=await res.json().catch(()=>null);
+  if(!res.ok||!Array.isArray(data))throw Error('Не удалось выполнить поиск по группе.');
+  return data as GroupMessage[];
+ }finally{
+  requestSignal.dispose();
+ }
 }
 
 /** Returns a bounded, chronologically sorted window around a search hit.

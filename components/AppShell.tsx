@@ -274,11 +274,12 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
     }
     const token=session.access_token;
     const generation=chatContextGenerationRef.current;
+    const controller=new AbortController();
     const belongs=()=>messageSearchRequestRef.current===requestId
       &&chatContextGenerationRef.current===generation&&selectedRef.current===chatId;
     setMessageSearchLoading(true);setMessageSearchError(false);
     const timer=window.setTimeout(()=>{
-      void searchDirectMessages(token,chatId,term,offset).then(matches=>{
+      void searchDirectMessages(token,chatId,term,offset,controller.signal).then(matches=>{
         if(!belongs())return;
         const page=matches.slice(0,DIRECT_MESSAGE_SEARCH_PAGE_SIZE);
         setMessageSearchOwner({chatId,userId,query:term});
@@ -288,12 +289,16 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
         setMessageSearchHasMore(matches.length>DIRECT_MESSAGE_SEARCH_PAGE_SIZE
           &&offset+DIRECT_MESSAGE_SEARCH_PAGE_SIZE<=600);
       }).catch(()=>{
-        if(belongs())setMessageSearchError(true);
+        if(belongs()&&!controller.signal.aborted)setMessageSearchError(true);
       }).finally(()=>{
-        if(belongs())setMessageSearchLoading(false);
+        if(belongs()&&!controller.signal.aborted)setMessageSearchLoading(false);
       });
     },messageSearchPage===0?320:0);
-    return()=>window.clearTimeout(timer);
+    return()=>{
+      window.clearTimeout(timer);
+      if(messageSearchRequestRef.current===requestId)messageSearchRequestRef.current++;
+      controller.abort();
+    };
   },[searchInConversation,messageSearch,messageSearchPage,messageSearchRetry,selected,session?.access_token,userId]);
 
   function resetMessageSearch(){
@@ -517,6 +522,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
     let inFlight=false;
     let queuedSync=false;
     let realtimeTimer:number|null=null;
+    let activeController:AbortController|null=null;
     const chatId=selected;
     const token=session.access_token;
     setChatLoad({id:chatId,status:'loading'});
@@ -536,8 +542,10 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
       // The 'online' listener below triggers an immediate retry.
       if(!navigator.onLine)return;
       inFlight=true;
+      const controller=new AbortController();
+      activeController=controller;
       try{
-        const messages=(await listMessages(token,chatId)).reverse();
+        const messages=(await listMessages(token,chatId,controller.signal)).reverse();
         if(cancelled)return;
         setChatMessages(current=>mergeConfirmedRecentPage(
           current,messages,CHAT_MESSAGE_PAGE_SIZE,confirmedMessagesRef.current,chatId,userId
@@ -555,11 +563,12 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
           void markChatRead(token,chatId).catch(()=>{});
         }
       }catch(e){
-        if(!cancelled&&first){
+        if(!cancelled&&!controller.signal.aborted&&first){
           setChatLoad({id:chatId,status:'error'});
           setError(userFacingError(e));
         }
       }finally{
+        if(activeController===controller)activeController=null;
         inFlight=false;
         // Never drop a Realtime hint just because an earlier GET is still
         // in flight. One extra request is enough for any number of hints.
@@ -586,7 +595,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
     document.addEventListener('visibilitychange',onVisible);
     window.addEventListener('online',onConnected);
     return()=>{
-      cancelled=true;window.clearInterval(timer);
+      cancelled=true;activeController?.abort();window.clearInterval(timer);
       if(realtimeTimer!==null)window.clearTimeout(realtimeTimer);
       unsubscribeRealtime();
       document.removeEventListener('visibilitychange',onVisible);

@@ -23,24 +23,56 @@ function ensureReady() { if (!backendReady) throw Error('Сервер пока �
 function headers(token?: string, extras?: Record<string,string>) {
   return { apikey: anonKey, Authorization: `Bearer ${token || anonKey}`, 'Content-Type': 'application/json', ...extras };
 }
-async function http<T>(path: string, options: { method?: string; token?: string; body?: unknown; extraHeaders?: Record<string,string> } = {}): Promise<T> {
+export function createHttpRequestSignal(external?:AbortSignal):{signal:AbortSignal;dispose:()=>void}{
+  // Compose caller cancellation and the request deadline with the portable
+  // AbortController API. AbortSignal.timeout/any are missing in older Safari
+  // and embedded Android WebViews.
+  const controller=new AbortController();
+  let timeoutId:ReturnType<typeof setTimeout>|null=null;
+  let disposed=false;
+  const abortFromExternal=()=>controller.abort();
+  const dispose=()=>{
+    if(disposed)return;
+    disposed=true;
+    if(timeoutId!==null){clearTimeout(timeoutId);timeoutId=null;}
+    external?.removeEventListener('abort',abortFromExternal);
+    controller.signal.removeEventListener('abort',dispose);
+  };
+  controller.signal.addEventListener('abort',dispose,{once:true});
+  if(external?.aborted)controller.abort();
+  else external?.addEventListener('abort',abortFromExternal,{once:true});
+  if(!disposed)timeoutId=setTimeout(()=>{
+    const reason=typeof DOMException==='function'
+      ?new DOMException('The operation timed out','TimeoutError')
+      :undefined;
+    controller.abort(reason);
+  },18000);
+  return {signal:controller.signal,dispose};
+}
+
+async function http<T>(path: string, options: { method?: string; token?: string; body?: unknown; extraHeaders?: Record<string,string>; signal?:AbortSignal } = {}): Promise<T> {
   ensureReady();
-  const response = await fetch(`${apiUrl}${path}`, {
-    method: options.method ?? 'GET',
-    headers: headers(options.token, options.extraHeaders),
-    body: options.body === undefined ? undefined : JSON.stringify(options.body),
-    cache: 'no-store',
-    // Fail visibly instead of showing a perpetual spinner during network stalls.
-    signal: AbortSignal.timeout(18000),
-  });
-  const raw = await response.text();
-  let value: unknown;
-  try { value = raw ? JSON.parse(raw) : null; } catch { value = raw; }
-  if (!response.ok) {
-    const error = value && typeof value === 'object' ? (value as { msg?: string; message?: string; error_description?: string }).message ?? (value as { msg?: string }).msg ?? (value as { error_description?: string }).error_description : null;
-    throw new SupabaseHttpError(error || `Запрос не выполнен (${response.status})`,response.status);
+  const request=createHttpRequestSignal(options.signal);
+  try{
+    const response = await fetch(`${apiUrl}${path}`, {
+      method: options.method ?? 'GET',
+      headers: headers(options.token, options.extraHeaders),
+      body: options.body === undefined ? undefined : JSON.stringify(options.body),
+      cache: 'no-store',
+      // Preserve the 18-second network bound while allowing obsolete UI reads to abort.
+      signal: request.signal,
+    });
+    const raw = await response.text();
+    let value: unknown;
+    try { value = raw ? JSON.parse(raw) : null; } catch { value = raw; }
+    if (!response.ok) {
+      const error = value && typeof value === 'object' ? (value as { msg?: string; message?: string; error_description?: string }).message ?? (value as { msg?: string }).msg ?? (value as { error_description?: string }).error_description : null;
+      throw new SupabaseHttpError(error || `Запрос не выполнен (${response.status})`,response.status);
+    }
+    return value as T;
+  }finally{
+    request.dispose();
   }
-  return value as T;
 }
 export function loadSession(): Session | null {
   if (typeof window === 'undefined') return null;
@@ -183,8 +215,8 @@ export async function listProfiles(token: string, ids: string[]) {
 export const CHAT_MESSAGE_PAGE_SIZE=100;
 const CHAT_MESSAGE_COLUMNS='id,chat_id,sender_id,body,created_at,media_path,media_type,read_at,edited_at,deleted_for,deleted_for_everyone,reply_to_message_id';
 /** Newest page first. Sort ties by ID so pagination has a stable boundary. */
-export async function listMessages(token:string,chatId:string):Promise<ChatMessage[]>{
-  return http<ChatMessage[]>(`/rest/v1/messages?select=${CHAT_MESSAGE_COLUMNS}&chat_id=eq.${encodeURIComponent(chatId)}&order=created_at.desc,id.desc&limit=${CHAT_MESSAGE_PAGE_SIZE}`,{token});
+export async function listMessages(token:string,chatId:string,signal?:AbortSignal):Promise<ChatMessage[]>{
+  return http<ChatMessage[]>(`/rest/v1/messages?select=${CHAT_MESSAGE_COLUMNS}&chat_id=eq.${encodeURIComponent(chatId)}&order=created_at.desc,id.desc&limit=${CHAT_MESSAGE_PAGE_SIZE}`,{token,signal});
 }
 /** Older than the earliest loaded message; server RLS still checks membership. */
 export async function listOlderMessages(token:string,chatId:string,before:Pick<ChatMessage,'id'|'created_at'>):Promise<ChatMessage[]>{
@@ -205,12 +237,12 @@ export async function listReplyTargets(token:string,chatId:string,ids:string[]):
 export type DirectMessageSearchResult=Pick<ChatMessage,'id'|'sender_id'|'body'|'created_at'>;
 export const DIRECT_MESSAGE_SEARCH_PAGE_SIZE=30;
 export async function searchDirectMessages(
- token:string,chatId:string,query:string,offset=0
+ token:string,chatId:string,query:string,offset=0,signal?:AbortSignal
 ):Promise<DirectMessageSearchResult[]>{
  const term=query.trim();
  if(term.length<2||term.length>120)return [];
  return http<DirectMessageSearchResult[]>('/rest/v1/rpc/search_direct_messages',{
-  token,method:'POST',body:{
+  token,method:'POST',signal,body:{
    p_chat_id:chatId,p_query:term,
    p_limit:DIRECT_MESSAGE_SEARCH_PAGE_SIZE+1,
    p_offset:Math.max(0,Math.min(600,Math.floor(offset)))

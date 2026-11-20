@@ -11,28 +11,46 @@ const ROW={id:UUID,group_id:GROUP,sender_id:OWNER,body:'Привет',created_at
 const success=data=>({ok:true,json:async()=>data});
 const response=(message)=>({ok:false,json:async()=>({message})});
 
-function setup(fetchHandler){
+function setup(fetchHandler,{abortSignalApi=AbortSignal}={}){
  const src=readFileSync(new URL('../lib/groups.ts',import.meta.url),'utf8');
  const compiled=ts.transpileModule(src,{
   compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}
  }).outputText;
  const exports={};
  const calls=[];
+ const requestSignals={created:0,disposed:0};
  const ctx={
   exports,
   require(name){
    assert.equal(name,'@/lib/supabase-rest');
-   return {apiUrl:'https://unit-test.invalid'};
+   return {
+    apiUrl:'https://unit-test.invalid',
+    createHttpRequestSignal(){
+     requestSignals.created++;
+     const controller=new AbortController();
+     const timeout=setTimeout(()=>controller.abort(),18000);
+     let disposed=false;
+     return {
+      signal:controller.signal,
+      dispose(){
+       if(disposed)return;
+       disposed=true;
+       clearTimeout(timeout);
+       requestSignals.disposed++;
+      }
+     };
+    }
+   };
   },
   process:{env:{NEXT_PUBLIC_SUPABASE_ANON_KEY:'public-anon-test'}},
-  AbortSignal,
+  AbortSignal:abortSignalApi,AbortController,setTimeout,clearTimeout,
   fetch:async(url,options)=>{
    calls.push({url,options});
    return fetchHandler(url,options,calls.length);
   }
  };
  vm.runInNewContext(compiled,ctx,{timeout:2000,filename:'groups.cjs'});
- return {api:exports,calls};
+ return {api:exports,calls,requestSignals};
 }
 
 test('fresh group send generates no second GET and uses INSERT DO NOTHING',async()=>{
@@ -91,4 +109,23 @@ test('reject missing/incorrect sender IDs and empty bodies before any POST',asyn
  await assert.rejects(api.sendGroupMessage('test-jwt',GROUP,OWNER,' ',UUID),/Неверные параметры/);
  await assert.rejects(api.sendGroupMessage('test-jwt',GROUP,OWNER,'Привет','invalid-id'),/Неверные параметры/);
  assert.equal(calls.length,0);
+});
+
+test('group history and idempotent sends use portable request deadlines without AbortSignal.timeout',async()=>{
+ const {api,calls,requestSignals}=setup(()=>success([ROW]),{abortSignalApi:{}});
+ await api.groupMessages('test-jwt',GROUP);
+ await api.sendGroupMessage('test-jwt',GROUP,OWNER,'Привет',UUID);
+ assert.deepEqual(calls.map(call=>call.options.method),['GET','POST']);
+ assert.ok(calls.every(call=>call.options.signal instanceof AbortSignal));
+ assert.equal(requestSignals.created,2);
+ assert.equal(requestSignals.disposed,2);
+ const source=readFileSync(new URL('../lib/groups.ts',import.meta.url),'utf8');
+ assert.doesNotMatch(source,/AbortSignal\.timeout/);
+});
+
+test('portable group request deadline is disposed when fetch rejects',async()=>{
+ const {api,requestSignals}=setup(()=>Promise.reject(Error('offline')),{abortSignalApi:{}});
+ await assert.rejects(api.groupMessages('test-jwt',GROUP),/offline/);
+ assert.equal(requestSignals.created,1);
+ assert.equal(requestSignals.disposed,1);
 });
