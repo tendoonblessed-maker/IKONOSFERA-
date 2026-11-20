@@ -73,20 +73,20 @@ test('portable fallback keeps Indic virama conjuncts intact at draft boundaries'
 
 test('Intl.Segmenter keeps Prepend characters joined to the following grapheme',()=>{
  if(typeof Intl.Segmenter!=='function')return;
- assert.equal(truncateDraftText('\\u0600A',1),'');
- assert.equal(truncateDraftText('\\u0600A',2),'\\u0600A');
- assert.equal(truncateDraftText('x\\u0600A',2),'x');
+ assert.equal(truncateDraftText('\u0600A',1),'');
+ assert.equal(truncateDraftText('\u0600A',2),'\u0600A');
+ assert.equal(truncateDraftText('x\u0600A',2),'x');
 });
 
 test('portable fallback keeps Prepend sequences intact without Intl.Segmenter',()=>{
  const descriptor=Object.getOwnPropertyDescriptor(Intl,'Segmenter');
  try{
   Object.defineProperty(Intl,'Segmenter',{value:undefined,configurable:true,writable:true});
-  assert.equal(truncateDraftText('\\u0600A',1),'');
-  assert.equal(truncateDraftText('\\u0600A',2),'\\u0600A');
-  assert.equal(truncateDraftText('x\\u0600A',2),'x');
-  assert.equal(truncateDraftText('\\u0600\\u0601A',2),'');
-  assert.equal(truncateDraftText('\\u0600\\u0601A',3),'\\u0600\\u0601A');
+  assert.equal(truncateDraftText('\u0600A',1),'');
+  assert.equal(truncateDraftText('\u0600A',2),'\u0600A');
+  assert.equal(truncateDraftText('x\u0600A',2),'x');
+  assert.equal(truncateDraftText('\u0600\u0601A',2),'');
+  assert.equal(truncateDraftText('\u0600\u0601A',3),'\u0600\u0601A');
  }finally{
   if(descriptor)Object.defineProperty(Intl,'Segmenter',descriptor);
   else delete Intl.Segmenter;
