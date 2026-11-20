@@ -15,3 +15,37 @@ export function shouldDiscardVoiceRecordingOnPageHide(
 ):boolean{
  return phase==='requesting'||phase==='recording'||phase==='finalizing';
 }
+
+type VisibilityTarget=EventTarget&{visibilityState:DocumentVisibilityState};
+
+/**
+ * Register the recorder's privacy lifecycle handlers against injectable targets.
+ * Returns a cleanup function so both browser wiring and listener teardown can be
+ * exercised without a real microphone or browser navigation.
+ */
+export function registerVoiceRecordingLifecycle(
+ documentTarget:VisibilityTarget,
+ windowTarget:EventTarget,
+ getPhase:()=>VoiceRecorderPhase,
+ cancel:()=>void,
+ report:(message:string)=>void
+):()=>void{
+ const onVisibilityChange=()=>{
+  if(shouldDiscardVoiceRecordingOnBackground(documentTarget.visibilityState,getPhase())){
+   cancel();
+   report('Запись отменена при переходе приложения в фон.');
+  }
+ };
+ const onPageHide=()=>{
+  if(shouldDiscardVoiceRecordingOnPageHide(getPhase())){
+   cancel();
+   report('Запись отменена при уходе со страницы.');
+  }
+ };
+ documentTarget.addEventListener('visibilitychange',onVisibilityChange);
+ windowTarget.addEventListener('pagehide',onPageHide);
+ return()=>{
+  documentTarget.removeEventListener('visibilitychange',onVisibilityChange);
+  windowTarget.removeEventListener('pagehide',onPageHide);
+ };
+}

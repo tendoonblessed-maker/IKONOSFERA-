@@ -2,7 +2,7 @@
 
 import {useEffect,useRef,useState} from 'react';
 import {chooseVoiceMimeType,createVoiceFile,formatVoiceTime,VOICE_RECORD_MAX_MS,VOICE_RECORD_MAX_BYTES} from '@/lib/voice-notes';
-import {shouldDiscardVoiceRecordingOnBackground,shouldDiscardVoiceRecordingOnPageHide} from '@/lib/voice-recording-lifecycle';
+import {registerVoiceRecordingLifecycle} from '@/lib/voice-recording-lifecycle';
 
 type Props={
  disabled:boolean;
@@ -83,24 +83,10 @@ export default function VoiceRecorder({disabled,onRecorded,onError}:Props){
  };
  cancelRef.current=cancel;
  useEffect(()=>{
-  const onVisibilityChange=()=>{
-   if(shouldDiscardVoiceRecordingOnBackground(document.visibilityState,phaseRef.current)){
-    cancelRef.current();
-    errorRef.current('Запись отменена при переходе приложения в фон.');
-   }
-  };
-  const onPageHide=()=>{
-   if(shouldDiscardVoiceRecordingOnPageHide(phaseRef.current)){
-    cancelRef.current();
-    errorRef.current('Запись отменена при уходе со страницы.');
-   }
-  };
-  document.addEventListener('visibilitychange',onVisibilityChange);
-  window.addEventListener('pagehide',onPageHide);
-  return()=>{
-   document.removeEventListener('visibilitychange',onVisibilityChange);
-   window.removeEventListener('pagehide',onPageHide);
-  };
+  return registerVoiceRecordingLifecycle(
+   document,window,()=>phaseRef.current,
+   ()=>cancelRef.current(),message=>errorRef.current(message)
+  );
  },[]);
  const finish=()=>{
   const capture=captureRef.current;
