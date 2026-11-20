@@ -58,6 +58,17 @@ function retryDelay(response:Response,attempt:number):number|null{
 function waitForRetry(delay:number):Promise<void>{
  return new Promise(resolve=>setTimeout(resolve,delay));
 }
+/** Older iOS Safari and embedded WebViews do not expose AbortSignal.timeout(). */
+function createGroupRequestDeadline(timeoutMs:number){
+ const controller=new AbortController();
+ let timedOut=false;
+ const timer=setTimeout(()=>{timedOut=true;controller.abort();},timeoutMs);
+ return {
+  signal:controller.signal,
+  didTimeout:()=>timedOut,
+  dispose:()=>clearTimeout(timer)
+ };
+}
 /** A stable cursor includes ID: many messages can have the same timestamp. */
 export function olderGroupMessagesPath(groupId:string,oldest:Pick<GroupMessage,'created_at'|'id'>):string{
  if(!UUID.test(groupId)||!UUID.test(oldest.id)||!TIMESTAMP.test(oldest.created_at)
@@ -79,23 +90,27 @@ export async function fetchOlderGroupMessages(
  token:string,groupId:string,oldest:Pick<GroupMessage,'created_at'|'id'>
 ):Promise<OlderGroupPage>{
  const url=apiUrl+olderGroupMessagesPath(groupId,oldest);
- let response:Response|undefined;
  for(let attempt=1;attempt<=GROUP_OLDER_MAX_ATTEMPTS;attempt++){
+  const deadline=createGroupRequestDeadline(18000);
+  let response:Response;
   try{
    response=await fetch(url,{
     method:'GET',
     headers:{apikey:anonKey,Authorization:'Bearer '+token},
     cache:'no-store',
-    signal:AbortSignal.timeout(18000)
+    signal:deadline.signal
    });
   }catch(error){
-   if(attempt<GROUP_OLDER_MAX_ATTEMPTS&&transientNetworkError(error)){
+   const timedOut=deadline.didTimeout();
+   deadline.dispose();
+   if(attempt<GROUP_OLDER_MAX_ATTEMPTS&&(timedOut||transientNetworkError(error))){
     await waitForRetry(350*Math.pow(2,attempt-1));
     continue;
    }
    throw Error('Не удалось загрузить ранние сообщения. Проверьте соединение и повторите попытку.');
   }
   if(!response.ok){
+   deadline.dispose();
    const delay=attempt<GROUP_OLDER_MAX_ATTEMPTS?retryDelay(response,attempt):null;
    if(delay!==null){
     await waitForRetry(delay);
@@ -105,7 +120,27 @@ export async function fetchOlderGroupMessages(
    if(response.status>=500)throw Error('Сервер временно недоступен. Повторите попытку позже.');
    throw Error('Не удалось загрузить ранние сообщения.');
   }
-  const data:unknown=await response.json().catch(()=>null);
+  let data:unknown;
+  try{
+   data=await response.json();
+  }catch{
+   const timedOut=deadline.didTimeout();
+   deadline.dispose();
+   if(timedOut&&attempt<GROUP_OLDER_MAX_ATTEMPTS){
+    await waitForRetry(350*Math.pow(2,attempt-1));
+    continue;
+   }
+   throw Error('Не удалось загрузить ранние сообщения.');
+  }
+  const timedOut=deadline.didTimeout();
+  deadline.dispose();
+  if(timedOut){
+   if(attempt<GROUP_OLDER_MAX_ATTEMPTS){
+    await waitForRetry(350*Math.pow(2,attempt-1));
+    continue;
+   }
+   throw Error('Не удалось загрузить ранние сообщения.');
+  }
   if(!Array.isArray(data)||data.length>GROUP_OLDER_PAGE_SIZE+1)
    throw Error('Не удалось загрузить ранние сообщения.');
   const rows:GroupMessage[]=[];

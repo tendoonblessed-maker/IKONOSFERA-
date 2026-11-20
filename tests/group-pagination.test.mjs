@@ -14,17 +14,33 @@ function row(id,created_at=stamp,extra={}){
 }
 const id=(n)=>n.toString(16).padStart(8,'0')+'-1111-4111-8111-111111111111';
 const read=path=>readFileSync(new URL('../'+path,import.meta.url),'utf8');
-function setup(handler=()=>({ok:true,json:async()=>[]})){
+function setup(handler=()=>({ok:true,json:async()=>[]}),{abortSignalApi=AbortSignal}={}){
  const source=read('lib/group-pagination.ts');
  const compiled=ts.transpileModule(source,{
   compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}
  }).outputText;
- const calls=[],delays=[];
+ const calls=[],delays=[],deadlines=[],cleared=[],pendingDeadlines=new Map();
+ let timerId=0;
+ const setTimer=(callback,delay)=>{
+  const id=++timerId;
+  if(delay===18000){
+   deadlines.push(delay);
+   pendingDeadlines.set(id,callback);
+  }else{
+   delays.push(delay);
+   callback();
+  }
+  return id;
+ };
+ const clearTimer=id=>{
+  cleared.push(id);
+  pendingDeadlines.delete(id);
+ };
  const exports={};
  const context={
-  exports,URLSearchParams,URL,AbortSignal,
+  exports,URLSearchParams,URL,AbortSignal:abortSignalApi,AbortController,
   process:{env:{NEXT_PUBLIC_SUPABASE_ANON_KEY:'public-test'}},
-  setTimeout:(callback,delay)=>{delays.push(delay);callback();return delays.length;},
+  setTimeout:setTimer,clearTimeout:clearTimer,
   fetch:async(url,options)=>{
    calls.push({url,options});
    return handler(url,options,calls.length);
@@ -35,7 +51,17 @@ function setup(handler=()=>({ok:true,json:async()=>[]})){
   }
  };
  vm.runInNewContext(compiled,context,{timeout:2000,filename:'group-pagination.cjs'});
- return {api:exports,calls,delays};
+ return {
+  api:exports,calls,delays,deadlines,cleared,pendingDeadlines,
+  runDeadline(){
+   const entry=pendingDeadlines.entries().next().value;
+   if(!entry)return false;
+   const [id,callback]=entry;
+   pendingDeadlines.delete(id);
+   callback();
+   return true;
+  }
+ };
 }
 const success=data=>({ok:true,status:200,json:async()=>data});
 const failure=(status,retryAfter=null)=>({
@@ -92,6 +118,45 @@ test('older page uses signed-in user JWT, strict no-store, bounded limit and ser
  assert.ok(calls[0].options.signal instanceof AbortSignal);
  assert.deepEqual(Array.from(page.messages,x=>x.id),[id(2),id(3),id(4)]);
  assert.equal(page.hasMore,false);
+});
+
+test('older-page deadline works without AbortSignal.timeout and is cleared after the body is read',async()=>{
+ const {api,calls,deadlines,cleared,pendingDeadlines}=setup(()=>success([row(id(4))]),{abortSignalApi:{}});
+ const page=await api.fetchOlderGroupMessages('jwt',GROUP,row(id(5)));
+ assert.equal(calls.length,1);
+ assert.equal(calls[0].options.signal.aborted,false);
+ assert.deepEqual(deadlines,[18000]);
+ assert.equal(pendingDeadlines.size,0,'the deadline is disposed after response JSON is consumed');
+ assert.equal(cleared.length,1);
+ assert.equal(page.messages[0].id,id(4));
+ assert.doesNotMatch(read('lib/group-pagination.ts'),/AbortSignal\\.timeout/);
+});
+
+test('portable deadline also covers a stalled JSON body and retries only once',async()=>{
+ const {api,calls,deadlines,delays,cleared,runDeadline}=setup((_url,options,attempt)=>{
+  if(attempt===1){
+   return {
+    ok:true,status:200,
+    json:()=>new Promise((_resolve,reject)=>{
+     options.signal.addEventListener('abort',()=>reject(Error('body aborted')),{once:true});
+    })
+   };
+  }
+  return success([row(id(4))]);
+ },{abortSignalApi:{}});
+ const pending=api.fetchOlderGroupMessages('jwt',GROUP,row(id(5)));
+ await new Promise(resolve=>setImmediate(resolve));
+ assert.equal(calls.length,1);
+ assert.equal(calls[0].options.signal.aborted,false);
+ assert.equal(runDeadline(),true);
+ const page=await pending;
+ assert.equal(calls.length,2);
+ assert.equal(calls[0].options.signal.aborted,true);
+ assert.equal(calls[1].options.signal.aborted,false);
+ assert.deepEqual(deadlines,[18000,18000]);
+ assert.deepEqual(delays,[350]);
+ assert.equal(cleared.length,2);
+ assert.equal(page.messages[0].id,id(4));
 });
 
 test('one transient 503 retries the identical cursor and honors Retry-After',async()=>{
