@@ -29,7 +29,7 @@ test('VoiceRecorder cancels and discards capture on visibility loss',()=>{
  assert.match(ui,/requestRef\.current\+=1/);
  assert.match(ui,/stopTracks\(capture\.stream\)/);
  assert.match(ui,/capture\.recorder\.onstop=null/);
- assert.match(ui,/return\(\)=>document\.removeEventListener\('visibilitychange',onVisibilityChange\)/);
+ assert.match(ui,/return\(\)=>\{\s*document\.removeEventListener\('visibilitychange',onVisibilityChange\);\s*window\.removeEventListener\('pagehide',onPageHide\);\s*\}/);
 });
 
 test('background cancellation never creates an attachment or uploads it',()=>{
