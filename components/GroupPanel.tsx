@@ -86,7 +86,12 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
   previousMessageIdsRef.current={groupId:group.id,ownerId:userId,ids:new Set()};
   setShowJumpToLatest(false);
   setNewMessagesBelow(0);
-  return()=>olderAbortControllerRef.current?.abort();
+  return()=>{
+   olderAbortControllerRef.current?.abort();
+   olderAbortControllerRef.current=null;
+   olderRequestRef.current++;
+   olderLoadingRef.current=false;
+  };
  },[group.id,userId]);
  // Mounting or switching accounts must not show another person's draft.
  useEffect(()=>{
