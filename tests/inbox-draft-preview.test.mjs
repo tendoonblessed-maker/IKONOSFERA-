@@ -55,6 +55,30 @@ test('fallback retains a complete grapheme when it exactly fits the code-unit li
  });
 });
 
+
+test('fallback keeps Indic virama conjuncts intact without Intl.Segmenter',()=>{
+ withoutIntlSegmenter(()=>{
+  const cases=[
+   ['a'.repeat(108),'क्ष'],
+   ['a'.repeat(108),'ক্ক'],
+   ['a'.repeat(107),'ક્‍ષ'],
+   ['a'.repeat(108),'க்ஷ'],
+   ['a'.repeat(108),'ಕ್ಷ'],
+   ['a'.repeat(108),'ക്ഷ']
+  ];
+  for(const [prefix,cluster] of cases){
+   assert.equal(truncatePreviewText(prefix+cluster+'tail'),prefix,JSON.stringify(cluster));
+   const exactPrefix='a'.repeat(110-cluster.length);
+   assert.equal(
+    truncatePreviewText(exactPrefix+cluster+'tail',110),
+    exactPrefix+cluster,
+    'complete cluster should be retained when it exactly fits: '+JSON.stringify(cluster)
+   );
+  }
+  assert.equal(truncatePreviewText('कखtail',1),'क','unlinked consonants must remain separate');
+ });
+});
+
 test('short text and explicit limits remain predictable',()=>{
  assert.equal(truncatePreviewText('Привет 😀'),'Привет 😀');
  assert.equal(truncatePreviewText('abcdef',3),'abc');
