@@ -66,13 +66,22 @@ export type OlderGroupPage={messages:GroupMessage[];hasMore:boolean};
 export async function fetchOlderGroupMessages(
  token:string,groupId:string,oldest:Pick<GroupMessage,'created_at'|'id'>
 ):Promise<OlderGroupPage>{
- const response=await fetch(apiUrl+olderGroupMessagesPath(groupId,oldest),{
-  method:'GET',
-  headers:{apikey:anonKey,Authorization:'Bearer '+token},
-  cache:'no-store',
-  signal:AbortSignal.timeout(18000)
- });
- const data:unknown=await response.json().catch(()=>null);
+ const controller=new AbortController();
+ const deadline=setTimeout(()=>controller.abort(),18000);
+ let response:Response;
+ let data:unknown;
+ try{
+  response=await fetch(apiUrl+olderGroupMessagesPath(groupId,oldest),{
+   method:'GET',
+   headers:{apikey:anonKey,Authorization:'Bearer '+token},
+   cache:'no-store',
+   signal:controller.signal
+  });
+  // Keep the deadline active through body consumption, not just response headers.
+  data:unknown=await response.json().catch(()=>null);
+ }finally{
+  clearTimeout(deadline);
+ }
  if(!response.ok||!Array.isArray(data))throw Error('Не удалось загрузить ранние сообщения.');
  const rows=normalizeOlderGroupMessageRows(data,groupId);
  // The extra result is a has-more sentinel; it must be fetched next time.
