@@ -45,6 +45,8 @@ test('portable fallback preserves common grapheme clusters without Intl.Segmente
   assert.equal(truncateDraftText('x🇪🇪y',3),'x');
   assert.equal(truncateDraftText('x👍🏽y',3),'x');
   assert.equal(truncateDraftText('ab👨‍👩‍👧‍👦z',6),'ab');
+  assert.equal(truncateDraftText('x\\u1100\\u1161\\u11a8y',2),'x');
+  assert.equal(truncateDraftText('x\\r\\ny',2),'x');
  }finally{
   if(descriptor)Object.defineProperty(Intl,'Segmenter',descriptor);
   else delete Intl.Segmenter;
