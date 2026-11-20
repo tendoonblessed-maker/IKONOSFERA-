@@ -14,12 +14,12 @@ function row(id,created_at=stamp,extra={}){
 }
 const id=(n)=>n.toString(16).padStart(8,'0')+'-1111-4111-8111-111111111111';
 const read=path=>readFileSync(new URL('../'+path,import.meta.url),'utf8');
-function setup(handler=()=>({ok:true,json:async()=>[]}),{abortSignalApi=AbortSignal}={}){
+function setup(handler=()=>({ok:true,json:async()=>[]}),{abortSignalApi=AbortSignal,autoRunRetryTimers=true}={}){
  const source=read('lib/group-pagination.ts');
  const compiled=ts.transpileModule(source,{
   compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}
  }).outputText;
- const calls=[],delays=[],deadlines=[],cleared=[],pendingDeadlines=new Map();
+ const calls=[],delays=[],deadlines=[],cleared=[],pendingDeadlines=new Map(),pendingRetries=new Map();
  let timerId=0;
  const setTimer=(callback,delay)=>{
   const id=++timerId;
@@ -28,19 +28,21 @@ function setup(handler=()=>({ok:true,json:async()=>[]}),{abortSignalApi=AbortSig
    pendingDeadlines.set(id,callback);
   }else{
    delays.push(delay);
-   callback();
+   if(autoRunRetryTimers)callback();
+   else pendingRetries.set(id,callback);
   }
   return id;
  };
  const clearTimer=id=>{
   cleared.push(id);
   pendingDeadlines.delete(id);
+  pendingRetries.delete(id);
  };
  const exports={};
  const context={
   exports,URLSearchParams,URL,AbortSignal:abortSignalApi,AbortController,
   process:{env:{NEXT_PUBLIC_SUPABASE_ANON_KEY:'public-test'}},
-  setTimeout:setTimer,clearTimeout:clearTimer,
+  setTimeout:setTimer,clearTimeout,
   fetch:async(url,options)=>{
    calls.push({url,options});
    return handler(url,options,calls.length);
@@ -52,12 +54,20 @@ function setup(handler=()=>({ok:true,json:async()=>[]}),{abortSignalApi=AbortSig
  };
  vm.runInNewContext(compiled,context,{timeout:2000,filename:'group-pagination.cjs'});
  return {
-  api:exports,calls,delays,deadlines,cleared,pendingDeadlines,
+  api:exports,calls,delays,deadlines,cleared,pendingDeadlines,pendingRetries,
   runDeadline(){
    const entry=pendingDeadlines.entries().next().value;
    if(!entry)return false;
    const [id,callback]=entry;
    pendingDeadlines.delete(id);
+   callback();
+   return true;
+  },
+  runRetry(){
+   const entry=pendingRetries.entries().next().value;
+   if(!entry)return false;
+   const [id,callback]=entry;
+   pendingRetries.delete(id);
    callback();
    return true;
   }
@@ -214,6 +224,53 @@ test('transient fetch network errors retry once but aborts and permanent HTTP er
  assert.deepEqual(aborted.delays,[]);
 });
 
+test('caller abort prevents a request when the signal is already cancelled',async()=>{
+ const controller=new AbortController();
+ controller.abort();
+ const {api,calls}=setup();
+ await assert.rejects(
+  ()=>api.fetchOlderGroupMessages('jwt',GROUP,row(id(5)),controller.signal),
+  error=>error?.name==='AbortError'
+ );
+ assert.equal(calls.length,0);
+});
+
+test('caller abort cancels an in-flight page request without retrying',async()=>{
+ const controller=new AbortController();
+ const {api,calls,deadlines,cleared}=setup((_url,options)=>new Promise((_resolve,reject)=>{
+  options.signal.addEventListener('abort',()=>{
+   const error=new Error('request cancelled');
+   error.name='AbortError';
+   reject(error);
+  },{once:true});
+ }));
+ const pending=api.fetchOlderGroupMessages('jwt',GROUP,row(id(5)),controller.signal);
+ await new Promise(resolve=>setImmediate(resolve));
+ assert.equal(calls.length,1);
+ controller.abort();
+ await assert.rejects(pending,error=>error?.name==='AbortError');
+ assert.equal(calls.length,1,'caller cancellation must never trigger an automatic retry');
+ assert.deepEqual(deadlines,[18000]);
+ assert.equal(cleared.length,1,'the per-attempt deadline is released after cancellation');
+});
+
+test('caller abort cancels retry backoff and prevents the second request',async()=>{
+ const controller=new AbortController();
+ const {api,calls,delays,pendingRetries,cleared}=setup(
+  ()=>failure(503),{autoRunRetryTimers:false}
+ );
+ const pending=api.fetchOlderGroupMessages('jwt',GROUP,row(id(5)),controller.signal);
+ await new Promise(resolve=>setImmediate(resolve));
+ assert.equal(calls.length,1);
+ assert.deepEqual(delays,[350]);
+ assert.equal(pendingRetries.size,1);
+ controller.abort();
+ await assert.rejects(pending,error=>error?.name==='AbortError');
+ assert.equal(calls.length,1,'a cancelled backoff must not issue a second HTTP request');
+ assert.equal(pendingRetries.size,0,'the retry timer must be cleared on abort');
+ assert.equal(cleared.length,1);
+});
+
 test('extra row establishes hasMore but never overlaps next page boundary',async()=>{
  const many=Array.from({length:71},(_,i)=>row(id(80-i)));
  const {api}=setup(()=>success(many));
@@ -292,7 +349,11 @@ test('realtime latest page retains paged earlier messages but removes deleted la
 test('group pagination UI restores the history scroll anchor and avoids account crossover',()=>{
  const panel=read('components/GroupPanel.tsx');
  const css=read('app/globals.css');
- assert.match(panel,/fetchOlderGroupMessages\(requestToken,groupId,oldest\)/);
+ assert.match(panel,/olderAbortControllerRef=useRef<AbortController\\|null>\\(null\\)/);
+ assert.match(panel,/fetchOlderGroupMessages\\(requestToken,groupId,oldest,controller\\.signal\\)/);
+ assert.match(panel,/olderAbortControllerRef\\.current\\?\\.abort\\(\\)/);
+ assert.match(panel,/controller\\.signal\\.aborted/);
+ assert.match(panel,/return\\(\\)=>olderAbortControllerRef\\.current\\?\\.abort\\(\\)/);
  assert.match(panel,/prependOlderGroupMessages\(current,page\.messages\)/);
  assert.match(panel,/preserveOlderGroupMessages\(current,msgs\)/);
  assert.match(panel,/snapshot\.top\+growth/);
