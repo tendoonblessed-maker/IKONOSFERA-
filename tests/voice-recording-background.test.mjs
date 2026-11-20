@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
 import {readFileSync} from 'node:fs';
-import {shouldDiscardVoiceRecordingOnBackground} from '../lib/voice-recording-lifecycle.ts';
+import {shouldDiscardVoiceRecordingOnBackground,shouldDiscardVoiceRecordingOnPageHide} from '../lib/voice-recording-lifecycle.ts';
 
 const load=path=>readFileSync(new URL('../'+path,import.meta.url),'utf8');
 
@@ -37,4 +37,25 @@ test('background cancellation never creates an attachment or uploads it',()=>{
  assert.doesNotMatch(ui,/sendDirectMedia|fetch\(|uploadDirectMedia/);
  assert.match(ui,/capture\.discard=discard/);
  assert.match(ui,/if\(capture\.discard\|\|captureRef\.current!==capture\)return/);
+});
+
+
+test('pagehide cancels pending permission, active recording and finalization',()=>{
+ for(const phase of ['requesting','recording','finalizing']){
+  assert.equal(shouldDiscardVoiceRecordingOnPageHide(phase),true,phase);
+ }
+});
+
+test('pagehide does not cancel an idle recorder',()=>{
+ assert.equal(shouldDiscardVoiceRecordingOnPageHide('idle'),false);
+ assert.equal(shouldDiscardVoiceRecordingOnPageHide('unknown'),false);
+});
+
+test('VoiceRecorder registers and cleans up the pagehide lifecycle handler',()=>{
+ const ui=load('components/VoiceRecorder.tsx');
+ assert.match(ui,/const onPageHide=\(\)=>\{/);
+ assert.match(ui,/shouldDiscardVoiceRecordingOnPageHide\(phaseRef\.current\)/);
+ assert.match(ui,/window\.addEventListener\('pagehide',onPageHide\)/);
+ assert.match(ui,/window\.removeEventListener\('pagehide',onPageHide\)/);
+ assert.match(ui,/Запись отменена при уходе со страницы/);
 });
