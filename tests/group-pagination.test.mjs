@@ -119,6 +119,36 @@ test('prepend new page deduplicates concurrent overlap and keeps updated current
  assert.equal(merged[1].body,'test','latest page has priority over stale earlier fetch');
 });
 
+test('older group history validates payloads and ignores rows from other groups',()=>{
+ const {api}=setup();
+ const valid=row(id(5));
+ const foreign=row(id(4),stamp,{group_id:OTHER,body:5});
+ const normalized=api.normalizeOlderGroupMessageRows([foreign,valid],GROUP);
+ assert.deepEqual(Array.from(normalized,x=>x.id),[id(5)]);
+ const malformed=[
+  {...valid,id:'not-a-uuid'},
+  {...valid,sender_id:'not-a-uuid'},
+  {...valid,body:5},
+  {...valid,body:'x'.repeat(4001)},
+  {...valid,created_at:'invalid'},
+  {...valid,created_at:'2026-10-29T09:50:12.1234567Z'},
+  {...valid,group_id:null},
+  null
+ ];
+ for(const value of malformed){
+  assert.throws(()=>api.normalizeOlderGroupMessageRows([value],GROUP),/Некорректные данные/);
+ }
+ assert.throws(()=>api.normalizeOlderGroupMessageRows('not-an-array',GROUP),/Некорректные данные/);
+ assert.throws(()=>api.normalizeOlderGroupMessageRows([valid,{...valid,body:'duplicate'}],GROUP),/Некорректные данные/);
+});
+
+test('fetch older group history fails closed on malformed in-group rows',async()=>{
+ const malformed=row(id(3),stamp,{body:5});
+ const {api,calls}=setup(()=>success([malformed]));
+ await assert.rejects(api.fetchOlderGroupMessages('jwt',GROUP,row(id(4))),/Некорректные данные/);
+ assert.equal(calls.length,1);
+});
+
 test('realtime latest page retains paged earlier messages but removes deleted latest rows',()=>{
  const {api}=setup();
  const earlier=row(id(1),'2026-10-29T09:00:00Z');
