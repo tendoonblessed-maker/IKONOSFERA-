@@ -47,6 +47,7 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
  const prependScrollRef=useRef<{groupId:string;userId:string;height:number;top:number}|null>(null);
  const olderLoadingRef=useRef(false);
  const olderRequestRef=useRef(0);
+ const olderAbortControllerRef=useRef<AbortController|null>(null);
  const initialPageLoadedRef=useRef(false);
  const composerFormRef=useRef<HTMLFormElement|null>(null);
  const followNewestRef=useRef(true);
@@ -63,6 +64,8 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
  const contextRef=useRef({groupId:group.id,userId,token});
  contextRef.current={groupId:group.id,userId,token};
  useEffect(()=>{
+  olderAbortControllerRef.current?.abort();
+  olderAbortControllerRef.current=null;
   confirmedGroupMessagesRef.current.clear();
   olderRequestRef.current++;
   olderLoadingRef.current=false;
@@ -83,6 +86,7 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
   previousMessageIdsRef.current={groupId:group.id,ownerId:userId,ids:new Set()};
   setShowJumpToLatest(false);
   setNewMessagesBelow(0);
+  return()=>olderAbortControllerRef.current?.abort();
  },[group.id,userId]);
  // Mounting or switching accounts must not show another person's draft.
  useEffect(()=>{
@@ -237,6 +241,8 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
       ||contextRef.current.userId!==ownerId
       ||contextRef.current.token!==requestToken)return;
    if(!around.some(row=>row.id===message.id))throw Error('Сообщение больше недоступно.');
+   olderAbortControllerRef.current?.abort();
+   olderAbortControllerRef.current=null;
    olderRequestRef.current++;
    olderLoadingRef.current=false;
    prependScrollRef.current=null;
@@ -276,6 +282,8 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
   const history=historyRef.current,oldest=messages[0];
   const groupId=group.id,ownerId=userId,requestToken=token;
   const requestId=++olderRequestRef.current;
+  const controller=new AbortController();
+  olderAbortControllerRef.current=controller;
   olderLoadingRef.current=true;
   setLoadingOlder(true);setOlderError('');
   if(history)prependScrollRef.current={
@@ -283,7 +291,7 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
   };
   followNewestRef.current=false;
   try{
-   const page=await fetchOlderGroupMessages(requestToken,groupId,oldest);
+   const page=await fetchOlderGroupMessages(requestToken,groupId,oldest,controller.signal);
    if(requestId!==olderRequestRef.current
       ||contextRef.current.groupId!==groupId
       ||contextRef.current.userId!==ownerId
@@ -296,12 +304,13 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
     setHasOlder(page.hasMore&&messages.length+page.messages.length<GROUP_HISTORY_MAX_LOADED);
    }
   }catch(e){
-   if(requestId===olderRequestRef.current){
+   if(requestId===olderRequestRef.current&&!controller.signal.aborted){
     prependScrollRef.current=null;
     setOlderError(e instanceof Error?e.message:'Ошибка загрузки истории группы');
    }
   }finally{
    if(requestId===olderRequestRef.current){
+    if(olderAbortControllerRef.current===controller)olderAbortControllerRef.current=null;
     olderLoadingRef.current=false;
     setLoadingOlder(false);
    }
@@ -380,6 +389,8 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
      latestGroupMessageRef.current=null;
      initialPageLoadedRef.current=false;
      prependScrollRef.current=null;
+     olderAbortControllerRef.current?.abort();
+     olderAbortControllerRef.current=null;
      olderRequestRef.current++;
      olderLoadingRef.current=false;
      setHasOlder(false);setLoadingOlder(false);setOlderError('');
@@ -469,6 +480,8 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
    // page: otherwise a false continuous gap appears in the chat history.
    if(wasBrowsingArchive){
     initialPageLoadedRef.current=false;
+    olderAbortControllerRef.current?.abort();
+    olderAbortControllerRef.current=null;
     olderRequestRef.current++;
     olderLoadingRef.current=false;
     prependScrollRef.current=null;
