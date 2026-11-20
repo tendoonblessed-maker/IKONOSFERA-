@@ -118,7 +118,7 @@ test('rendered direct and group inbox rows expose full unread counts beyond the 
   assert.ok(badge,'the row must render the unread badge');
   assert.ok(description,'the row must render the accessible count description');
   assert.equal(badge.props.children,'99+');
-  assert.equal(badge.props['aria-hidden'],true);
+  assert.equal(badge.props['aria-hidden'],'true');
   assert.equal(button.props['aria-describedby'],id);
   assert.equal(description.props.id,id);
   assert.equal(description.props.children,'Непрочитанных: 123');
