@@ -91,3 +91,56 @@ test('AppShell and the PostgREST text-send default share the secure UUID helper'
  assert.doesNotMatch(api,/clientMessageId: string = crypto\.randomUUID\(\)/);
  assert.doesNotMatch(api,/Math\.random\s*\(/);
 });
+
+
+test('ambiguous direct media insert failures do not delete a potentially referenced upload',async()=>{
+ const calls=[];
+ const api=loadApi({getRandomValues(bytes){bytes.fill(1);return bytes;}},async(url,options)=>{
+  calls.push({url,options});
+  if(options.method==='POST'&&url.includes('/storage/v1/object/'))return {ok:true,status:200};
+  if(options.method==='POST'&&url.includes('/rest/v1/messages'))throw new TypeError('connection lost after request');
+  if(options.method==='DELETE')return {ok:true,status:204};
+  throw Error('Unexpected request '+options.method+' '+url);
+ });
+ await assert.rejects(api.sendDirectMedia('user-token','33333333-3333-4333-8333-333333333333','11111111-1111-4111-8111-111111111111',{type:'image/png',size:12},'caption'));
+ assert.equal(calls.length,2,'the uncertain insert is not followed by destructive cleanup');
+ assert.ok(!calls.some(call=>call.options.method==='DELETE'));
+});
+
+test('server errors and timeout-like responses preserve uploads because insert outcome is uncertain',async()=>{
+ for(const status of [408,425,499,500,502,503]){
+  const calls=[];
+  const api=loadApi({getRandomValues(bytes){bytes.fill(2);return bytes;}},async(url,options)=>{
+   calls.push({url,options});
+   if(options.method==='POST'&&url.includes('/storage/v1/object/'))return {ok:true,status:200};
+   if(options.method==='POST'&&url.includes('/rest/v1/messages'))return {ok:false,status,text:async()=>JSON.stringify({message:'uncertain insert outcome'})};
+   if(options.method==='DELETE')return {ok:true,status:204};
+   throw Error('Unexpected request '+options.method+' '+url);
+  });
+  await assert.rejects(api.sendDirectMedia('user-token','33333333-3333-4333-8333-333333333333','11111111-1111-4111-8111-111111111111',{type:'image/png',size:12}));
+  assert.ok(!calls.some(call=>call.options.method==='DELETE'),String(status)+' must not delete the upload');
+ }
+});
+
+test('an explicit non-timeout client rejection cleans up an unreferenced private upload',async()=>{
+ const calls=[];
+ const api=loadApi({getRandomValues(bytes){bytes.fill(3);return bytes;}},async(url,options)=>{
+  calls.push({url,options});
+  if(options.method==='POST'&&url.includes('/storage/v1/object/'))return {ok:true,status:200};
+  if(options.method==='POST'&&url.includes('/rest/v1/messages'))return {ok:false,status:403,text:async()=>JSON.stringify({message:'RLS rejected insert'})};
+  if(options.method==='DELETE')return {ok:true,status:204};
+  throw Error('Unexpected request '+options.method+' '+url);
+ });
+ await assert.rejects(api.sendDirectMedia('user-token','33333333-3333-4333-8333-333333333333','11111111-1111-4111-8111-111111111111',{type:'image/png',size:12}));
+ assert.equal(calls.length,3);
+ assert.equal(calls[2].options.method,'DELETE');
+});
+
+test('cleanup classifier fails closed for unknown and ambiguous error shapes',()=>{
+ const api=loadApi({});
+ for(const status of [400,401,403,404,409,413,415,422,429])assert.equal(api.shouldCleanupDirectMediaUpload({status}),true);
+ for(const status of [408,425,499,500,502,503])assert.equal(api.shouldCleanupDirectMediaUpload({status}),false);
+ assert.equal(api.shouldCleanupDirectMediaUpload(new TypeError('network failure')),false);
+ assert.equal(api.shouldCleanupDirectMediaUpload({status:'403'}),false);
+ assert.equal(api.shouldCleanupDirectMediaUpload(null),false);
+});
