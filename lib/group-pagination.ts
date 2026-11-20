@@ -63,14 +63,25 @@ function abortError():Error{
 function waitForRetry(delay:number,signal?:AbortSignal):Promise<void>{
  if(signal?.aborted)return Promise.reject(abortError());
  return new Promise((resolve,reject)=>{
+  let timer:ReturnType<typeof setTimeout>|null=null;
+  let settled=false;
   const cleanup=()=>signal?.removeEventListener('abort',onAbort);
-  const timer=setTimeout(()=>{cleanup();resolve();},delay);
   const onAbort=()=>{
-   clearTimeout(timer);
+   if(settled)return;
+   settled=true;
+   if(timer!==null)clearTimeout(timer);
    cleanup();
    reject(abortError());
   };
+  const onTimer=()=>{
+   if(settled)return;
+   settled=true;
+   cleanup();
+   resolve();
+  };
   signal?.addEventListener('abort',onAbort,{once:true});
+  if(signal?.aborted){onAbort();return;}
+  timer=setTimeout(onTimer,delay);
   if(signal?.aborted)onAbort();
  });
 }
