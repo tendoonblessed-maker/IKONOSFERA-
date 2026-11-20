@@ -115,9 +115,9 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
   });
  },[token,group.id]);
 
- const refresh=useCallback(async()=>{
+ const refresh=useCallback(async(signal?:AbortSignal)=>{
   const requestId=++requestSequenceRef.current;
-  const msgs=await groupMessages(token,group.id);
+  const msgs=await groupMessages(token,group.id,signal);
   // When a slower poll finishes after a newer one, do not replace the newer
   // messages. The same guard applies after a quick group-switch/unmount.
   if(requestId!==requestSequenceRef.current
@@ -142,14 +142,18 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
   let inFlight=false;
   let queuedSync=false;
   let realtimeTimer:number|null=null;
+  let activeController:AbortController|null=null;
   setInitialLoading(true);
   const sync=()=>{
     if(cancelled||document.visibilityState==='hidden'||!navigator.onLine||browsingOlderRef.current)return;
     if(inFlight){queuedSync=true;return;}
     inFlight=true;
-    void refresh().then(()=>{if(!cancelled)setError('');}).catch(e=>{
-      if(!cancelled){setInitialLoading(false);setError(e instanceof Error?e.message:'Не удалось загрузить сообщения группы');}
+    const controller=new AbortController();
+    activeController=controller;
+    void refresh(controller.signal).then(()=>{if(!cancelled)setError('');}).catch(e=>{
+      if(!cancelled&&!controller.signal.aborted){setInitialLoading(false);setError(e instanceof Error?e.message:'Не удалось загрузить сообщения группы');}
     }).finally(()=>{
+      if(activeController===controller)activeController=null;
       inFlight=false;
       // A Realtime event arriving during an older GET must not be discarded.
       if(queuedSync&&!cancelled){queuedSync=false;sync();}
@@ -172,6 +176,7 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
   window.addEventListener('online',onOnline);
   return()=>{
     cancelled=true;
+    activeController?.abort();
     requestSequenceRef.current++;
     window.clearInterval(timer);
     if(realtimeTimer!==null)window.clearTimeout(realtimeTimer);
