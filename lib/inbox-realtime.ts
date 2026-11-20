@@ -36,7 +36,8 @@ export function subscribeInboxChanges(
  const group=()=>{if(!disposed)onChanged('group');};
  const wakeBoth=()=>{direct();group();};
 
- void client.realtime.setAuth(token).then(()=>{
+ try{
+  void client.realtime.setAuth(token).then(()=>{
   if(disposed)return;
   channel
    .on('postgres_changes',{schema:'public',table:'messages',event:'INSERT'},direct)
@@ -49,7 +50,11 @@ export function subscribeInboxChanges(
  }).catch(()=>{
   // setAuth can fail before subscribe() exists; wake both HTTP-backed inbox views now.
   if(!disposed)wakeBoth();
- });
+  });
+ }catch{
+  // Some SDK/polyfill implementations can throw before returning a Promise.
+  if(!disposed)wakeBoth();
+ }
 
  return()=>{
   disposed=true;
