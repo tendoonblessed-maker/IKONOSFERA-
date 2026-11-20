@@ -349,11 +349,14 @@ test('realtime latest page retains paged earlier messages but removes deleted la
 test('group pagination UI restores the history scroll anchor and avoids account crossover',()=>{
  const panel=read('components/GroupPanel.tsx');
  const css=read('app/globals.css');
- assert.match(panel,/olderAbortControllerRef=useRef<AbortController\\|null>\\(null\\)/);
- assert.match(panel,/fetchOlderGroupMessages\\(requestToken,groupId,oldest,controller\\.signal\\)/);
- assert.match(panel,/olderAbortControllerRef\\.current\\?\\.abort\\(\\)/);
- assert.match(panel,/controller\\.signal\\.aborted/);
- assert.match(panel,/return\\(\\)=>olderAbortControllerRef\\.current\\?\\.abort\\(\\)/);
+ assert.ok(panel.includes('olderAbortControllerRef=useRef<AbortController|null>(null)'));
+ assert.ok(panel.includes('fetchOlderGroupMessages(requestToken,groupId,oldest,controller.signal)'));
+ assert.ok(panel.includes('olderAbortControllerRef.current?.abort()'));
+ assert.ok(panel.includes('controller.signal.aborted'));
+ const contextReset=panel.slice(panel.indexOf('useEffect(()=>{',panel.indexOf('contextRef.current={')),panel.indexOf('// Mounting or switching accounts'));
+ assert.ok(contextReset.includes('return()=>{'));
+ assert.ok(contextReset.includes('olderRequestRef.current++'));
+ assert.ok(contextReset.includes('olderLoadingRef.current=false'));
  assert.match(panel,/prependOlderGroupMessages\(current,page\.messages\)/);
  assert.match(panel,/preserveOlderGroupMessages\(current,msgs\)/);
  assert.match(panel,/snapshot\.top\+growth/);
