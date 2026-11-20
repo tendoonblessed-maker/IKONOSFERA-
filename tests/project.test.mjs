@@ -511,7 +511,7 @@ test('group conversations always fetch newest messages and show real loading/err
  const ui=load('components/GroupPanel.tsx');
  assert.match(api,/order=created_at\.desc,id\.desc&limit=150/);
  assert.match(api,/return latest\.reverse\(\)/);
- assert.match(api,/const requestSignal=timeout\?createHttpRequestSignal\(\):null/);
+ assert.match(api,/const requestSignal=timeout\?createHttpRequestSignal\(signal\):null/);
  assert.match(api,/signal:requestSignal\?\.signal/);
  assert.match(api,/requestSignal\?\.dispose\(\)/);
  assert.ok(!api.includes('order=created_at.asc&limit=150'));
