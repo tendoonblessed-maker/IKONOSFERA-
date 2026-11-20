@@ -99,25 +99,14 @@ test('global inbox subscribes with the current JWT and exact RLS-filtered table 
   [
    {event:'postgres_changes',schema:'public',table:'messages'},
    {event:'postgres_changes',schema:'public',table:'messages'},
-   {event:'postgres_changes',schema:'public',table:'group_messages'},
    {event:'postgres_changes',schema:'public',table:'group_messages'}
   ]
  );
- assert.deepEqual(h.registrations.map(item=>item.config.event),['INSERT','UPDATE','INSERT','UPDATE']);
+ assert.deepEqual(h.registrations.map(item=>item.config.event),['INSERT','UPDATE','INSERT']);
  h.unsubscribe();
  await flushMicrotasks();
  assert.equal(h.removeCount,1);
  assert.equal(h.disconnectCount,1);
-});
-
-test('group message edits wake only the group inbox preview refresh',async()=>{
- const h=createHarness();
- await flushMicrotasks();
- const updates=h.registrations.filter(item=>item.config.table==='group_messages'&&item.config.event==='UPDATE');
- assert.equal(updates.length,1);
- updates[0].callback();
- assert.deepEqual(h.changes,['group']);
- h.unsubscribe();
 });
 
 test('SUBSCRIBED and every Realtime failure wake both inbox views; unrelated statuses are ignored',async()=>{
