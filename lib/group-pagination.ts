@@ -55,18 +55,40 @@ function retryDelay(response:Response,attempt:number):number|null{
  const fallback=response.status===429?1000:350*Math.pow(2,attempt-1);
  return Math.max(fallback,retryAfter??0);
 }
-function waitForRetry(delay:number):Promise<void>{
- return new Promise(resolve=>setTimeout(resolve,delay));
+function abortError():Error{
+ const error=new Error('Загрузка истории отменена.');
+ error.name='AbortError';
+ return error;
+}
+function waitForRetry(delay:number,signal?:AbortSignal):Promise<void>{
+ if(signal?.aborted)return Promise.reject(abortError());
+ return new Promise((resolve,reject)=>{
+  const cleanup=()=>signal?.removeEventListener('abort',onAbort);
+  const timer=setTimeout(()=>{cleanup();resolve();},delay);
+  const onAbort=()=>{
+   clearTimeout(timer);
+   cleanup();
+   reject(abortError());
+  };
+  signal?.addEventListener('abort',onAbort,{once:true});
+  if(signal?.aborted)onAbort();
+ });
 }
 /** Older Safari and embedded WebViews lack the static timeout API. */
-function createGroupRequestDeadline(timeoutMs:number){
+function createGroupRequestDeadline(timeoutMs:number,callerSignal?:AbortSignal){
  const controller=new AbortController();
  let timedOut=false;
+ const onCallerAbort=()=>controller.abort();
+ if(callerSignal?.aborted)controller.abort();
+ else callerSignal?.addEventListener('abort',onCallerAbort,{once:true});
  const timer=setTimeout(()=>{timedOut=true;controller.abort();},timeoutMs);
  return {
   signal:controller.signal,
   didTimeout:()=>timedOut,
-  dispose:()=>clearTimeout(timer)
+  dispose:()=>{
+   clearTimeout(timer);
+   callerSignal?.removeEventListener('abort',onCallerAbort);
+  }
  };
 }
 /** A stable cursor includes ID: many messages can have the same timestamp. */
@@ -87,11 +109,12 @@ export function olderGroupMessagesPath(groupId:string,oldest:Pick<GroupMessage,'
 }
 export type OlderGroupPage={messages:GroupMessage[];hasMore:boolean};
 export async function fetchOlderGroupMessages(
- token:string,groupId:string,oldest:Pick<GroupMessage,'created_at'|'id'>
+ token:string,groupId:string,oldest:Pick<GroupMessage,'created_at'|'id'>,callerSignal?:AbortSignal
 ):Promise<OlderGroupPage>{
+ if(callerSignal?.aborted)throw abortError();
  const url=apiUrl+olderGroupMessagesPath(groupId,oldest);
  for(let attempt=1;attempt<=GROUP_OLDER_MAX_ATTEMPTS;attempt++){
-  const deadline=createGroupRequestDeadline(18000);
+  const deadline=createGroupRequestDeadline(18000,callerSignal);
   let response:Response;
   try{
    response=await fetch(url,{
@@ -103,17 +126,19 @@ export async function fetchOlderGroupMessages(
   }catch(error){
    const timedOut=deadline.didTimeout();
    deadline.dispose();
+   if(callerSignal?.aborted)throw abortError();
    if(attempt<GROUP_OLDER_MAX_ATTEMPTS&&(timedOut||transientNetworkError(error))){
-    await waitForRetry(350*Math.pow(2,attempt-1));
+    await waitForRetry(350*Math.pow(2,attempt-1),callerSignal);
     continue;
    }
    throw Error('Не удалось загрузить ранние сообщения. Проверьте соединение и повторите попытку.');
   }
   if(!response.ok){
    deadline.dispose();
+   if(callerSignal?.aborted)throw abortError();
    const delay=attempt<GROUP_OLDER_MAX_ATTEMPTS?retryDelay(response,attempt):null;
    if(delay!==null){
-    await waitForRetry(delay);
+    await waitForRetry(delay,callerSignal);
     continue;
    }
    if(response.status===429)throw Error('Сервер временно ограничил загрузку истории. Повторите попытку позже.');
@@ -126,17 +151,19 @@ export async function fetchOlderGroupMessages(
   }catch{
    const timedOut=deadline.didTimeout();
    deadline.dispose();
+   if(callerSignal?.aborted)throw abortError();
    if(timedOut&&attempt<GROUP_OLDER_MAX_ATTEMPTS){
-    await waitForRetry(350*Math.pow(2,attempt-1));
+    await waitForRetry(350*Math.pow(2,attempt-1),callerSignal);
     continue;
    }
    throw Error('Не удалось загрузить ранние сообщения.');
   }
   const timedOut=deadline.didTimeout();
   deadline.dispose();
+  if(callerSignal?.aborted)throw abortError();
   if(timedOut){
    if(attempt<GROUP_OLDER_MAX_ATTEMPTS){
-    await waitForRetry(350*Math.pow(2,attempt-1));
+    await waitForRetry(350*Math.pow(2,attempt-1),callerSignal);
     continue;
    }
    throw Error('Не удалось загрузить ранние сообщения.');
