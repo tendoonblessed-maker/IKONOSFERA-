@@ -512,7 +512,11 @@ test('group conversations always fetch newest messages and show real loading/err
  assert.match(api,/order=created_at\.desc,id\.desc&limit=150/);
  assert.match(api,/return latest\.reverse\(\)/);
  assert.match(api,/const GROUP_REQUEST_TIMEOUT_MS=18_000/);
- assert.match(api,/signal:signal\?\?\(method==='GET'\?AbortSignal\.timeout\(GROUP_REQUEST_TIMEOUT_MS\):undefined\)/);
+ assert.match(api,/function createRequestDeadline\(timeoutMs:number\)/);
+ assert.match(api,/const deadlineMs=timeoutMs\?\?\(method==='GET'\?GROUP_REQUEST_TIMEOUT_MS:undefined\)/);
+ assert.match(api,/const requestSignal=signal\?\?deadline\?\.signal/);
+ assert.match(api,/deadline\?\.dispose\(\)/);
+ assert.match(api,/if\(requestSignal\?\.aborted\)throw error/);
  assert.ok(!api.includes('order=created_at.asc&limit=150'));
  assert.match(ui,/initialLoading,setInitialLoading/);
  assert.match(ui,/role="status" aria-label="Загружаем сообщения группы"/);
