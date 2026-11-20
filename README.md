@@ -138,7 +138,7 @@ IKONOSFERA — адаптивный веб-мессенджер/PWA на **Next.
 
 ## Локальный запуск
 
-Нужны Node.js (версию уточняйте по `package.json`) и npm. Создайте `.env.local` самостоятельно:
+Нужны Node.js **22 или новее** и npm. Зависимости устанавливайте через `npm ci` по зафиксированному `package-lock.json`. Создайте `.env.local` самостоятельно:
 
 ```dotenv
 NEXT_PUBLIC_SUPABASE_URL=https://YOUR_PROJECT.supabase.co
@@ -148,7 +148,7 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=YOUR_PUBLIC_ANON_KEY
 **Никогда** не записывайте Supabase service-role key, пароль БД, refresh token или другие секреты в `NEXT_PUBLIC_*` или GitHub.
 
 ```bash
-npm install --no-audit --no-fund
+npm ci --no-audit --no-fund
 npm run dev
 ```
 
