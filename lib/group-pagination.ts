@@ -58,7 +58,7 @@ function retryDelay(response:Response,attempt:number):number|null{
 function waitForRetry(delay:number):Promise<void>{
  return new Promise(resolve=>setTimeout(resolve,delay));
 }
-/** Older iOS Safari and embedded WebViews do not expose AbortSignal.timeout(). */
+/** Older Safari and embedded WebViews lack the static timeout API. */
 function createGroupRequestDeadline(timeoutMs:number){
  const controller=new AbortController();
  let timedOut=false;
