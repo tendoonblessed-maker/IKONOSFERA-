@@ -8,7 +8,7 @@ const id=n=>String(n).padStart(8,'0')+'-0000-4000-8000-000000000000';
 const data=new Map();
 globalThis.window={sessionStorage:{
   getItem:key=>data.get(key)??null,
-  setItem:(key,value)=>data.set(key,value),
+  setItem:(key,value)=>data.set(key,String(value)),
   removeItem:key=>data.delete(key)
 }};
 
@@ -65,4 +65,37 @@ test('group draft normalization ignores malformed records ahead of valid drafts'
   input[id(2)]=' ';
   input[id(3)]='valid';
   assert.deepEqual(cleanGroupDrafts(input),{[id(1)]:'  Nice\n  ',[id(3)]:'valid'});
+});
+
+test('direct and group draft storage truncates without splitting emoji surrogate pairs',()=>{
+  data.clear();
+  const prefix='x'.repeat(3999);
+  const text=prefix+'😀tail';
+  const direct=cleanChatDrafts({[id(60)]:text});
+  assert.equal(direct[id(60)],prefix);
+  const updated=updateChatDraftEntry({},id(61),text);
+  assert.equal(updated[id(61)],prefix);
+  writeChatDrafts(USER,updated);
+  assert.equal(readChatDrafts(USER)[id(61)],prefix);
+  const group=writeGroupDraft(USER,id(62),text);
+  assert.equal(group[id(62)],prefix);
+  assert.equal(readGroupDrafts(USER)[id(62)],prefix);
+});
+
+test('direct and group drafts preserve whole ZWJ emoji and combining clusters at the cap',()=>{
+  data.clear();
+  const prefix='x'.repeat(3990);
+  const family='👨‍👩‍👧‍👦';
+  const familyText=prefix+family+'tail';
+  assert.equal(cleanChatDrafts({[id(63)]:familyText})[id(63)],prefix);
+  const direct=updateChatDraftEntry({},id(64),familyText);
+  assert.equal(direct[id(64)],prefix);
+  writeChatDrafts(USER,direct);
+  assert.equal(readChatDrafts(USER)[id(64)],prefix);
+  const group=writeGroupDraft(USER,id(65),familyText);
+  assert.equal(group[id(65)],prefix);
+  assert.equal(readGroupDrafts(USER)[id(65)],prefix);
+
+  const combining='x'.repeat(3999)+'e\u0301tail';
+  assert.equal(cleanGroupDrafts({[id(66)]:combining})[id(66)],'x'.repeat(3999));
 });
