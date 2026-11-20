@@ -182,7 +182,7 @@ export async function uploadChannelAttachment(token:string,userId:string,file:Fi
  const ext=allowed[file.type];
  if(!ext)throw Error("Неподдерживаемый формат вложения.");
  if(file.size===0||file.size>25*1024*1024)throw Error("Максимальный размер вложения — 25 МБ.");
- const path=userId+"/"+crypto.randomUUID()+"."+ext;
+ const path=userId+"/"+createSocialUploadId()+"."+ext;
  const res=await fetch(apiUrl+"/storage/v1/object/ikonosfera-media/"+path,{method:"POST",headers:{apikey:publicKey,Authorization:"Bearer "+token,"Content-Type":file.type,"x-upsert":"false"},body:file});
  if(!res.ok)throw Error("Не удалось загрузить вложение.");
  return {path,type:file.type.startsWith("image/")?"image":file.type.startsWith("video/")?"video":file.type.startsWith("audio/")?"audio":"file"};
