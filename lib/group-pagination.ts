@@ -6,6 +6,10 @@ const UUID=/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
 const TIMESTAMP=/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?(?:Z|[+-]\d{2}:\d{2})$/;
 export const GROUP_OLDER_PAGE_SIZE=70;
 export const GROUP_HISTORY_MAX_LOADED=1500;
+/** Stop requesting older pages once the retained in-memory window reaches its cap. */
+export function canLoadOlderGroupMessages(hasMore:boolean,loadedCount:number):boolean{
+ return hasMore&&Number.isSafeInteger(loadedCount)&&loadedCount>=0&&loadedCount<GROUP_HISTORY_MAX_LOADED;
+}
 
 function subMillisecondFraction(timestamp:string):number{
  const part=/\.(\d{1,6})/.exec(timestamp)?.[1]??'';
@@ -33,19 +37,53 @@ export function olderGroupMessagesPath(groupId:string,oldest:Pick<GroupMessage,'
  });
  return '/rest/v1/group_messages?'+params.toString();
 }
+/** Validate history rows before they reach ordering, rendering, or cursor logic. */
+export function normalizeOlderGroupMessageRows(data:unknown,groupId:string):GroupMessage[]{
+ if(!Array.isArray(data))throw Error('Некорректные данные истории группы.');
+ const rows:GroupMessage[]=[];
+ const seen=new Set<string>();
+ for(const value of data){
+  if(!value||typeof value!=='object'||Array.isArray(value))
+   throw Error('Некорректные данные истории группы.');
+  const row=value as Record<string,unknown>;
+  if(typeof row.group_id!=='string')throw Error('Некорректные данные истории группы.');
+  // A stray row from another group is never exposed to this conversation.
+  if(row.group_id!==groupId)continue;
+  if(typeof row.id!=='string'||!UUID.test(row.id)
+   ||typeof row.sender_id!=='string'||!UUID.test(row.sender_id)
+   ||typeof row.body!=='string'||row.body.length>4000
+   ||typeof row.created_at!=='string'||!TIMESTAMP.test(row.created_at)
+   ||!Number.isFinite(Date.parse(row.created_at)))
+   throw Error('Некорректные данные истории группы.');
+  const key=row.id.toLowerCase();
+  if(seen.has(key))throw Error('Некорректные данные истории группы.');
+  seen.add(key);
+  rows.push(value as GroupMessage);
+ }
+ return rows;
+}
 export type OlderGroupPage={messages:GroupMessage[];hasMore:boolean};
 export async function fetchOlderGroupMessages(
  token:string,groupId:string,oldest:Pick<GroupMessage,'created_at'|'id'>
 ):Promise<OlderGroupPage>{
- const response=await fetch(apiUrl+olderGroupMessagesPath(groupId,oldest),{
-  method:'GET',
-  headers:{apikey:anonKey,Authorization:'Bearer '+token},
-  cache:'no-store',
-  signal:AbortSignal.timeout(18000)
- });
- const data:unknown=await response.json().catch(()=>null);
+ const controller=new AbortController();
+ const deadline=setTimeout(()=>controller.abort(),18000);
+ let response:Response;
+ let data:unknown;
+ try{
+  response=await fetch(apiUrl+olderGroupMessagesPath(groupId,oldest),{
+   method:'GET',
+   headers:{apikey:anonKey,Authorization:'Bearer '+token},
+   cache:'no-store',
+   signal:controller.signal
+  });
+  // Keep the deadline active through body consumption, not just response headers.
+  data=await response.json().catch(()=>null);
+ }finally{
+  clearTimeout(deadline);
+ }
  if(!response.ok||!Array.isArray(data))throw Error('Не удалось загрузить ранние сообщения.');
- const rows=(data as GroupMessage[]).filter(item=>item.group_id===groupId);
+ const rows=normalizeOlderGroupMessageRows(data,groupId);
  // The extra result is a has-more sentinel; it must be fetched next time.
  const page=rows.slice(0,GROUP_OLDER_PAGE_SIZE);
  page.reverse();

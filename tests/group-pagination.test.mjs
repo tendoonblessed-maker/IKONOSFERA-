@@ -14,7 +14,7 @@ function row(id,created_at=stamp,extra={}){
 }
 const id=(n)=>n.toString(16).padStart(8,'0')+'-1111-4111-8111-111111111111';
 const read=path=>readFileSync(new URL('../'+path,import.meta.url),'utf8');
-function setup(handler=()=>({ok:true,json:async()=>[]})){
+function setup(handler=()=>({ok:true,json:async()=>[]}),scheduler={}){
  const source=read('lib/group-pagination.ts');
  const compiled=ts.transpileModule(source,{
   compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}
@@ -22,7 +22,9 @@ function setup(handler=()=>({ok:true,json:async()=>[]})){
  const calls=[];
  const exports={};
  const context={
-  exports,URLSearchParams,URL,AbortSignal,
+  exports,URLSearchParams,URL,AbortSignal,AbortController,
+  setTimeout:scheduler.setTimeout??setTimeout,
+  clearTimeout:scheduler.clearTimeout??clearTimeout,
   process:{env:{NEXT_PUBLIC_SUPABASE_ANON_KEY:'public-test'}},
   fetch:async(url,options)=>{
    calls.push({url,options});
@@ -79,6 +81,45 @@ test('older page uses signed-in user JWT, strict no-store, bounded limit and ser
  assert.equal(page.hasMore,false);
 });
 
+test('older history uses a portable deadline and clears it after the response body is read',async()=>{
+ let cleared=false;
+ const {api,calls}=setup(()=>success([row(id(4))]),{
+  setTimeout(_callback,ms){assert.equal(ms,18000);return 17;},
+  clearTimeout(handle){assert.equal(handle,17);cleared=true;}
+ });
+ const page=await api.fetchOlderGroupMessages('jwt',GROUP,row(id(5)));
+ assert.equal(page.messages.length,1);
+ assert.ok(calls[0].options.signal instanceof AbortSignal);
+ assert.equal(calls[0].options.signal.aborted,false);
+ assert.equal(cleared,true);
+});
+
+test('older history deadline remains active while the response JSON body is pending',async()=>{
+ let fireDeadline;
+ let startedBody;
+ const bodyStarted=new Promise(resolve=>{startedBody=resolve;});
+ let cleared=false;
+ const {api,calls}=setup((url,options)=>({
+  ok:true,
+  json:()=>{
+   startedBody();
+   return new Promise((_resolve,reject)=>{
+    options.signal.addEventListener('abort',()=>reject(new Error('aborted')),{once:true});
+   });
+  }
+ }),{
+  setTimeout(callback,ms){assert.equal(ms,18000);fireDeadline=callback;return 23;},
+  clearTimeout(handle){assert.equal(handle,23);cleared=true;}
+ });
+ const pending=api.fetchOlderGroupMessages('jwt',GROUP,row(id(4)));
+ await bodyStarted;
+ assert.equal(calls[0].options.signal.aborted,false);
+ fireDeadline();
+ await assert.rejects(pending,/Не удалось загрузить ранние сообщения/);
+ assert.equal(calls[0].options.signal.aborted,true);
+ assert.equal(cleared,true);
+});
+
 test('extra row establishes hasMore but never overlaps next page boundary',async()=>{
  const many=Array.from({length:71},(_,i)=>row(id(80-i)));
  const {api}=setup(()=>success(many));
@@ -119,6 +160,36 @@ test('prepend new page deduplicates concurrent overlap and keeps updated current
  assert.equal(merged[1].body,'test','latest page has priority over stale earlier fetch');
 });
 
+test('older group history validates payloads and ignores rows from other groups',()=>{
+ const {api}=setup();
+ const valid=row(id(5));
+ const foreign=row(id(4),stamp,{group_id:OTHER,body:5});
+ const normalized=api.normalizeOlderGroupMessageRows([foreign,valid],GROUP);
+ assert.deepEqual(Array.from(normalized,x=>x.id),[id(5)]);
+ const malformed=[
+  {...valid,id:'not-a-uuid'},
+  {...valid,sender_id:'not-a-uuid'},
+  {...valid,body:5},
+  {...valid,body:'x'.repeat(4001)},
+  {...valid,created_at:'invalid'},
+  {...valid,created_at:'2026-10-29T09:50:12.1234567Z'},
+  {...valid,group_id:null},
+  null
+ ];
+ for(const value of malformed){
+  assert.throws(()=>api.normalizeOlderGroupMessageRows([value],GROUP),/Некорректные данные/);
+ }
+ assert.throws(()=>api.normalizeOlderGroupMessageRows('not-an-array',GROUP),/Некорректные данные/);
+ assert.throws(()=>api.normalizeOlderGroupMessageRows([valid,{...valid,body:'duplicate'}],GROUP),/Некорректные данные/);
+});
+
+test('fetch older group history fails closed on malformed in-group rows',async()=>{
+ const malformed=row(id(3),stamp,{body:5});
+ const {api,calls}=setup(()=>success([malformed]));
+ await assert.rejects(api.fetchOlderGroupMessages('jwt',GROUP,row(id(4))),/Некорректные данные/);
+ assert.equal(calls.length,1);
+});
+
 test('realtime latest page retains paged earlier messages but removes deleted latest rows',()=>{
  const {api}=setup();
  const earlier=row(id(1),'2026-10-29T09:00:00Z');
@@ -155,4 +226,45 @@ test('paged history does not change message schema or database privileges',()=>{
  assert.match(groups,/order=created_at\.desc,id\.desc&limit=150/);
  assert.match(pagination,/const GROUP_/g);
  assert.doesNotMatch(pagination,/service_role|ALTER TABLE|GRANT |dangerouslySetInnerHTML/i);
+});
+
+
+test('group history pagination stops at the retained-message cap even when the server has more rows',()=>{
+ const {api}=setup();
+ assert.equal(api.canLoadOlderGroupMessages(true,1499),true);
+ assert.equal(api.canLoadOlderGroupMessages(true,1500),false);
+ assert.equal(api.canLoadOlderGroupMessages(true,1501),false);
+ assert.equal(api.canLoadOlderGroupMessages(false,100),false);
+ assert.equal(api.canLoadOlderGroupMessages(true,Number.NaN),false);
+});
+
+test('GroupPanel derives older-page availability from the committed merged history length',()=>{
+ const panel=read('components/GroupPanel.tsx');
+ assert.ok(panel.includes('const [serverHasOlder,setServerHasOlder]=useState(false)'));
+ assert.ok(panel.includes('const hasOlder=canLoadOlderGroupMessages(serverHasOlder,messages.length)'));
+ assert.ok(panel.includes('setServerHasOlder(page.hasMore)'));
+ assert.ok(!panel.includes('messages.length+page.messages.length'));
+});
+
+
+test('older-page availability rejects non-integer retained counts',()=>{
+ const {api}=setup();
+ for(const value of [Number.NaN,Number.POSITIVE_INFINITY,-1,1.5,Number.MAX_SAFE_INTEGER+1]){
+  assert.equal(api.canLoadOlderGroupMessages(true,value),false,'invalid loaded count '+String(value));
+ }
+ assert.equal(api.canLoadOlderGroupMessages(true,1499),true);
+ assert.equal(api.canLoadOlderGroupMessages(true,1500),false);
+});
+
+test('prepending an older page retains the newest 1,500 messages and closes pagination at the cap',()=>{
+ const {api}=setup();
+ const timestamp=seconds=>new Date(Date.UTC(2026,9,29,9,0,seconds)).toISOString();
+ const older=Array.from({length:70},(_,i)=>row(id(10000+i),timestamp(i)));
+ const current=Array.from({length:1490},(_,i)=>row(id(20000+i),timestamp(70+i)));
+ const merged=api.prependOlderGroupMessages(current,older);
+ assert.equal(merged.length,1500);
+ assert.equal(merged[0].id,id(10060),'only the 10 newest rows from the fetched older page fit');
+ assert.equal(merged[10].id,id(20000),'all already-retained newer messages remain');
+ assert.equal(merged.at(-1).id,id(21489),'the newest current message is never evicted');
+ assert.equal(api.canLoadOlderGroupMessages(true,merged.length),false);
 });

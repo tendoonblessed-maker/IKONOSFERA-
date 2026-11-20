@@ -13,7 +13,7 @@ import {getOrCreateGroupSendAttempt,clearGroupSendAttempt} from '@/lib/group-sen
 import {subscribeGroupChanges} from '@/lib/group-realtime';
 import {mergeConfirmedGroupMessages,CONFIRMED_GROUP_MESSAGE_GRACE_MS,type ConfirmedGroupMessage} from '@/lib/group-history';
 import {shouldAcknowledgeGroupRead,countNewIncomingBelow} from '@/lib/group-read-position';
-import {fetchOlderGroupMessages,prependOlderGroupMessages,preserveOlderGroupMessages,GROUP_HISTORY_MAX_LOADED} from '@/lib/group-pagination';
+import {fetchOlderGroupMessages,prependOlderGroupMessages,preserveOlderGroupMessages,canLoadOlderGroupMessages} from '@/lib/group-pagination';
 type Props={token:string;userId:string;group:Group;onBack:()=>void;onShowProfile:(id:string)=>void;onDraftChange:(groupId:string,text:string)=>void};
 export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDraftChange}:Props){
  const [messages,setMessages]=useState<GroupMessage[]>([]);
@@ -28,7 +28,8 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
  const [error,setError]=useState('');
  const [retryAvailable,setRetryAvailable]=useState(false);
  const [initialLoading,setInitialLoading]=useState(true);
- const [hasOlder,setHasOlder]=useState(false);
+ const [serverHasOlder,setServerHasOlder]=useState(false);
+ const hasOlder=canLoadOlderGroupMessages(serverHasOlder,messages.length);
  const [loadingOlder,setLoadingOlder]=useState(false);
  const [olderError,setOlderError]=useState('');
  const [showJumpToLatest,setShowJumpToLatest]=useState(false);
@@ -68,7 +69,7 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
   olderLoadingRef.current=false;
   initialPageLoadedRef.current=false;
   prependScrollRef.current=null;
-  setHasOlder(false);setLoadingOlder(false);setOlderError('');
+  setServerHasOlder(false);setLoadingOlder(false);setOlderError('');
   setMessages([]);
   setInitialLoading(true);
   latestGroupMessageRef.current=null;
@@ -128,7 +129,7 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
    initialPageLoadedRef.current=true;
    // Current API returns at most 150 latest rows. Only allow paging
    // once the initial window is known (avoids pointless empty requests).
-   setHasOlder(msgs.length>=150);
+   setServerHasOlder(msgs.length>=150);
   }
   setMessages(current=>mergeConfirmedGroupMessages(
    preserveOlderGroupMessages(current,msgs),
@@ -242,7 +243,7 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
    prependScrollRef.current=null;
    setLoadingOlder(false);setOlderError('');
    // This is a historical window, so older pages are available on demand.
-   if(!current)setHasOlder(true);
+   if(!current)setServerHasOlder(true);
    previousMessageIdsRef.current={groupId,ownerId,ids:new Set(around.map(row=>row.id))};
    if(!current)setMessages(around);
    setPendingSearchJump(message.id);
@@ -290,10 +291,10 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
       ||contextRef.current.token!==requestToken)return;
    if(!page.messages.length){
     prependScrollRef.current=null;
-    setHasOlder(false);
+    setServerHasOlder(false);
    }else{
     setMessages(current=>prependOlderGroupMessages(current,page.messages));
-    setHasOlder(page.hasMore&&messages.length+page.messages.length<GROUP_HISTORY_MAX_LOADED);
+    setServerHasOlder(page.hasMore);
    }
   }catch(e){
    if(requestId===olderRequestRef.current){
@@ -382,7 +383,7 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
      prependScrollRef.current=null;
      olderRequestRef.current++;
      olderLoadingRef.current=false;
-     setHasOlder(false);setLoadingOlder(false);setOlderError('');
+     setServerHasOlder(false);setLoadingOlder(false);setOlderError('');
      setMessages([]);
      setInitialLoading(true);
      setShowJumpToLatest(false);
@@ -472,7 +473,7 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
     olderRequestRef.current++;
     olderLoadingRef.current=false;
     prependScrollRef.current=null;
-    setHasOlder(false);setLoadingOlder(false);setOlderError('');
+    setServerHasOlder(false);setLoadingOlder(false);setOlderError('');
     setMessages([]);
     setInitialLoading(true);
    }
