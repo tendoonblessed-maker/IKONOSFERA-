@@ -8,13 +8,13 @@ const source=path=>readFileSync(new URL('../'+path,import.meta.url),'utf8');
 const NATIVE='550e8400-e29b-41d4-a716-446655440000';
 const UUID_V4=/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i;
 
-function loadApi(cryptoSource={}){
+function loadApi(cryptoSource={},fetchImpl=async()=>({ok:true})){
  const compiled=ts.transpileModule(source('lib/supabase-rest.ts'),{
   compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}
  }).outputText;
  const exports={};
  vm.runInNewContext(compiled,{
-  exports,process:{env:{}},globalThis:{crypto:cryptoSource}
+  exports,process:{env:{NEXT_PUBLIC_SUPABASE_URL:'https://test.supabase.invalid',NEXT_PUBLIC_SUPABASE_ANON_KEY:'anon-test'}},globalThis:{crypto:cryptoSource},fetch:fetchImpl
  },{timeout:1500,filename:'supabase-rest.cjs'});
  return exports;
 }
@@ -62,6 +62,24 @@ test('direct send fails closed when secure randomness is unavailable',()=>{
  assert.throws(()=>api.createSecureUuid({
   getRandomValues(){throw Error('crypto unavailable');}
  }),/Безопасная генерация идентификатора недоступна/);
+});
+
+
+test('private direct media uploads use secure UUID fallback in their Storage path',async()=>{
+ const calls=[];
+ const api=loadApi({
+  getRandomValues(bytes){bytes.set(Array.from({length:16},(_,i)=>i));return bytes;}
+ },async(url,options)=>{calls.push({url,options});return {ok:true,status:200};});
+ const result=await api.uploadDirectMedia(
+  'user-token','33333333-3333-4333-8333-333333333333',
+  '11111111-1111-4111-8111-111111111111',
+  {type:'image/png',size:12}
+ );
+ const expected='33333333-3333-4333-8333-333333333333/11111111-1111-4111-8111-111111111111/00010203-0405-4607-8809-0a0b0c0d0e0f.png';
+ assert.equal(result.path,expected);
+ assert.equal(calls.length,1);
+ assert.equal(calls[0].url,'https://test.supabase.invalid/storage/v1/object/ikonosfera-direct-media/'+expected);
+ assert.equal(calls[0].options.headers.Authorization,'Bearer user-token');
 });
 
 test('AppShell and the PostgREST text-send default share the secure UUID helper',()=>{
