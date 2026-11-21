@@ -93,6 +93,20 @@ test('AppShell integration assertions match the actual navigation handlers', () 
   assert.match(shell, /readMobileDetailHistorySnapshot/);
   assert.match(shell, /window\.addEventListener\('popstate'/);
   assert.match(shell, /window\.history\.pushState\(/);
+  assert.match(shell, /window\.history\.replaceState\(/);
+  assert.match(shell, /else if\(isMobile&&mobileDetailOpen&&mobileDetailHistoryRef\.current\)/);
   assert.match(shell, /window\.history\.back\(\)/);
   assert.match(shell, /matchMedia\('\(max-width: 800px\)'\)/);
+});
+
+test('updated detail snapshot replaces the existing entry without losing framework state', () => {
+  const frameworkState = { __NA: true, tree: ['root'], customRouterFlag: 7 };
+  const first = createMobileDetailHistoryState(frameworkState, snapshot);
+  const latest = { ...snapshot, selectedChatId: null, selectedGroupId: GROUP };
+  const replaced = createMobileDetailHistoryState(first, latest);
+
+  assert.equal(replaced.__NA, true);
+  assert.deepEqual(replaced.tree, ['root']);
+  assert.equal(replaced.customRouterFlag, 7);
+  assert.deepEqual(readMobileDetailHistorySnapshot(replaced), latest);
 });
