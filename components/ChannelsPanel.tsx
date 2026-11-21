@@ -92,8 +92,10 @@ export default function ChannelsPanel({token,userId,channel,onBack,onShowProfile
   e.preventDefault();if(!currentChannel.discussion_enabled||busy||!discussionDraft.trim())return;
   const lease=channelSendGateRef.current?.acquire();if(!lease)return;
   setBusy(true);setError("");
-  try{await sendDiscussionMessage(token,channel.id,userId,discussionDraft);setDiscussionDraft("");await loadDiscussion();}
-  catch(e){setError(readable(e));}finally{channelSendGateRef.current?.release(lease);setBusy(false);}
+  try{
+   await sendDiscussionMessage(token,channel.id,userId,discussionDraft);setDiscussionDraft("");setNotice("Сообщение отправлено.");
+   try{await loadDiscussion();}catch{setNotice("Сообщение отправлено, но обсуждение не обновилось.");}
+  }catch(e){setError(readable(e));}finally{channelSendGateRef.current?.release(lease);setBusy(false);}
  }
  async function eraseDiscussion(id:string){
   if(busy||!window.confirm("Удалить сообщение из обсуждения?"))return;
@@ -143,7 +145,8 @@ export default function ChannelsPanel({token,userId,channel,onBack,onShowProfile
    path=attachment?.path??null;
    try{await publishPost(token,userId,channel.id,body,null,attachment);}
    catch(e){if(path)await removeUpload(token,path).catch(()=>{});throw e;}
-   setBody("");setFile(null);await reload();setNotice("Пост опубликован.");
+   setBody("");setFile(null);setNotice("Пост опубликован.");
+   try{await reload();}catch{setNotice("Пост опубликован, но лента не обновилась. Обнови её позже.");}
   }catch(e){setError(readable(e));}finally{channelSendGateRef.current?.release(lease);setBusy(false);}
  }
  async function writeComment(e:FormEvent){
@@ -153,21 +156,25 @@ export default function ChannelsPanel({token,userId,channel,onBack,onShowProfile
   const requestId=++commentRequestRef.current,ownerId=userId,channelId=channel.id;
   const isCurrent=()=>isCurrentCommentRequest(requestId,ownerId,channelId,postId);
   setBusy(true);setError("");setCommentsLoading(true);
+  try{await addPostComment(token,postId,userId,draft);}
+  catch(e){if(isCurrent())setError(readable(e));return;}
+  if(!isCurrent())return;
+  if(commentDraft===draft)setCommentDraft("");
+  setNotice("Комментарий отправлен.");
   try{
-   await addPostComment(token,postId,userId,draft);
-   if(!isCurrent())return;
-   if(commentDraft===draft)setCommentDraft("");
    const list=await listPostComments(token,postId);
    if(!isCurrent())return;
    setComments(list);
    const ids=Array.from(new Set(list.map(c=>c.author_id)));
    if(ids.length&&!authors[userId]){
-    const people=await listProfiles(token,ids);
-    if(!isCurrent())return;
-    setAuthors(prev=>({...prev,...Object.fromEntries(people.map(p=>[p.id,p]))}));
+    try{const people=await listProfiles(token,ids);if(isCurrent())setAuthors(prev=>({...prev,...Object.fromEntries(people.map(p=>[p.id,p]))}));}
+    catch{if(isCurrent())setNotice("Комментарий отправлен, но имена авторов не обновились.");}
    }
-   if(currentChannel.discussion_enabled&&isCurrent())await loadDiscussion();
-  }catch(e){if(isCurrent())setError(readable(e));}
+   if(currentChannel.discussion_enabled&&isCurrent()){
+    try{await loadDiscussion();}catch{if(isCurrent())setNotice("Комментарий отправлен, но обсуждение не обновилось.");}
+   }
+   if(isCurrent())setNotice("");
+  }catch{if(isCurrent())setNotice("Комментарий отправлен, но список комментариев не обновился.");}
   finally{if(requestId===commentRequestRef.current)setCommentsLoading(false);channelSendGateRef.current?.release(lease);setBusy(false);}
  }
  async function savePostEdit(id:string){
