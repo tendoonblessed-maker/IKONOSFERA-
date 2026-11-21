@@ -1,6 +1,7 @@
 export type MobileDetailTab = 'chats' | 'contacts' | 'channels' | 'profile' | 'settings';
 
 export type MobileDetailHistorySnapshot = {
+  ownerId: string;
   tab: MobileDetailTab;
   selectedChatId: string | null;
   selectedGroupId: string | null;
@@ -30,10 +31,13 @@ export function createMobileDetailHistoryState(
 }
 
 /** Read a validated messenger view snapshot from a browser history entry. */
-export function readMobileDetailHistorySnapshot(state: unknown): MobileDetailHistorySnapshot | null {
+export function readMobileDetailHistorySnapshot(state: unknown, expectedOwnerId: string): MobileDetailHistorySnapshot | null {
   if (!isRecord(state)) return null;
   const value = state[MOBILE_DETAIL_HISTORY_KEY];
   if (!isRecord(value)) return null;
+
+  if (typeof value.ownerId !== 'string' || !UUID.test(value.ownerId)
+    || !UUID.test(expectedOwnerId) || value.ownerId !== expectedOwnerId) return null;
 
   const validTabs: MobileDetailTab[] = ['chats', 'contacts', 'channels', 'profile', 'settings'];
   if (!validTabs.includes(value.tab as MobileDetailTab)) return null;
@@ -55,6 +59,7 @@ export function readMobileDetailHistorySnapshot(state: unknown): MobileDetailHis
   if (activeViews !== 1) return null;
 
   return {
+    ownerId: value.ownerId,
     tab: value.tab as MobileDetailTab,
     selectedChatId: value.selectedChatId,
     selectedGroupId: value.selectedGroupId,
