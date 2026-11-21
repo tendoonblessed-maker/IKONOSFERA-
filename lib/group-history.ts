@@ -12,7 +12,10 @@ export function compareGroupMessages(a:GroupMessage,b:GroupMessage):number{
  const milli=Date.parse(a.created_at)-Date.parse(b.created_at);
  if(milli!==0)return milli;
  const fraction=subMillisecondFraction(a.created_at)-subMillisecondFraction(b.created_at);
- return fraction||a.id.localeCompare(b.id);
+ // PostgreSQL UUID ordering compares the canonical bytes, not locale collation.
+ // Lowercase canonical UUID strings have the same order as their byte values.
+ const left=a.id.toLowerCase(),right=b.id.toLowerCase();
+ return fraction||(left===right?0:left<right?-1:1);
 }
 
 /**
