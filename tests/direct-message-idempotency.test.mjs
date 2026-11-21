@@ -114,6 +114,32 @@ test('Web Locks and shared localStorage reuse one direct-message attempt across 
  assert.equal(second.api.readDirectTextAttempts(OWNER,CHAT).length,1);
 });
 
+test('shared registry serializes different message attempts in one chat',async()=>{
+ const sharedStore=new Map(),locks=createLockManager();
+ const first=loadAttempts({sharedStore,locks});
+ const second=loadAttempts({sharedStore,locks});
+ const ids=await Promise.all([
+  first.api.getOrCreateDirectTextAttempt(OWNER,CHAT,'Message A',null,nextId),
+  second.api.getOrCreateDirectTextAttempt(OWNER,CHAT,'Message B',null,nextId)
+ ]);
+ assert.notEqual(ids[0],ids[1]);
+ assert.equal(first.api.readDirectTextAttempts(OWNER,CHAT).length,2);
+ assert.equal(second.api.readDirectTextAttempts(OWNER,CHAT).length,2);
+});
+
+test('shared attempt cleanup is serialized and allows a later intentional repeat',async()=>{
+ const sharedStore=new Map(),locks=createLockManager();
+ const first=loadAttempts({sharedStore,locks});
+ const second=loadAttempts({sharedStore,locks});
+ const original=await first.api.getOrCreateDirectTextAttempt(OWNER,CHAT,'Repeat after confirmation',null,nextId);
+ const reused=await second.api.getOrCreateDirectTextAttempt(OWNER,CHAT,'Repeat after confirmation',null,nextId);
+ assert.equal(reused,original);
+ await first.api.clearDirectTextAttempt(OWNER,CHAT,original);
+ const next=await second.api.getOrCreateDirectTextAttempt(OWNER,CHAT,'Repeat after confirmation',null,nextId);
+ assert.notEqual(next,original);
+ assert.equal(second.api.readDirectTextAttempts(OWNER,CHAT).length,1);
+});
+
 test('without Web Locks, direct-message attempts remain tab-local',async()=>{
  const sharedStore=new Map();
  const first=loadAttempts({sharedStore});
@@ -151,7 +177,7 @@ test('concurrent same-turn attempt creation coalesces to one UUID',async()=>{
 test('confirmed attempt is cleared so a later intentional identical message gets a new ID',async()=>{
  const {api}=loadAttempts();
  const first=await api.getOrCreateDirectTextAttempt(OWNER,CHAT,'Ещё раз',null,nextId);
- api.clearDirectTextAttempt(OWNER,CHAT,first);
+ await api.clearDirectTextAttempt(OWNER,CHAT,first);
  assert.equal(api.readDirectTextAttempts(OWNER,CHAT).length,0);
  const second=await api.getOrCreateDirectTextAttempt(OWNER,CHAT,'Ещё раз',null,nextId);
  assert.notEqual(second,first);
