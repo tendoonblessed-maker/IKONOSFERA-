@@ -1,6 +1,7 @@
 /* IKONOSFERA social API. All writes use the signed-in user's JWT and Supabase RLS. */
 import { apiUrl } from "@/lib/supabase-rest";
 import { createSocialUploadId } from "@/lib/social-upload-id";
+import { withSocialReadTimeout } from "@/lib/social-read-timeout.mjs";
 const publicKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "";
 export type FullProfile = { id:string; username:string; display_name:string; avatar_path:string|null; cover_path:string|null; bio:string; featured_channel_id:string|null; status_emoji:number|null; age_years:number|null };
 export type ProfilePhoto = { id:string; user_id:string; image_path:string; caption:string; created_at:string };
@@ -12,12 +13,23 @@ export type PostComment = { id:string; post_id:string; author_id:string; body:st
 function requestHeaders(token:string, extras:Record<string,string>={}) {
   return { apikey:publicKey, Authorization:"Bearer "+token, "Content-Type":"application/json", ...extras };
 }
-async function api<T>(path:string,token:string,method="GET",body?:unknown) : Promise<T> {
-  const res=await fetch(apiUrl+path,{method,headers:requestHeaders(token,method==="POST"||method==="PATCH"||method==="DELETE"?{Prefer:"return=representation"}:{}),
-    body:body===undefined?undefined:JSON.stringify(body),cache:"no-store"});
-  const value=await res.json().catch(()=>null);
-  if(!res.ok)throw Error(value?.message||value?.error||value?.msg||"Ошибка сервера ("+res.status+")");
-  return value as T;
+async function api<T>(path:string,token:string,method="GET",body?:unknown,readOnly=false) : Promise<T> {
+  const readOnlyRequest=method==="GET"||readOnly;
+  const run=async(signal?:AbortSignal):Promise<T>=>{
+    const res=await fetch(apiUrl+path,{method,headers:requestHeaders(token,method==="POST"||method==="PATCH"||method==="DELETE"?{Prefer:"return=representation"}:{}),
+      body:body===undefined?undefined:JSON.stringify(body),cache:"no-store",...(signal?{signal}:{})});
+    let value:unknown;
+    try{value=await res.json();}catch(error){
+      // Do not turn an aborted response-body read into a successful null result.
+      if(signal?.aborted)throw error;
+      value=null;
+    }
+    if(!res.ok)throw Error((value as {message?:string;error?:string;msg?:string}|null)?.message||(value as {error?:string}|null)?.error||(value as {msg?:string}|null)?.msg||"Ошибка сервера ("+res.status+")");
+    return value as T;
+  };
+  // Never abort mutations: a timed-out write could have committed server-side.
+  // The read-only subscriber-count RPC is explicitly opted in below.
+  return readOnlyRequest?withSocialReadTimeout(run):run();
 }
 export function imageUrl(path:string|null|undefined):string|null {
   if(!path||!apiUrl||!/^[a-z0-9-]+\/[a-z0-9.-]+\.(jpg|png|webp)$/i.test(path))return null;
@@ -78,7 +90,7 @@ export async function deleteStory(token:string,id:string):Promise<void>{
 export async function getChannelSubscriberCounts(token:string,ids:string[]):Promise<Record<string,number>>{
  const unique=Array.from(new Set(ids)).filter(id=>/^[0-9a-f-]{36}$/i.test(id)).slice(0,100);
  if(!unique.length)return {};
- const counts=await api<{channel_id:string;subscribers:number}[]>('/rest/v1/rpc/channel_subscriber_counts',token,'POST',{p_ids:unique});
+ const counts=await api<{channel_id:string;subscribers:number}[]>('/rest/v1/rpc/channel_subscriber_counts',token,'POST',{p_ids:unique},true);
  return Object.fromEntries(counts.map(row=>[row.channel_id,Number(row.subscribers)]));
 }
 export async function listChannels(token:string):Promise<Channel[]>{
