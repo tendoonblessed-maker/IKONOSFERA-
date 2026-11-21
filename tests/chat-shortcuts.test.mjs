@@ -56,3 +56,19 @@ test('opened message search focuses its field and closes on Escape',()=>{
   assert.match(panel,/if\(event.key==='Escape'\)\{event.preventDefault\(\);event.stopPropagation\(\);onClose\(\);\}/);
   assert.match(shell,/input\?\.focus\(\);input\?\.select\(\)/);
 });
+
+test('chat shortcuts leave focused editable controls to the user',()=>{
+  assert.equal(shouldOpenChatListSearch(key({key:'k'}),true),false);
+  assert.equal(shouldOpenDirectChatSearch(key(),true,true),false);
+  assert.equal(shouldOpenChatListSearch(key({key:'k'})),true);
+  assert.equal(shouldOpenDirectChatSearch(key(),true),true);
+});
+
+test('AppShell scopes global shortcuts away from editable targets',()=>{
+  const shell=source('components/AppShell.tsx');
+  assert.match(shell,/targetIsEditable=target instanceof Element&&Boolean\(target\.closest/);
+  assert.match(shell,/shouldOpenChatListSearch\(event,targetIsEditable\)/);
+  assert.match(shell,/shouldOpenDirectChatSearch\(event,directVisible,targetIsEditable\)/);
+  assert.match(shell,/contenteditable="plaintext-only"/);
+  assert.match(shell,/[role="textbox"]/);
+});
