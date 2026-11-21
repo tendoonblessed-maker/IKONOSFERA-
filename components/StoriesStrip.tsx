@@ -3,6 +3,7 @@ import {useCallback,useEffect,useRef,useState} from 'react';
 import {addStory,getContactsStories,imageUrl,uploadPhoto,type Story} from '@/lib/social';
 import type {Profile} from '@/lib/supabase-rest';
 import {useStoryProgress} from '@/lib/use-story-progress';
+import {addStoryPausePointer,removeStoryPausePointer} from '@/lib/story-pause-pointers';
 import {restoreDialogFocus,restoreDialogFocusInside,trapDialogTab} from '@/lib/dialog-focus';
 
 type Person={id:string;name:string;avatar:string|null;stories:Story[]};
@@ -13,6 +14,7 @@ export default function StoriesStrip({token,userId,contacts,ownProfile}:Props){
  const [busy,setBusy]=useState(false);
  const [error,setError]=useState('');
  const [paused,setPaused]=useState(false);
+ const pausedPointersRef=useRef<Set<number>>(new Set());
  const inputRef=useRef<HTMLInputElement>(null);
  const storyDialogRef=useRef<HTMLDivElement|null>(null);
  const storyCloseRef=useRef<HTMLButtonElement|null>(null);
@@ -76,7 +78,11 @@ export default function StoriesStrip({token,userId,contacts,ownProfile}:Props){
   if(!storyViewerOpen)return;
   const previousFocus=document.activeElement instanceof HTMLElement?document.activeElement:null;
   storyCloseRef.current?.focus({preventScroll:true});
-  return()=>restoreDialogFocus(previousFocus);
+  return()=>{
+   pausedPointersRef.current.clear();
+   setPaused(false);
+   restoreDialogFocus(previousFocus);
+  };
  },[storyViewerOpen]);
  return <section className="home-stories" aria-label="Истории контактов">
   <div className="home-stories-header"><strong>Истории</strong><span>Доступны 24 часа</span></div>
@@ -90,7 +96,7 @@ export default function StoriesStrip({token,userId,contacts,ownProfile}:Props){
   <input ref={inputRef} type="file" accept="image/png,image/jpeg,image/webp" hidden aria-label="Загрузить свою историю" disabled={busy} onChange={e=>{void create(e.target.files?.[0]);e.target.value='';}}/>
   {people[0]?.stories.length>0&&<button className="home-story-add" type="button" disabled={busy} onClick={()=>inputRef.current?.click()}>+ Добавить историю</button>}
   {error&&<p role="alert" className="profile-error">{error}</p>}
-  {story&&person&&<div ref={storyDialogRef} tabIndex={-1} className="story-viewer story-viewer-telegram" role="dialog" aria-modal="true" aria-label={'Истории: '+person.name} onPointerDown={()=>setPaused(true)} onPointerUp={()=>setPaused(false)} onPointerCancel={()=>setPaused(false)}>
+  {story&&person&&<div ref={storyDialogRef} tabIndex={-1} className="story-viewer story-viewer-telegram" role="dialog" aria-modal="true" aria-label={'Истории: '+person.name} onPointerDown={event=>setPaused(addStoryPausePointer(pausedPointersRef.current,event.pointerId))} onPointerUp={event=>setPaused(removeStoryPausePointer(pausedPointersRef.current,event.pointerId))} onPointerCancel={event=>setPaused(removeStoryPausePointer(pausedPointersRef.current,event.pointerId))} onPointerLeave={event=>setPaused(removeStoryPausePointer(pausedPointersRef.current,event.pointerId))}>
    <div className="story-viewer-stage">
     <img className="story-viewer-image" src={imageUrl(story.image_path)||''} alt={story.caption||'История'}/>
     <div className="story-progress">{person.stories.map((s,i)=><span className="story-progress-track" key={s.id}><span className={i<active!.story?'done':i===active!.story?'playing story-progress-fill':''} ref={i===active!.story?progressRef:undefined}/></span>)}</div>
