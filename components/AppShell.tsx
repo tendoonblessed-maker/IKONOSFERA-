@@ -1022,7 +1022,8 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
     // This keeps editing, copying and message search free from fake quote text.
     if(!plainText||plainText.length>4000)return;
     const sendGate=directSendGateRef.current;
-    if(!sendGate?.tryAcquire(userId,chatId))return;
+    const sendLease=sendGate?.tryAcquire(userId,chatId);
+    if(!sendLease)return;
     setSending(true);setError('');
     try{
       const sent=await postMessage(token,chatId,userId,plainText,crypto.randomUUID(),reply?.id??null);
@@ -1044,7 +1045,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
       // Polling will reconcile read receipts and any concurrent edits; the
       // send is already visible and never waits for a second network request.
     }catch(e){setError(userFacingError(e));}
-    finally{sendGate.release(userId,chatId);setSending(false);}
+    finally{sendGate?.release(userId,chatId,sendLease);setSending(false);}
   }
   async function toggleSavedContact(person:Profile){
     if(!session||!userId||busy)return;
@@ -1171,7 +1172,8 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
     const problem=validateDirectMediaFile(file);
     if(problem){setError(problem);return;}
     const sendGate=directSendGateRef.current;
-    if(!sendGate?.tryAcquire(userId,chatId))return;
+    const sendLease=sendGate?.tryAcquire(userId,chatId);
+    if(!sendLease)return;
     setSending(true);setError("");
     try{
       const sent=await sendDirectMedia(token,chatId,userId,file,caption);
@@ -1187,7 +1189,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
       // The server confirmed the attachment; polling updates its metadata
       // without delaying the new message bubble or reporting a false failure.
     }catch(e){setError(userFacingError(e));}
-    finally{sendGate.release(userId,chatId);setSending(false);}
+    finally{sendGate?.release(userId,chatId,sendLease);setSending(false);}
   }
   async function logout(){
     if(!session)return;
