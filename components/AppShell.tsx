@@ -7,6 +7,7 @@ import {mergeConfirmedRecentPage,prependEarlierPage,CONFIRMED_MESSAGE_GRACE_MS,t
 import {readChatDrafts,writeChatDrafts,clearChatDrafts,updateChatDraftEntry,type ChatDrafts} from "@/lib/chat-drafts";
 import {readGroupDrafts,writeGroupDraft,clearGroupDrafts,type GroupDrafts} from "@/lib/group-drafts";
 import {clearAllGroupSendAttempts} from "@/lib/group-send-attempts";
+import {createDirectSendGate} from "@/lib/direct-send-gate";
 import ChatMedia from "@/components/ChatMedia";
 import ChatMessageText from "@/components/ChatMessageText";
 import {subscribeDirectChatChanges} from "@/lib/direct-realtime";
@@ -156,6 +157,8 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
   const composerRef=useRef<HTMLTextAreaElement|null>(null);
   const confirmedMessagesRef=useRef<Map<string,ConfirmedMessage>>(new Map());
   const attachmentDragDepthRef=useRef(0);
+  const directSendGateRef=useRef<ReturnType<typeof createDirectSendGate>|null>(null);
+  if(directSendGateRef.current===null)directSendGateRef.current=createDirectSendGate();
 
   // In-memory edits belong to one signed-in user; never reuse across accounts.
   useEffect(()=>{recentChannelUpdatesRef.current.clear();},[userId]);
@@ -1018,6 +1021,8 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
     // Reply metadata is stored server-side rather than prepended to plain text.
     // This keeps editing, copying and message search free from fake quote text.
     if(!plainText||plainText.length>4000)return;
+    const sendGate=directSendGateRef.current;
+    if(!sendGate?.tryAcquire(userId,chatId))return;
     setSending(true);setError('');
     try{
       const sent=await postMessage(token,chatId,userId,plainText,crypto.randomUUID(),reply?.id??null);
@@ -1039,7 +1044,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
       // Polling will reconcile read receipts and any concurrent edits; the
       // send is already visible and never waits for a second network request.
     }catch(e){setError(userFacingError(e));}
-    finally{setSending(false);}
+    finally{sendGate.release(userId,chatId);setSending(false);}
   }
   async function toggleSavedContact(person:Profile){
     if(!session||!userId||busy)return;
@@ -1165,6 +1170,8 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
     const chatId=selected,token=session.access_token;
     const problem=validateDirectMediaFile(file);
     if(problem){setError(problem);return;}
+    const sendGate=directSendGateRef.current;
+    if(!sendGate?.tryAcquire(userId,chatId))return;
     setSending(true);setError("");
     try{
       const sent=await sendDirectMedia(token,chatId,userId,file,caption);
@@ -1180,7 +1187,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
       // The server confirmed the attachment; polling updates its metadata
       // without delaying the new message bubble or reporting a false failure.
     }catch(e){setError(userFacingError(e));}
-    finally{setSending(false);}
+    finally{sendGate.release(userId,chatId);setSending(false);}
   }
   async function logout(){
     if(!session)return;
