@@ -1,5 +1,5 @@
 'use client';
-import { useCallback, useEffect, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import { listProfiles, type Profile } from "@/lib/supabase-rest";
 import StatusEmoji from "@/components/StatusEmoji";
 import {
@@ -7,6 +7,7 @@ import {
  removeUpload, uploadChannelAttachment, updateChannel, updateChannelAvatar, deleteChannel, getChannelSubscriberCounts, listDiscussionMessages, sendDiscussionMessage, deleteDiscussionMessage, listDiscussionComments,
  type Channel, type ChannelPost, type PostComment, type PostReaction, type ReactionEmoji, type DiscussionMessage
 } from "@/lib/social";
+import {createChannelSendGate,isLatestChannelCommentRequest} from "@/lib/channel-comment-request";
 
 type Props={token:string;userId:string;channel:Channel;onBack:()=>void;onShowProfile:(id:string)=>void;subscribed:boolean;onToggleSubscribe:()=>void;onMessageAuthor:()=>void;onChannelUpdated?:(channel:Channel)=>void;onChannelDeleted?:()=>void};
 const readable=(e:unknown)=>e instanceof Error?e.message:"Ошибка соединения";
@@ -33,6 +34,17 @@ export default function ChannelsPanel({token,userId,channel,onBack,onShowProfile
  const [body,setBody]=useState("");const [file,setFile]=useState<File|null>(null);
  const [openComments,setOpenComments]=useState<string|null>(null);
  const [comments,setComments]=useState<PostComment[]>([]);
+ const [commentsLoading,setCommentsLoading]=useState(false);
+ const commentRequestRef=useRef(0);
+ const openCommentsRef=useRef<string|null>(null);
+ const commentContextRef=useRef({userId,channelId:channel.id});
+ commentContextRef.current={userId,channelId:channel.id};
+ const channelSendGateRef=useRef<ReturnType<typeof createChannelSendGate>|null>(null);
+ if(!channelSendGateRef.current)channelSendGateRef.current=createChannelSendGate();
+ function isCurrentCommentRequest(requestId:number,ownerId:string,channelId:string,postId:string){
+  const active=commentContextRef.current;
+  return isLatestChannelCommentRequest(requestId,commentRequestRef.current,ownerId,active.userId,channelId,active.channelId,postId,openCommentsRef.current);
+ }
  const [authors,setAuthors]=useState<Record<string,Profile>>({});
  const [commentDraft,setCommentDraft]=useState("");
  const [editingPostId,setEditingPostId]=useState<string|null>(null);
@@ -78,9 +90,10 @@ export default function ChannelsPanel({token,userId,channel,onBack,onShowProfile
  }
  async function sendDiscussion(e:FormEvent){
   e.preventDefault();if(!currentChannel.discussion_enabled||busy||!discussionDraft.trim())return;
+  const lease=channelSendGateRef.current?.acquire();if(!lease)return;
   setBusy(true);setError("");
   try{await sendDiscussionMessage(token,channel.id,userId,discussionDraft);setDiscussionDraft("");await loadDiscussion();}
-  catch(e){setError(readable(e));}finally{setBusy(false);}
+  catch(e){setError(readable(e));}finally{channelSendGateRef.current?.release(lease);setBusy(false);}
  }
  async function eraseDiscussion(id:string){
   if(busy||!window.confirm("Удалить сообщение из обсуждения?"))return;
@@ -94,19 +107,35 @@ export default function ChannelsPanel({token,userId,channel,onBack,onShowProfile
    setReactions(await listPostReactions(token,posts.map(p=>p.id)));setReactionPicker(null);
   }catch(e){setError(readable(e));}finally{setBusy(false);}
  }
- useEffect(()=>{void reload().catch(e=>setError(readable(e)));setOpenComments(null);setComments([]);setBody("");setFile(null);},[reload]);
+ useEffect(()=>{commentRequestRef.current++;openCommentsRef.current=null;setOpenComments(null);setComments([]);setCommentsLoading(false);setCommentDraft("");void reload().catch(e=>setError(readable(e)));setBody("");setFile(null);},[reload,userId]);
  async function showComments(postId:string){
-  if(openComments===postId){setOpenComments(null);return;}
-  setError("");
+  if(openCommentsRef.current===postId){
+   commentRequestRef.current++;openCommentsRef.current=null;
+   setOpenComments(null);setComments([]);setCommentDraft("");setCommentsLoading(false);
+   return;
+  }
+  const requestId=++commentRequestRef.current,ownerId=userId,channelId=channel.id;
+  openCommentsRef.current=postId;setOpenComments(postId);setComments([]);setCommentDraft("");
+  setCommentsLoading(true);setError("");
   try{
-   const list=await listPostComments(token,postId);setComments(list);setOpenComments(postId);
+   const list=await listPostComments(token,postId);
+   if(!isCurrentCommentRequest(requestId,ownerId,channelId,postId))return;
+   setComments(list);
    const ids=Array.from(new Set(list.map(c=>c.author_id)));
-   const people=await listProfiles(token,ids);
-   setAuthors(Object.fromEntries(people.map(p=>[p.id,p])));
-  }catch(e){setError(readable(e));}
+   if(ids.length){
+    const people=await listProfiles(token,ids);
+    if(!isCurrentCommentRequest(requestId,ownerId,channelId,postId))return;
+    setAuthors(prev=>({...prev,...Object.fromEntries(people.map(p=>[p.id,p]))}));
+   }
+  }catch(e){
+   if(isCurrentCommentRequest(requestId,ownerId,channelId,postId)){
+    setError(readable(e));openCommentsRef.current=null;setOpenComments(null);setComments([]);
+   }
+  }finally{if(requestId===commentRequestRef.current)setCommentsLoading(false);}
  }
  async function post(e:FormEvent){
   e.preventDefault();if(!mine||busy||(!body.trim()&&!file))return;
+  const lease=channelSendGateRef.current?.acquire();if(!lease)return;
   setBusy(true);setError("");setNotice("");
   let path:string|null=null;
   try{
@@ -115,19 +144,31 @@ export default function ChannelsPanel({token,userId,channel,onBack,onShowProfile
    try{await publishPost(token,userId,channel.id,body,null,attachment);}
    catch(e){if(path)await removeUpload(token,path).catch(()=>{});throw e;}
    setBody("");setFile(null);await reload();setNotice("Пост опубликован.");
-  }catch(e){setError(readable(e));}finally{setBusy(false);}
+  }catch(e){setError(readable(e));}finally{channelSendGateRef.current?.release(lease);setBusy(false);}
  }
  async function writeComment(e:FormEvent){
-  e.preventDefault();if(!openComments||!commentDraft.trim()||busy)return;
-  setBusy(true);setError("");
+  e.preventDefault();const postId=openCommentsRef.current,draft=commentDraft;
+  if(!postId||!draft.trim()||busy)return;
+  const lease=channelSendGateRef.current?.acquire();if(!lease)return;
+  const requestId=++commentRequestRef.current,ownerId=userId,channelId=channel.id;
+  const isCurrent=()=>isCurrentCommentRequest(requestId,ownerId,channelId,postId);
+  setBusy(true);setError("");setCommentsLoading(true);
   try{
-   await addPostComment(token,openComments,userId,commentDraft);
-   setCommentDraft("");
-   const list=await listPostComments(token,openComments);
+   await addPostComment(token,postId,userId,draft);
+   if(!isCurrent())return;
+   if(commentDraft===draft)setCommentDraft("");
+   const list=await listPostComments(token,postId);
+   if(!isCurrent())return;
    setComments(list);
-   if(currentChannel.discussion_enabled)await loadDiscussion();
-   if(!authors[userId]){const mine=await listProfiles(token,[userId]);if(mine[0])setAuthors(prev=>({...prev,[userId]:mine[0]}));}
-  }catch(e){setError(readable(e));}finally{setBusy(false);}
+   const ids=Array.from(new Set(list.map(c=>c.author_id)));
+   if(ids.length&&!authors[userId]){
+    const people=await listProfiles(token,ids);
+    if(!isCurrent())return;
+    setAuthors(prev=>({...prev,...Object.fromEntries(people.map(p=>[p.id,p]))}));
+   }
+   if(currentChannel.discussion_enabled&&isCurrent())await loadDiscussion();
+  }catch(e){if(isCurrent())setError(readable(e));}
+  finally{if(requestId===commentRequestRef.current)setCommentsLoading(false);channelSendGateRef.current?.release(lease);setBusy(false);}
  }
  async function savePostEdit(id:string){
   if(!mine||busy)return;setBusy(true);setError("");
@@ -220,7 +261,8 @@ export default function ChannelsPanel({token,userId,channel,onBack,onShowProfile
     <div className="channel-post-actions"><button type="button" onClick={()=>void showComments(post.id)}>{openComments===post.id?"Скрыть комментарии":"Комментарии"}</button>
     {mine&&<button type="button" disabled={busy} onClick={()=>{setEditingPostId(post.id);setEditingBody(post.body);}}>Редактировать</button>}{mine&&<button type="button" disabled={busy} onClick={()=>void erasePost(post)}>Удалить пост</button>}</div>
     {openComments===post.id&&<div className="channel-comments">
-       {comments.length===0?<p className="channel-no-comments">Будь первым, кто оставит комментарий.</p>:
+       {commentsLoading&&<p role="status" className="channel-no-comments">Загрузка комментариев…</p>}
+       {!commentsLoading&&comments.length===0?<p className="channel-no-comments">Будь первым, кто оставит комментарий.</p>:
         comments.map(comment=><div className="channel-comment" key={comment.id}><div className="channel-comment-head"><button type="button" onClick={()=>onShowProfile(comment.author_id)}><span className="ik-name-with-status"><span>{authors[comment.author_id]?.display_name||"Пользователь"}</span><StatusEmoji index={authors[comment.author_id]?.status_emoji} decorative/></span></button><time dateTime={comment.created_at}>{formattedDate(comment.created_at)}</time></div>{editingCommentId===comment.id?<form className="channel-inline-editor" onSubmit={e=>{e.preventDefault();void saveCommentEdit(comment.id);}}><input value={editingBody} maxLength={1500} onChange={e=>setEditingBody(e.target.value)}/><button type="submit">Сохранить</button><button type="button" onClick={()=>setEditingCommentId(null)}>Отмена</button></form>:<p>{comment.body}</p>}
         {comment.author_id===userId&&<button className="channel-delete-comment" type="button" onClick={()=>{setEditingCommentId(comment.id);setEditingBody(comment.body);}}>Редактировать</button>}{(comment.author_id===userId||mine)&&<button className="channel-delete-comment" disabled={busy} onClick={()=>void eraseComment(comment)} type="button">Удалить</button>}</div>)}
        <form className="channel-comment-form" onSubmit={writeComment}><input aria-label="Написать комментарий" maxLength={1500} placeholder="Написать комментарий…" value={commentDraft} onChange={e=>setCommentDraft(e.target.value)}/><button type="submit" className="accent-button" disabled={busy||!commentDraft.trim()}>➤</button></form>
