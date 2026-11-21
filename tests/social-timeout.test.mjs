@@ -3,7 +3,7 @@ import {test} from 'node:test';
 import {readFileSync} from 'node:fs';
 import vm from 'node:vm';
 import ts from 'typescript';
-import {fetchWithTimeout} from '../lib/fetch-timeout.mjs';
+import {fetchJsonWithTimeout} from '../lib/fetch-timeout.mjs';
 
 const CHANNEL='11111111-1111-4111-8111-111111111111';
 const USER='22222222-2222-4222-8222-222222222222';
@@ -24,7 +24,7 @@ function setup(handler=async()=>({ok:true,status:200,json:async()=>[]})){
   },
   require(name){
    if(name==='@/lib/supabase-rest')return {apiUrl:'https://unit.test'};
-   if(name==='./fetch-timeout.mjs')return {fetchWithTimeout};
+   if(name==='./fetch-timeout.mjs')return {fetchJsonWithTimeout};
    throw new Error('Unexpected import: '+name);
   }
  };
