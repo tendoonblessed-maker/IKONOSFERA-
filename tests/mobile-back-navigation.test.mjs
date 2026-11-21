@@ -46,7 +46,7 @@ test('mobile detail history accepts group, channel, profile and bot snapshots', 
   }
 });
 
-test('mobile detail history rejects malformed or unrelated browser state', () => {
+test('mobile detail history rejects malformed, unrelated or inconsistent browser state', () => {
   assert.equal(readMobileDetailHistorySnapshot(null), null);
   assert.equal(readMobileDetailHistorySnapshot({ __NA: true }), null);
   assert.equal(readMobileDetailHistorySnapshot({ [MOBILE_DETAIL_HISTORY_KEY]: [] }), null);
@@ -87,12 +87,12 @@ test('history snapshots contain identifiers only, never drafts or message conten
   assert.equal('messages' in (saved ?? {}), false);
 });
 
-test('AppShell integrates mobile-only popstate handling without storing chat content', () => {
+test('AppShell integration assertions match the actual navigation handlers', () => {
   const shell = readFileSync(new URL('../components/AppShell.tsx', import.meta.url), 'utf8');
   assert.match(shell, /createMobileDetailHistoryState/);
   assert.match(shell, /readMobileDetailHistorySnapshot/);
-  assert.match(shell, /window\\.addEventListener\\('popstate'/);
-  assert.match(shell, /window\\.history\\.pushState\\(/);
-  assert.match(shell, /window\\.history\\.back\\(\\)/);
-  assert.match(shell, /matchMedia\\('\\(max-width: 800px\\)'\\)/);
+  assert.match(shell, /window\.addEventListener\('popstate'/);
+  assert.match(shell, /window\.history\.pushState\(/);
+  assert.match(shell, /window\.history\.back\(\)/);
+  assert.match(shell, /matchMedia\('\(max-width: 800px\)'\)/);
 });
