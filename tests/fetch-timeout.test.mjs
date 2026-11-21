@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
-import {fetchWithTimeout} from '../lib/fetch-timeout.mjs';
+import {fetchWithTimeout,fetchJsonWithTimeout} from '../lib/fetch-timeout.mjs';
 
 const delay=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 
@@ -64,4 +64,30 @@ test('ordinary network failures are not rewritten as cancellation or timeout',as
  const networkError=new TypeError('offline');
  const caller=new AbortController();
  await assert.rejects(fetchWithTimeout(async()=>{throw networkError;},'/resource',{signal:caller.signal},50),error=>error===networkError);
+});
+
+
+test('JSON response bodies remain under the portable deadline after headers arrive',async()=>{
+ let requestSignal;
+ const pending=fetchJsonWithTimeout((_input,init)=>({
+  json:()=>new Promise((_resolve,reject)=>{
+   requestSignal=init.signal;
+   requestSignal.addEventListener('abort',()=>reject(abortError()),{once:true});
+  })
+ }),'/resource',{},5,'response body timed out');
+ await assert.rejects(pending,/response body timed out/);
+ assert.equal(requestSignal.aborted,true);
+});
+
+test('JSON deadline returns parsed data and clears its timer after body consumption',async()=>{
+ let requestSignal;
+ const response={ok:true,json:async()=>({items:[1,2]})};
+ const result=await fetchJsonWithTimeout(async(_input,init)=>{
+  requestSignal=init.signal;
+  return response;
+ },'/resource',{},5);
+ assert.equal(result.response,response);
+ assert.deepEqual(result.data,{items:[1,2]});
+ await delay(15);
+ assert.equal(requestSignal.aborted,false);
 });
