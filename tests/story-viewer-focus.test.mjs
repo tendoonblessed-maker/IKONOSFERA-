@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import {test} from 'node:test';
 import {readFileSync} from 'node:fs';
 import {restoreDialogFocus,restoreDialogFocusInside,trapDialogTab} from '../lib/dialog-focus.ts';
+import {addStoryPausePointer,removeStoryPausePointer} from '../lib/story-pause-pointers.ts';
 
 function makeControl(focused,name,options={}){
   const {
@@ -204,5 +205,32 @@ test('both story viewers guard programmatic focusin escapes and clean up the lis
     assert.match(component,/restoreDialogFocusInside\(dialog,event\.target,storyCloseRef\.current\)/);
     assert.match(component,/document\.addEventListener\('focusin',onFocusIn\)/);
     assert.match(component,/document\.removeEventListener\('focusin',onFocusIn\)/);
+  }
+});
+
+test('story pause resumes only after all active pointers are released',()=>{
+  const pointers=new Set();
+  assert.equal(addStoryPausePointer(pointers,7),true);
+  assert.equal(addStoryPausePointer(pointers,11),true);
+  assert.equal(pointers.size,2);
+  assert.equal(removeStoryPausePointer(pointers,7),true);
+  assert.equal(pointers.size,1);
+  // Pointerleave and pointercancel can race with pointerup; release is idempotent.
+  assert.equal(removeStoryPausePointer(pointers,7),true);
+  assert.equal(removeStoryPausePointer(pointers,11),false);
+  assert.equal(removeStoryPausePointer(pointers,11),false);
+  assert.equal(pointers.size,0);
+});
+
+test('both story viewers release hold-to-pause on pointerleave and clean pointer state',()=>{
+  const home=source('components/StoriesStrip.tsx');
+  const profile=source('components/ProfilePanel.tsx');
+  for(const component of [home,profile]){
+    assert.match(component,/pausedPointersRef=useRef<Set<number>>\(new Set\(\)\)/);
+    assert.match(component,/onPointerDown=\{event=>set(?:Story)?Paused\(addStoryPausePointer\(pausedPointersRef\.current,event\.pointerId\)\)\}/);
+    assert.match(component,/onPointerUp=\{event=>set(?:Story)?Paused\(removeStoryPausePointer\(pausedPointersRef\.current,event\.pointerId\)\)\}/);
+    assert.match(component,/onPointerCancel=\{event=>set(?:Story)?Paused\(removeStoryPausePointer\(pausedPointersRef\.current,event\.pointerId\)\)\}/);
+    assert.match(component,/onPointerLeave=\{event=>set(?:Story)?Paused\(removeStoryPausePointer\(pausedPointersRef\.current,event\.pointerId\)\)\}/);
+    assert.match(component,/pausedPointersRef\.current\.clear\(\)/);
   }
 });
