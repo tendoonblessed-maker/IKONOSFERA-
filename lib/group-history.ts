@@ -3,6 +3,21 @@ import type {GroupMessage} from './groups';
 export const CONFIRMED_GROUP_MESSAGE_GRACE_MS=60_000;
 export type ConfirmedGroupMessage={message:GroupMessage;expiresAt:number};
 
+/** Compare PostgreSQL timestamptz values without losing fractional precision. */
+function subMillisecondFraction(timestamp:string):number{
+ const part=/\.(\d{1,6})/.exec(timestamp)?.[1]??'';
+ return Number(part.padEnd(6,'0'));
+}
+export function compareGroupMessages(a:GroupMessage,b:GroupMessage):number{
+ const milli=Date.parse(a.created_at)-Date.parse(b.created_at);
+ if(milli!==0)return milli;
+ const fraction=subMillisecondFraction(a.created_at)-subMillisecondFraction(b.created_at);
+ // PostgreSQL UUID ordering compares the canonical bytes, not locale collation.
+ // Lowercase canonical UUID strings have the same order as their byte values.
+ const left=a.id.toLowerCase(),right=b.id.toLowerCase();
+ return fraction||(left===right?0:left<right?-1:1);
+}
+
 /**
  * The latest server page wins except for DB-confirmed sends not yet visible
  * in an older in-flight GET. Keep their actual server rows temporarily; never
@@ -30,7 +45,6 @@ export function mergeConfirmedGroupMessages(
   }
  }
  for(const message of latest)byId.set(message.id,message);
- return Array.from(byId.values()).sort((a,b)=>
-  Date.parse(a.created_at)-Date.parse(b.created_at)||a.id.localeCompare(b.id)
- );
+ // Confirmed sends use the same timestamp + UUID order as the history cursor.
+ return Array.from(byId.values()).sort(compareGroupMessages);
 }

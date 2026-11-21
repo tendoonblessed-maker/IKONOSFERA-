@@ -29,8 +29,17 @@ function setup(handler=()=>({ok:true,json:async()=>[]})){
    return handler(url,options,calls.length);
   },
   require(name){
-   assert.equal(name,'@/lib/supabase-rest');
-   return {apiUrl:'https://unit.test'};
+   if(name==='@/lib/supabase-rest')return {apiUrl:'https://unit.test'};
+   if(name==='./group-history'){
+    const orderSource=read('lib/group-history.ts');
+    const orderCompiled=ts.transpileModule(orderSource,{
+     compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}
+    }).outputText;
+    const orderExports={};
+    vm.runInNewContext(orderCompiled,{exports:orderExports},{timeout:2000,filename:'group-history.cjs'});
+    return orderExports;
+   }
+   throw Error('Unexpected module: '+name);
   }
  };
  vm.runInNewContext(compiled,context,{timeout:2000,filename:'group-pagination.cjs'});

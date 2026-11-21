@@ -3,6 +3,7 @@ import {test} from 'node:test';
 import {readFileSync} from 'node:fs';
 import {
  mergeConfirmedGroupMessages,
+ compareGroupMessages,
  CONFIRMED_GROUP_MESSAGE_GRACE_MS
 } from '../lib/group-history.ts';
 
@@ -62,6 +63,31 @@ test('group messages remain in chronological order with deterministic equal time
  const confirmations=new Map([[third.id,{message:third,expiresAt:99999}]]);
  const result=mergeConfirmedGroupMessages([second,first],confirmations,GROUP,USER,1000);
  assert.deepEqual(result.map(x=>x.id),['a','b','c']);
+});
+
+test('confirmed group messages preserve PostgreSQL microsecond order within one millisecond',()=>{
+ const earlier=message('z',{sender_id:OTHER,created_at:'2026-10-29T07:00:00.000123Z'});
+ const later=message('a',{sender_id:OTHER,created_at:'2026-10-29T07:00:00.000124Z'});
+ const sameInstantFirstId=message('b',{sender_id:OTHER,created_at:'2026-10-29T07:00:00.000124Z'});
+ const result=mergeConfirmedGroupMessages(
+  [later,earlier,sameInstantFirstId],new Map(),GROUP,USER,1000
+ );
+ assert.deepEqual(result.map(x=>x.id),['z','a','b']);
+});
+
+test('equal timestamps use deterministic UUID byte order without locale collation',()=>{
+ const id9=message('00000009-1111-4111-8111-111111111111');
+ const idA=message('0000000a-1111-4111-8111-111111111111');
+ const original=String.prototype.localeCompare;
+ String.prototype.localeCompare=function(){throw Error('locale collation must not be used');};
+ try{
+  const sorted=mergeConfirmedGroupMessages([idA,id9],new Map(),GROUP,USER,1000);
+  assert.deepEqual(sorted.map(row=>row.id),[id9.id,idA.id]);
+  assert.ok(compareGroupMessages(id9,idA)<0);
+  assert.equal(compareGroupMessages(idA,message(idA.id.toUpperCase())),0);
+ }finally{
+  String.prototype.localeCompare=original;
+ }
 });
 
 test('group realtime never renders WebSocket payload or stores another user session',()=>{
