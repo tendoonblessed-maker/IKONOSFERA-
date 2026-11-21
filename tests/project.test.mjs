@@ -853,7 +853,8 @@ test('reply UX submits plain text with a real target ID and private off-page pre
  assert.match(api,/endpoint=replyToMessageId\?'/);
  assert.match(api,/send_direct_reply/);
  assert.match(api,/p_reply_to_message_id:replyToMessageId/);
- assert.match(shell,/postMessage\(token,chatId,accountId,plainText,createSecureUuid\(\),reply\?\.id\?\?null\)/);
+ assert.match(shell,/getOrCreateDirectTextAttempt\(accountId,chatId,plainText,reply\?\.id\?\?null,createSecureUuid\)/);
+ assert.match(shell,/postMessage\(token,chatId,accountId,plainText,attemptId,reply\?\.id\?\?null\)/);
  assert.doesNotMatch(shell,/const body=reply\?'↪ '/);
  assert.match(shell,/replyTargetsQueriedRef/);
  assert.match(shell,/ReplyQuote/);
