@@ -16,7 +16,7 @@ export const DIRECT_TEXT_MAX_ATTEMPTS_PER_CHAT=128;
 
 export type DirectTextAttempt={fingerprint:string;id:string;createdAt:number};
 type SharedLockManager={
- request(name:string,options:{mode:'exclusive'},callback:(lock:unknown|null)=>Promise<string>):Promise<string>;
+ request<T>(name:string,options:{mode:'exclusive'},callback:(lock:unknown|null)=>T|Promise<T>):Promise<T>;
 };
 type SharedContext={locks:SharedLockManager;store:Storage};
 const inMemory=new Map<string,DirectTextAttempt[]>();
@@ -123,7 +123,7 @@ export async function getOrCreateDirectTextAttempt(
  if(pending)return pending;
  const context=sharedContext();
  const creation=context
-  ?context.locks.request(PREFIX+'lock:'+attemptKey,{mode:'exclusive'},lock=>{
+  ?context.locks.request(PREFIX+'lock:'+key(ownerId,chatId),{mode:'exclusive'},lock=>{
     if(!lock)throw Error('Не удалось получить блокировку попытки отправки.');
     return Promise.resolve(createAttempt(ownerId,chatId,fingerprint,createId,now,true));
    })
@@ -133,10 +133,21 @@ export async function getOrCreateDirectTextAttempt(
  finally{if(inFlight.get(attemptKey)===creation)inFlight.delete(attemptKey);}
 }
 /** A late acknowledgment can clear only its own pending attempt. */
-export function clearDirectTextAttempt(ownerId:string,chatId:string,id:string):void{
+export async function clearDirectTextAttempt(ownerId:string,chatId:string,id:string):Promise<void>{
  if(!UUID.test(ownerId)||!UUID.test(chatId)||!UUID.test(id))return;
- const shared=Boolean(sharedContext());
- const records=readDirectTextAttempts(ownerId,chatId,Date.now(),shared);
- if(!records.some(item=>item.id===id))return;
- write(ownerId,chatId,records.filter(item=>item.id!==id),shared);
+ const context=sharedContext();
+ if(context){
+  try{
+   await context.locks.request(PREFIX+'lock:'+key(ownerId,chatId),{mode:'exclusive'},lock=>{
+    if(!lock)return;
+    const records=readDirectTextAttempts(ownerId,chatId,Date.now(),true);
+    if(records.some(item=>item.id===id))
+     write(ownerId,chatId,records.filter(item=>item.id!==id),true);
+   });
+  }catch{/* Confirmed sends must not become UI failures because cleanup failed. */}
+  return;
+ }
+ const records=readDirectTextAttempts(ownerId,chatId);
+ if(records.some(item=>item.id===id))
+  write(ownerId,chatId,records.filter(item=>item.id!==id),false);
 }
