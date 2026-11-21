@@ -7,9 +7,13 @@ import {
   readMobileDetailHistorySnapshot
 } from '../lib/mobile-detail-history.ts';
 
+const CHAT='11111111-1111-4111-8111-111111111111';
+const GROUP='22222222-2222-4222-8222-222222222222';
+const CHANNEL='33333333-3333-4333-8333-333333333333';
+const PROFILE='44444444-4444-4444-8444-444444444444';
 const snapshot = {
   tab: 'chats',
-  selectedChatId: 'chat-123',
+  selectedChatId: CHAT,
   selectedGroupId: null,
   selectedChannelId: null,
   profileTargetId: null,
@@ -28,9 +32,9 @@ test('mobile detail history preserves Next.js-owned state and round-trips view i
 
 test('mobile detail history accepts group, channel, profile and bot snapshots', () => {
   const cases = [
-    { ...snapshot, selectedChatId: null, selectedGroupId: 'group-1' },
-    { ...snapshot, selectedChatId: null, selectedChannelId: 'channel-1', tab: 'channels' },
-    { ...snapshot, selectedChatId: null, profileTargetId: 'profile-1' },
+    { ...snapshot, selectedChatId: null, selectedGroupId: GROUP },
+    { ...snapshot, selectedChatId: null, selectedChannelId: CHANNEL, tab: 'channels' },
+    { ...snapshot, selectedChatId: null, profileTargetId: PROFILE },
     { ...snapshot, selectedChatId: null, selectedBot: 'mood' }
   ];
 
@@ -55,6 +59,18 @@ test('mobile detail history rejects malformed or unrelated browser state', () =>
   assert.equal(readMobileDetailHistorySnapshot({
     [MOBILE_DETAIL_HISTORY_KEY]: { ...snapshot, selectedBot: 'unknown' }
   }), null);
+  assert.equal(readMobileDetailHistorySnapshot({
+    [MOBILE_DETAIL_HISTORY_KEY]: { ...snapshot, selectedChatId: 'chat-123' }
+  }), null);
+  assert.equal(readMobileDetailHistorySnapshot({
+    [MOBILE_DETAIL_HISTORY_KEY]: { ...snapshot, selectedChannelId: 'not-a-uuid', selectedChatId: null }
+  }), null);
+  assert.equal(readMobileDetailHistorySnapshot({
+    [MOBILE_DETAIL_HISTORY_KEY]: { ...snapshot, selectedGroupId: GROUP }
+  }), null);
+  assert.equal(readMobileDetailHistorySnapshot({
+    [MOBILE_DETAIL_HISTORY_KEY]: { ...snapshot, selectedChatId: null }
+  }), null);
 });
 
 test('history snapshots contain identifiers only, never drafts or message content', () => {
@@ -75,8 +91,8 @@ test('AppShell integrates mobile-only popstate handling without storing chat con
   const shell = readFileSync(new URL('../components/AppShell.tsx', import.meta.url), 'utf8');
   assert.match(shell, /createMobileDetailHistoryState/);
   assert.match(shell, /readMobileDetailHistorySnapshot/);
-  assert.match(shell, /window\.addEventListener\('popstate'/);
-  assert.match(shell, /window\.history\.pushState\(/);
-  assert.match(shell, /window\.history\.back\(\)/);
-  assert.match(shell, /matchMedia\('\(max-width: 800px\)'\)/);
+  assert.match(shell, /window\\.addEventListener\\('popstate'/);
+  assert.match(shell, /window\\.history\\.pushState\\(/);
+  assert.match(shell, /window\\.history\\.back\\(\\)/);
+  assert.match(shell, /matchMedia\\('\\(max-width: 800px\\)'\\)/);
 });
