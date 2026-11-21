@@ -18,4 +18,5 @@ test('skip link is visually hidden until keyboard focus and has a touch-sized ta
  assert.match(css,/\.ik-skip-link\{[^}]*transform:translateY\(-200%\)/);
  assert.match(css,/\.ik-skip-link:focus-visible\{[^}]*transform:translateY\(0\)/);
  assert.match(css,/top:max\(12px,env\(safe-area-inset-top,0px\)\)/);
+ assert.match(css,/#ik-main-content:focus,#ik-current-view:focus\\{outline:2px solid #111/);
 });
