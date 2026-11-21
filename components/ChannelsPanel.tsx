@@ -7,7 +7,7 @@ import {
  removeUpload, uploadChannelAttachment, updateChannel, updateChannelAvatar, deleteChannel, getChannelSubscriberCounts, listDiscussionMessages, sendDiscussionMessage, deleteDiscussionMessage, listDiscussionComments,
  type Channel, type ChannelPost, type PostComment, type PostReaction, type ReactionEmoji, type DiscussionMessage
 } from "@/lib/social";
-import {createChannelSendGate,isLatestChannelCommentRequest} from "@/lib/channel-comment-request";
+import {createChannelSendGate,isLatestChannelCommentRequest} from "@/lib/channel-comment-request.mjs";
 
 type Props={token:string;userId:string;channel:Channel;onBack:()=>void;onShowProfile:(id:string)=>void;subscribed:boolean;onToggleSubscribe:()=>void;onMessageAuthor:()=>void;onChannelUpdated?:(channel:Channel)=>void;onChannelDeleted?:()=>void};
 const readable=(e:unknown)=>e instanceof Error?e.message:"Ошибка соединения";
