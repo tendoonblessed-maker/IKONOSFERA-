@@ -7,7 +7,7 @@ export const backendReady = Boolean(apiUrl && anonKey);
 export type Session = { access_token: string; refresh_token: string; expires_at: number };
 export type Profile = { id: string; username: string; display_name: string; avatar_path?: string|null; cover_path?: string|null; bio?: string; status_emoji?:number|null; age_years?:number|null };
 export type DirectChat = { id: string; user_a: string; user_b: string; created_at: string; hidden_for?:string[]; pinned_for?:string[] };
-export type ChatMessage = { id: string; chat_id: string; sender_id: string; body: string; created_at: string; media_path: string|null; media_type: "image"|"video"|"audio"|"file"|null; read_at: string|null; edited_at?:string|null; deleted_for?:string[]; deleted_for_everyone?:boolean; reply_to_message_id?:string|null };
+export type ChatMessage = { id: string; chat_id: string; sender_id: string; body: string; created_at: string; media_path: string|null; media_type: "image"|"video"|"audio"|"file"|null; read_at: string|null; edited_at?:string|null; deleted_for?:string[]; deleted_for_everyone?:boolean; reply_to_message_id?:string|null; client_message_id?:string|null };
 const STORAGE = 'ikonosfera-session-v1';
 
 const UUID_V4=/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i;
@@ -254,13 +254,79 @@ export async function searchDirectMessages(
  });
 }
 
-export async function postMessage(token: string, chatId: string, userId: string, body: string, clientMessageId: string = createSecureUuid(), replyToMessageId:string|null=null) {
-  void userId;
-  const endpoint=replyToMessageId?'/rest/v1/rpc/send_direct_reply':'/rest/v1/rpc/send_direct_message';
-  const payload={p_chat_id:chatId,p_body:body,p_client_message_id:clientMessageId};
-  const message=await http<ChatMessage>(endpoint,{token,method:'POST',body:replyToMessageId?{...payload,p_reply_to_message_id:replyToMessageId}:payload});
-  if(!message?.id)throw Error('Сообщение не сохранено');
-  return message;
+type DirectMessageSendRow=ChatMessage & {client_message_id?:string|null};
+const DIRECT_MESSAGE_SEND_COLUMNS=CHAT_MESSAGE_COLUMNS+',client_message_id';
+function verifyDirectMessageSendRow(
+ row:DirectMessageSendRow|undefined,chatId:string,userId:string,body:string,
+ clientMessageId:string,replyToMessageId:string|null
+):ChatMessage{
+ if(!row||!row.id||row.chat_id!==chatId||row.sender_id!==userId
+   ||row.body!==body||row.client_message_id!==clientMessageId
+   ||(row.reply_to_message_id??null)!==replyToMessageId
+   ||row.media_path!==null||row.media_type!==null){
+  throw Error('Сервер вернул другое сообщение; отправка не подтверждена.');
+ }
+ return row;
+}
+async function readDirectMessageSendResult(
+ token:string,chatId:string,userId:string,body:string,
+ clientMessageId:string,replyToMessageId:string|null
+):Promise<ChatMessage|null>{
+ const rows=await http<DirectMessageSendRow[]>(
+  '/rest/v1/messages?select='+DIRECT_MESSAGE_SEND_COLUMNS
+   +'&chat_id=eq.'+encodeURIComponent(chatId)
+   +'&sender_id=eq.'+encodeURIComponent(userId)
+   +'&client_message_id=eq.'+encodeURIComponent(clientMessageId)
+   +'&limit=2',
+  {token}
+ );
+ if(rows.length>1)throw Error('Найдено несколько записей для одного ID отправки; сообщение не подтверждено.');
+ return rows[0]?verifyDirectMessageSendRow(rows[0],chatId,userId,body,clientMessageId,replyToMessageId):null;
+}
+function isDefiniteDirectSendRejection(error:unknown):boolean{
+ return error instanceof SupabaseHttpError&&error.status>=400&&error.status<500
+  &&![408,409,425,429].includes(error.status);
+}
+/**
+ * One client_message_id identifies one logical text/reply send. If the RPC
+ * acknowledgment is lost, a read-only query under the same user JWT verifies
+ * the exact row; the client never automatically repeats the POST.
+ */
+export async function postMessage(
+ token:string,chatId:string,userId:string,body:string,
+ clientMessageId:string=createSecureUuid(),replyToMessageId:string|null=null
+):Promise<ChatMessage>{
+ const trimmed=typeof body==='string'?body.trim():'';
+ if(!UUID_V4.test(chatId)||!UUID_V4.test(userId)||!UUID_V4.test(clientMessageId)
+   ||(replyToMessageId!==null&&!UUID_V4.test(replyToMessageId))
+   ||!trimmed||trimmed.length>4000){
+  throw Error('Некорректные параметры личного сообщения.');
+ }
+ const endpoint=replyToMessageId?'/rest/v1/rpc/send_direct_reply':'/rest/v1/rpc/send_direct_message';
+ const payload={p_chat_id:chatId,p_body:trimmed,p_client_message_id:clientMessageId};
+ let postError:unknown=null;
+ try{
+  const message=await http<DirectMessageSendRow>(endpoint,{
+   token,method:'POST',
+   body:replyToMessageId?{...payload,p_reply_to_message_id:replyToMessageId}:payload
+  });
+  if(message?.id){
+   try{return verifyDirectMessageSendRow(message,chatId,userId,trimmed,clientMessageId,replyToMessageId);}
+   catch(error){postError=error;}
+  }else postError=Error('Сообщение не сохранено');
+ }catch(error){postError=error;}
+ try{
+  const existing=await readDirectMessageSendResult(
+   token,chatId,userId,trimmed,clientMessageId,replyToMessageId
+  );
+  if(existing)return existing;
+ }catch(error){
+  if(error instanceof Error&&/Сервер вернул другое сообщение|Найдено несколько записей/.test(error.message))throw error;
+  throw Error('Не удалось подтвердить отправку. Черновик сохранён — повтори вручную с тем же текстом.');
+ }
+ if(postError instanceof Error&&/Сервер вернул другое сообщение|Найдено несколько записей/.test(postError.message))throw postError;
+ if(isDefiniteDirectSendRejection(postError))throw postError;
+ throw Error('Не удалось подтвердить отправку. Черновик сохранён — повтори вручную с тем же текстом.');
 }
 
 export const DIRECT_MEDIA_FORMATS:Record<string,string>={
