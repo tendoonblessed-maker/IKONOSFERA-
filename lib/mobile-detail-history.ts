@@ -10,13 +10,14 @@ export type MobileDetailHistorySnapshot = {
 };
 
 export const MOBILE_DETAIL_HISTORY_KEY = '__ikonosferaMobileDetail';
+const UUID=/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 }
 
-function isNullableString(value: unknown): value is string | null {
-  return value === null || typeof value === 'string';
+function isNullableId(value: unknown): value is string | null {
+  return value === null || (typeof value === 'string' && UUID.test(value));
 }
 
 /** Preserve framework-owned history fields while attaching only view identifiers. */
@@ -36,11 +37,22 @@ export function readMobileDetailHistorySnapshot(state: unknown): MobileDetailHis
 
   const validTabs: MobileDetailTab[] = ['chats', 'contacts', 'channels', 'profile', 'settings'];
   if (!validTabs.includes(value.tab as MobileDetailTab)) return null;
-  if (!isNullableString(value.selectedChatId)
-    || !isNullableString(value.selectedGroupId)
-    || !isNullableString(value.selectedChannelId)
-    || !isNullableString(value.profileTargetId)) return null;
+  if (!isNullableId(value.selectedChatId)
+    || !isNullableId(value.selectedGroupId)
+    || !isNullableId(value.selectedChannelId)
+    || !isNullableId(value.profileTargetId)) return null;
   if (value.selectedBot !== null && value.selectedBot !== 'days' && value.selectedBot !== 'mood') return null;
+
+  // AppShell only pushes a history entry for one active detail view. Reject
+  // stale or hand-crafted state that combines unrelated views or opens none.
+  const activeViews = [
+    value.selectedChatId,
+    value.selectedGroupId,
+    value.selectedChannelId,
+    value.profileTargetId,
+    value.selectedBot
+  ].filter(item => item !== null).length;
+  if (activeViews !== 1) return null;
 
   return {
     tab: value.tab as MobileDetailTab,
