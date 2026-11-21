@@ -70,5 +70,5 @@ test('AppShell scopes global shortcuts away from editable targets',()=>{
   assert.match(shell,/shouldOpenChatListSearch\(event,targetIsEditable\)/);
   assert.match(shell,/shouldOpenDirectChatSearch\(event,directVisible,targetIsEditable\)/);
   assert.match(shell,/contenteditable="plaintext-only"/);
-  assert.match(shell,/[role="textbox"]/);
+  assert.match(shell,/\\[role="textbox"\\]/);
 });
