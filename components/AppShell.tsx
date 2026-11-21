@@ -1054,7 +1054,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
       // Do not start a new authenticated POST after that context was invalidated.
       if(draftGenerationRef.current!==submittedDraftGeneration||draftsOwnerRef.current!==accountId)return;
       const sent=await postMessage(token,chatId,accountId,plainText,attemptId,reply?.id??null);
-      clearDirectTextAttempt(accountId,chatId,attemptId);
+      await clearDirectTextAttempt(accountId,chatId,attemptId);
       // Never apply a late response to a different account or conversation.
       if(draftGenerationRef.current===submittedDraftGeneration
         &&selectedRef.current===chatId&&draftsOwnerRef.current===accountId){
