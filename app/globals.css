@@ -3173,6 +3173,7 @@ body{position:relative}
 }
 .ik-attachment-preview-backdrop{
   position:fixed;inset:0;z-index:5100;
+  height:var(--ik-visible-viewport-height,100dvh);
   display:flex;align-items:center;justify-content:center;
   padding:max(12px,env(safe-area-inset-top,0px))
     max(12px,env(safe-area-inset-right,0px))
@@ -3184,7 +3185,7 @@ body{position:relative}
 }
 .ik-attachment-preview-dialog{
   display:flex;flex-direction:column;
-  width:min(100%,460px);max-height:min(770px,calc(100dvh - 30px));
+  width:min(100%,460px);max-height:min(770px,calc(var(--ik-visible-viewport-height,100dvh) - 30px));
   min-width:0;min-height:0;overflow:hidden;
   border:1px solid #e8e8ec;border-radius:24px;
   background:#fdfdfe;color:#19191d;
@@ -3277,10 +3278,10 @@ body{position:relative}
 }
 @media(max-width:800px){
   .ik-attachment-preview-dialog{
-    max-height:calc(100dvh - 24px);border-radius:21px;
+    max-height:calc(var(--ik-visible-viewport-height,100dvh) - 24px);border-radius:21px;
   }
   .ik-attachment-preview-header{padding:16px 16px 10px}
-  .ik-attachment-preview-stage{margin:0 14px;max-height:32dvh}
+  .ik-attachment-preview-stage{margin:0 14px;min-height:0;max-height:32dvh}
   .ik-attachment-preview-details{padding:12px 16px 10px}
   .ik-attachment-preview-caption{padding:0 16px 12px}
   .ik-attachment-preview-actions{padding:12px 16px 16px}
