@@ -65,7 +65,10 @@ test('ChannelsPanel guards comment reads and synchronously gates send handlers',
  assert.match(panel,/openCommentsRef=useRef<string\|null>\(null\)/);
  assert.match(panel,/isLatestChannelCommentRequest\(/);
  assert.match(panel,/if\(!isCurrentCommentRequest\(requestId,ownerId,channelId,postId\)\)return;/);
- assert.match(panel,/const lease=channelSendGateRef\.current\?\.acquire\(\);if\(!lease\)return;/);
- assert.match(panel,/release\(lease\);setBusy\(false\);/);
+ assert.equal((panel.match(/const lease=channelSendGateRef\.current\?\.acquire\(\);if\(!lease\)return;/g)||[]).length,3);
+ assert.match(panel,/finally\{[^}]*release\(lease\);setBusy\(false\);/);
  assert.match(panel,/commentsLoading&&<p role="status"/);
+ assert.match(panel,/try\{await reload\(\);\}catch\{setNotice\("Пост опубликован, но лента не обновилась/);
+ assert.match(panel,/Комментарий отправлен, но список комментариев не обновился/);
+ assert.match(panel,/Сообщение отправлено, но обсуждение не обновилось/);
 });
