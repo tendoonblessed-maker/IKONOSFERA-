@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import vm from 'node:vm';
 import ts from 'typescript';
+import {createSecureUuid} from '../lib/secure-uuid.mjs';
 
 function compile(sourceFile,bindings={}){
   const source=readFileSync(new URL('../'+sourceFile,import.meta.url),'utf8');
@@ -10,7 +11,7 @@ function compile(sourceFile,bindings={}){
     module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022
   }}).outputText;
   const result={};
-  const context={exports:result,process:{env:{
+  const context={exports:result,require(name){if(name!=='./secure-uuid.mjs')throw Error('Unexpected module '+name);return {createSecureUuid};},process:{env:{
     NEXT_PUBLIC_SUPABASE_URL:'https://example.supabase.co',
     NEXT_PUBLIC_SUPABASE_ANON_KEY:'public-key'
   }},Date,Promise,Math,JSON,URLSearchParams,AbortSignal,Error,Map,Set,...bindings};
