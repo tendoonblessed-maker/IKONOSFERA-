@@ -1259,7 +1259,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
   const loggedIn=Boolean(session&&userId);
   const detailOpen=Boolean(!loggedIn||selected||profileTarget||selectedChannel||selectedGroup||selectedBot);
   const mobileDetailOpen=Boolean(loggedIn&&(selected||selectedGroup||selectedChannel||profileTarget||selectedBot));
-  useEffect(()=>{
+  useLayoutEffect(()=>{
     const onPopState=(event:PopStateEvent)=>{
       if(skipMobileDetailPopRef.current&&!mobileDetailHistoryRef.current){
         skipMobileDetailPopRef.current=false;
