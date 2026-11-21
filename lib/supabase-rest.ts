@@ -1,5 +1,6 @@
 /* Dependency-free Supabase Auth + PostgREST client.
    Never put a service-role or database password in NEXT_PUBLIC_* variables. */
+import {createSecureUuid} from './secure-uuid.mjs';
 export const apiUrl = (process.env.NEXT_PUBLIC_SUPABASE_URL ?? '').replace(/\/$/, '');
 const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? '';
 export const backendReady = Boolean(apiUrl && anonKey);
@@ -249,7 +250,7 @@ export async function uploadDirectMedia(token:string,chatId:string,userId:string
  const problem=validateDirectMediaFile(file);
  if(problem)throw Error(problem);
  const ext=DIRECT_MEDIA_FORMATS[file.type];
- const path=chatId+"/"+userId+"/"+crypto.randomUUID()+"."+ext;
+ const path=chatId+"/"+userId+"/"+createSecureUuid()+"."+ext;
  const res=await fetch(apiUrl+"/storage/v1/object/ikonosfera-direct-media/"+path,{
   method:"POST",headers:{apikey:anonKey,Authorization:"Bearer "+token,"Content-Type":file.type,"x-upsert":"false"},body:file
  });
