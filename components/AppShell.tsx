@@ -1299,6 +1299,19 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
       }catch{
         mobileDetailHistoryRef.current=false;
       }
+    }else if(isMobile&&mobileDetailOpen&&mobileDetailHistoryRef.current){
+      // The detail entry already exists. Update its snapshot instead of pushing
+      // another entry, so Forward restores the most recently selected view.
+      const snapshot:MobileDetailHistorySnapshot={
+        tab,selectedChatId:selected,selectedGroupId:selectedGroup?.id??null,
+        selectedChannelId:selectedChannel?.id??null,profileTargetId:profileTarget,selectedBot
+      };
+      try{
+        window.history.replaceState(createMobileDetailHistoryState(window.history.state,snapshot),'');
+      }catch{
+        // Keep the existing entry; navigation still works, but Forward may
+        // restore the earlier snapshot if the browser rejects replacement.
+      }
     }else if((!isMobile||!mobileDetailOpen)&&mobileDetailHistoryRef.current){
       mobileDetailHistoryRef.current=false;
       skipMobileDetailPopRef.current=true;
