@@ -1050,6 +1050,9 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
     setSending(true);setError('');
     try{
       const attemptId=await getOrCreateDirectTextAttempt(accountId,chatId,plainText,reply?.id??null,createSecureUuid);
+      // Logout/account switch may happen while the fingerprint is being computed.
+      // Do not start a new authenticated POST after that context was invalidated.
+      if(draftGenerationRef.current!==submittedDraftGeneration||draftsOwnerRef.current!==accountId)return;
       const sent=await postMessage(token,chatId,accountId,plainText,attemptId,reply?.id??null);
       clearDirectTextAttempt(accountId,chatId,attemptId);
       // Never apply a late response to a different account or conversation.
