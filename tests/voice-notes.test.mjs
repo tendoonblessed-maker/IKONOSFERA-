@@ -95,11 +95,23 @@ test('voice recorder exposes accessible controls with permission and failure fee
  const css=load('app/globals.css');
  assert.match(ui,/aria-label="Записать голосовое сообщение"/);
  assert.match(ui,/aria-label="Голосовое сообщение"/);
- assert.match(ui,/aria-live="polite"/);
+ assert.match(ui,/<strong role="status" aria-live="polite" aria-atomic="true">/);
  assert.match(ui,/>Отменить<\/button>/);
  assert.match(ui,/>Готово<\/button>/);
  assert.match(ui,/Разреши доступ к микрофону/);
  assert.match(ui,/не поддерживает доступные форматы/);
  assert.match(css,/prefers-reduced-motion:reduce/);
  assert.match(css,/\.ik-voice-panel/);
+});
+
+test('voice recording clock does not repeatedly announce elapsed seconds',()=>{
+ const ui=load('components/VoiceRecorder.tsx');
+ const start='<strong role="status" aria-live="polite" aria-atomic="true">';
+ const startAt=ui.indexOf(start);
+ const endAt=ui.indexOf('</strong>',startAt);
+ assert.ok(startAt>=0&&endAt>startAt,'recording phase has a dedicated live status');
+ const status=ui.slice(startAt+start.length,endAt);
+ assert.doesNotMatch(status,/formatVoiceTime|<time/);
+ assert.ok(ui.includes('<time aria-live="off" aria-label={`Длительность записи ${formatVoiceTime(elapsed)}`}>{formatVoiceTime(elapsed)}</time>'));
+ assert.match(status,/Доступ к микрофону|Подготавливаем запись|Идёт запись/);
 });

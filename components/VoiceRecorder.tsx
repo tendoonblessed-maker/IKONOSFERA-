@@ -179,10 +179,10 @@ export default function VoiceRecorder({disabled,onRecorded,onError}:Props){
    </svg>
   </button>
   {phase!=='idle'&&<div className="ik-voice-panel" role="group" aria-label="Голосовое сообщение">
-   <div className="ik-voice-status" role="status" aria-live="polite">
+   <div className="ik-voice-status">
     <span className={'ik-voice-dot'+(phase==='recording'?' is-recording':'')} aria-hidden="true"/>
-    <strong>{phase==='requesting'?'Доступ к микрофону…':phase==='finalizing'?'Подготавливаем запись…':'Идёт запись'}</strong>
-    {phase==='recording'&&<time>{formatVoiceTime(elapsed)}</time>}
+    <strong role="status" aria-live="polite" aria-atomic="true">{phase==='requesting'?'Доступ к микрофону…':phase==='finalizing'?'Подготавливаем запись…':'Идёт запись'}</strong>
+    {phase==='recording'&&<time aria-live="off" aria-label={`Длительность записи ${formatVoiceTime(elapsed)}`}>{formatVoiceTime(elapsed)}</time>}
    </div>
    <span className="ik-voice-help">Не более 2 минут · перед отправкой можно прослушать</span>
    <div className="ik-voice-actions">
