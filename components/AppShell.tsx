@@ -23,6 +23,7 @@ import ReplyQuote from "@/components/ReplyQuote";
 import MessageEditForm from "@/components/MessageEditForm";
 import DirectMessageSearchPanel from "@/components/DirectMessageSearchPanel";
 import FloatingActionMenu from "@/components/FloatingActionMenu";
+import {createMobileDetailHistoryState,readMobileDetailHistorySnapshot,type MobileDetailHistorySnapshot} from '@/lib/mobile-detail-history';
 import {listSavedContacts,addSavedContact,removeSavedContact,listBlockedUsers,addBlockedUser,removeBlockedUser} from "@/lib/contacts";
 import {pingActivity,myActivityVisibility,getUserActivities,activityLabel,type ActivityVisibility,type UserActivity} from '@/lib/activity';
 import StoriesStrip from "@/components/StoriesStrip";
@@ -99,6 +100,8 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
   const [editingChats,setEditingChats]=useState(false);
   const [selectedChatIds,setSelectedChatIds]=useState<string[]>([]);
   const [selectedBot,setSelectedBot]=useState<'days'|'mood'|null>(null);
+  const mobileDetailHistoryRef=useRef(false);
+  const skipMobileDetailPopRef=useRef(false);
   const [messageSearch,setMessageSearch]=useState('');
   const [searchInConversation,setSearchInConversation]=useState(false);
   const [messageSearchResults,setMessageSearchResults]=useState<DirectMessageSearchResult[]>([]);
@@ -1255,6 +1258,66 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
   const visibleMessages=chatMessages.filter(message=>!message.deleted_for?.includes(userId));
   const loggedIn=Boolean(session&&userId);
   const detailOpen=Boolean(!loggedIn||selected||profileTarget||selectedChannel||selectedGroup||selectedBot);
+  const mobileDetailOpen=Boolean(loggedIn&&(selected||selectedGroup||selectedChannel||profileTarget||selectedBot));
+  useLayoutEffect(()=>{
+    const onPopState=(event:PopStateEvent)=>{
+      if(skipMobileDetailPopRef.current&&!mobileDetailHistoryRef.current){
+        skipMobileDetailPopRef.current=false;
+        return;
+      }
+      skipMobileDetailPopRef.current=false;
+      const snapshot=readMobileDetailHistorySnapshot(event.state,loggedIn?userId:'');
+      if(snapshot){
+        mobileDetailHistoryRef.current=true;
+        setTab(snapshot.tab);
+        setSelected(snapshot.selectedChatId);
+        setSelectedGroup(snapshot.selectedGroupId?groups.find(group=>group.id===snapshot.selectedGroupId)||null:null);
+        setSelectedChannel(snapshot.selectedChannelId?channels.find(channel=>channel.id===snapshot.selectedChannelId)||null:null);
+        setProfileTarget(snapshot.profileTargetId);
+        setSelectedBot(snapshot.selectedBot);
+        return;
+      }
+      if(!mobileDetailHistoryRef.current)return;
+      mobileDetailHistoryRef.current=false;
+      setSelected(null);setSelectedGroup(null);setSelectedChannel(null);setProfileTarget(null);setSelectedBot(null);
+      setTab(current=>current==='profile'?'chats':current);
+    };
+    window.addEventListener('popstate',onPopState);
+    return()=>window.removeEventListener('popstate',onPopState);
+  },[groups,channels,loggedIn,userId]);
+  useLayoutEffect(()=>{
+    if(typeof window==='undefined')return;
+    const isMobile=window.matchMedia('(max-width: 800px)').matches;
+    if(isMobile&&mobileDetailOpen&&!mobileDetailHistoryRef.current){
+      const snapshot:MobileDetailHistorySnapshot={
+        ownerId:userId,tab,selectedChatId:selected,selectedGroupId:selectedGroup?.id??null,
+        selectedChannelId:selectedChannel?.id??null,profileTargetId:profileTarget,selectedBot
+      };
+      try{
+        window.history.pushState(createMobileDetailHistoryState(window.history.state,snapshot),'');
+        mobileDetailHistoryRef.current=true;
+      }catch{
+        mobileDetailHistoryRef.current=false;
+      }
+    }else if(isMobile&&mobileDetailOpen&&mobileDetailHistoryRef.current){
+      // The detail entry already exists. Update its snapshot instead of pushing
+      // another entry, so Forward restores the most recently selected view.
+      const snapshot:MobileDetailHistorySnapshot={
+        ownerId:userId,tab,selectedChatId:selected,selectedGroupId:selectedGroup?.id??null,
+        selectedChannelId:selectedChannel?.id??null,profileTargetId:profileTarget,selectedBot
+      };
+      try{
+        window.history.replaceState(createMobileDetailHistoryState(window.history.state,snapshot),'');
+      }catch{
+        // Keep the existing entry; navigation still works, but Forward may
+        // restore the earlier snapshot if the browser rejects replacement.
+      }
+    }else if((!isMobile||!mobileDetailOpen)&&mobileDetailHistoryRef.current){
+      mobileDetailHistoryRef.current=false;
+      skipMobileDetailPopRef.current=true;
+      window.history.back();
+    }
+  },[mobileDetailOpen,tab,selected,selectedGroup?.id,selectedChannel?.id,profileTarget,selectedBot]);
   const myChannels=channels.filter(ch=>ch.owner_id===userId||subscriptions.includes(ch.id));
   const recommendedChannels=channels.filter(ch=>ch.owner_id!==userId&&!subscriptions.includes(ch.id));
   const filteredChannels=(showRecommendations?recommendedChannels:myChannels).filter(ch=>!channelSearch.trim()||((ch.title+" "+ch.slug).toLowerCase().includes(channelSearch.trim().toLowerCase())));
