@@ -119,3 +119,41 @@ test('failed sends remain manual, retry with existing UUID and cannot erase newe
  assert.match(shell,/clearAllGroupSendAttempts\(userId\)/);
  assert.match(group,/if\(!online\|\|!navigator\.onLine\)/);
 });
+
+test('group send IDs remain available when randomUUID is missing on mobile Web Crypto',()=>{
+ const previous=Object.getOwnPropertyDescriptor(globalThis,'crypto');
+ const provider={getRandomValues(bytes){bytes.set(Array.from({length:16},(_,i)=>i));return bytes;}};
+ Object.defineProperty(globalThis,'crypto',{configurable:true,value:provider});
+ try{
+  const attempt=getOrCreateGroupSendAttempt(OWNER,GROUP,'Мобильная совместимость');
+  assert.equal(attempt.id,'00010203-0405-4607-8809-0a0b0c0d0e0f');
+  assert.equal(readGroupSendAttempt(OWNER,GROUP)?.id,attempt.id);
+  clearGroupSendAttempt(OWNER,GROUP,attempt.id);
+ }finally{
+  if(previous)Object.defineProperty(globalThis,'crypto',previous);
+  else delete globalThis.crypto;
+ }
+});
+
+test('latest in-memory attempt wins when sessionStorage write fails over a stale value',()=>{
+ const group='55555555-5555-4555-8555-555555555555';
+ const key='ikonosfera-group-send-v1:'+OWNER+':'+group;
+ const stale={id:'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',body:'Старый текст',createdAt:Date.now()};
+ memory.set(key,JSON.stringify(stale));
+ const originalSet=storage.setItem;
+ storage.setItem=()=>{throw Error('quota exceeded');};
+ try{
+  const current=getOrCreateGroupSendAttempt(OWNER,group,'Новый текст');
+  assert.notEqual(current.id,stale.id);
+  assert.equal(current.body,'Новый текст');
+  assert.deepEqual(readGroupSendAttempt(OWNER,group),current,
+   'a failed persistence write must not let stale sessionStorage override this runtime attempt');
+  assert.equal(getOrCreateGroupSendAttempt(OWNER,group,'Новый текст').id,current.id,
+   'manual retry within the same runtime must retain the idempotency UUID');
+  clearGroupSendAttempt(OWNER,group,current.id);
+  assert.equal(readGroupSendAttempt(OWNER,group),null);
+ }finally{
+  storage.setItem=originalSet;
+  memory.delete(key);
+ }
+});
