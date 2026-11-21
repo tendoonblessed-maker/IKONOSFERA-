@@ -45,7 +45,7 @@ test('channel discovery reads use the portable 18-second deadline and preserve t
  assert.equal(calls[0].options.cache,'no-store');
  assert.ok(calls[0].options.signal instanceof AbortSignal);
  assert.match(source,/SOCIAL_READ_TIMEOUT_MS=18000/);
- assert.match(source,/fetchJsonWithTimeout\\(fetch,apiUrl\\+path,init,SOCIAL_READ_TIMEOUT_MS/);
+ assert.match(source,/fetchJsonWithTimeout\(fetch,apiUrl\+path,init,SOCIAL_READ_TIMEOUT_MS/);
  assert.doesNotMatch(source,/AbortSignal\.timeout/);
 });
 
