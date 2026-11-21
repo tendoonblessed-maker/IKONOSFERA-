@@ -33,3 +33,21 @@ test('profile panel uses a generation guard before committing reload state',()=>
  assert.match(panel,/profileReloadGate\.invalidate\(\)/);
  assert.match(panel,/\[token,targetId,userId,profileReloadGate\]/);
 });
+
+test('stale profile reload errors are suppressed while current errors remain reportable',async()=>{
+ const gate=createProfileReloadGate();
+ const staleRequest=gate.begin();
+ const currentRequest=gate.begin();
+ const staleError=new Error('old profile failed');
+ const currentError=new Error('current profile failed');
+ const reportIfCurrent=async(requestId,error)=>{
+  if(gate.isCurrent(requestId))throw error;
+ };
+ await assert.doesNotReject(()=>reportIfCurrent(staleRequest,staleError));
+ await assert.rejects(()=>reportIfCurrent(currentRequest,currentError),error=>error===currentError);
+});
+
+test('ProfilePanel suppresses obsolete reload failures using the request generation',()=>{
+ const panel=file('components/ProfilePanel.tsx');
+ assert.match(panel,/catch\(error\)\{\s*\/\/ A failed request from an obsolete profile\/account must not surface in the current panel\.\s*if\(profileReloadGate\.isCurrent\(requestId\)\)throw error;\s*\}/);
+});
