@@ -75,13 +75,19 @@ test('confirmed group messages preserve PostgreSQL microsecond order within one 
  assert.deepEqual(result.map(x=>x.id),['z','a','b']);
 });
 
-test('equal timestamps use PostgreSQL UUID byte order, not locale collation',()=>{
+test('equal timestamps use deterministic UUID byte order without locale collation',()=>{
  const id9=message('00000009-1111-4111-8111-111111111111');
  const idA=message('0000000a-1111-4111-8111-111111111111');
- const sorted=mergeConfirmedGroupMessages([idA,id9],new Map(),GROUP,USER,1000);
- assert.deepEqual(sorted.map(row=>row.id),[id9.id,idA.id]);
- assert.ok(compareGroupMessages(id9,idA)<0);
- assert.equal(compareGroupMessages(idA,message(idA.id.toUpperCase())),0);
+ const original=String.prototype.localeCompare;
+ String.prototype.localeCompare=function(){throw Error('locale collation must not be used');};
+ try{
+  const sorted=mergeConfirmedGroupMessages([idA,id9],new Map(),GROUP,USER,1000);
+  assert.deepEqual(sorted.map(row=>row.id),[id9.id,idA.id]);
+  assert.ok(compareGroupMessages(id9,idA)<0);
+  assert.equal(compareGroupMessages(idA,message(idA.id.toUpperCase())),0);
+ }finally{
+  String.prototype.localeCompare=original;
+ }
 });
 
 test('group realtime never renders WebSocket payload or stores another user session',()=>{
