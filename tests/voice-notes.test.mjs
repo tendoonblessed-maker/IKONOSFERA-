@@ -106,9 +106,12 @@ test('voice recorder exposes accessible controls with permission and failure fee
 
 test('voice recording clock does not repeatedly announce elapsed seconds',()=>{
  const ui=load('components/VoiceRecorder.tsx');
- const status=ui.match(/<strong role="status" aria-live="polite" aria-atomic="true">([\\s\\S]*?)<\\/strong>/);
- assert.ok(status,'recording phase has a dedicated live status');
- assert.doesNotMatch(status[1],/formatVoiceTime|<time/);
- assert.match(ui,/<time aria-live="off" aria-label=\\{\`Длительность записи \\{formatVoiceTime\\(elapsed\\)\\}\`\\}>\\{formatVoiceTime\\(elapsed\\)\\}<\\/time>/);
- assert.match(status[1],/Доступ к микрофону|Подготавливаем запись|Идёт запись/);
+ const start='<strong role="status" aria-live="polite" aria-atomic="true">';
+ const startAt=ui.indexOf(start);
+ const endAt=ui.indexOf('</strong>',startAt);
+ assert.ok(startAt>=0&&endAt>startAt,'recording phase has a dedicated live status');
+ const status=ui.slice(startAt+start.length,endAt);
+ assert.doesNotMatch(status,/formatVoiceTime|<time/);
+ assert.ok(ui.includes('<time aria-live="off" aria-label={`Длительность записи ${formatVoiceTime(elapsed)}`}>{formatVoiceTime(elapsed)}</time>'));
+ assert.match(status,/Доступ к микрофону|Подготавливаем запись|Идёт запись/);
 });
