@@ -503,7 +503,9 @@ test('rapid chat switching never inserts a sent attachment or edited message in 
  }
  assert.match(shell,/shouldClearSubmittedDraft\([\s\S]*draftsRef\.current\[chatId\]\|\|''/);
  assert.match(shell,/setDraft\(current=>\{[\s\S]*shouldClearSubmittedDraft\(/);
- assert.match(shell,/const sent=await postMessage\(token,chatId,accountId,plainText,createSecureUuid\(\),reply\?\.id\?\?null\)/);
+ assert.match(shell,/getOrCreateDirectTextAttempt\(accountId,chatId,plainText,reply\?\.id\?\?null,createSecureUuid\)/);
+ assert.match(shell,/const sent=await postMessage\(token,chatId,accountId,plainText,attemptId,reply\?\.id\?\?null\)/);
+ assert.match(shell,/clearDirectTextAttempt\(accountId,chatId,attemptId\)/);
  assert.match(shell,/const sent=await sendDirectMedia\(token,chatId,accountId,file,caption\)/);
 });
 test('group conversations always fetch newest messages and show real loading/errors',()=>{
