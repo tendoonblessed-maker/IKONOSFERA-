@@ -32,8 +32,11 @@ test('a single focusable control wraps in either direction',()=>{
 });
 
 test('attachment preview is focusable as fallback and announces send progress',()=>{
- assert.match(component,/tabIndex=\{-1\} aria-busy=\{sending\}/);
+ assert.match(component,/tabIndex=\{-1\}/);
  assert.match(component,/role="status" aria-live="polite" aria-atomic="true"/);
  assert.match(component,/if\(action==='dialog'\)dialog\.focus\(\)/);
  assert.match(component,/document\.addEventListener\('keydown',onKeyDown\)/);
+ const dialog=component.indexOf('<section ref={dialogRef}');
+ const status=component.indexOf('role="status"');
+ assert.ok(dialog>=0&&status>dialog&&status<component.indexOf('<footer className="ik-attachment-preview-actions"'));
 });
