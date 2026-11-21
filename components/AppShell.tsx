@@ -6,6 +6,7 @@ import ProfilePanel from "@/components/ProfilePanel";
 import {mergeConfirmedRecentPage,prependEarlierPage,CONFIRMED_MESSAGE_GRACE_MS,type ConfirmedMessage} from "@/lib/chat-history";
 import {readChatDrafts,writeChatDrafts,clearChatDrafts,updateChatDraftEntry,type ChatDrafts} from "@/lib/chat-drafts";
 import {DirectMessageSendLock,shouldClearSubmittedDraft} from "@/lib/direct-message-send";
+import {getOrCreateDirectTextAttempt,clearDirectTextAttempt} from "@/lib/direct-message-attempts";
 import {readGroupDrafts,writeGroupDraft,clearGroupDrafts,type GroupDrafts} from "@/lib/group-drafts";
 import {clearAllGroupSendAttempts} from "@/lib/group-send-attempts";
 import ChatMedia from "@/components/ChatMedia";
@@ -1048,7 +1049,9 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
     const uiToken=++directMessageSendUiTokenRef.current;
     setSending(true);setError('');
     try{
-      const sent=await postMessage(token,chatId,accountId,plainText,createSecureUuid(),reply?.id??null);
+      const attemptId=await getOrCreateDirectTextAttempt(accountId,chatId,plainText,reply?.id??null,createSecureUuid);
+      const sent=await postMessage(token,chatId,accountId,plainText,attemptId,reply?.id??null);
+      clearDirectTextAttempt(accountId,chatId,attemptId);
       // Never apply a late response to a different account or conversation.
       if(draftGenerationRef.current===submittedDraftGeneration
         &&selectedRef.current===chatId&&draftsOwnerRef.current===accountId){
