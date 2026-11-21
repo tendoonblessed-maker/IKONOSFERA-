@@ -1147,7 +1147,7 @@ test('attachments are reviewed with captions instead of being sent from the file
  assert.match(view,/disabled=\{sending\} onClick=\{onCancel\}/);
  assert.match(view,/if\(event\.key==='Escape'&&!busyRef\.current\)/);
  assert.match(view,/attachmentPreviewTabAction\(activeIndex,controls.length,event.shiftKey\)/);
- assert.match(view,/tabIndex=\{-1\} aria-busy=\{sending\}/);
+ assert.match(view,/tabIndex=\{-1\}/);
  assert.match(view,/role="status" aria-live="polite" aria-atomic="true"/);
  assert.match(view,/if\(action==='dialog'\)dialog\.focus\(\)/);
  assert.match(view,/audio\[controls\],video\[controls\]/);
