@@ -15,11 +15,17 @@ function setup(phase='recording'){
  const windowTarget=new EventTarget();
  const calls=[];
  const reports=[];
+ let attemptId=1;
  const cleanup=registerVoiceRecordingLifecycle(
-  documentTarget,windowTarget,()=>phase,
-  ()=>calls.push('cancel'),message=>reports.push(message)
+  documentTarget,windowTarget,()=>phase,()=>attemptId,
+  ()=>{calls.push('cancel');attemptId+=1;},
+  message=>reports.push(message)
  );
- return {documentTarget,windowTarget,calls,reports,cleanup,setPhase(next){phase=next;}};
+ return {
+  documentTarget,windowTarget,calls,reports,cleanup,
+  setPhase(next){phase=next;},
+  startNewAttempt(){attemptId+=1;}
+ };
 }
 
 test('backgrounding cancels active microphone permission, recording and finalization',()=>{
@@ -35,11 +41,11 @@ test('visible pages, idle state and unknown phases do not trigger cancellation',
  assert.equal(shouldDiscardVoiceRecordingOnBackground('prerender','requesting'),false);
 });
 
-test('VoiceRecorder uses the tested lifecycle registration helper',()=>{
+test('VoiceRecorder uses the tested lifecycle registration helper and current request generation',()=>{
  const ui=load('components/VoiceRecorder.tsx');
  assert.match(ui,/registerVoiceRecordingLifecycle\(\s*document,window,/);
- assert.match(ui,/\(\)=>phaseRef\.current/);
- assert.match(ui,/\(\)=>cancelRef\.current\(\)/);
+ assert.match(ui,/\(\)=>phaseRef\.current,/);
+ assert.match(ui,/\(\)=>requestRef\.current,\(\)=>cancelRef\.current\(\)/);
  assert.match(ui,/message=>errorRef\.current\(message\)/);
  assert.match(ui,/const cancel=\(\)=>\{\s*dispose\(true\)/);
  assert.match(ui,/requestRef\.current\+=1/);
@@ -67,6 +73,31 @@ test('pagehide cancels pending permission, active recording and finalization',()
   assert.deepEqual(s.reports,['Запись отменена при уходе со страницы.'],phase);
   s.cleanup();
  }
+});
+
+test('visibilitychange followed by pagehide cancels one capture and reports once',()=>{
+ const s=setup('recording');
+ s.documentTarget.visibilityState='hidden';
+ s.documentTarget.dispatchEvent(new Event('visibilitychange'));
+ s.windowTarget.dispatchEvent(new Event('pagehide'));
+ assert.deepEqual(s.calls,['cancel']);
+ assert.deepEqual(s.reports,['Запись отменена при переходе приложения в фон.']);
+ s.cleanup();
+});
+
+test('a new recording generation can be cancelled after an earlier lifecycle cancellation',()=>{
+ const s=setup('recording');
+ s.documentTarget.visibilityState='hidden';
+ s.documentTarget.dispatchEvent(new Event('visibilitychange'));
+ s.startNewAttempt();
+ s.setPhase('requesting');
+ s.windowTarget.dispatchEvent(new Event('pagehide'));
+ assert.deepEqual(s.calls,['cancel','cancel']);
+ assert.deepEqual(s.reports,[
+  'Запись отменена при переходе приложения в фон.',
+  'Запись отменена при уходе со страницы.'
+ ]);
+ s.cleanup();
 });
 
 test('idle and visible lifecycle events do not cancel a recording',()=>{

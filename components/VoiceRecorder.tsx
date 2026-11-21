@@ -85,7 +85,7 @@ export default function VoiceRecorder({disabled,onRecorded,onError}:Props){
  useEffect(()=>{
   return registerVoiceRecordingLifecycle(
    document,window,()=>phaseRef.current,
-   ()=>cancelRef.current(),message=>errorRef.current(message)
+   ()=>requestRef.current,()=>cancelRef.current(),message=>errorRef.current(message)
   );
  },[]);
  const finish=()=>{

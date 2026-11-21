@@ -27,19 +27,29 @@ export function registerVoiceRecordingLifecycle(
  documentTarget:VisibilityTarget,
  windowTarget:EventTarget,
  getPhase:()=>VoiceRecorderPhase,
+ getAttemptId:()=>number,
  cancel:()=>void,
  report:(message:string)=>void
 ):()=>void{
+ // visibilitychange and pagehide may both fire for one background transition.
+ // cancel() invalidates the request generation synchronously; remember that
+ // generation so the second event cannot report/cancel the same capture twice.
+ let cancelledAttemptId:number|null=null;
+ const cancelOnce=(message:string)=>{
+  const attemptId=getAttemptId();
+  if(cancelledAttemptId===attemptId)return;
+  cancel();
+  cancelledAttemptId=getAttemptId();
+  report(message);
+ };
  const onVisibilityChange=()=>{
   if(shouldDiscardVoiceRecordingOnBackground(documentTarget.visibilityState,getPhase())){
-   cancel();
-   report('Запись отменена при переходе приложения в фон.');
+   cancelOnce('Запись отменена при переходе приложения в фон.');
   }
  };
  const onPageHide=()=>{
   if(shouldDiscardVoiceRecordingOnPageHide(getPhase())){
-   cancel();
-   report('Запись отменена при уходе со страницы.');
+   cancelOnce('Запись отменена при уходе со страницы.');
   }
  };
  documentTarget.addEventListener('visibilitychange',onVisibilityChange);
