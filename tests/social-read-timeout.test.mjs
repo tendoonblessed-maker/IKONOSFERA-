@@ -4,6 +4,9 @@ import {test} from 'node:test';
 import vm from 'node:vm';
 import ts from 'typescript';
 
+const nativeSetTimeout=globalThis.setTimeout;
+const nativeClearTimeout=globalThis.clearTimeout;
+
 function loadSocial(fetchImpl) {
   const source = readFileSync(new URL('../lib/social.ts', import.meta.url), 'utf8');
   const compiled = ts.transpileModule(source, {
@@ -19,8 +22,8 @@ function loadSocial(fetchImpl) {
     },
     fetch: fetchImpl,
     AbortController,
-    setTimeout,
-    clearTimeout,
+    setTimeout:(callback,delay,...args)=>nativeSetTimeout(callback,delay===18_000?5:delay,...args),
+    clearTimeout:nativeClearTimeout,
     encodeURIComponent,
     Date,
     Array,
