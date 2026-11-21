@@ -86,6 +86,7 @@ test('mobile detail history rejects malformed, unrelated or inconsistent browser
 test('history snapshots contain identifiers only, never drafts or message content', () => {
   const saved = readMobileDetailHistorySnapshot(createMobileDetailHistoryState(null, snapshot),OWNER);
   assert.deepEqual(Object.keys(saved ?? {}).sort(), [
+    'ownerId',
     'profileTargetId',
     'selectedBot',
     'selectedChannelId',
@@ -120,5 +121,5 @@ test('updated detail snapshot replaces the existing entry without losing framewo
   assert.equal(replaced.__NA, true);
   assert.deepEqual(replaced.tree, ['root']);
   assert.equal(replaced.customRouterFlag, 7);
-  assert.deepEqual(readMobileDetailHistorySnapshot(replaced), latest);
+  assert.deepEqual(readMobileDetailHistorySnapshot(replaced,OWNER), latest);
 });
