@@ -262,7 +262,8 @@ function verifyDirectMessageSendRow(
 ):ChatMessage{
  if(!row||!row.id||row.chat_id!==chatId||row.sender_id!==userId
    ||row.body!==body||row.client_message_id!==clientMessageId
-   ||(row.reply_to_message_id??null)!==replyToMessageId
+   ||((row.reply_to_message_id??null)!==replyToMessageId
+     &&!(replyToMessageId!==null&&row.reply_to_message_id==null))
    ||row.media_path!==null||row.media_type!==null){
   throw Error('Сервер вернул другое сообщение; отправка не подтверждена.');
  }
