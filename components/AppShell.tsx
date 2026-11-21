@@ -1260,6 +1260,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
   const filteredChannels=(showRecommendations?recommendedChannels:myChannels).filter(ch=>!channelSearch.trim()||((ch.title+" "+ch.slug).toLowerCase().includes(channelSearch.trim().toLowerCase())));
 
   return <div className={`messenger ${loggedIn?"is-authenticated":"is-guest"}`} data-version="windows-desktop-v3" data-current-tab={tab}>
+    <a className="ik-skip-link" href={detailOpen?'#ik-main-content':'#ik-current-view'}>Перейти к содержимому</a>
     {!networkOnline&&<div className="ik-network-offline" role="status" aria-live="polite">
       <span className="ik-network-offline-mark" aria-hidden="true"/>
       <span><strong>Нет соединения</strong><small>Черновик останется в чате. Отправь сообщение после подключения.</small></span>
@@ -1268,7 +1269,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
       <div className="pane-heading"><div className="brand-label"><img className="brand-mini" src="/branding/ikonosfera-wordmark.svg" alt="IKONOSFERA" width={132} height={70}/></div><button type="button" className="release-pill" onClick={()=>profile?.id&&goToProfile(profile.id)} disabled={!profile}>{profile ? "@"+profile.username : "ALPHA"}</button></div>
       <div className="pane-toolbar">
         {tab==='chats'&&loggedIn?<button type="button" className="ik-edit-toggle" aria-pressed={editingChats} onClick={()=>{setEditingChats(value=>!value);setSelectedChatIds([]);}}>{editingChats?'Готово':'Изм.'}</button>:<span className="ik-toolbar-spacer" aria-hidden="true"/>}
-        <h1>{tab==='chats'?'Чаты':tab==='contacts'?'Контакты':tab==='channels'?'Каналы':tab==='profile'?'Профиль':'Настройки'}</h1>
+        <h1 id="ik-current-view" tabIndex={-1}>{tab==='chats'?'Чаты':tab==='contacts'?'Контакты':tab==='channels'?'Каналы':tab==='profile'?'Профиль':'Настройки'}</h1>
         <button type="button" className="icon-button ik-compose-button" title={tab==='channels'?'Создать канал':'Новое сообщение'} aria-label={tab==='channels'?'Создать канал':'Новое сообщение'} onClick={()=>{if(tab==='channels'){setChannelCreating(v=>!v);}else{setTab('chats');setCreateMenuOpen(v=>!v);}}} disabled={!loggedIn||editingChats}>
           {tab==='chats'?<svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 5H5a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-7"/><path d="m13 11 7.5-7.5a2.1 2.1 0 0 1 3 3L16 14l-4 1 1-4Z"/></svg>:<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>}
         </button>
@@ -1454,7 +1455,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
   <button type="button" aria-label="Настройки" aria-current={tab==='settings'||tab==='profile'?'page':undefined} className={tab==='settings'||tab==='profile'?'current':''} onClick={()=>switchTab('settings')}><span className="nav-art">{imageUrl(profile?.avatar_path)?<img className="nav-profile-avatar" src={imageUrl(profile?.avatar_path)||''} alt=""/>:<svg viewBox="0 0 28 28" width="25" height="25" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="14" cy="9" r="5"/><path d="M5 25v-2c0-5 4-8 9-8s9 3 9 8v2"/></svg>}</span><span className="nav-label">Настройки</span></button>
 </nav>
     </aside>
-    <main className={`conversation-pane ${detailOpen?'open':''}${attachmentDragActive?' ik-attachment-dragging':''}`}
+    <main id="ik-main-content" tabIndex={-1} className={`conversation-pane ${detailOpen?'open':''}${attachmentDragActive?' ik-attachment-dragging':''}`}
       onPaste={event=>{
         if(!canPrepareAttachment||sending)return;
         const target=event.target;
