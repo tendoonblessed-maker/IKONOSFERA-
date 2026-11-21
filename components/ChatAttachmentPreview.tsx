@@ -71,7 +71,7 @@ export default function ChatAttachmentPreview({file,caption,sending,online,onCap
     if(event.target===event.currentTarget&&!sending)onCancel();
   }}>
    <section ref={dialogRef} className="ik-attachment-preview-dialog" role="dialog"
-     aria-modal="true" aria-label="Подготовка вложения" tabIndex={-1} aria-busy={sending}>
+     aria-modal="true" aria-label="Подготовка вложения" tabIndex={-1}>
     <header className="ik-attachment-preview-header">
      <div><strong>Отправить вложение</strong><span>Проверь файл перед отправкой</span></div>
      <button type="button" onClick={onCancel} disabled={sending}
@@ -102,10 +102,10 @@ export default function ChatAttachmentPreview({file,caption,sending,online,onCap
         }
        }}/>
     </label>
-    <footer className="ik-attachment-preview-actions">
      <span className="sr-only" role="status" aria-live="polite" aria-atomic="true">
       {sending?'Отправляем вложение. Пожалуйста, подождите.':''}
      </span>
+    <footer className="ik-attachment-preview-actions">
      <button type="button" disabled={sending} onClick={onCancel}>Отмена</button>
      <button ref={sendRef} type="button" disabled={sending||!online} onClick={onSend}
        className="ik-attachment-preview-submit">
