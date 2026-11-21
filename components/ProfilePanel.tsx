@@ -1,9 +1,10 @@
 'use client';
 
-import { useCallback, useEffect, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import { changeProfile, explainProfileError, validateUsername } from "@/lib/supabase-rest";
 import {getUserActivities,activityLabel,type UserActivity} from "@/lib/activity";
 import {useStoryProgress} from "@/lib/use-story-progress";
+import {createProfileReloadGate} from "@/lib/profile-reload-gate";
 import StatusEmoji from "@/components/StatusEmoji";
 import StatusEmojiPicker from "@/components/StatusEmojiPicker";
 import {
@@ -37,22 +38,33 @@ export default function ProfilePanel({token,userId,targetId,onBack,onOwnProfileC
  const [viewer,setViewer]=useState<{url:string;caption:string}|null>(null);
  const [storyIndex,setStoryIndex]=useState<number|null>(null);
  const [storyPaused,setStoryPaused]=useState(false);
+ const profileReloadGateRef=useRef<ReturnType<typeof createProfileReloadGate>|null>(null);
+ if(profileReloadGateRef.current===null)profileReloadGateRef.current=createProfileReloadGate();
+ const profileReloadGate=profileReloadGateRef.current;
  const activeStory=storyIndex===null?null:stories[storyIndex]??null;
  const progressRef=useStoryProgress(activeStory?.id??null,()=>setStoryIndex(i=>i===null?null:i+1>=stories.length?null:i+1),storyPaused);
  const reload=useCallback(async()=>{
-  const [p,gallery,active,owned]=await Promise.all([
-   getFullProfile(token,targetId),getProfilePhotos(token,targetId),getStories(token,targetId),mine?listOwnedChannels(token,targetId):Promise.resolve([] as Channel[])
-  ]);
-  const pinned=p?.featured_channel_id
-    ? owned.find(ch=>ch.id===p.featured_channel_id)??await getChannelById(token,p.featured_channel_id).catch(()=>null)
-    : null;
-  setProfile(p);setPhotos(gallery);setStories(active);setOwnedChannels(owned);
-  setFeaturedChannel(pinned);
-  setChosenChannelId(p?.featured_channel_id??"");
-  setName(p?.display_name||"");setUsername(p?.username||"");setBio(p?.bio||"");
-  setAgeInput(p?.age_years==null?"":String(p.age_years));
- },[token,targetId]);
- useEffect(()=>{let mounted=true;void reload().catch(e=>{if(mounted)setError(readableError(e));});return()=>{mounted=false;};},[reload]);
+  const requestId=profileReloadGate.begin();
+  try{
+   const [p,gallery,active,owned]=await Promise.all([
+    getFullProfile(token,targetId),getProfilePhotos(token,targetId),getStories(token,targetId),mine?listOwnedChannels(token,targetId):Promise.resolve([] as Channel[])
+   ]);
+   if(!profileReloadGate.isCurrent(requestId))return;
+   const pinned=p?.featured_channel_id
+     ? owned.find(ch=>ch.id===p.featured_channel_id)??await getChannelById(token,p.featured_channel_id).catch(()=>null)
+     : null;
+   if(!profileReloadGate.isCurrent(requestId))return;
+   setProfile(p);setPhotos(gallery);setStories(active);setOwnedChannels(owned);
+   setFeaturedChannel(pinned);
+   setChosenChannelId(p?.featured_channel_id??"");
+   setName(p?.display_name||"");setUsername(p?.username||"");setBio(p?.bio||"");
+   setAgeInput(p?.age_years==null?"":String(p.age_years));
+  }catch(error){
+   // A failed request from an obsolete profile/account must not surface in the current panel.
+   if(profileReloadGate.isCurrent(requestId))throw error;
+  }
+ },[token,targetId,userId,profileReloadGate]);
+ useEffect(()=>{let mounted=true;void reload().catch(e=>{if(mounted)setError(readableError(e));});return()=>{mounted=false;profileReloadGate.invalidate();};},[reload,profileReloadGate]);
  useEffect(()=>{let mounted=true;const poll=()=>{if(document.visibilityState!=='visible')return;void getUserActivities(token,[targetId]).then(rows=>{if(mounted)setUserActivity(rows[targetId]||null);}).catch(()=>{});};poll();const timer=window.setInterval(poll,30000);return()=>{mounted=false;window.clearInterval(timer);};},[token,targetId]);
  const run=async(action:()=>Promise<void>)=>{
   if(busy)return;setBusy(true);setError("");setNotice("");
