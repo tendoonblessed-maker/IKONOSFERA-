@@ -1,12 +1,25 @@
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
 import {readFileSync} from 'node:fs';
-import {shouldOpenDirectChatSearch} from '../lib/chat-shortcuts.ts';
+import {shouldOpenChatListSearch,shouldOpenDirectChatSearch} from '../lib/chat-shortcuts.ts';
 
 const key=(overrides={})=>({
-  key:'f',ctrlKey:true,metaKey:false,altKey:false,shiftKey:false,...overrides
+  key:'f',ctrlKey:true,metaKey:false,altKey:false,shiftKey:false,isComposing:false,keyCode:0,...overrides
 });
 const source=path=>readFileSync(new URL('../'+path,import.meta.url),'utf8');
+
+test('Ctrl+K and Cmd+K open inbox search outside IME composition',()=>{
+  assert.equal(shouldOpenChatListSearch(key({key:'k'})),true);
+  assert.equal(shouldOpenChatListSearch(key({key:'K',ctrlKey:false,metaKey:true})),true);
+  assert.equal(shouldOpenChatListSearch(key({key:'k',ctrlKey:false})),false);
+});
+
+test('inbox shortcut leaves modified and composing keys to the browser or IME',()=>{
+  assert.equal(shouldOpenChatListSearch(key({key:'k',altKey:true})),false);
+  assert.equal(shouldOpenChatListSearch(key({key:'k',shiftKey:true})),false);
+  assert.equal(shouldOpenChatListSearch(key({key:'k',isComposing:true})),false);
+  assert.equal(shouldOpenChatListSearch(key({key:'k',keyCode:229})),false);
+});
 
 test('Ctrl+F and Cmd+F search only inside an open private conversation',()=>{
   assert.equal(shouldOpenDirectChatSearch(key(),true),true);
@@ -15,17 +28,20 @@ test('Ctrl+F and Cmd+F search only inside an open private conversation',()=>{
   assert.equal(shouldOpenDirectChatSearch(key(),false),false);
 });
 
-test('native browser shortcuts and modified keys stay available',()=>{
+test('native browser Find and IME composition remain untouched',()=>{
   assert.equal(shouldOpenDirectChatSearch(key({ctrlKey:false}),true),false);
   assert.equal(shouldOpenDirectChatSearch(key({altKey:true}),true),false);
   assert.equal(shouldOpenDirectChatSearch(key({shiftKey:true}),true),false);
+  assert.equal(shouldOpenDirectChatSearch(key({isComposing:true}),true),false);
+  assert.equal(shouldOpenDirectChatSearch(key({keyCode:229}),true),false);
   assert.equal(shouldOpenDirectChatSearch(key({key:'k'}),true),false);
 });
 
 test('private chat header exposes an accessible search action with active state',()=>{
   const shell=source('components/AppShell.tsx');
   const css=source('app/globals.css');
-  assert.match(shell,/shouldOpenDirectChatSearch\(event,directVisible\)/);
+  assert.match(shell,/shouldOpenDirectChatSearch\(event,directVisible,targetIsEditable\)/);
+  assert.match(shell,/shouldOpenChatListSearch\(event,targetIsEditable\)/);
   assert.match(shell,/!selectedGroup&&!selectedChannel&&!profileTarget&&!selectedBot/);
   assert.match(shell,/className="ik-conversation-search-trigger"/);
   assert.match(shell,/aria-label="Поиск сообщений в переписке"/);
@@ -39,4 +55,20 @@ test('opened message search focuses its field and closes on Escape',()=>{
   assert.match(panel,/<input autoFocus aria-label="Поиск сообщений в текущем чате"/);
   assert.match(panel,/if\(event.key==='Escape'\)\{event.preventDefault\(\);event.stopPropagation\(\);onClose\(\);\}/);
   assert.match(shell,/input\?\.focus\(\);input\?\.select\(\)/);
+});
+
+test('chat shortcuts leave focused editable controls to the user',()=>{
+  assert.equal(shouldOpenChatListSearch(key({key:'k'}),true),false);
+  assert.equal(shouldOpenDirectChatSearch(key(),true,true),false);
+  assert.equal(shouldOpenChatListSearch(key({key:'k'})),true);
+  assert.equal(shouldOpenDirectChatSearch(key(),true),true);
+});
+
+test('AppShell scopes global shortcuts away from editable targets',()=>{
+  const shell=source('components/AppShell.tsx');
+  assert.match(shell,/targetIsEditable=target instanceof Element&&Boolean\(target\.closest/);
+  assert.match(shell,/shouldOpenChatListSearch\(event,targetIsEditable\)/);
+  assert.match(shell,/shouldOpenDirectChatSearch\(event,directVisible,targetIsEditable\)/);
+  assert.match(shell,/contenteditable="plaintext-only"/);
+  assert.match(shell, /\[role="textbox"\]/);
 });
