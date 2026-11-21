@@ -1266,7 +1266,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
         return;
       }
       skipMobileDetailPopRef.current=false;
-      const snapshot=readMobileDetailHistorySnapshot(event.state);
+      const snapshot=readMobileDetailHistorySnapshot(event.state,loggedIn?userId:'');
       if(snapshot){
         mobileDetailHistoryRef.current=true;
         setTab(snapshot.tab);
@@ -1284,13 +1284,13 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
     };
     window.addEventListener('popstate',onPopState);
     return()=>window.removeEventListener('popstate',onPopState);
-  },[groups,channels]);
+  },[groups,channels,loggedIn,userId]);
   useLayoutEffect(()=>{
     if(typeof window==='undefined')return;
     const isMobile=window.matchMedia('(max-width: 800px)').matches;
     if(isMobile&&mobileDetailOpen&&!mobileDetailHistoryRef.current){
       const snapshot:MobileDetailHistorySnapshot={
-        tab,selectedChatId:selected,selectedGroupId:selectedGroup?.id??null,
+        ownerId:userId,tab,selectedChatId:selected,selectedGroupId:selectedGroup?.id??null,
         selectedChannelId:selectedChannel?.id??null,profileTargetId:profileTarget,selectedBot
       };
       try{
@@ -1303,7 +1303,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
       // The detail entry already exists. Update its snapshot instead of pushing
       // another entry, so Forward restores the most recently selected view.
       const snapshot:MobileDetailHistorySnapshot={
-        tab,selectedChatId:selected,selectedGroupId:selectedGroup?.id??null,
+        ownerId:userId,tab,selectedChatId:selected,selectedGroupId:selectedGroup?.id??null,
         selectedChannelId:selectedChannel?.id??null,profileTargetId:profileTarget,selectedBot
       };
       try{
