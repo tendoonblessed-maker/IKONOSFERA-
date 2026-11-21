@@ -41,7 +41,7 @@ test('private chat header exposes an accessible search action with active state'
   const shell=source('components/AppShell.tsx');
   const css=source('app/globals.css');
   assert.match(shell,/shouldOpenDirectChatSearch\(event,directVisible,targetIsEditable\)/);
-  assert.match(shell,/shouldOpenChatListSearch\(event\)/);
+  assert.match(shell,/shouldOpenChatListSearch\(event,targetIsEditable\)/);
   assert.match(shell,/!selectedGroup&&!selectedChannel&&!profileTarget&&!selectedBot/);
   assert.match(shell,/className="ik-conversation-search-trigger"/);
   assert.match(shell,/aria-label="Поиск сообщений в переписке"/);
