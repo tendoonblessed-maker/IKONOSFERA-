@@ -172,6 +172,19 @@ test('reply RPC uses the same stable ID and exact reply target',async()=>{
  });
 });
 
+test('a deleted reply target may be nulled by the same-chat foreign key after the send committed',async()=>{
+ const row=saved('Ответ',null);
+ const {api}=loadSupabase((url,options)=>{
+  if(url.includes('/rpc/send_direct_reply'))throw Error('server committed; response lost');
+  if(url.includes('/rest/v1/messages?select='))return ok([row]);
+  throw Error('Unexpected request '+url);
+ });
+ const result=await api.postMessage('jwt',CHAT,OWNER,'Ответ',ATTEMPT,REPLY);
+ assert.equal(result.id,ROW_ID);
+ assert.equal(result.reply_to_message_id,null,
+  'ON DELETE SET NULL must not turn an already-saved reply into a false send failure');
+});
+
 test('lost RPC acknowledgment is recovered by one RLS-scoped read-back, never a second POST',async()=>{
  const row=saved('Привет');
  const {api,calls}=loadSupabase((url,options)=>{
