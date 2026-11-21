@@ -19,22 +19,38 @@ function compile(text){
   compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}
  }).outputText;
 }
-function loadAttempts({store=new Map(),blocked=false}={}){
+function loadAttempts({store=new Map(),sessionStore=store,sharedStore=new Map(),blocked=false,locks=null}={}){
  const exports={};
- const sessionStorage={
-  getItem:key=>store.get(key)??null,
-  setItem:(key,value)=>store.set(key,value),
-  removeItem:key=>store.delete(key),
-  key:index=>Array.from(store.keys())[index]??null,
-  get length(){return store.size;}
- };
+ const makeStorage=map=>({
+  getItem:key=>map.get(key)??null,
+  setItem:(key,value)=>map.set(key,value),
+  removeItem:key=>map.delete(key),
+  key:index=>Array.from(map.keys())[index]??null,
+  get length(){return map.size;}
+ });
+ const sessionStorage=makeStorage(sessionStore);
+ const localStorage=makeStorage(sharedStore);
  const window=blocked
-  ?Object.defineProperty({},'sessionStorage',{get(){throw Error('storage blocked');}})
-  :{sessionStorage};
+  ?Object.defineProperty({localStorage},'sessionStorage',{get(){throw Error('storage blocked');}})
+  :{sessionStorage,localStorage};
+ const navigator=locks?{locks}:undefined;
  vm.runInNewContext(compile(source('lib/direct-message-attempts.ts')),{
-  exports,crypto:webcrypto,TextEncoder,window
+  exports,crypto:webcrypto,TextEncoder,window,navigator
  },{filename:'direct-message-attempts.cjs',timeout:3000});
- return {api:exports,store};
+ return {api:exports,store:sessionStore,sessionStore,sharedStore};
+}
+function createLockManager(){
+ const queues=new Map();
+ return {request(name,options,callback){
+  const previous=queues.get(name)??Promise.resolve();
+  let release;
+  const current=new Promise(resolve=>{release=resolve;});
+  queues.set(name,current);
+  return previous.then(()=>callback({name,mode:options.mode})).finally(()=>{
+   release();
+   if(queues.get(name)===current)queues.delete(name);
+  });
+ }};
 }
 const ok=data=>({ok:true,status:200,text:async()=>JSON.stringify(data)});
 const bad=(status,message)=>({ok:false,status,text:async()=>JSON.stringify({message})});
@@ -76,6 +92,38 @@ test('same text and reply reuse one ID across a simulated tab reload without per
  const afterReload=loadAttempts({store});
  const retried=await afterReload.api.getOrCreateDirectTextAttempt(OWNER,CHAT,'Секретное сообщение',null,nextId);
  assert.equal(retried,id);
+});
+
+
+test('Web Locks and shared localStorage reuse one direct-message attempt across tabs',async()=>{
+ const sharedStore=new Map(),locks=createLockManager();
+ const first=loadAttempts({sharedStore,locks});
+ const second=loadAttempts({sharedStore,locks});
+ let created=0;
+ const createId=()=>{created++;return nextId();};
+ const ids=await Promise.all([
+  first.api.getOrCreateDirectTextAttempt(OWNER,CHAT,'Across tabs',null,createId),
+  second.api.getOrCreateDirectTextAttempt(OWNER,CHAT,'Across tabs',null,createId)
+ ]);
+ assert.equal(ids[0],ids[1]);
+ assert.equal(created,1);
+ assert.equal(sharedStore.size,1);
+ assert.equal(first.sessionStore.size,0);
+ assert.equal(second.sessionStore.size,0);
+ assert.equal(first.api.readDirectTextAttempts(OWNER,CHAT).length,1);
+ assert.equal(second.api.readDirectTextAttempts(OWNER,CHAT).length,1);
+});
+
+test('without Web Locks, direct-message attempts remain tab-local',async()=>{
+ const sharedStore=new Map();
+ const first=loadAttempts({sharedStore});
+ const second=loadAttempts({sharedStore});
+ const a=await first.api.getOrCreateDirectTextAttempt(OWNER,CHAT,'Fallback tabs',null,nextId);
+ const b=await second.api.getOrCreateDirectTextAttempt(OWNER,CHAT,'Fallback tabs',null,nextId);
+ assert.notEqual(a,b);
+ assert.equal(sharedStore.size,0);
+ assert.equal(first.sessionStore.size,1);
+ assert.equal(second.sessionStore.size,1);
 });
 
 test('attempts are isolated by account, chat, body and reply target',async()=>{
