@@ -250,9 +250,11 @@ test('AppShell obtains the persistent attempt before RPC and clears only after c
  assert.ok(start>=0&&end>start);
  const send=shell.slice(start,end);
  const attempt=send.indexOf('await getOrCreateDirectTextAttempt(');
+ const generationGuard=send.indexOf('if(draftGenerationRef.current!==submittedDraftGeneration||draftsOwnerRef.current!==accountId)return;');
  const post=send.indexOf('await postMessage(');
  const clear=send.indexOf('clearDirectTextAttempt(');
- assert.ok(attempt>=0&&post>attempt&&clear>post);
+ assert.ok(attempt>=0&&generationGuard>attempt&&post>generationGuard&&clear>post,
+  'a logout/account switch during fingerprinting must stop the POST before it starts');
  assert.match(send,/getOrCreateDirectTextAttempt\(accountId,chatId,plainText,reply\?\.id\?\?null,createSecureUuid\)/);
  assert.match(send,/postMessage\(token,chatId,accountId,plainText,attemptId,reply\?\.id\?\?null\)/);
 });
