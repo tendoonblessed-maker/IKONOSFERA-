@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
 import {readFileSync} from 'node:fs';
-import {cleanGroupDrafts,readGroupDrafts,writeGroupDraft,clearGroupDrafts} from '../lib/group-drafts.ts';
+import {cleanGroupDrafts,readGroupDrafts,writeGroupDraft,clearGroupDrafts,truncateGroupDraft} from '../lib/group-drafts.ts';
 
 const OWNER='11111111-1111-4111-8111-111111111111';
 const OTHER='22222222-2222-4222-8222-222222222222';
@@ -39,6 +39,33 @@ test('group drafts retain intentional whitespace, cap message length and discard
  assert.deepEqual(cleanGroupDrafts({bad:'no', [A]:' ',[B]:'okay'}),{[B]:'okay'});
  assert.deepEqual(cleanGroupDrafts(null),{});
  assert.deepEqual(cleanGroupDrafts([]),{});
+});
+
+test('group draft truncation preserves grapheme clusters at the UTF-16 limit',()=>{
+ memory.clear();
+ const plain='x'.repeat(3999);
+ const emojiBoundary=plain+'😀';
+ assert.equal(truncateGroupDraft(emojiBoundary),plain);
+ assert.equal(cleanGroupDrafts({[A]:emojiBoundary})[A],plain);
+ assert.equal(writeGroupDraft(OWNER,A,emojiBoundary)[A],plain);
+
+ const family='👨‍👩‍👧‍👦';
+ const fits='x'.repeat(4000-family.length)+family;
+ assert.equal(truncateGroupDraft(fits),fits);
+ assert.equal(truncateGroupDraft('x'.repeat(3999)+'e\u0301'),'x'.repeat(3999));
+ assert.equal(truncateGroupDraft('abc',0),'');
+});
+
+test('group draft truncation falls back to code-point-safe boundaries without Segmenter',()=>{
+ const descriptor=Object.getOwnPropertyDescriptor(Intl,'Segmenter');
+ try{
+  Object.defineProperty(Intl,'Segmenter',{configurable:true,writable:true,value:undefined});
+  assert.equal(truncateGroupDraft('x'.repeat(3999)+'😀'),'x'.repeat(3999));
+  assert.equal(truncateGroupDraft('😀'.repeat(2001)).length,4000);
+ }finally{
+  if(descriptor)Object.defineProperty(Intl,'Segmenter',descriptor);
+  else delete Intl.Segmenter;
+ }
 });
 
 test('logging out clears only the previous account group drafts',()=>{
