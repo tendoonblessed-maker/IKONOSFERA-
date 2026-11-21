@@ -45,19 +45,24 @@ export default function ProfilePanel({token,userId,targetId,onBack,onOwnProfileC
  const progressRef=useStoryProgress(activeStory?.id??null,()=>setStoryIndex(i=>i===null?null:i+1>=stories.length?null:i+1),storyPaused);
  const reload=useCallback(async()=>{
   const requestId=profileReloadGate.begin();
-  const [p,gallery,active,owned]=await Promise.all([
-   getFullProfile(token,targetId),getProfilePhotos(token,targetId),getStories(token,targetId),mine?listOwnedChannels(token,targetId):Promise.resolve([] as Channel[])
-  ]);
-  if(!profileReloadGate.isCurrent(requestId))return;
-  const pinned=p?.featured_channel_id
-    ? owned.find(ch=>ch.id===p.featured_channel_id)??await getChannelById(token,p.featured_channel_id).catch(()=>null)
-    : null;
-  if(!profileReloadGate.isCurrent(requestId))return;
-  setProfile(p);setPhotos(gallery);setStories(active);setOwnedChannels(owned);
-  setFeaturedChannel(pinned);
-  setChosenChannelId(p?.featured_channel_id??"");
-  setName(p?.display_name||"");setUsername(p?.username||"");setBio(p?.bio||"");
-  setAgeInput(p?.age_years==null?"":String(p.age_years));
+  try{
+   const [p,gallery,active,owned]=await Promise.all([
+    getFullProfile(token,targetId),getProfilePhotos(token,targetId),getStories(token,targetId),mine?listOwnedChannels(token,targetId):Promise.resolve([] as Channel[])
+   ]);
+   if(!profileReloadGate.isCurrent(requestId))return;
+   const pinned=p?.featured_channel_id
+     ? owned.find(ch=>ch.id===p.featured_channel_id)??await getChannelById(token,p.featured_channel_id).catch(()=>null)
+     : null;
+   if(!profileReloadGate.isCurrent(requestId))return;
+   setProfile(p);setPhotos(gallery);setStories(active);setOwnedChannels(owned);
+   setFeaturedChannel(pinned);
+   setChosenChannelId(p?.featured_channel_id??"");
+   setName(p?.display_name||"");setUsername(p?.username||"");setBio(p?.bio||"");
+   setAgeInput(p?.age_years==null?"":String(p.age_years));
+  }catch(error){
+   // A failed request from an obsolete profile/account must not surface in the current panel.
+   if(profileReloadGate.isCurrent(requestId))throw error;
+  }
  },[token,targetId,userId,profileReloadGate]);
  useEffect(()=>{let mounted=true;void reload().catch(e=>{if(mounted)setError(readableError(e));});return()=>{mounted=false;profileReloadGate.invalidate();};},[reload,profileReloadGate]);
  useEffect(()=>{let mounted=true;const poll=()=>{if(document.visibilityState!=='visible')return;void getUserActivities(token,[targetId]).then(rows=>{if(mounted)setUserActivity(rows[targetId]||null);}).catch(()=>{});};poll();const timer=window.setInterval(poll,30000);return()=>{mounted=false;window.clearInterval(timer);};},[token,targetId]);
