@@ -85,8 +85,9 @@ test('private direct media uploads use secure UUID fallback in their Storage pat
 test('AppShell and the PostgREST text-send default share the secure UUID helper',()=>{
  const shell=source('components/AppShell.tsx');
  const api=source('lib/supabase-rest.ts');
- assert.match(shell,/createSecureUuid\(\),reply\?\.id\?\?null/);
- assert.match(api,/clientMessageId: string = createSecureUuid\(\)/);
+ assert.match(shell,/getOrCreateDirectTextAttempt\(accountId,chatId,plainText,reply\?\.id\?\?null,createSecureUuid\)/);
+ assert.match(shell,/postMessage\(token,chatId,accountId,plainText,attemptId,reply\?\.id\?\?null\)/);
+ assert.match(api,/clientMessageId:string=createSecureUuid\(\)/);
  assert.doesNotMatch(shell,/crypto\.randomUUID\(\)/);
  assert.doesNotMatch(api,/clientMessageId: string = crypto\.randomUUID\(\)/);
  assert.doesNotMatch(api,/Math\.random\s*\(/);
