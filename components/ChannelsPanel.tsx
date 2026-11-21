@@ -125,9 +125,11 @@ export default function ChannelsPanel({token,userId,channel,onBack,onShowProfile
    setComments(list);
    const ids=Array.from(new Set(list.map(c=>c.author_id)));
    if(ids.length){
-    const people=await listProfiles(token,ids);
-    if(!isCurrentCommentRequest(requestId,ownerId,channelId,postId))return;
-    setAuthors(prev=>({...prev,...Object.fromEntries(people.map(p=>[p.id,p]))}));
+    try{
+     const people=await listProfiles(token,ids);
+     if(!isCurrentCommentRequest(requestId,ownerId,channelId,postId))return;
+     setAuthors(prev=>({...prev,...Object.fromEntries(people.map(p=>[p.id,p]))}));
+    }catch(e){if(isCurrentCommentRequest(requestId,ownerId,channelId,postId))setError(readable(e));}
    }
   }catch(e){
    if(isCurrentCommentRequest(requestId,ownerId,channelId,postId)){
