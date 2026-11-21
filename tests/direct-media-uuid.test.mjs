@@ -58,7 +58,7 @@ test('direct media upload falls back when native randomUUID throws',async()=>{
  const source={randomUUID(){throw Error('native unavailable');},getRandomValues(bytes){bytes.fill(7);return bytes;}};
  const {api,calls}=setup(source);
  const result=await api.uploadDirectMedia('test-jwt',CHAT,OWNER,FILE);
- assert.match(result.path,/\/77777777-7777-4777-b777-777777777777\.png$/);
+ assert.match(result.path,/\/07070707-0707-4707-8707-070707070707\.png$/);
  assert.equal(calls.length,1);
 });
 
