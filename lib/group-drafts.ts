@@ -13,13 +13,39 @@ function store():Storage|null{
  catch{return null;}
 }
 function key(ownerId:string){return PREFIX+ownerId;}
+
+/** Truncate on grapheme boundaries without exceeding the UTF-16 storage cap.
+ * Older browsers fall back to code-point boundaries, which still avoids
+ * splitting surrogate pairs even when grapheme segmentation is unavailable.
+ */
+export function truncateGroupDraft(text:string,maxCodeUnits=MAX_TEXT):string{
+ if(maxCodeUnits<=0)return '';
+ if(text.length<=maxCodeUnits)return text;
+ const Segmenter=Intl.Segmenter;
+ if(typeof Segmenter==='function'){
+  let result='';
+  const segmenter=new Segmenter(undefined,{granularity:'grapheme'});
+  for(const {segment} of segmenter.segment(text)){
+   if(result.length+segment.length>maxCodeUnits)break;
+   result+=segment;
+  }
+  return result;
+ }
+ let result='';
+ for(const character of text){
+  if(result.length+character.length>maxCodeUnits)break;
+  result+=character;
+ }
+ return result;
+}
+
 /** Retain the last 48 edited drafts; invalid entries must not evict real ones. */
 export function cleanGroupDrafts(input:unknown):GroupDrafts{
  if(!input||Array.isArray(input)||typeof input!=='object')return {};
  const recent=new Map<string,string>();
  for(const [groupId,text] of Object.entries(input)){
   if(!UUID.test(groupId)||typeof text!=='string')continue;
-  const limited=text.slice(0,MAX_TEXT);
+  const limited=truncateGroupDraft(text);
   if(!limited.trim())continue;
   recent.set(groupId,limited);
   if(recent.size>MAX_GROUPS){
@@ -39,7 +65,8 @@ export function writeGroupDraft(ownerId:string,groupId:string,text:string):Group
  const next=readGroupDrafts(ownerId);
  // Move edited drafts to the end before enforcing the storage limit.
  delete next[groupId];
- if(text.trim())next[groupId]=text.slice(0,MAX_TEXT);
+ const limited=truncateGroupDraft(text);
+ if(limited.trim())next[groupId]=limited;
  const cleaned=cleanGroupDrafts(next);
  try{
   const storage=store();
