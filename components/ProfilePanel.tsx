@@ -5,6 +5,7 @@ import {restoreDialogFocus,restoreDialogFocusInside,trapDialogTab} from "@/lib/d
 import { changeProfile, explainProfileError, validateUsername } from "@/lib/supabase-rest";
 import {getUserActivities,activityLabel,type UserActivity} from "@/lib/activity";
 import {useStoryProgress} from "@/lib/use-story-progress";
+import {addStoryPausePointer,removeStoryPausePointer} from "@/lib/story-pause-pointers";
 import StatusEmoji from "@/components/StatusEmoji";
 import StatusEmojiPicker from "@/components/StatusEmojiPicker";
 import {
@@ -40,6 +41,7 @@ export default function ProfilePanel({token,userId,targetId,onBack,onOwnProfileC
  const storyDialogRef=useRef<HTMLDivElement|null>(null);
  const storyCloseRef=useRef<HTMLButtonElement|null>(null);
  const [storyPaused,setStoryPaused]=useState(false);
+ const pausedPointersRef=useRef<Set<number>>(new Set());
  const activeStory=storyIndex===null?null:stories[storyIndex]??null;
  const progressRef=useStoryProgress(activeStory?.id??null,()=>setStoryIndex(i=>i===null?null:i+1>=stories.length?null:i+1),storyPaused);
  const reload=useCallback(async()=>{
@@ -151,7 +153,11 @@ export default function ProfilePanel({token,userId,targetId,onBack,onOwnProfileC
   if(!activeStory)return;
   const previousFocus=document.activeElement instanceof HTMLElement?document.activeElement:null;
   storyCloseRef.current?.focus({preventScroll:true});
-  return()=>restoreDialogFocus(previousFocus);
+  return()=>{
+   pausedPointersRef.current.clear();
+   setStoryPaused(false);
+   restoreDialogFocus(previousFocus);
+  };
  },[Boolean(activeStory)]);
  const avatar=profile?imageUrl(profile.avatar_path):null;
  const viewingAsVisitor=!mine||visitorPreview;
@@ -262,7 +268,7 @@ export default function ProfilePanel({token,userId,targetId,onBack,onOwnProfileC
     <p className="profile-privacy">Фото и истории доступны другим зарегистрированным пользователям. Не публикуй личные документы.</p>
     {(error||notice)&&<p role="status" className={error?"profile-error":"profile-success"}>{error||notice}</p>}
    </div>
-   {activeStory&&<div ref={storyDialogRef} tabIndex={-1} className="story-viewer story-viewer-telegram" role="dialog" aria-modal="true" aria-label="Просмотр историй" onPointerDown={()=>setStoryPaused(true)} onPointerUp={()=>setStoryPaused(false)} onPointerCancel={()=>setStoryPaused(false)}>
+   {activeStory&&<div ref={storyDialogRef} tabIndex={-1} className="story-viewer story-viewer-telegram" role="dialog" aria-modal="true" aria-label="Просмотр историй" onPointerDown={event=>setStoryPaused(addStoryPausePointer(pausedPointersRef.current,event.pointerId))} onPointerUp={event=>setStoryPaused(removeStoryPausePointer(pausedPointersRef.current,event.pointerId))} onPointerCancel={event=>setStoryPaused(removeStoryPausePointer(pausedPointersRef.current,event.pointerId))} onPointerLeave={event=>setStoryPaused(removeStoryPausePointer(pausedPointersRef.current,event.pointerId))}>
     <div className="story-viewer-stage">
      <div className="story-progress">{stories.map((st,i)=><span key={st.id} className="story-progress-track"><span className={i<(storyIndex??0)?"done":i===storyIndex?"playing story-progress-fill":""} ref={i===storyIndex?progressRef:undefined}/></span>)}</div>
      <header className="story-viewer-header"><span className="story-viewer-avatar">{avatar?<img src={avatar} alt=""/>:(profile?.display_name||"?").charAt(0)}</span>
