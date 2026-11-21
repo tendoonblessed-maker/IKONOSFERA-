@@ -1,9 +1,16 @@
 import {apiUrl} from '@/lib/supabase-rest';
+import {fetchWithTimeout} from '@/lib/fetch-timeout.mjs';
 const key=process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY||'';
 export type ActivityVisibility='exact'|'approximate';
 export type UserActivity={user_id:string;status:string;last_seen_at:string|null};
+const ACTIVITY_REQUEST_TIMEOUT_MS=18000;
 async function activityApi<T>(token:string,path:string,method='GET',body?:unknown):Promise<T>{
- const res=await fetch(apiUrl+path,{method,headers:{apikey:key,Authorization:'Bearer '+token,'Content-Type':'application/json'},body:body===undefined?undefined:JSON.stringify(body),cache:'no-store'});
+ const res=await fetchWithTimeout(fetch,apiUrl+path,{
+  method,
+  headers:{apikey:key,Authorization:'Bearer '+token,'Content-Type':'application/json'},
+  body:body===undefined?undefined:JSON.stringify(body),
+  cache:'no-store'
+ },ACTIVITY_REQUEST_TIMEOUT_MS,'Сервер активности не ответил вовремя. Проверь подключение и повтори попытку.');
  const data=await res.json().catch(()=>null);
  if(!res.ok)throw Error(data?.message||'Не удалось обновить статус активности');
  return data as T;

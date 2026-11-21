@@ -1,5 +1,6 @@
 /* IKONOSFERA social API. All writes use the signed-in user's JWT and Supabase RLS. */
 import { apiUrl } from "@/lib/supabase-rest";
+import { fetchJsonWithTimeout } from "./fetch-timeout.mjs";
 const publicKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "";
 export type FullProfile = { id:string; username:string; display_name:string; avatar_path:string|null; cover_path:string|null; bio:string; featured_channel_id:string|null; status_emoji:number|null; age_years:number|null };
 export type ProfilePhoto = { id:string; user_id:string; image_path:string; caption:string; created_at:string };
@@ -11,11 +12,24 @@ export type PostComment = { id:string; post_id:string; author_id:string; body:st
 function requestHeaders(token:string, extras:Record<string,string>={}) {
   return { apikey:publicKey, Authorization:"Bearer "+token, "Content-Type":"application/json", ...extras };
 }
+const SOCIAL_READ_TIMEOUT_MS=18000;
 async function api<T>(path:string,token:string,method="GET",body?:unknown) : Promise<T> {
-  const res=await fetch(apiUrl+path,{method,headers:requestHeaders(token,method==="POST"||method==="PATCH"||method==="DELETE"?{Prefer:"return=representation"}:{}),
-    body:body===undefined?undefined:JSON.stringify(body),cache:"no-store"});
-  const value=await res.json().catch(()=>null);
-  if(!res.ok)throw Error(value?.message||value?.error||value?.msg||"Ошибка сервера ("+res.status+")");
+  const init:RequestInit={method,headers:requestHeaders(token,method==="POST"||method==="PATCH"||method==="DELETE"?{Prefer:"return=representation"}:{}),
+    body:body===undefined?undefined:JSON.stringify(body),cache:"no-store"};
+  // Bound read-only requests on older mobile browsers without changing the
+  // outcome semantics of writes whose server acknowledgment may be ambiguous.
+  let res:Response;
+  let value:unknown;
+  if(method==="GET"){
+    const result=await fetchJsonWithTimeout(fetch,apiUrl+path,init,SOCIAL_READ_TIMEOUT_MS,"Не удалось загрузить данные. Проверь соединение и повтори попытку.");
+    res=result.response;
+    value=result.data;
+  }else{
+    res=await fetch(apiUrl+path,init);
+    value=await res.json().catch(()=>null);
+  }
+  const payload=value as {message?:string;error?:string;msg?:string}|null;
+  if(!res.ok)throw Error(payload?.message||payload?.error||payload?.msg||"Ошибка сервера ("+res.status+")");
   return value as T;
 }
 export function imageUrl(path:string|null|undefined):string|null {

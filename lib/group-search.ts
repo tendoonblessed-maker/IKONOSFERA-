@@ -1,4 +1,5 @@
 import {apiUrl} from './supabase-rest';
+import {fetchWithTimeout} from './fetch-timeout.mjs';
 import type {GroupMessage} from './groups';
 
 const anonKey=process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY??'';
@@ -6,6 +7,7 @@ const UUID=/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
 export const GROUP_SEARCH_PAGE_SIZE=24;
 export const GROUP_SEARCH_MAX_OFFSET=480;
 const MESSAGE_FIELDS='id,group_id,sender_id,body,created_at';
+const GROUP_SEARCH_REQUEST_TIMEOUT_MS=18000;
 
 /**
  * Searches the complete group history with the existing member-only SELECT
@@ -38,11 +40,11 @@ export function buildGroupSearchPath(groupId:string,query:string,offset:number):
 }
 
 async function getRows(token:string,params:URLSearchParams):Promise<GroupMessage[]>{
- const response=await fetch(apiUrl+'/rest/v1/group_messages?'+params,{
+ const response=await fetchWithTimeout(fetch,apiUrl+'/rest/v1/group_messages?'+params,{
   method:'GET',
   headers:{apikey:anonKey,Authorization:'Bearer '+token},
-  cache:'no-store',signal:AbortSignal.timeout(18000)
- });
+  cache:'no-store'
+ },GROUP_SEARCH_REQUEST_TIMEOUT_MS,'Не удалось загрузить историю группы вовремя. Проверь подключение.');
  const data=await response.json().catch(()=>null);
  if(!response.ok||!Array.isArray(data))
   throw Error('Не удалось загрузить историю группы. Проверь соединение.');
@@ -53,11 +55,11 @@ export async function searchGroupMessages(
  token:string,groupId:string,query:string,offset:number
 ):Promise<GroupMessage[]>{
  const path=buildGroupSearchPath(groupId,query,offset);
- const res=await fetch(apiUrl+path,{
+ const res=await fetchWithTimeout(fetch,apiUrl+path,{
   method:'GET',
   headers:{apikey:anonKey,Authorization:'Bearer '+token},
-  cache:'no-store',signal:AbortSignal.timeout(18000)
- });
+  cache:'no-store'
+ },GROUP_SEARCH_REQUEST_TIMEOUT_MS,'Поиск по группе не завершился вовремя. Проверь подключение.');
  const data=await res.json().catch(()=>null);
  if(!res.ok||!Array.isArray(data))throw Error('Не удалось выполнить поиск по группе.');
  return data as GroupMessage[];

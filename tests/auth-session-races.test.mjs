@@ -3,6 +3,7 @@ import {test} from 'node:test';
 import {readFileSync} from 'node:fs';
 import vm from 'node:vm';
 import ts from 'typescript';
+import {fetchWithTimeout} from '../lib/fetch-timeout.mjs';
 
 const source=readFileSync(new URL('../lib/supabase-rest.ts',import.meta.url),'utf8');
 const compiled=ts.transpileModule(source,{
@@ -27,7 +28,8 @@ function scenario(handler){
  const calls=[];
  const ctx={
   exports:{},process:{env:{NEXT_PUBLIC_SUPABASE_URL:'https://test.supabase.invalid',NEXT_PUBLIC_SUPABASE_ANON_KEY:'anon-test'}},
-  window:{},localStorage:storage,AbortSignal,URLSearchParams,
+  window:{},localStorage:storage,URLSearchParams,
+  require(name){if(name==='./fetch-timeout.mjs')return {fetchWithTimeout};throw new Error('Unexpected module: '+name);},
   fetch:(url,options)=>{
    calls.push({url,options});
    return handler(url,options,calls.length);

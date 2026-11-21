@@ -506,12 +506,15 @@ test('rapid chat switching never inserts a sent attachment or edited message in 
  assert.match(shell,/const sent=await postMessage\(token,chatId,userId,plainText,crypto\.randomUUID\(\),reply\?\.id\?\?null\)/);
  assert.match(shell,/const sent=await sendDirectMedia\(token,chatId,userId,file,caption\)/);
 });
-test('group conversations always fetch newest messages and show real loading/errors',()=>{
+test('group conversations use portable request deadlines and show real loading/errors',()=>{
  const api=load('lib/groups.ts');
  const ui=load('components/GroupPanel.tsx');
  assert.match(api,/order=created_at\.desc,id\.desc&limit=150/);
  assert.match(api,/return latest\.reverse\(\)/);
- assert.match(api,/signal:signal\?\?\(method==='GET'\?AbortSignal\.timeout\(18000\):undefined\)/);
+ assert.match(api,/fetchWithTimeout\(fetch,url,init,timeoutMs\?\?GROUP_REQUEST_TIMEOUT_MS/);
+ assert.match(api,/GROUP_REQUEST_TIMEOUT_MS=18000/);
+ assert.doesNotMatch(api,/AbortSignal\.timeout/);
+ assert.match(api,/request<GroupMessage\[\]>\(token,path,'POST'[\s\S]*?GROUP_REQUEST_TIMEOUT_MS\)/);
  assert.ok(!api.includes('order=created_at.asc&limit=150'));
  assert.match(ui,/initialLoading,setInitialLoading/);
  assert.match(ui,/role="status" aria-label="Загружаем сообщения группы"/);

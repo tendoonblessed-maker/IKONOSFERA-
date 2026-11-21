@@ -1,8 +1,11 @@
+import {fetchWithTimeout} from './fetch-timeout.mjs';
+
 /* Dependency-free Supabase Auth + PostgREST client.
    Never put a service-role or database password in NEXT_PUBLIC_* variables. */
 export const apiUrl = (process.env.NEXT_PUBLIC_SUPABASE_URL ?? '').replace(/\/$/, '');
 const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? '';
 export const backendReady = Boolean(apiUrl && anonKey);
+const SUPABASE_HTTP_TIMEOUT_MS = 18000;
 
 export type Session = { access_token: string; refresh_token: string; expires_at: number };
 export type Profile = { id: string; username: string; display_name: string; avatar_path?: string|null; cover_path?: string|null; bio?: string; status_emoji?:number|null; age_years?:number|null };
@@ -25,14 +28,12 @@ function headers(token?: string, extras?: Record<string,string>) {
 }
 async function http<T>(path: string, options: { method?: string; token?: string; body?: unknown; extraHeaders?: Record<string,string> } = {}): Promise<T> {
   ensureReady();
-  const response = await fetch(`${apiUrl}${path}`, {
+  const response = await fetchWithTimeout(fetch, `${apiUrl}${path}`, {
     method: options.method ?? 'GET',
     headers: headers(options.token, options.extraHeaders),
     body: options.body === undefined ? undefined : JSON.stringify(options.body),
     cache: 'no-store',
-    // Fail visibly instead of showing a perpetual spinner during network stalls.
-    signal: AbortSignal.timeout(18000),
-  });
+  }, SUPABASE_HTTP_TIMEOUT_MS, 'Запрос к серверу не завершился вовремя. Проверь подключение и повтори попытку.');
   const raw = await response.text();
   let value: unknown;
   try { value = raw ? JSON.parse(raw) : null; } catch { value = raw; }

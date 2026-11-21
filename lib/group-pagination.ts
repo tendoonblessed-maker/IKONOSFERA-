@@ -1,4 +1,5 @@
 import {apiUrl} from '@/lib/supabase-rest';
+import {fetchWithTimeout} from '@/lib/fetch-timeout.mjs';
 import type {GroupMessage} from '@/lib/groups';
 
 const anonKey=process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY||'';
@@ -6,6 +7,7 @@ const UUID=/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
 const TIMESTAMP=/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?(?:Z|[+-]\d{2}:\d{2})$/;
 export const GROUP_OLDER_PAGE_SIZE=70;
 export const GROUP_HISTORY_MAX_LOADED=1500;
+export const GROUP_HISTORY_REQUEST_TIMEOUT_MS=18000;
 
 function subMillisecondFraction(timestamp:string):number{
  const part=/\.(\d{1,6})/.exec(timestamp)?.[1]??'';
@@ -37,12 +39,11 @@ export type OlderGroupPage={messages:GroupMessage[];hasMore:boolean};
 export async function fetchOlderGroupMessages(
  token:string,groupId:string,oldest:Pick<GroupMessage,'created_at'|'id'>
 ):Promise<OlderGroupPage>{
- const response=await fetch(apiUrl+olderGroupMessagesPath(groupId,oldest),{
+ const response=await fetchWithTimeout(fetch,apiUrl+olderGroupMessagesPath(groupId,oldest),{
   method:'GET',
   headers:{apikey:anonKey,Authorization:'Bearer '+token},
-  cache:'no-store',
-  signal:AbortSignal.timeout(18000)
- });
+  cache:'no-store'
+ },GROUP_HISTORY_REQUEST_TIMEOUT_MS,'Не удалось загрузить ранние сообщения вовремя. Проверь подключение и повтори попытку.');
  const data:unknown=await response.json().catch(()=>null);
  if(!response.ok||!Array.isArray(data))throw Error('Не удалось загрузить ранние сообщения.');
  const rows=(data as GroupMessage[]).filter(item=>item.group_id===groupId);
