@@ -747,15 +747,21 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
   useEffect(()=>{const field=composerRef.current;if(!field)return;field.style.height='auto';field.style.height=Math.min(field.scrollHeight,136)+'px';},[draft,selected]);
   useEffect(()=>{
     const keyboard=(event:KeyboardEvent)=>{
+      // Do not steal shortcuts from text inputs, textareas, selects, rich-text
+      // editors or textbox widgets. The native editing/browser behavior wins.
+      const target=event.target;
+      const targetIsEditable=target instanceof Element&&Boolean(target.closest(
+        'input, textarea, select, [contenteditable=""], [contenteditable="true"], [contenteditable="plaintext-only"], [role="textbox"]'
+      ));
       // Do not steal IME candidate/navigation keys from the active composer.
-      if(shouldOpenChatListSearch(event)){
+      if(shouldOpenChatListSearch(event,targetIsEditable)){
         event.preventDefault();setTab('chats');setCreateMenuOpen(false);
         searchInputRef.current?.focus();searchInputRef.current?.select();
       }
       // Ctrl/Cmd+F searches the full private conversation only when one is
       // actually visible. Leave native Find untouched on every other screen.
       const directVisible=Boolean(session&&userId&&selected&&!selectedGroup&&!selectedChannel&&!profileTarget&&!selectedBot);
-      if(shouldOpenDirectChatSearch(event,directVisible)){
+      if(shouldOpenDirectChatSearch(event,directVisible,targetIsEditable)){
         event.preventDefault();
         if(!searchInConversation)setSearchInConversation(true);
         else{
