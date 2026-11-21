@@ -2,6 +2,7 @@
 
 import {useEffect,useRef,useState} from 'react';
 import {createPortal} from 'react-dom';
+import {attachmentPreviewTabAction} from '@/lib/attachment-preview-focus';
 
 type Props={
  file:File;
@@ -44,14 +45,17 @@ export default function ChatAttachmentPreview({file,caption,sending,online,onCap
     closeRef.current();
    }
    if(event.key!=='Tab')return;
-   const controls=dialogRef.current?.querySelectorAll<HTMLElement>('button:not([disabled]),textarea:not([disabled])');
-   if(!controls?.length)return;
-   const first=controls[0],last=controls[controls.length-1];
-   if(event.shiftKey&&(document.activeElement===first||!dialogRef.current?.contains(document.activeElement))){
-    event.preventDefault();last.focus();
-   }else if(!event.shiftKey&&(document.activeElement===last||!dialogRef.current?.contains(document.activeElement))){
-    event.preventDefault();first.focus();
-   }
+   const dialog=dialogRef.current;
+   if(!dialog)return;
+   const controls=Array.from(dialog.querySelectorAll<HTMLElement>(
+    'button:not([disabled]),textarea:not([disabled]),input:not([disabled]),select:not([disabled]),a[href],audio[controls],video[controls],[tabindex]:not([tabindex="-1"])'
+   ));
+   const activeIndex=controls.indexOf(document.activeElement as HTMLElement);
+   const action=attachmentPreviewTabAction(activeIndex,controls.length,event.shiftKey);
+   if(!action)return;
+   event.preventDefault();
+   if(action==='dialog')dialog.focus();
+   else controls[action==='first'?0:controls.length-1]?.focus();
   };
   document.addEventListener('keydown',onKeyDown);
   return()=>{
@@ -67,7 +71,7 @@ export default function ChatAttachmentPreview({file,caption,sending,online,onCap
     if(event.target===event.currentTarget&&!sending)onCancel();
   }}>
    <section ref={dialogRef} className="ik-attachment-preview-dialog" role="dialog"
-     aria-modal="true" aria-label="Подготовка вложения">
+     aria-modal="true" aria-label="Подготовка вложения" tabIndex={-1}>
     <header className="ik-attachment-preview-header">
      <div><strong>Отправить вложение</strong><span>Проверь файл перед отправкой</span></div>
      <button type="button" onClick={onCancel} disabled={sending}
@@ -98,6 +102,9 @@ export default function ChatAttachmentPreview({file,caption,sending,online,onCap
         }
        }}/>
     </label>
+     <span className="sr-only" role="status" aria-live="polite" aria-atomic="true">
+      {sending?'Отправляем вложение. Пожалуйста, подождите.':''}
+     </span>
     <footer className="ik-attachment-preview-actions">
      <button type="button" disabled={sending} onClick={onCancel}>Отмена</button>
      <button ref={sendRef} type="button" disabled={sending||!online} onClick={onSend}

@@ -1146,6 +1146,11 @@ test('attachments are reviewed with captions instead of being sent from the file
  assert.match(view,/disabled=\{sending\|\|!online\}/);
  assert.match(view,/disabled=\{sending\} onClick=\{onCancel\}/);
  assert.match(view,/if\(event\.key==='Escape'&&!busyRef\.current\)/);
+ assert.match(view,/attachmentPreviewTabAction\(activeIndex,controls.length,event.shiftKey\)/);
+ assert.match(view,/tabIndex=\{-1\}/);
+ assert.match(view,/role="status" aria-live="polite" aria-atomic="true"/);
+ assert.match(view,/if\(action==='dialog'\)dialog\.focus\(\)/);
+ assert.match(view,/audio\[controls\],video\[controls\]/);
  assert.match(css,/\.ik-attachment-preview-dialog/);
  assert.match(css,/\.ik-attachment-preview-caption textarea/);
  assert.match(css,/font-family:inherit;font-size:16px;line-height:1\.45/);
