@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {test} from 'node:test';
-import {createChannelSendGate,isLatestChannelCommentRequest} from '../lib/channel-comment-request.ts';
+import {createChannelSendGate,isLatestChannelCommentRequest} from '../lib/channel-comment-request.mjs';
 
 const USER='11111111-1111-4111-8111-111111111111';
 const CHANNEL='22222222-2222-4222-8222-222222222222';
