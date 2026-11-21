@@ -155,27 +155,31 @@ export default function ChannelsPanel({token,userId,channel,onBack,onShowProfile
   const lease=channelSendGateRef.current?.acquire();if(!lease)return;
   const requestId=++commentRequestRef.current,ownerId=userId,channelId=channel.id;
   const isCurrent=()=>isCurrentCommentRequest(requestId,ownerId,channelId,postId);
-  setBusy(true);setError("");setCommentsLoading(true);
-  try{await addPostComment(token,postId,userId,draft);}
-  catch(e){if(isCurrent())setError(readable(e));return;}
-  if(!isCurrent())return;
-  if(commentDraft===draft)setCommentDraft("");
-  setNotice("Комментарий отправлен.");
+  setBusy(true);setError("");setNotice("");setCommentsLoading(true);
   try{
-   const list=await listPostComments(token,postId);
+   try{await addPostComment(token,postId,userId,draft);}
+   catch(e){if(isCurrent())setError(readable(e));return;}
    if(!isCurrent())return;
-   setComments(list);
-   const ids=Array.from(new Set(list.map(c=>c.author_id)));
-   if(ids.length&&!authors[userId]){
-    try{const people=await listProfiles(token,ids);if(isCurrent())setAuthors(prev=>({...prev,...Object.fromEntries(people.map(p=>[p.id,p]))}));}
-    catch{if(isCurrent())setNotice("Комментарий отправлен, но имена авторов не обновились.");}
-   }
-   if(currentChannel.discussion_enabled&&isCurrent()){
-    try{await loadDiscussion();}catch{if(isCurrent())setNotice("Комментарий отправлен, но обсуждение не обновилось.");}
-   }
-   if(isCurrent())setNotice("");
-  }catch{if(isCurrent())setNotice("Комментарий отправлен, но список комментариев не обновился.");}
-  finally{if(requestId===commentRequestRef.current)setCommentsLoading(false);channelSendGateRef.current?.release(lease);setBusy(false);}
+   if(commentDraft===draft)setCommentDraft("");
+   let refreshNotice="";
+   try{
+    const list=await listPostComments(token,postId);
+    if(!isCurrent())return;
+    setComments(list);
+    const ids=Array.from(new Set(list.map(c=>c.author_id)));
+    if(ids.length&&!authors[userId]){
+     try{const people=await listProfiles(token,ids);if(isCurrent())setAuthors(prev=>({...prev,...Object.fromEntries(people.map(p=>[p.id,p]))}));}
+     catch{refreshNotice="Комментарий отправлен, но имена авторов не обновились.";}
+    }
+    if(currentChannel.discussion_enabled&&isCurrent()){
+     try{await loadDiscussion();}catch{refreshNotice="Комментарий отправлен, но обсуждение не обновилось.";}
+    }
+   }catch{refreshNotice="Комментарий отправлен, но список комментариев не обновился.";}
+   if(isCurrent())setNotice(refreshNotice);
+  }finally{
+   if(requestId===commentRequestRef.current)setCommentsLoading(false);
+   channelSendGateRef.current?.release(lease);setBusy(false);
+  }
  }
  async function savePostEdit(id:string){
   if(!mine||busy)return;setBusy(true);setError("");
