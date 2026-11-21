@@ -11,12 +11,47 @@ export type PostComment = { id:string; post_id:string; author_id:string; body:st
 function requestHeaders(token:string, extras:Record<string,string>={}) {
   return { apikey:publicKey, Authorization:"Bearer "+token, "Content-Type":"application/json", ...extras };
 }
-async function api<T>(path:string,token:string,method="GET",body?:unknown) : Promise<T> {
-  const res=await fetch(apiUrl+path,{method,headers:requestHeaders(token,method==="POST"||method==="PATCH"||method==="DELETE"?{Prefer:"return=representation"}:{}),
-    body:body===undefined?undefined:JSON.stringify(body),cache:"no-store"});
-  const value=await res.json().catch(()=>null);
-  if(!res.ok)throw Error(value?.message||value?.error||value?.msg||"Ошибка сервера ("+res.status+")");
-  return value as T;
+export const SOCIAL_READ_TIMEOUT_MS=18_000;
+
+/** Bound a read-only social API request, including response-body parsing. */
+export async function withSocialReadTimeout<T>(
+  operation:(signal:AbortSignal)=>Promise<T>,
+  timeoutMs=SOCIAL_READ_TIMEOUT_MS
+):Promise<T>{
+  if(typeof operation!=="function")throw new TypeError("operation must be a function");
+  if(!Number.isFinite(timeoutMs)||timeoutMs<=0)throw new RangeError("timeoutMs must be positive");
+  const controller=new AbortController();
+  let timedOut=false;
+  const timeoutId=setTimeout(()=>{timedOut=true;controller.abort();},timeoutMs);
+  const timeoutError=()=>new Error("Сервер не ответил вовремя. Проверь соединение и повтори запрос.");
+  try{
+    const result=await operation(controller.signal);
+    if(timedOut)throw timeoutError();
+    return result;
+  }catch(error){
+    if(timedOut)throw timeoutError();
+    throw error;
+  }finally{
+    clearTimeout(timeoutId);
+  }
+}
+
+async function api<T>(path:string,token:string,method="GET",body?:unknown,readOnly=false) : Promise<T> {
+  const readOnlyRequest=method==="GET"||readOnly;
+  const run=async(signal?:AbortSignal):Promise<T>=>{
+    const res=await fetch(apiUrl+path,{method,headers:requestHeaders(token,method==="POST"||method==="PATCH"||method==="DELETE"?{Prefer:"return=representation"}:{}),
+      body:body===undefined?undefined:JSON.stringify(body),cache:"no-store",...(signal?{signal}:{})});
+    let value:unknown;
+    try{value=await res.json();}catch(error){
+      // An aborted body read is a timeout, not a successful null response.
+      if(signal?.aborted)throw error;
+      value=null;
+    }
+    if(!res.ok)throw Error((value as {message?:string;error?:string;msg?:string}|null)?.message||(value as {error?:string}|null)?.error||(value as {msg?:string}|null)?.msg||"Ошибка сервера ("+res.status+")");
+    return value as T;
+  };
+  // Never abort mutations: a timed-out write may already have committed.
+  return readOnlyRequest?withSocialReadTimeout(run):run();
 }
 export function imageUrl(path:string|null|undefined):string|null {
   if(!path||!apiUrl||!/^[a-z0-9-]+\/[a-z0-9.-]+\.(jpg|png|webp)$/i.test(path))return null;
@@ -77,7 +112,7 @@ export async function deleteStory(token:string,id:string):Promise<void>{
 export async function getChannelSubscriberCounts(token:string,ids:string[]):Promise<Record<string,number>>{
  const unique=Array.from(new Set(ids)).filter(id=>/^[0-9a-f-]{36}$/i.test(id)).slice(0,100);
  if(!unique.length)return {};
- const counts=await api<{channel_id:string;subscribers:number}[]>('/rest/v1/rpc/channel_subscriber_counts',token,'POST',{p_ids:unique});
+ const counts=await api<{channel_id:string;subscribers:number}[]>('/rest/v1/rpc/channel_subscriber_counts',token,'POST',{p_ids:unique},true);
  return Object.fromEntries(counts.map(row=>[row.channel_id,Number(row.subscribers)]));
 }
 export async function listChannels(token:string):Promise<Channel[]>{
