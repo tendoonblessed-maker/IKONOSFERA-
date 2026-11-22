@@ -98,6 +98,41 @@ test('return no foreign group rows even if a server response contains a stray ro
  assert.deepEqual(Array.from(page.messages,x=>x.id),[id(3)]);
 });
 
+test('foreign-group sentinel still indicates another older page',async()=>{
+ const valid=Array.from({length:70},(_,i)=>row(id(80-i)));
+ const payload=[...valid,row(id(10),stamp,{group_id:OTHER})];
+ const {api}=setup(()=>success(payload));
+ const page=await api.fetchOlderGroupMessages('jwt',GROUP,row(id(81)));
+ assert.equal(page.messages.length,70);
+ assert.equal(page.hasMore,true);
+});
+
+test('reject malformed rows scoped to the requested group instead of merging them',async()=>{
+ const invalid=[
+  row('not-a-uuid'),
+  row(id(3),stamp,{sender_id:'not-a-uuid'}),
+  row(id(3),stamp,{body:null}),
+  row(id(3),'not-a-timestamp')
+ ];
+ for(const bad of invalid){
+  const {api}=setup(()=>success([row(id(4)),bad]));
+  await assert.rejects(api.fetchOlderGroupMessages('jwt',GROUP,row(id(5))),
+   /Некорректное сообщение в истории группы/);
+ }
+});
+
+test('reject duplicate message IDs within one older page',async()=>{
+ const {api}=setup(()=>success([row(id(4)),row(id(4),'2026-10-29T09:49:12Z')]));
+ await assert.rejects(api.fetchOlderGroupMessages('jwt',GROUP,row(id(5))),
+  /Повторяющееся сообщение в истории группы/);
+});
+
+test('reject a non-array history payload before accessing message fields',async()=>{
+ const {api}=setup(()=>success({unexpected:'object'}));
+ await assert.rejects(api.fetchOlderGroupMessages('jwt',GROUP,row(id(5))),
+  /Не удалось загрузить ранние сообщения/);
+});
+
 test('cursor ordering handles identical milliseconds, microseconds and UUID ties',()=>{
  const {api}=setup();
  const rows=[
