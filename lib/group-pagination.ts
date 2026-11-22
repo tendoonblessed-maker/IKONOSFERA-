@@ -6,6 +6,7 @@ const UUID=/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
 const TIMESTAMP=/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?(?:Z|[+-]\d{2}:\d{2})$/;
 export const GROUP_OLDER_PAGE_SIZE=70;
 export const GROUP_HISTORY_MAX_LOADED=1500;
+export const GROUP_HISTORY_REQUEST_TIMEOUT_MS=18_000;
 
 function subMillisecondFraction(timestamp:string):number{
  const part=/\.(\d{1,6})/.exec(timestamp)?.[1]??'';
@@ -16,6 +17,28 @@ export function compareGroupMessages(a:GroupMessage,b:GroupMessage):number{
  if(milli!==0)return milli;
  const fraction=subMillisecondFraction(a.created_at)-subMillisecondFraction(b.created_at);
  return fraction||a.id.localeCompare(b.id);
+}
+/** Portable read deadline; unlike AbortSignal.timeout it works in older WebViews. */
+export async function withGroupHistoryDeadline<T>(
+ operation:(signal:AbortSignal)=>Promise<T>,
+ timeoutMs=GROUP_HISTORY_REQUEST_TIMEOUT_MS
+):Promise<T>{
+ if(typeof operation!=='function')throw new TypeError('operation must be a function');
+ if(!Number.isFinite(timeoutMs)||timeoutMs<=0)throw new RangeError('timeoutMs must be positive');
+ const controller=new AbortController();
+ let timedOut=false;
+ const timeoutError=()=>new Error('Не удалось загрузить ранние сообщения: превышено время ожидания.');
+ const timer=setTimeout(()=>{timedOut=true;controller.abort();},timeoutMs);
+ try{
+  const result=await operation(controller.signal);
+  if(timedOut)throw timeoutError();
+  return result;
+ }catch(error){
+  if(timedOut)throw timeoutError();
+  throw error;
+ }finally{
+  clearTimeout(timer);
+ }
 }
 /** A stable cursor includes ID: many messages can have the same timestamp. */
 export function olderGroupMessagesPath(groupId:string,oldest:Pick<GroupMessage,'created_at'|'id'>):string{
@@ -37,19 +60,24 @@ export type OlderGroupPage={messages:GroupMessage[];hasMore:boolean};
 export async function fetchOlderGroupMessages(
  token:string,groupId:string,oldest:Pick<GroupMessage,'created_at'|'id'>
 ):Promise<OlderGroupPage>{
- const response=await fetch(apiUrl+olderGroupMessagesPath(groupId,oldest),{
-  method:'GET',
-  headers:{apikey:anonKey,Authorization:'Bearer '+token},
-  cache:'no-store',
-  signal:AbortSignal.timeout(18000)
+ return withGroupHistoryDeadline(async signal=>{
+  const response=await fetch(apiUrl+olderGroupMessagesPath(groupId,oldest),{
+   method:'GET',
+   headers:{apikey:anonKey,Authorization:'Bearer '+token},
+   cache:'no-store',
+   signal
+  });
+  const data:unknown=await response.json().catch(error=>{
+   if(signal.aborted)throw error;
+   return null;
+  });
+  if(!response.ok||!Array.isArray(data))throw Error('Не удалось загрузить ранние сообщения.');
+  const rows=(data as GroupMessage[]).filter(item=>item.group_id===groupId);
+  // The extra result is a has-more sentinel; it must be fetched next time.
+  const page=rows.slice(0,GROUP_OLDER_PAGE_SIZE);
+  page.reverse();
+  return {messages:page,hasMore:rows.length>GROUP_OLDER_PAGE_SIZE};
  });
- const data:unknown=await response.json().catch(()=>null);
- if(!response.ok||!Array.isArray(data))throw Error('Не удалось загрузить ранние сообщения.');
- const rows=(data as GroupMessage[]).filter(item=>item.group_id===groupId);
- // The extra result is a has-more sentinel; it must be fetched next time.
- const page=rows.slice(0,GROUP_OLDER_PAGE_SIZE);
- page.reverse();
- return {messages:page,hasMore:rows.length>GROUP_OLDER_PAGE_SIZE};
 }
 /** Server's newest window wins on edits/deletions; retain separately loaded
  * older pages. Never resurrect rows from the server's newest window. */
