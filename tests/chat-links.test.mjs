@@ -70,7 +70,7 @@ test('URLs in multiple lines are independent with no global-regex state leak',()
  assert.equal(links(a).length,1);
  assert.equal(links(b).length,1);
  assert.equal(links(a).length,1);
- assert.deepEqual(links('\nhttps://first.example\n\nhttps://second.example\n').map(x=>x.text),[a,b]);
+ assert.deepEqual(links('\nhttps://first.example.com\n\nhttps://second.example.com\n').map(x=>x.text),[a,b]);
 });
 
 test('link count is bounded while the remaining text stays intact',()=>{
