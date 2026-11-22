@@ -99,6 +99,7 @@ test('rejects duplicate UUIDs even when their letter casing differs',async()=>{
 test('does not change the group history query or database contract',()=>{
  const source=read('lib/groups.ts');
  assert.match(source,/group_id=eq\.'\+encodeURIComponent\(id\)\+'&order=created_at\.desc,id\.desc&limit=/);
- assert.match(source,/normalizeGroupMessagePage\\(/);\n assert.match(source,/return latest\\.reverse\\(\\)/);
+ assert.match(source,/normalizeGroupMessagePage\(/);
+ assert.match(source,/return latest\.reverse\(\)/);
  assert.doesNotMatch(source,/service_role|ALTER TABLE|GRANT |DROP TABLE|dangerouslySetInnerHTML/i);
 });
