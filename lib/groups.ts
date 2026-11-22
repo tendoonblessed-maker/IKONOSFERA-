@@ -15,7 +15,7 @@ export async function listGroups(token:string){return request<Group[]>(token,'/r
 export async function groupMembers(token:string,id:string){return request<{group_id:string;user_id:string}[]>(token,'/rest/v1/group_members?select=group_id,user_id&group_id=eq.'+encodeURIComponent(id));}
 
 const UUID=/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
-const GROUP_MESSAGE_TIMESTAMP=/^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d{1,6})?(?:Z|[+-]\\d{2}:\\d{2})$/;
+const GROUP_MESSAGE_TIMESTAMP=/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?(?:Z|[+-]\d{2}:\d{2})$/;
 export const GROUP_LATEST_PAGE_SIZE=150;
 
 /** Validate the newest group snapshot before it reaches rendering or read tracking. */
