@@ -1197,7 +1197,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
         setPendingAttachment(current=>current?.chatId===chatId&&current.ownerId===userId&&current.file===file?null:current);
         setAttachmentCaption('');
       }
-      setNotice("Вложение отправлено.");
+      if(selectedRef.current===chatId&&draftsOwnerRef.current===userId)setNotice("Вложение отправлено.");
       // The server confirmed the attachment; polling updates its metadata
       // without delaying the new message bubble or reporting a false failure.
     }catch(e){if(selectedRef.current===chatId&&draftsOwnerRef.current===userId)setError(userFacingError(e));}
