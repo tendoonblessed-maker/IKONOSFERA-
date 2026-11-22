@@ -59,10 +59,11 @@ test('empty or malformed context cannot acquire a send lock',()=>{
 test('text and attachment handlers use the gate and chat-scoped busy state',()=>{
  const source=readFileSync(new URL('../components/AppShell.tsx',import.meta.url),'utf8');
  const textStart=source.indexOf('async function sendMessage(');
+ const textEnd=source.indexOf('async function toggleSavedContact(',textStart);
  const attachmentStart=source.indexOf("async function sendAttachment(");
  const logoutStart=source.indexOf('async function logout()',attachmentStart);
- assert.ok(textStart>=0&&attachmentStart>textStart&&logoutStart>attachmentStart);
- const textSend=source.slice(textStart,attachmentStart);
+ assert.ok(textStart>=0&&textEnd>textStart&&attachmentStart>textEnd&&logoutStart>attachmentStart);
+ const textSend=source.slice(textStart,textEnd);
  const attachmentSend=source.slice(attachmentStart,logoutStart);
  assert.match(source,/import \{createDirectSendGate\} from ["']@\/lib\/direct-send-gate["']/);
  assert.match(source,/directSendGateRef=useRef<ReturnType<typeof createDirectSendGate>\|null>\(null\)/);
