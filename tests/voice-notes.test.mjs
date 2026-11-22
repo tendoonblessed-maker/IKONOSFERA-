@@ -2,7 +2,8 @@ import assert from 'node:assert/strict';
 import {test} from 'node:test';
 import {readFileSync} from 'node:fs';
 import {
- chooseVoiceMimeType,createVoiceFile,createVoiceRecorderOptions,resolveVoiceMimeType,formatVoiceTime,
+ chooseVoiceMimeType,createVoiceFile,createVoiceRecorderOptions,elapsedVoiceSeconds,
+ formatVoiceTime,getVoiceClockNow,resolveVoiceMimeType,
  VOICE_RECORD_MAX_MS,VOICE_RECORD_MAX_BYTES,VOICE_MIME_CANDIDATES
 } from '../lib/voice-notes.ts';
 const load=path=>readFileSync(new URL('../'+path,import.meta.url),'utf8');
@@ -26,6 +27,22 @@ test('voice recorder falls back to browser-selected MIME when probing is unavail
  assert.match(ui,/typeof MediaRecorder\.isTypeSupported==='function'\&\&!mime/);
  assert.match(ui,/new MediaRecorder\(stream,createVoiceRecorderOptions\(mime\)\)/);
  assert.match(ui,/resolveVoiceMimeType\(recorder\.mimeType,capture\.chunks,mime\)/);
+});
+
+test('elapsed voice recording time is monotonic, non-negative and capped at the two-minute limit',()=>{
+ assert.equal(elapsedVoiceSeconds(100,1099),0);
+ assert.equal(elapsedVoiceSeconds(100,1100),1);
+ assert.equal(elapsedVoiceSeconds(100,61_100),61);
+ assert.equal(elapsedVoiceSeconds(100,120_100),120);
+ assert.equal(elapsedVoiceSeconds(100,999_999),120);
+ assert.equal(elapsedVoiceSeconds(100,50),0);
+ assert.equal(elapsedVoiceSeconds(Number.NaN,5000),0);
+ assert.equal(elapsedVoiceSeconds(0,Number.POSITIVE_INFINITY),0);
+ assert.equal(typeof getVoiceClockNow(),'number');
+ const ui=load('components/VoiceRecorder.tsx');
+ assert.match(ui,/startedAt:getVoiceClockNow\(\)/);
+ assert.match(ui,/elapsedVoiceSeconds\(capture\.startedAt,getVoiceClockNow\(\)\)/);
+ assert.doesNotMatch(ui,/Date\.now\(\)-capture\.startedAt/);
 });
 
 test('recorded audio normalizes codec parameters to strict private Storage MIME',()=>{
