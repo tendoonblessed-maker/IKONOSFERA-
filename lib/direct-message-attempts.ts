@@ -71,7 +71,7 @@ export function readDirectTextAttempts(
   const store=shared?sharedContext()?.store:sessionStorage();
   if(shared&&!store)throw Error('Shared attempt storage is unavailable.');
   const raw=store?.getItem(k);
-  value=raw!==null?JSON.parse(raw):(shared?[]:inMemory.get(mk));
+  value=raw!=null?JSON.parse(raw):(shared?[]:inMemory.get(mk));
  }catch{
   if(shared)throw Error('Не удалось безопасно прочитать попытку отправки между вкладками.');
   value=inMemory.get(mk);
