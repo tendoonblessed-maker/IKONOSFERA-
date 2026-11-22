@@ -14,6 +14,7 @@ import {subscribeGroupChanges} from '@/lib/group-realtime';
 import {mergeConfirmedGroupMessages,CONFIRMED_GROUP_MESSAGE_GRACE_MS,type ConfirmedGroupMessage} from '@/lib/group-history';
 import {shouldAcknowledgeGroupRead,countNewIncomingBelow} from '@/lib/group-read-position';
 import {fetchOlderGroupMessages,prependOlderGroupMessages,preserveOlderGroupMessages,GROUP_HISTORY_MAX_LOADED} from '@/lib/group-pagination';
+import {shouldRefreshAfterPageShow} from '@/lib/page-lifecycle.mjs';
 type Props={token:string;userId:string;group:Group;onBack:()=>void;onShowProfile:(id:string)=>void;onDraftChange:(groupId:string,text:string)=>void};
 export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDraftChange}:Props){
  const [messages,setMessages]=useState<GroupMessage[]>([]);
@@ -168,8 +169,14 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
   // Polling is a fallback and heals any missed WebSocket notifications.
   const timer=window.setInterval(sync,6000);
   const onOnline=()=>sync();
+  // iOS Safari can resume this panel from BFCache without a visibility or
+  // online event. Re-read the authoritative latest page after persisted restore.
+  const onPageShow=(event:PageTransitionEvent)=>{
+    if(shouldRefreshAfterPageShow(event,document.visibilityState,navigator.onLine))sync();
+  };
   document.addEventListener('visibilitychange',sync);
   window.addEventListener('online',onOnline);
+  window.addEventListener('pageshow',onPageShow);
   return()=>{
     cancelled=true;
     requestSequenceRef.current++;
@@ -178,6 +185,7 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
     unsubscribeRealtime();
     document.removeEventListener('visibilitychange',sync);
     window.removeEventListener('online',onOnline);
+    window.removeEventListener('pageshow',onPageShow);
   };
  },[refresh,token,group.id]);
  // Search runs against the full group history via the existing RLS-filtered
