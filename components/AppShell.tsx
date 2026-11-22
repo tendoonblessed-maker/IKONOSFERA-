@@ -8,6 +8,7 @@ import {readChatDrafts,writeChatDrafts,clearChatDrafts,updateChatDraftEntry,type
 import {readGroupDrafts,writeGroupDraft,clearGroupDrafts,type GroupDrafts} from "@/lib/group-drafts";
 import {clearAllGroupSendAttempts} from "@/lib/group-send-attempts";
 import {createDirectSendGate} from "@/lib/direct-send-gate";
+import {isDirectSendBusy,updateDirectSendBusyKeys} from "@/lib/direct-send-state";
 import ChatMedia from "@/components/ChatMedia";
 import ChatMessageText from "@/components/ChatMessageText";
 import {subscribeDirectChatChanges} from "@/lib/direct-realtime";
@@ -128,6 +129,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
   const [emailSent,setEmailSent]=useState(false);
   const [busy,setBusy]=useState(false);
   const [sending,setSending]=useState(false);
+  const [directSendingKeys,setDirectSendingKeys]=useState<ReadonlySet<string>>(new Set());
   const [networkOnline,setNetworkOnline]=useState(true);
   const [bootstrapRetryNonce,setBootstrapRetryNonce]=useState(0);
   const [loading,setLoading]=useState(true);
@@ -159,6 +161,14 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
   const attachmentDragDepthRef=useRef(0);
   const directSendGateRef=useRef<ReturnType<typeof createDirectSendGate>|null>(null);
   if(directSendGateRef.current===null)directSendGateRef.current=createDirectSendGate();
+  function directSendBusyFor(ownerId:string,chatId:string){
+    return isDirectSendBusy(directSendingKeys,ownerId,chatId)
+      ||directSendGateRef.current?.isInFlight(ownerId,chatId)===true;
+  }
+  function markDirectSendBusy(ownerId:string,chatId:string,busy:boolean){
+    setDirectSendingKeys(current=>updateDirectSendBusyKeys(current,ownerId,chatId,busy));
+  }
+  const directSendBusy=Boolean(selected&&userId&&directSendBusyFor(userId,selected));
 
   // In-memory edits belong to one signed-in user; never reuse across accounts.
   useEffect(()=>{recentChannelUpdatesRef.current.clear();},[userId]);
@@ -1011,7 +1021,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
   }
 
   async function sendMessage(e:React.FormEvent){
-    e.preventDefault();if(!session||!selected||!userId||sending||activePartnerBlocked)return;
+    e.preventDefault();if(!session||!selected||!userId||activePartnerBlocked)return;
     if(!networkOnline||!navigator.onLine){
       setError('Нет соединения с интернетом. Сообщение осталось в черновике.');
       return;
@@ -1024,7 +1034,8 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
     const sendGate=directSendGateRef.current;
     const sendLease=sendGate?.tryAcquire(userId,chatId);
     if(!sendLease)return;
-    setSending(true);setError('');
+    markDirectSendBusy(userId,chatId,true);
+    setError('');
     try{
       const sent=await postMessage(token,chatId,userId,plainText,crypto.randomUUID(),reply?.id??null);
       // Display the DB-confirmed row immediately. Do not manufacture a pending
@@ -1044,8 +1055,8 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
       if(reply)setReplyingTo(current=>current?.id===reply.id&&current.chatId===chatId?null:current);
       // Polling will reconcile read receipts and any concurrent edits; the
       // send is already visible and never waits for a second network request.
-    }catch(e){setError(userFacingError(e));}
-    finally{sendGate?.release(userId,chatId,sendLease);setSending(false);}
+    }catch(e){if(selectedRef.current===chatId&&draftsOwnerRef.current===userId)setError(userFacingError(e));}
+    finally{if(sendGate?.release(userId,chatId,sendLease))markDirectSendBusy(userId,chatId,false);}
   }
   async function toggleSavedContact(person:Profile){
     if(!session||!userId||busy)return;
@@ -1155,7 +1166,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
     }catch(e){setError(userFacingError(e));}finally{setSending(false);}
   }
   function queueAttachment(file:File|undefined){
-    if(!file||!selected||!userId||sending||activePartnerBlocked)return;
+    if(!file||!selected||!userId||directSendBusyFor(userId,selected)||activePartnerBlocked)return;
     const problem=validateDirectMediaFile(file);
     if(problem){setError(problem);return;}
     setError('');
@@ -1163,7 +1174,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
     setPendingAttachment({chatId:selected,ownerId:userId,file});
   }
   async function sendAttachment(file:File|undefined,caption=''){
-    if(!file||!session||!selected||!userId||sending||activePartnerBlocked)return;
+    if(!file||!session||!selected||!userId||activePartnerBlocked)return;
     if(!networkOnline||!navigator.onLine){
       setError('Нет соединения с интернетом. Вложение осталось в предпросмотре.');
       return;
@@ -1174,7 +1185,8 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
     const sendGate=directSendGateRef.current;
     const sendLease=sendGate?.tryAcquire(userId,chatId);
     if(!sendLease)return;
-    setSending(true);setError("");
+    markDirectSendBusy(userId,chatId,true);
+    setError("");
     try{
       const sent=await sendDirectMedia(token,chatId,userId,file,caption);
       if(selectedRef.current===chatId&&draftsOwnerRef.current===userId){
@@ -1188,8 +1200,8 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
       setNotice("Вложение отправлено.");
       // The server confirmed the attachment; polling updates its metadata
       // without delaying the new message bubble or reporting a false failure.
-    }catch(e){setError(userFacingError(e));}
-    finally{sendGate?.release(userId,chatId,sendLease);setSending(false);}
+    }catch(e){if(selectedRef.current===chatId&&draftsOwnerRef.current===userId)setError(userFacingError(e));}
+    finally{if(sendGate?.release(userId,chatId,sendLease))markDirectSendBusy(userId,chatId,false);}
   }
   async function logout(){
     if(!session)return;
@@ -1465,7 +1477,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
     </aside>
     <main className={`conversation-pane ${detailOpen?'open':''}${attachmentDragActive?' ik-attachment-dragging':''}`}
       onPaste={event=>{
-        if(!canPrepareAttachment||sending)return;
+        if(!canPrepareAttachment||directSendBusy)return;
         const target=event.target;
         if(target instanceof Element&&target.closest('input,textarea,[contenteditable="true"]')
           &&target!==composerRef.current)return;
@@ -1476,12 +1488,12 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
         queueAttachment(pasted);
       }}
       onDragEnter={event=>{
-        if(!canPrepareAttachment||sending||!Array.from(event.dataTransfer.types).includes('Files'))return;
+        if(!canPrepareAttachment||directSendBusy||!Array.from(event.dataTransfer.types).includes('Files'))return;
         event.preventDefault();attachmentDragDepthRef.current+=1;
         setAttachmentDragActive(true);
       }}
       onDragOver={event=>{
-        if(!canPrepareAttachment||sending||!Array.from(event.dataTransfer.types).includes('Files'))return;
+        if(!canPrepareAttachment||directSendBusy||!Array.from(event.dataTransfer.types).includes('Files'))return;
         event.preventDefault();event.dataTransfer.dropEffect='copy';
       }}
       onDragLeave={event=>{
@@ -1493,7 +1505,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
       onDrop={event=>{
         if(!canPrepareAttachment||!Array.from(event.dataTransfer.types).includes('Files'))return;
         event.preventDefault();attachmentDragDepthRef.current=0;setAttachmentDragActive(false);
-        if(sending)return;
+        if(directSendBusy)return;
         const files=Array.from(event.dataTransfer.files);
         queueAttachment(files[0]);
         if(files.length>1)setNotice('Сейчас можно отправлять по одному вложению за раз.');
@@ -1581,8 +1593,8 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
         <div className="ik-inline-reply-copy"><strong>Ответ для {replyingTo.name}</strong><span>{replyingTo.text}</span></div>
         <button type="button" onClick={()=>setReplyingTo(null)} aria-label="Отменить ответ">✕</button>
       </div>}
-      <form className="composer" onSubmit={sendMessage}><label className="chat-attach-button" title="Прикрепить фото, видео, музыку или файл" aria-label="Прикрепить файл"><svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M20.5 11.5 12.3 19.7a5.4 5.4 0 0 1-7.7-7.7L13 3.6a3.6 3.6 0 0 1 5.1 5.1l-8.7 8.7a1.8 1.8 0 0 1-2.6-2.6l7.7-7.7"/></svg><input type="file" accept="image/*,video/mp4,video/webm,video/quicktime,audio/mpeg,audio/mp4,audio/wav,audio/ogg,audio/webm,.pdf,.txt,.zip,.doc,.docx,.xls,.xlsx" disabled={sending||activePartnerBlocked||!networkOnline} onChange={e=>{queueAttachment(e.target.files?.[0]);e.target.value="";}}/></label>
-      <VoiceRecorder key={userId+':'+selected} disabled={sending||activePartnerBlocked||Boolean(pendingAttachment)}
+      <form className="composer" onSubmit={sendMessage}><label className="chat-attach-button" title="Прикрепить фото, видео, музыку или файл" aria-label="Прикрепить файл"><svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M20.5 11.5 12.3 19.7a5.4 5.4 0 0 1-7.7-7.7L13 3.6a3.6 3.6 0 0 1 5.1 5.1l-8.7 8.7a1.8 1.8 0 0 1-2.6-2.6l7.7-7.7"/></svg><input type="file" accept="image/*,video/mp4,video/webm,video/quicktime,audio/mpeg,audio/mp4,audio/wav,audio/ogg,audio/webm,.pdf,.txt,.zip,.doc,.docx,.xls,.xlsx" disabled={directSendBusy||activePartnerBlocked||!networkOnline} onChange={e=>{queueAttachment(e.target.files?.[0]);e.target.value="";}}/></label>
+      <VoiceRecorder key={userId+':'+selected} disabled={directSendBusy||activePartnerBlocked||Boolean(pendingAttachment)}
        onRecorded={file=>queueAttachment(file)}
        onError={message=>setError(message)}/>
       <textarea ref={composerRef} aria-label="Написать сообщение" enterKeyHint="enter" placeholder={activePartnerBlocked?"Вы заблокировали пользователя":"Сообщение…"} rows={1} disabled={activePartnerBlocked} value={draft} onChange={e=>{setDraft(e.target.value);if(selected)updateChatDraft(selected,e.target.value);}} onInput={e=>{const element=e.currentTarget;element.style.height='auto';element.style.height=Math.min(element.scrollHeight,136)+'px';}} onKeyDown={e=>{
@@ -1592,9 +1604,9 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
           ||window.matchMedia('(pointer:coarse) and (hover:none)').matches;
         if(e.key==='Enter'&&!e.shiftKey&&!e.nativeEvent.isComposing&&!softKeyboard){
           e.preventDefault();
-          if(draft.trim()&&!sending)e.currentTarget.form?.requestSubmit();
+          if(draft.trim()&&!directSendBusy)e.currentTarget.form?.requestSubmit();
         }
-      }} maxLength={4000}/><button type="submit" className="send-button" disabled={!draft.trim()||sending||activePartnerBlocked||!networkOnline} aria-label="Отправить сообщение" title={!networkOnline?'Нет соединения с интернетом':undefined}><svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 19V5m-6 6 6-6 6 6"/></svg></button></form></>:selected&&loggedIn?<div className="ik-chat-entry-loading" aria-live="polite" role="status">
+      }} maxLength={4000}/><button type="submit" className="send-button" disabled={!draft.trim()||directSendBusy||activePartnerBlocked||!networkOnline} aria-label="Отправить сообщение" title={!networkOnline?'Нет соединения с интернетом':undefined}><svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 19V5m-6 6 6-6 6 6"/></svg></button></form></>:selected&&loggedIn?<div className="ik-chat-entry-loading" aria-live="polite" role="status">
        <header className="conversation-header"><button type="button" className="back-button" aria-label="Назад к чатам" onClick={()=>setSelected(null)}>‹</button><strong>Открываем диалог…</strong></header>
        <div className="ik-chat-loading"><div className="ik-chat-loading-bubble incoming"/><div className="ik-chat-loading-bubble incoming short"/><div className="ik-chat-loading-bubble outgoing"/><span className="ik-chat-loading-label"><span className="ik-chat-loading-spinner" aria-hidden="true"/>Загружаем переписку…</span></div>
      </div>:<div className="conversation-placeholder">{!loggedIn&&<div className="guest-brand"><img src="/branding/ikonosfera-wordmark.svg" alt="IKONOSFERA" width={250} height={108}/><span>© BY TENDO888</span></div>}{loggedIn&&<div className="welcome-mark" aria-hidden="true">IKONOSFERA<span> / DESKTOP</span></div>}<h2>{loggedIn?'Твои разговоры начинаются здесь':emailSent?'Остался один шаг':'Больше чем просто мессенджер'}</h2><p>{loggedIn?'Выбери переписку слева или найди человека по юзернейму.':emailSent?'Открой письмо и перейди по ссылке Sign in.':'IKONOSFERA — современный мессенджер для Android, iPhone, macOS и Windows. Работает без VPN и ограничений!'}</p>{loggedIn&&<div className="desktop-welcome-actions"><button type="button" className="accent-button" onClick={()=>switchTab('contacts')}>＋ Найти человека</button><button type="button" className="secondary-action" onClick={()=>switchTab('channels')}>Открыть каналы</button></div>}{!loggedIn&&(backendReady?<div className="auth-panel"><h3>{emailSent?'Проверь почту':'Войти или зарегистрироваться'}</h3>{!emailSent?<form onSubmit={requestSignInLink}><label htmlFor="authEmail">Электронная почта</label><input id="authEmail" type="email" autoComplete="email" value={email} onChange={e=>setEmail(e.target.value)} placeholder="you@example.com" required/><button className="accent-button" disabled={busy}>{busy?'Отправляем…':'Получить ссылку для входа'}</button></form>:<div className="email-signin-result"><div className="email-signin-guide" role="status"><strong>Письмо отправлено на {email}</strong><p>Открой почту и найди письмо от <b>Supabase Auth</b> с темой <b>Your sign-in link</b>.</p><p>Нажми синюю ссылку <b>Sign in</b> («Войти»). После перехода IKONOSFERA откроется с твоим аккаунтом.</p><small>Если письма нет, проверь «Спам». Ссылка одноразовая; вводить код не требуется.</small></div><button type="button" className="text-button" onClick={()=>{setEmailSent(false);setError('');}}>Использовать другой адрес</button></div>}<div className="temporary-login"><button type="button" className="secondary-action" onClick={()=>void beginTemporaryAccount()} disabled={busy}>Попробовать без почты — тестовый аккаунт</button><p>Бесплатный тестовый вход. Для работы требуется включить Anonymous Sign-Ins в Supabase. Не используй реальные личные данные.</p></div></div>:<div className="setup-notice"><strong>Подключаем сообщения</strong><p>Сервер переписки ещё не настроен. Как только будет подключена база, здесь появится вход.</p></div>)}</div>}
@@ -1602,7 +1614,7 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
     {pendingAttachment?.chatId===selected&&pendingAttachment.ownerId===userId
       &&canPrepareAttachment&&<ChatAttachmentPreview
         file={pendingAttachment.file} caption={attachmentCaption}
-        sending={sending} online={networkOnline}
+        sending={directSendBusy} online={networkOnline}
         onCaptionChange={setAttachmentCaption}
         onCancel={()=>{setPendingAttachment(null);setAttachmentCaption('');}}
         onSend={()=>{void sendAttachment(pendingAttachment.file,attachmentCaption);}}
