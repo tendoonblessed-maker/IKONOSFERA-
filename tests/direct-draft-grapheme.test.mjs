@@ -15,7 +15,7 @@ test('direct drafts truncate without splitting grapheme clusters at the UTF-16 c
  const family='👨‍👩‍👧‍👦';
  const fits='x'.repeat(4000-family.length)+family;
  assert.equal(truncateChatDraft(fits),fits);
- assert.equal(truncateChatDraft('x'.repeat(3999)+'e\\u0301'),'x'.repeat(3999));
+ assert.equal(truncateChatDraft('x'.repeat(3999)+'e\u0301'),'x'.repeat(3999));
  assert.equal(truncateChatDraft('abc',0),'');
  assert.equal(truncateChatDraft('abc',2),'ab');
 });
