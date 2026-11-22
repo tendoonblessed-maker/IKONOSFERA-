@@ -205,45 +205,8 @@ test('older group history fetch is aborted through portable deadline',async()=>{
  assert.equal(calls[0].options.signal.aborted,true);
 });
 
-test('portable group history deadline aborts a stalled request with a readable timeout',async()=>{
- const {api}=setup();
- await assert.rejects(api.withGroupHistoryDeadline(signal=>new Promise((_,reject)=>{
-  signal.addEventListener('abort',()=>reject(new Error('aborted')),{once:true});
- }),5),/время ожидания/);
-});
-
-test('portable group history deadline rejects a late result even when operation ignores abort',async()=>{
- const {api}=setup();
- await assert.rejects(api.withGroupHistoryDeadline(()=>new Promise(resolve=>{
-  nativeSetTimeout(()=>resolve('late'),10);
- }),5),/время ожидания/);
-});
-
-test('successful group history reads clear their deadline timer',async()=>{
- const {api}=setup();
- let signal;
- const result=await api.withGroupHistoryDeadline(current=>{
-  signal=current;
-  return Promise.resolve('ok');
- },5);
- await new Promise(resolve=>nativeSetTimeout(resolve,10));
- assert.equal(result,'ok');
- assert.equal(signal.aborted,false);
-});
-
-test('group history deadline preserves request errors and rejects invalid durations',async()=>{
- const {api}=setup();
- await assert.rejects(api.withGroupHistoryDeadline(async()=>{
-  throw new Error('permission denied');
- },50),/permission denied/);
- await assert.rejects(api.withGroupHistoryDeadline(async()=> 'unused',0),/timeoutMs must be positive/);
- assert.equal(api.GROUP_HISTORY_REQUEST_TIMEOUT_MS,18000);
-});
-
-test('older group history fetch is aborted through portable deadline',async()=>{
- const {api,calls}=setup((url,options)=>new Promise((_,reject)=>{
-  options.signal.addEventListener('abort',()=>reject(new Error('aborted')),{once:true});
- }));
+test('older group history deadline also covers a stalled JSON response body',async()=>{
+ const {api,calls}=setup(()=>({ok:true,json:()=>new Promise(()=>{})}));
  await assert.rejects(api.fetchOlderGroupMessages('jwt',GROUP,row(id(5))),/время ожидания/);
  assert.equal(calls.length,1);
  assert.equal(calls[0].options.signal.aborted,true);
