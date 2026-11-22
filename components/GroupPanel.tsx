@@ -95,7 +95,13 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
   update();
   window.addEventListener('online',update);
   window.addEventListener('offline',update);
-  return()=>{window.removeEventListener('online',update);window.removeEventListener('offline',update);};
+  // BFCache can restore the page without replaying online/offline events.
+  window.addEventListener('pageshow',update);
+  return()=>{
+   window.removeEventListener('online',update);
+   window.removeEventListener('offline',update);
+   window.removeEventListener('pageshow',update);
+  };
  },[]);
  function changeDraft(text:string){
   draftVersionRef.current+=1;
