@@ -13,6 +13,7 @@ import {subscribeDirectChatChanges} from "@/lib/direct-realtime";
 import {subscribeInboxChanges,type InboxChangeKind} from "@/lib/inbox-realtime";
 import {isLatestAccountSnapshot} from "@/lib/inbox-snapshot";
 import {shouldOpenDirectChatSearch} from "@/lib/chat-shortcuts";
+import {shouldRefreshAfterPageShow} from "@/lib/page-lifecycle.mjs";
 import {reconcileRecentChannelUpdates,CHANNEL_UPDATE_GRACE_MS,type RecentChannelUpdate} from "@/lib/channel-sync";
 import ChatAttachmentPreview from "@/components/ChatAttachmentPreview";
 import VoiceRecorder from "@/components/VoiceRecorder";
@@ -583,14 +584,22 @@ export default function AppShell({ initialUsername = "" }: { initialUsername?: s
     const timer=window.setInterval(()=>void sync(),6000);
     const onVisible=()=>{if(document.visibilityState==='visible')void sync();};
     const onConnected=()=>{if(document.visibilityState==='visible')void sync(true);};
+    // Safari may restore a frozen PWA from BFCache without emitting online or
+    // visibilitychange. Reconcile the selected conversation immediately, but
+    // only for a persisted restore (not the initial navigation).
+    const onPageShow=(event:PageTransitionEvent)=>{
+      if(shouldRefreshAfterPageShow(event,document.visibilityState,navigator.onLine))void sync();
+    };
     document.addEventListener('visibilitychange',onVisible);
     window.addEventListener('online',onConnected);
+    window.addEventListener('pageshow',onPageShow);
     return()=>{
       cancelled=true;window.clearInterval(timer);
       if(realtimeTimer!==null)window.clearTimeout(realtimeTimer);
       unsubscribeRealtime();
       document.removeEventListener('visibilitychange',onVisible);
       window.removeEventListener('online',onConnected);
+      window.removeEventListener('pageshow',onPageShow);
     };
   },[selected,session?.access_token,userId,chatReloadNonce]);
 
