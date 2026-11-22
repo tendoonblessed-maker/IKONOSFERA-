@@ -2,6 +2,7 @@
 
 import {useEffect,useRef,useState,type ReactNode,type TouchEvent} from 'react';
 import {useSwipeable} from 'react-swipeable';
+import {shouldSuppressDuplicateContextMenu} from '@/lib/swipe-context-menu.mjs';
 
 type Props={
   children:ReactNode;
@@ -13,6 +14,7 @@ type Props={
 
 const HOLD_DURATION_MS=520;
 const HOLD_MOVE_TOLERANCE_PX=12;
+const monotonicNow=()=>typeof performance!=='undefined'&&typeof performance.now==='function'?performance.now():Date.now();
 
 /** MIT react-swipeable gesture with iOS vertical scroll and long-press actions. */
 export default function SwipeReplyMessage({children,className,disabled=false,onReply,onOpenMenu}:Props){
@@ -20,6 +22,7 @@ export default function SwipeReplyMessage({children,className,disabled=false,onR
   const holdTimer=useRef<number|null>(null);
   const touchOrigin=useRef<{x:number;y:number}|null>(null);
   const wasHeld=useRef(false);
+  const lastTouchMenuAt=useRef<number|null>(null);
 
   const cancelHold=()=>{
     if(holdTimer.current!==null){
@@ -32,6 +35,7 @@ export default function SwipeReplyMessage({children,className,disabled=false,onR
 
   const onTouchStart=(event:TouchEvent<HTMLDivElement>)=>{
     cancelHold();
+    lastTouchMenuAt.current=null;
     wasHeld.current=false;
     if(disabled||!onOpenMenu||event.touches.length!==1)return;
     // Never hijack play/pause, opening an attachment, or tapping a quote.
@@ -42,6 +46,7 @@ export default function SwipeReplyMessage({children,className,disabled=false,onR
       holdTimer.current=null;
       touchOrigin.current=null;
       wasHeld.current=true;
+      lastTouchMenuAt.current=monotonicNow();
       setMovement(0);
       onOpenMenu();
     },HOLD_DURATION_MS);
@@ -86,6 +91,12 @@ export default function SwipeReplyMessage({children,className,disabled=false,onR
     onTouchCancelCapture={cancelHold}
     onContextMenu={event=>{
       if(disabled||!onOpenMenu)return;
+      if(shouldSuppressDuplicateContextMenu(lastTouchMenuAt.current,monotonicNow())){
+        event.preventDefault();
+        lastTouchMenuAt.current=null;
+        return;
+      }
+      lastTouchMenuAt.current=null;
       const target=event.target;
       if(target instanceof Element&&target.closest('button,a,input,textarea,select,video,audio,[role="button"],[contenteditable="true"]'))return;
       event.preventDefault();
