@@ -66,7 +66,7 @@ test('cursor accepts valid 6-digit microsecond timestamps and rejects invalid fi
   assert.throws(()=>api.olderGroupMessagesPath(GROUP,row(id(1),timestamp)),/курсор/);
  }
  assert.throws(()=>api.olderGroupMessagesPath(OTHER+'x',row(id(1))),/курсор/);
- assert.throws(()=>api.olderGroupMessagesPath(GROUP,row('not-uuid'),/курсор/);
+ assert.throws(()=>api.olderGroupMessagesPath(GROUP,row('not-uuid')),/курсор/);
 });
 
 test('older page uses signed-in user JWT, strict no-store, bounded limit and server RLS',async()=>{
@@ -183,6 +183,50 @@ test('successful group history reads clear their deadline timer',async()=>{
   return Promise.resolve('ok');
  },5);
  await new Promise(resolve=>setTimeout(resolve,10));
+ assert.equal(result,'ok');
+ assert.equal(signal.aborted,false);
+});
+
+test('group history deadline preserves request errors and rejects invalid durations',async()=>{
+ const {api}=setup();
+ await assert.rejects(api.withGroupHistoryDeadline(async()=>{
+  throw new Error('permission denied');
+ },50),/permission denied/);
+ await assert.rejects(api.withGroupHistoryDeadline(async()=> 'unused',0),/timeoutMs must be positive/);
+ assert.equal(api.GROUP_HISTORY_REQUEST_TIMEOUT_MS,18000);
+});
+
+test('older group history fetch is aborted through portable deadline',async()=>{
+ const {api,calls}=setup((url,options)=>new Promise((_,reject)=>{
+  options.signal.addEventListener('abort',()=>reject(new Error('aborted')),{once:true});
+ }));
+ await assert.rejects(api.fetchOlderGroupMessages('jwt',GROUP,row(id(5))),/время ожидания/);
+ assert.equal(calls.length,1);
+ assert.equal(calls[0].options.signal.aborted,true);
+});
+
+test('portable group history deadline aborts a stalled request with a readable timeout',async()=>{
+ const {api}=setup();
+ await assert.rejects(api.withGroupHistoryDeadline(signal=>new Promise((_,reject)=>{
+  signal.addEventListener('abort',()=>reject(new Error('aborted')),{once:true});
+ }),5),/время ожидания/);
+});
+
+test('portable group history deadline rejects a late result even when operation ignores abort',async()=>{
+ const {api}=setup();
+ await assert.rejects(api.withGroupHistoryDeadline(()=>new Promise(resolve=>{
+  nativeSetTimeout(()=>resolve('late'),10);
+ }),5),/время ожидания/);
+});
+
+test('successful group history reads clear their deadline timer',async()=>{
+ const {api}=setup();
+ let signal;
+ const result=await api.withGroupHistoryDeadline(current=>{
+  signal=current;
+  return Promise.resolve('ok');
+ },5);
+ await new Promise(resolve=>nativeSetTimeout(resolve,10));
  assert.equal(result,'ok');
  assert.equal(signal.aborted,false);
 });
