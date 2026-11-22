@@ -34,6 +34,18 @@ export function olderGroupMessagesPath(groupId:string,oldest:Pick<GroupMessage,'
  return '/rest/v1/group_messages?'+params.toString();
 }
 export type OlderGroupPage={messages:GroupMessage[];hasMore:boolean};
+function validateOlderGroupRow(value:unknown,groupId:string):GroupMessage{
+ if(!value||typeof value!=='object')throw Error('Некорректный ответ истории группы.');
+ const row=value as Partial<GroupMessage>;
+ if(row.group_id!==groupId)return row as GroupMessage;
+ if(typeof row.id!=='string'||!UUID.test(row.id)
+  ||typeof row.sender_id!=='string'||!UUID.test(row.sender_id)
+  ||typeof row.body!=='string'
+  ||typeof row.created_at!=='string'||!TIMESTAMP.test(row.created_at)
+  ||!Number.isFinite(Date.parse(row.created_at)))
+  throw Error('Некорректное сообщение в истории группы.');
+ return row as GroupMessage;
+}
 export async function fetchOlderGroupMessages(
  token:string,groupId:string,oldest:Pick<GroupMessage,'created_at'|'id'>
 ):Promise<OlderGroupPage>{
@@ -45,8 +57,16 @@ export async function fetchOlderGroupMessages(
  });
  const data:unknown=await response.json().catch(()=>null);
  if(!response.ok||!Array.isArray(data))throw Error('Не удалось загрузить ранние сообщения.');
- const rows=(data as GroupMessage[]).filter(item=>item.group_id===groupId);
- // The extra result is a has-more sentinel; it must be fetched next time.
+ const rows:GroupMessage[]=[];
+ const seen=new Set<string>();
+ for(const item of data){
+  const row=validateOlderGroupRow(item,groupId);
+  if(row.group_id!==groupId)continue;
+  if(seen.has(row.id))throw Error('Повторяющееся сообщение в истории группы.');
+  seen.add(row.id);
+  rows.push(row);
+ }
+ // The extra valid result is a has-more sentinel; it must be fetched next time.
  const page=rows.slice(0,GROUP_OLDER_PAGE_SIZE);
  page.reverse();
  return {messages:page,hasMore:rows.length>GROUP_OLDER_PAGE_SIZE};
