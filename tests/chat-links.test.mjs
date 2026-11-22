@@ -65,12 +65,12 @@ test('embedded domain fragments, email addresses, credentials and malformed URLs
 });
 
 test('URLs in multiple lines are independent with no global-regex state leak',()=>{
- const a='https://first.example';
- const b='https://second.example';
+ const a='https://first.example.com';
+ const b='https://second.example.com';
  assert.equal(links(a).length,1);
  assert.equal(links(b).length,1);
  assert.equal(links(a).length,1);
- assert.deepEqual(links('\nhttps://first.example\n\nhttps://second.example\n').map(x=>x.text),[a,b]);
+ assert.deepEqual(links('\nhttps://first.example.com\n\nhttps://second.example.com\n').map(x=>x.text),[a,b]);
 });
 
 test('link count is bounded while the remaining text stays intact',()=>{
@@ -95,4 +95,99 @@ test('React rendering uses escaped text and safe external links instead of HTML 
  assert.match(css,/\.ik-message-rich-text\{/);
  assert.match(css,/white-space:pre-wrap/);
  assert.match(css,/overflow-wrap:anywhere/);
+});
+
+test('private, loopback, link-local, reserved and documentation IPv4 stay plain text',()=>{
+ const addresses=[
+  'http://0.1.2.3',
+  'http://10.0.0.1',
+  'http://100.64.0.1',
+  'http://100.127.255.254',
+  'http://127.0.0.1',
+  'http://169.254.1.1',
+  'http://172.16.0.1',
+  'http://172.31.255.255',
+  'http://192.0.0.1',
+  'http://192.0.2.1',
+  'http://192.88.99.1',
+  'http://192.168.1.1',
+  'http://198.18.0.1',
+  'http://198.51.100.1',
+  'http://203.0.113.1',
+  'http://224.0.0.1',
+  'http://240.0.0.1',
+  'http://255.255.255.255'
+ ];
+ for(const address of addresses){
+  assert.deepEqual(links(address),[],address);
+  assert.equal(reconstructed(address),address,address);
+ }
+});
+
+test('browser-compatible numeric IPv4 variants of local addresses stay plain text',()=>{
+ const addresses=[
+  'http://127.1',
+  'http://2130706433',
+  'http://0x7f000001',
+  'http://0177.0.0.1',
+  'http://0'
+ ];
+ for(const address of addresses){
+  assert.deepEqual(links(address),[],address);
+  assert.equal(reconstructed(address),address,address);
+ }
+});
+
+test('local and single-label hostnames are not auto-linked',()=>{
+ const addresses=[
+  'http://localhost',
+  'http://api.localhost',
+  'http://router',
+  'http://intranet',
+  'http://printer.local',
+  'http://nas.lan',
+  'http://dev.internal',
+  'http://corp.example.corp',
+  'http://host.home.arpa',
+  'http://service.test',
+  'http://service.invalid',
+  'http://service.example'
+ ];
+ for(const address of addresses){
+  assert.deepEqual(links(address),[],address);
+  assert.equal(reconstructed(address),address,address);
+ }
+});
+
+test('IPv6 literals are conservatively kept as plain text',()=>{
+ const addresses=[
+  'http://[::]',
+  'http://[::1]',
+  'http://[fc00::1]',
+  'http://[fe80::1]',
+  'http://[2001:db8::1]',
+  'http://[2606:4700:4700::1111]'
+ ];
+ for(const address of addresses){
+  assert.deepEqual(links(address),[],address);
+  assert.equal(reconstructed(address),address,address);
+ }
+});
+
+test('public domains and canonical public IPv4 remain clickable',()=>{
+ const text='https://example.com http://8.8.8.8 https://1.1.1.1';
+ assert.deepEqual(links(text),[
+  {text:'https://example.com',href:'https://example.com/'},
+  {text:'http://8.8.8.8',href:'http://8.8.8.8/'},
+  {text:'https://1.1.1.1',href:'https://1.1.1.1/'}
+ ]);
+ assert.equal(reconstructed(text),text);
+});
+
+test('local links remain plain text while public links later in the message still link',()=>{
+ const text='internal http://192.168.1.1 then public https://example.com and localhost http://localhost';
+ assert.deepEqual(links(text),[
+  {text:'https://example.com',href:'https://example.com/'}
+ ]);
+ assert.equal(reconstructed(text),text);
 });
