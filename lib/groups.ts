@@ -45,7 +45,7 @@ export function normalizeGroupMessagePage(data:unknown,groupId:string):GroupMess
 
 export async function groupMessages(token:string,id:string){
  // Fetch the newest page, validate the complete snapshot, then display it chronologically.
- const latest=await request<unknown>(token,'/rest/v1/group_messages?select=*&group_id=eq.'+encodeURIComponent(id)+'&order=created_at.desc,id.desc&limit='+GROUP_LATEST_PAGE_SIZE);
+ const latest=await request<unknown>(token,'/rest/v1/group_messages?select=*&group_id=eq.'+encodeURIComponent(id)+'&order=created_at.desc,id.desc&limit=150);
  return normalizeGroupMessagePage(latest,id).reverse();
 }
 function assertGroupMessage(row:GroupMessage|undefined,groupId:string,userId:string,body:string,messageId:string):GroupMessage{
