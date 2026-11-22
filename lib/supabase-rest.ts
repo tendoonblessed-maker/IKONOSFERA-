@@ -418,7 +418,11 @@ export async function getDirectMediaUrl(token:string,path:string):Promise<string
    const first=signedMediaCache.keys().next().value;
    if(first)signedMediaCache.delete(first);
  }
- request.catch(()=>signedMediaCache.delete(key));
+ // An invalidated or evicted request may fail after a replacement has entered
+ // the cache. Only the request that still owns this key may evict it.
+ request.catch(()=>{
+  if(signedMediaCache.get(key)?.promise===request)signedMediaCache.delete(key);
+ });
  return request;
 }
 
