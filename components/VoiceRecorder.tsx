@@ -1,7 +1,7 @@
 'use client';
 
 import {useEffect,useRef,useState} from 'react';
-import {chooseVoiceMimeType,createVoiceFile,createVoiceRecorderOptions,formatVoiceTime,resolveVoiceMimeType,VOICE_RECORD_MAX_MS,VOICE_RECORD_MAX_BYTES} from '@/lib/voice-notes';
+import {chooseVoiceMimeType,createVoiceFile,createVoiceRecorderOptions,elapsedVoiceSeconds,formatVoiceTime,getVoiceClockNow,resolveVoiceMimeType,VOICE_RECORD_MAX_MS,VOICE_RECORD_MAX_BYTES} from '@/lib/voice-notes';
 
 type Props={
  disabled:boolean;
@@ -113,7 +113,7 @@ export default function VoiceRecorder({disabled,onRecorded,onError}:Props){
    // Older Safari/WebViews may record successfully without MIME probing.
    const recorder=new MediaRecorder(stream,createVoiceRecorderOptions(mime));
    const capture:Capture={
-    recorder,stream,chunks:[],bytes:0,startedAt:Date.now(),
+    recorder,stream,chunks:[],bytes:0,startedAt:getVoiceClockNow(),
     discard:false,clock:null,limit:null
    };
    captureRef.current=capture;
@@ -149,7 +149,7 @@ export default function VoiceRecorder({disabled,onRecorded,onError}:Props){
    };
    recorder.start(1000);
    capture.clock=window.setInterval(()=>{
-    if(captureRef.current===capture)setElapsed(Math.min(120,Math.floor((Date.now()-capture.startedAt)/1000)));
+    if(captureRef.current===capture)setElapsed(elapsedVoiceSeconds(capture.startedAt,getVoiceClockNow()));
    },250);
    capture.limit=window.setTimeout(()=>{
     if(captureRef.current===capture&&capture.recorder.state==='recording'){
