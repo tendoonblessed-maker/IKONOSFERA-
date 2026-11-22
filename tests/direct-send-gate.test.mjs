@@ -56,7 +56,7 @@ test('empty or malformed context cannot acquire a send lock',()=>{
  assert.equal(gate.isInFlight('user-a','chat-a'),false);
 });
 
-test('text and attachment send handlers share the synchronous per-chat gate and release their lease',()=>{
+test('text and attachment handlers use the gate and chat-scoped busy state',()=>{
  const source=readFileSync(new URL('../components/AppShell.tsx',import.meta.url),'utf8');
  const textStart=source.indexOf('async function sendMessage(');
  const attachmentStart=source.indexOf("async function sendAttachment(");
@@ -66,15 +66,23 @@ test('text and attachment send handlers share the synchronous per-chat gate and 
  const attachmentSend=source.slice(attachmentStart,logoutStart);
  assert.match(source,/import \{createDirectSendGate\} from ["']@\/lib\/direct-send-gate["']/);
  assert.match(source,/directSendGateRef=useRef<ReturnType<typeof createDirectSendGate>\|null>\(null\)/);
+ assert.match(source,/directSendBusyFor\(ownerId:string,chatId:string\)/);
+ assert.match(source,/const directSendBusy=Boolean\(selected&&userId&&directSendBusyFor\(userId,selected\)\)/);
+ assert.match(source,/disabled=\{directSendBusy\|\|activePartnerBlocked\|\|!networkOnline\}/);
+ assert.match(source,/sending=\{directSendBusy\} online=\{networkOnline\}/);
  for(const [name,block,networkCall] of [
   ['text',textSend,'await postMessage('],
   ['attachment',attachmentSend,'await sendDirectMedia(']
  ]){
   const acquire=block.indexOf('sendLease=sendGate?.tryAcquire(userId,chatId)');
   const rejected=block.indexOf('if(!sendLease)return;');
+  const markBusy=block.indexOf('markDirectSendBusy(userId,chatId,true)');
   const request=block.indexOf(networkCall);
   const release=block.indexOf('sendGate?.release(userId,chatId,sendLease)');
-  assert.ok(acquire>=0&&rejected>acquire&&request>rejected, name+' must acquire a lease before its network request');
-  assert.ok(release>request, name+' must release its exact lease in finally after the request');
+  const clearBusy=block.indexOf('markDirectSendBusy(userId,chatId,false)');
+  assert.ok(acquire>=0&&rejected>acquire&&request>rejected,name+' must acquire a lease before its network request');
+  assert.ok(markBusy>rejected&&markBusy<request,name+' must mark only its chat busy before the request');
+  assert.ok(release>request&&clearBusy>release,name+' must release and clear the exact chat lease in finally');
+  assert.doesNotMatch(block,/setSending\(/,name+' must not use the global sending state');
  }
 });
