@@ -28,16 +28,17 @@ export async function withGroupHistoryDeadline<T>(
  const controller=new AbortController();
  let timedOut=false;
  const timeoutError=()=>new Error('Не удалось загрузить ранние сообщения: превышено время ожидания.');
- const timer=setTimeout(()=>{timedOut=true;controller.abort();},timeoutMs);
+ let timer:ReturnType<typeof setTimeout>;
+ const timeout=new Promise<never>((_,reject)=>{
+  timer=setTimeout(()=>{timedOut=true;controller.abort();reject(timeoutError());},timeoutMs);
+ });
  try{
-  const result=await operation(controller.signal);
-  if(timedOut)throw timeoutError();
-  return result;
+  return await Promise.race([operation(controller.signal),timeout]);
  }catch(error){
   if(timedOut)throw timeoutError();
   throw error;
  }finally{
-  clearTimeout(timer);
+  clearTimeout(timer!);
  }
 }
 /** A stable cursor includes ID: many messages can have the same timestamp. */
