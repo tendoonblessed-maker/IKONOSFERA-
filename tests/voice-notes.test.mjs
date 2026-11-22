@@ -54,7 +54,7 @@ test('voice track availability rejects muted, ended and missing microphone track
  assert.equal(VOICE_TRACK_MUTE_GRACE_MS,2000);
 });
 
-test('voice recorder cancels sustained mute and ended-track interruptions without previewing partial audio',()=>{
+test('voice recorder wires mute and ended-track guards and rejects unexpected stops',()=>{
  const ui=load('components/VoiceRecorder.tsx');
  assert.match(ui,/track\.addEventListener\('mute',onMute\)/);
  assert.match(ui,/track\.addEventListener\('unmute',onUnmute\)/);
