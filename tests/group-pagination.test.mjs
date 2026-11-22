@@ -248,3 +248,8 @@ test('older group history fetch is aborted through portable deadline',async()=>{
  assert.equal(calls.length,1);
  assert.equal(calls[0].options.signal.aborted,true);
 });
+
+test('deadline settles even when the operation ignores its abort signal',async()=>{
+ const {api}=setup();
+ await assert.rejects(api.withGroupHistoryDeadline(()=>new Promise(()=>{}),5),/время ожидания/);
+});
