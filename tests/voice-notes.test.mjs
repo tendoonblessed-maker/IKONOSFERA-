@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import {test} from 'node:test';
 import {readFileSync} from 'node:fs';
 import {
- chooseVoiceMimeType,createVoiceFile,formatVoiceTime,
+ chooseVoiceMimeType,createVoiceFile,formatVoiceTime,stopVoiceRecorder,
  VOICE_RECORD_MAX_MS,VOICE_RECORD_MAX_BYTES,VOICE_MIME_CANDIDATES
 } from '../lib/voice-notes.ts';
 const load=path=>readFileSync(new URL('../'+path,import.meta.url),'utf8');
@@ -36,6 +36,16 @@ test('unsupported MIME, empty data and oversized recordings are rejected',()=>{
  assert.equal(VOICE_RECORD_MAX_MS,120_000);
 });
 
+test('stopVoiceRecorder reports stop success and catches browser state errors',()=>{
+ let stopped=0,failures=0;
+ assert.equal(stopVoiceRecorder({stop:()=>{stopped+=1;}},()=>{failures+=1;}),true);
+ assert.equal(stopped,1);
+ assert.equal(failures,0);
+ assert.equal(stopVoiceRecorder({stop:()=>{throw new DOMException('inactive','InvalidStateError');}},()=>{failures+=1;}),false);
+ assert.equal(stopped,1);
+ assert.equal(failures,1);
+});
+
 test('voice recorder uses only microphone, stops tracks on cancel, unmount and permission races',()=>{
  const ui=load('components/VoiceRecorder.tsx');
  assert.match(ui,/navigator\.mediaDevices\.getUserMedia\(\{/);
@@ -49,6 +59,16 @@ test('voice recorder uses only microphone, stops tracks on cancel, unmount and p
  assert.match(ui,/capture\.discard=discard/);
  assert.match(ui,/if\(capture\.discard\|\|captureRef\.current!==capture\)return/);
  assert.match(ui,/typeof MediaRecorder\.isTypeSupported==='function'/);
+});
+
+test('automatic max-duration stop catches stop failures and returns to a safe cancelled state',()=>{
+ const ui=load('components/VoiceRecorder.tsx');
+ const timer=ui.slice(ui.indexOf('capture.limit=window.setTimeout'),ui.indexOf('},VOICE_RECORD_MAX_MS'));
+ assert.match(timer,/captureRef\.current===capture&&capture\.recorder\.state==='recording'/);
+ assert.match(timer,/stopVoiceRecorder\(capture\.recorder/);
+ assert.match(timer,/cancel\(\)/);
+ assert.match(timer,/Не удалось завершить запись\. Попробуй ещё раз\./);
+ assert.match(ui,/function cancel|const cancel=\(\)=>\{/);
 });
 
 test('recording never auto-uploads: it passes a real file into existing preview flow',()=>{
