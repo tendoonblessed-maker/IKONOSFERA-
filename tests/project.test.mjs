@@ -333,7 +333,7 @@ test('blocklist is private and blocks delivery server-side for text and files',(
  assert.match(sql,/revoke all on function public\.enforce_direct_message_blocks\(\) from public, anon, authenticated/);
  assert.match(shell,/className="ik-blocklist-settings"/);
  assert.match(shell,/Разблокировать/);
- assert.match(shell,/disabled=\{sending\|\|activePartnerBlocked\|\|!networkOnline\}/);
+ assert.match(shell,/disabled=\{directSendBusy\|\|activePartnerBlocked\|\|!networkOnline\}/);
 });
 test('chat removal for me erases own history without deleting recipient data',()=>{
  const sql=load('supabase/migrations/20261029_020000_persistent_contacts_blocklist_chat_cleanup.sql');
@@ -868,7 +868,7 @@ test('mobile Enter inserts line breaks while desktop Enter sends and Shift+Enter
  assert.match(shell,/const softKeyboard=\/iPhone\|iPad\|iPod\|Android\/i\.test\(navigator\.userAgent\)/);
  assert.match(shell,/window\.matchMedia\('\(pointer:coarse\) and \(hover:none\)'\)/);
  assert.match(shell,/!e\.nativeEvent\.isComposing&&!softKeyboard/);
- assert.match(shell,/if\(draft\.trim\(\)&&!sending\)e\.currentTarget\.form\?\.requestSubmit\(\)/);
+ assert.match(shell,/if\(draft\.trim\(\)&&!directSendBusy\)e\.currentTarget\.form\?\.requestSubmit\(\)/);
 });
 test('message long press never interferes with swipe, scrolling or media controls',()=>{
  const swipe=load('components/SwipeReplyMessage.tsx');
@@ -1094,11 +1094,11 @@ test('offline direct chats preserve drafts and resume polling immediately on rec
  assert.match(shell,/if\(session\)return;\s*const retryBootstrap=/);
  assert.match(shell,/setBootstrapRetryNonce\(count=>count\+1\)/);
  assert.match(shell,/\[refresh,bootstrapRetryNonce\]/);
- assert.match(shell,/e\.preventDefault\(\);if\(!session\|\|!selected\|\|!userId\|\|sending\|\|activePartnerBlocked\)return;\s*if\(!networkOnline\|\|!navigator\.onLine\)/);
+ assert.match(shell,/e\.preventDefault\(\);if\(!session\|\|!selected\|\|!userId\|\|activePartnerBlocked\)return;\s*if\(!networkOnline\|\|!navigator\.onLine\)/);
  assert.match(shell,/Сообщение осталось в черновике/);
  assert.match(shell,/Вложение осталось в предпросмотре/);
- assert.match(shell,/disabled=\{sending\|\|activePartnerBlocked\|\|!networkOnline\}/);
- assert.match(shell,/disabled=\{!draft\.trim\(\)\|\|sending\|\|activePartnerBlocked\|\|!networkOnline\}/);
+ assert.match(shell,/disabled=\{directSendBusy\|\|activePartnerBlocked\|\|!networkOnline\}/);
+ assert.match(shell,/disabled=\{!draft\.trim\(\)\|\|directSendBusy\|\|activePartnerBlocked\|\|!networkOnline\}/);
  assert.match(shell,/aria-label="Написать сообщение" enterKeyHint="enter"/);
  assert.match(shell,/onChange=\{e=>\{setDraft\(e\.target\.value\);if\(selected\)updateChatDraft\(selected,e\.target\.value\);\}\}/);
  assert.match(drafts,/sessionStorage/);
@@ -1129,7 +1129,7 @@ test('attachments are reviewed with captions instead of being sent from the file
  assert.doesNotMatch(shell,/void sendAttachment\(e\.target\.files\?\.\[0\]\)/);
  assert.match(shell,/pendingAttachment\?\.chatId===selected&&pendingAttachment\.ownerId===userId/);
  assert.match(shell,/file=\{pendingAttachment\.file\} caption=\{attachmentCaption\}/);
- assert.match(shell,/sending=\{sending\} online=\{networkOnline\}/);
+ assert.match(shell,/sending=\{directSendBusy\} online=\{networkOnline\}/);
  assert.match(shell,/onSend=\{\(\)=>\{void sendAttachment\(pendingAttachment\.file,attachmentCaption\);\}\}/);
  assert.match(uploader,/export function validateDirectMediaFile/);
  assert.match(uploader,/DIRECT_MEDIA_MAX_BYTES=25\*1024\*1024/);
