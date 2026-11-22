@@ -66,10 +66,11 @@ export async function fetchOlderGroupMessages(
   seen.add(row.id);
   rows.push(row);
  }
- // The extra valid result is a has-more sentinel; it must be fetched next time.
+ // The server's extra raw row is the has-more sentinel, even if a stray
+ // foreign-group row is filtered from the visible page.
  const page=rows.slice(0,GROUP_OLDER_PAGE_SIZE);
  page.reverse();
- return {messages:page,hasMore:rows.length>GROUP_OLDER_PAGE_SIZE};
+ return {messages:page,hasMore:data.length>GROUP_OLDER_PAGE_SIZE};
 }
 /** Server's newest window wins on edits/deletions; retain separately loaded
  * older pages. Never resurrect rows from the server's newest window. */
