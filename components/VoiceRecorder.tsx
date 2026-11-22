@@ -1,7 +1,7 @@
 'use client';
 
 import {useEffect,useRef,useState} from 'react';
-import {chooseVoiceMimeType,createVoiceFile,formatVoiceTime,VOICE_RECORD_MAX_MS,VOICE_RECORD_MAX_BYTES} from '@/lib/voice-notes';
+import {chooseVoiceMimeType,createVoiceFile,createVoiceRecorderOptions,formatVoiceTime,resolveVoiceMimeType,VOICE_RECORD_MAX_MS,VOICE_RECORD_MAX_BYTES} from '@/lib/voice-notes';
 
 type Props={
  disabled:boolean;
@@ -93,7 +93,7 @@ export default function VoiceRecorder({disabled,onRecorded,onError}:Props){
   }
   const mime=typeof MediaRecorder.isTypeSupported==='function'
    ?chooseVoiceMimeType(type=>MediaRecorder.isTypeSupported(type)):null;
-  if(!mime){
+  if(typeof MediaRecorder.isTypeSupported==='function'&&!mime){
    errorRef.current('Браузер не поддерживает доступные форматы голосовых сообщений.');
    return;
   }
@@ -110,7 +110,8 @@ export default function VoiceRecorder({disabled,onRecorded,onError}:Props){
     stopTracks(stream);
     return;
    }
-   const recorder=new MediaRecorder(stream,{mimeType:mime,audioBitsPerSecond:64000});
+   // Older Safari/WebViews may record successfully without MIME probing.
+   const recorder=new MediaRecorder(stream,createVoiceRecorderOptions(mime));
    const capture:Capture={
     recorder,stream,chunks:[],bytes:0,startedAt:Date.now(),
     discard:false,clock:null,limit:null
@@ -139,7 +140,8 @@ export default function VoiceRecorder({disabled,onRecorded,onError}:Props){
     if(!liveRef.current)return;
     setPhase('idle');setElapsed(0);
     try{
-     const file=createVoiceFile(capture.chunks,recorder.mimeType||mime);
+     const actualMime=resolveVoiceMimeType(recorder.mimeType,capture.chunks,mime);
+     const file=createVoiceFile(capture.chunks,actualMime);
      recordedRef.current(file); // Existing media preview asks before upload.
     }catch(error){
      errorRef.current(error instanceof Error?error.message:'Не удалось подготовить голосовое сообщение.');
