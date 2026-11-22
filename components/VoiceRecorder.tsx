@@ -1,12 +1,18 @@
 'use client';
 
 import {useEffect,useRef,useState} from 'react';
-import {chooseVoiceMimeType,createVoiceFile,createVoiceRecorderOptions,elapsedVoiceSeconds,formatVoiceTime,getVoiceClockNow,resolveVoiceMimeType,VOICE_RECORD_MAX_MS,VOICE_RECORD_MAX_BYTES} from '@/lib/voice-notes';
+import {chooseVoiceMimeType,createVoiceFile,createVoiceRecorderOptions,elapsedVoiceSeconds,formatVoiceTime,getVoiceClockNow,hasUnavailableVoiceTrack,resolveVoiceMimeType,VOICE_RECORD_MAX_MS,VOICE_RECORD_MAX_BYTES,VOICE_TRACK_MUTE_GRACE_MS} from '@/lib/voice-notes';
 
 type Props={
  disabled:boolean;
  onRecorded:(file:File)=>void;
  onError:(message:string)=>void;
+};
+type TrackListeners={
+ track:MediaStreamTrack;
+ onMute:()=>void;
+ onUnmute:()=>void;
+ onEnded:()=>void;
 };
 type Capture={
  recorder:MediaRecorder;
@@ -15,8 +21,11 @@ type Capture={
  bytes:number;
  startedAt:number;
  discard:boolean;
+ stopRequested:boolean;
  clock:number|null;
  limit:number|null;
+ muteGrace:number|null;
+ trackListeners:TrackListeners[];
 };
 type Phase='idle'|'requesting'|'recording'|'finalizing';
 
@@ -26,7 +35,16 @@ function stopTracks(stream:MediaStream){
 function clearCaptureTimers(capture:Capture){
  if(capture.clock!==null)window.clearInterval(capture.clock);
  if(capture.limit!==null)window.clearTimeout(capture.limit);
- capture.clock=null;capture.limit=null;
+ if(capture.muteGrace!==null)window.clearTimeout(capture.muteGrace);
+ capture.clock=null;capture.limit=null;capture.muteGrace=null;
+}
+function removeCaptureTrackListeners(capture:Capture){
+ capture.trackListeners.forEach(({track,onMute,onUnmute,onEnded})=>{
+  track.removeEventListener('mute',onMute);
+  track.removeEventListener('unmute',onUnmute);
+  track.removeEventListener('ended',onEnded);
+ });
+ capture.trackListeners=[];
 }
 
 export default function VoiceRecorder({disabled,onRecorded,onError}:Props){
@@ -49,6 +67,7 @@ export default function VoiceRecorder({disabled,onRecorded,onError}:Props){
   if(capture){
    capture.discard=discard;
    clearCaptureTimers(capture);
+   removeCaptureTrackListeners(capture);
    capture.recorder.ondataavailable=null;
    capture.recorder.onstop=null;
    capture.recorder.onerror=null;
@@ -80,6 +99,12 @@ export default function VoiceRecorder({disabled,onRecorded,onError}:Props){
  const finish=()=>{
   const capture=captureRef.current;
   if(!capture||capture.discard||capture.recorder.state!=='recording')return;
+  if(hasUnavailableVoiceTrack(capture.stream.getAudioTracks())){
+   cancel();
+   errorRef.current('Микрофон временно недоступен. Запись отменена — начни заново.');
+   return;
+  }
+  capture.stopRequested=true;
   setPhase('finalizing');
   try{capture.recorder.stop();}
   catch{cancel();errorRef.current('Не удалось завершить запись. Попробуй ещё раз.');}
@@ -114,7 +139,7 @@ export default function VoiceRecorder({disabled,onRecorded,onError}:Props){
    const recorder=new MediaRecorder(stream,createVoiceRecorderOptions(mime));
    const capture:Capture={
     recorder,stream,chunks:[],bytes:0,startedAt:getVoiceClockNow(),
-    discard:false,clock:null,limit:null
+    discard:false,stopRequested:false,clock:null,limit:null,muteGrace:null,trackListeners:[]
    };
    captureRef.current=capture;
    recorder.ondataavailable=event=>{
@@ -135,10 +160,17 @@ export default function VoiceRecorder({disabled,onRecorded,onError}:Props){
    recorder.onstop=()=>{
     if(capture.discard||captureRef.current!==capture)return;
     clearCaptureTimers(capture);
+    removeCaptureTrackListeners(capture);
     stopTracks(capture.stream);
     captureRef.current=null;
     if(!liveRef.current)return;
     setPhase('idle');setElapsed(0);
+    // A browser/system stop without our explicit stop request is an
+    // interruption, not a complete voice message. Never preview partial audio.
+    if(!capture.stopRequested){
+     errorRef.current('Запись прервана браузером или системным аудиособытием. Запусти её заново.');
+     return;
+    }
     try{
      const actualMime=resolveVoiceMimeType(recorder.mimeType,capture.chunks,mime);
      const file=createVoiceFile(capture.chunks,actualMime);
@@ -147,20 +179,74 @@ export default function VoiceRecorder({disabled,onRecorded,onError}:Props){
      errorRef.current(error instanceof Error?error.message:'Не удалось подготовить голосовое сообщение.');
     }
    };
+
+   // Mobile OS calls, route changes and device hand-offs may mute or end the
+   // microphone track while MediaRecorder still appears to be recording.
+   for(const track of stream.getAudioTracks()){
+    const onMute=()=>{
+     if(captureRef.current!==capture||capture.discard||capture.muteGrace!==null)return;
+     capture.muteGrace=window.setTimeout(()=>{
+      capture.muteGrace=null;
+      if(captureRef.current!==capture||capture.discard)return;
+      if(hasUnavailableVoiceTrack(capture.stream.getAudioTracks())){
+       cancel();
+       errorRef.current('Звук микрофона прерван системой. Запись отменена — начни заново.');
+      }
+     },VOICE_TRACK_MUTE_GRACE_MS);
+    };
+    const onUnmute=()=>{
+     if(captureRef.current!==capture||capture.discard)return;
+     if(!hasUnavailableVoiceTrack(capture.stream.getAudioTracks())&&capture.muteGrace!==null){
+      window.clearTimeout(capture.muteGrace);
+      capture.muteGrace=null;
+     }
+    };
+    const onEnded=()=>{
+     if(captureRef.current!==capture||capture.discard)return;
+     cancel();
+     errorRef.current('Микрофон был отключён системой. Запись отменена — начни заново.');
+    };
+    track.addEventListener('mute',onMute);
+    track.addEventListener('unmute',onUnmute);
+    track.addEventListener('ended',onEnded);
+    capture.trackListeners.push({track,onMute,onUnmute,onEnded});
+   }
+
    recorder.start(1000);
    capture.clock=window.setInterval(()=>{
     if(captureRef.current===capture)setElapsed(elapsedVoiceSeconds(capture.startedAt,getVoiceClockNow()));
    },250);
    capture.limit=window.setTimeout(()=>{
     if(captureRef.current===capture&&capture.recorder.state==='recording'){
+     if(hasUnavailableVoiceTrack(capture.stream.getAudioTracks())){
+      cancel();
+      errorRef.current('Микрофон временно недоступен. Запись отменена — начни заново.');
+      return;
+     }
+     capture.stopRequested=true;
      setPhase('finalizing');
-     capture.recorder.stop();
+     try{capture.recorder.stop();}
+     catch{cancel();errorRef.current('Не удалось завершить запись. Попробуй ещё раз.');}
     }
    },VOICE_RECORD_MAX_MS);
    setPhase('recording');
   }catch(error){
-   if(stream)stopTracks(stream);
-   if(captureRef.current?.stream===stream)captureRef.current=null;
+   if(stream){
+    const failedCapture=captureRef.current?.stream===stream?captureRef.current:null;
+    if(failedCapture){
+     failedCapture.discard=true;
+     clearCaptureTimers(failedCapture);
+     removeCaptureTrackListeners(failedCapture);
+     failedCapture.recorder.ondataavailable=null;
+     failedCapture.recorder.onstop=null;
+     failedCapture.recorder.onerror=null;
+     captureRef.current=null;
+     if(failedCapture.recorder.state!=='inactive'){
+      try{failedCapture.recorder.stop();}catch{}
+     }
+    }
+    stopTracks(stream);
+   }
    if(requestRef.current!==generation||!liveRef.current)return;
    setPhase('idle');
    const denial=error instanceof Error&&(error.name==='NotAllowedError'||error.name==='PermissionDeniedError');
