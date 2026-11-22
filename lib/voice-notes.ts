@@ -19,6 +19,11 @@ export function formatVoiceTime(elapsedSeconds:number):string{
  return Math.floor(time/60).toString().padStart(2,'0')+':'
   +(time%60).toString().padStart(2,'0');
 }
+/** Stop a recorder without letting browser state races escape the UI handler. */
+export function stopVoiceRecorder(recorder:{stop:()=>void},onFailure:()=>void):boolean{
+ try{recorder.stop();return true;}
+ catch{onFailure();return false;}
+}
 /** Normalizes codec parameters because Storage verifies exact audio/* MIME. */
 export function createVoiceFile(chunks:Blob[],mime:string,timestamp=Date.now()):File{
  const base=mime.split(';')[0].trim().toLowerCase();
