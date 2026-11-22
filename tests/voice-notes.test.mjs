@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import {test} from 'node:test';
 import {readFileSync} from 'node:fs';
 import {
- chooseVoiceMimeType,createVoiceFile,formatVoiceTime,
+ chooseVoiceMimeType,createVoiceFile,createVoiceRecorderOptions,resolveVoiceMimeType,formatVoiceTime,
  VOICE_RECORD_MAX_MS,VOICE_RECORD_MAX_BYTES,VOICE_MIME_CANDIDATES
 } from '../lib/voice-notes.ts';
 const load=path=>readFileSync(new URL('../'+path,import.meta.url),'utf8');
@@ -13,6 +13,19 @@ test('Safari MP4 and Chrome/Firefox Opus WebM are selected using feature detecti
  assert.equal(chooseVoiceMimeType(type=>type==='audio/ogg'),'audio/ogg');
  assert.equal(chooseVoiceMimeType(()=>false),null);
  assert.equal(VOICE_MIME_CANDIDATES[0],'audio/mp4');
+});
+
+test('voice recorder falls back to browser-selected MIME when probing is unavailable',()=>{
+ assert.deepEqual(createVoiceRecorderOptions(null),{audioBitsPerSecond:64000});
+ assert.deepEqual(createVoiceRecorderOptions('audio/mp4'),{mimeType:'audio/mp4',audioBitsPerSecond:64000});
+ const chunks=[new Blob(['voice'],{type:'audio/webm;codecs=opus'})];
+ assert.equal(resolveVoiceMimeType('',chunks,null),'audio/webm;codecs=opus');
+ assert.equal(resolveVoiceMimeType('audio/mp4;codecs=mp4a.40.2',chunks,null),'audio/mp4;codecs=mp4a.40.2');
+ assert.equal(resolveVoiceMimeType('',[],null),'');
+ const ui=load('components/VoiceRecorder.tsx');
+ assert.match(ui,/typeof MediaRecorder\.isTypeSupported==='function'\&\&!mime/);
+ assert.match(ui,/new MediaRecorder\(stream,createVoiceRecorderOptions\(mime\)\)/);
+ assert.match(ui,/resolveVoiceMimeType\(recorder\.mimeType,capture\.chunks,mime\)/);
 });
 
 test('recorded audio normalizes codec parameters to strict private Storage MIME',()=>{
