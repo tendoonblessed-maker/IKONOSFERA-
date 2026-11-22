@@ -14,6 +14,16 @@ const EXTENSIONS:Record<string,string>={
 export function chooseVoiceMimeType(supported:(type:string)=>boolean):string|null{
  return VOICE_MIME_CANDIDATES.find(type=>supported(type))??null;
 }
+/** Use a monotonic clock for elapsed capture time, with a legacy fallback. */
+export function getVoiceClockNow():number{
+ return typeof performance!=='undefined'&&typeof performance.now==='function'
+  ?performance.now():Date.now();
+}
+/** Clamp elapsed capture time so wall-clock jumps cannot rewind or overrun the UI. */
+export function elapsedVoiceSeconds(startedAt:number,now:number):number{
+ if(!Number.isFinite(startedAt)||!Number.isFinite(now))return 0;
+ return Math.min(VOICE_RECORD_MAX_MS/1000,Math.max(0,Math.floor((now-startedAt)/1000)));
+}
 /** Use the browser-selected codec when MIME probing is unavailable. */
 export function createVoiceRecorderOptions(mime:string|null):{mimeType?:string;audioBitsPerSecond:number}{
  const options:{mimeType?:string;audioBitsPerSecond:number}={audioBitsPerSecond:64000};
