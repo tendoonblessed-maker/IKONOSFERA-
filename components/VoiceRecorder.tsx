@@ -1,7 +1,7 @@
 'use client';
 
 import {useEffect,useRef,useState} from 'react';
-import {chooseVoiceMimeType,createVoiceFile,formatVoiceTime,VOICE_RECORD_MAX_MS,VOICE_RECORD_MAX_BYTES} from '@/lib/voice-notes';
+import {chooseVoiceMimeType,createVoiceFile,formatVoiceTime,stopVoiceRecorder,VOICE_RECORD_MAX_MS,VOICE_RECORD_MAX_BYTES} from '@/lib/voice-notes';
 
 type Props={
  disabled:boolean;
@@ -152,7 +152,10 @@ export default function VoiceRecorder({disabled,onRecorded,onError}:Props){
    capture.limit=window.setTimeout(()=>{
     if(captureRef.current===capture&&capture.recorder.state==='recording'){
      setPhase('finalizing');
-     capture.recorder.stop();
+     stopVoiceRecorder(capture.recorder,()=>{
+      cancel();
+      errorRef.current('Не удалось завершить запись. Попробуй ещё раз.');
+     });
     }
    },VOICE_RECORD_MAX_MS);
    setPhase('recording');
