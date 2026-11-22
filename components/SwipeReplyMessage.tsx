@@ -2,7 +2,7 @@
 
 import {useEffect,useRef,useState,type ReactNode,type TouchEvent} from 'react';
 import {useSwipeable} from 'react-swipeable';
-import {shouldSuppressDuplicateContextMenu} from '@/lib/swipe-context-menu.mjs';
+import {shouldCancelTouchGesture,shouldSuppressDuplicateContextMenu} from '@/lib/swipe-context-menu.mjs';
 
 type Props={
   children:ReactNode;
@@ -31,7 +31,26 @@ export default function SwipeReplyMessage({children,className,disabled=false,onR
     }
     touchOrigin.current=null;
   };
-  useEffect(()=>()=>cancelHold(),[]);
+  const interruptTouchGesture=()=>{
+    cancelHold();
+    // Ignore any trailing swipe callback from the interrupted finger.
+    // The next genuine touchstart resets this guard.
+    wasHeld.current=true;
+    setMovement(0);
+  };
+  useEffect(()=>{
+    const onVisibilityChange=()=>{
+      if(shouldCancelTouchGesture(document.visibilityState,document.hasFocus()))interruptTouchGesture();
+    };
+    const onWindowBlur=()=>interruptTouchGesture();
+    document.addEventListener('visibilitychange',onVisibilityChange);
+    window.addEventListener('blur',onWindowBlur);
+    return()=>{
+      document.removeEventListener('visibilitychange',onVisibilityChange);
+      window.removeEventListener('blur',onWindowBlur);
+      cancelHold();
+    };
+  },[]);
 
   const onTouchStart=(event:TouchEvent<HTMLDivElement>)=>{
     cancelHold();
