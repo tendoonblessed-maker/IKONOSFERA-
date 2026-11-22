@@ -98,6 +98,15 @@ test('return no foreign group rows even if a server response contains a stray ro
  assert.deepEqual(Array.from(page.messages,x=>x.id),[id(3)]);
 });
 
+test('foreign-group sentinel still indicates another older page',async()=>{
+ const valid=Array.from({length:70},(_,i)=>row(id(80-i)));
+ const payload=[...valid,row(id(10),stamp,{group_id:OTHER})];
+ const {api}=setup(()=>success(payload));
+ const page=await api.fetchOlderGroupMessages('jwt',GROUP,row(id(81)));
+ assert.equal(page.messages.length,70);
+ assert.equal(page.hasMore,true);
+});
+
 test('reject malformed rows scoped to the requested group instead of merging them',async()=>{
  const invalid=[
   row('not-a-uuid'),
