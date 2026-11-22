@@ -32,6 +32,34 @@ test('direct draft truncation falls back to code-point-safe boundaries without S
  }
 });
 
+test('legacy fallback keeps common extended grapheme sequences intact',()=>{
+ const descriptor=Object.getOwnPropertyDescriptor(Intl,'Segmenter');
+ try{
+  Object.defineProperty(Intl,'Segmenter',{configurable:true,writable:true,value:undefined});
+  const cases=[
+   ['x'.repeat(3999),'e\u0301'],
+   ['x'.repeat(3990),'👨‍👩‍👧‍👦'],
+   ['x'.repeat(3997),'👍🏽'],
+   ['x'.repeat(3997),'🇪🇪'],
+   ['x'.repeat(3998),'1️⃣'],
+   ['x'.repeat(3999),'\u1100\u1161'],
+   ['x'.repeat(3999),'\u0600A']
+  ];
+  for(const [prefix,cluster] of cases){
+   assert.equal(truncateChatDraft(prefix+cluster),prefix,
+    'the fallback must drop a whole cluster rather than save a partial one');
+  }
+
+  const family='👨‍👩‍👧‍👦';
+  const complete='x'.repeat(4000-family.length)+family;
+  assert.equal(truncateChatDraft(complete+'z'),complete,
+   'a complete ZWJ family that fits must be retained');
+ }finally{
+  if(descriptor)Object.defineProperty(Intl,'Segmenter',descriptor);
+  else delete Intl.Segmenter;
+ }
+});
+
 test('draft normalization and updates retain the grapheme-safe cap',()=>{
  const input={[A]:'x'.repeat(3999)+'😀',[B]:'keep'};
  const clean=cleanChatDrafts(input);
