@@ -1,5 +1,5 @@
 'use client';
-import {useCallback,useEffect,useLayoutEffect,useRef,useState,type FormEvent} from 'react';
+import {useCallback,useEffect,useLayoutEffect,useRef,useState,type FormEvent,type KeyboardEvent} from 'react';
 import {groupMessages,sendGroupMessage,groupMembers,markGroupRead,type Group,type GroupMessage} from '@/lib/groups';
 import {listProfiles,type Profile} from '@/lib/supabase-rest';
 import StatusEmoji from '@/components/StatusEmoji';
@@ -14,12 +14,16 @@ import {subscribeGroupChanges} from '@/lib/group-realtime';
 import {mergeConfirmedGroupMessages,CONFIRMED_GROUP_MESSAGE_GRACE_MS,type ConfirmedGroupMessage} from '@/lib/group-history';
 import {shouldAcknowledgeGroupRead,countNewIncomingBelow} from '@/lib/group-read-position';
 import {fetchOlderGroupMessages,prependOlderGroupMessages,preserveOlderGroupMessages,GROUP_HISTORY_MAX_LOADED} from '@/lib/group-pagination';
+import {dialogTabTarget} from '@/lib/dialog-focus';
 type Props={token:string;userId:string;group:Group;onBack:()=>void;onShowProfile:(id:string)=>void;onDraftChange:(groupId:string,text:string)=>void};
 export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDraftChange}:Props){
  const [messages,setMessages]=useState<GroupMessage[]>([]);
  const [members,setMembers]=useState<Profile[]>([]);
  const [presence,setPresence]=useState<Record<string,UserActivity>>({});
  const [membersOpen,setMembersOpen]=useState(false);
+ const membersTriggerRef=useRef<HTMLButtonElement|null>(null);
+ const membersDialogRef=useRef<HTMLDivElement|null>(null);
+ const membersSearchRef=useRef<HTMLInputElement|null>(null);
  const [memberSearch,setMemberSearch]=useState('');
  const [draft,setDraft]=useState(()=>readGroupDrafts(userId)[group.id]??'');
  const [online,setOnline]=useState(true);
@@ -348,7 +352,25 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
   previous.ids=new Set(messages.map(m=>m.id));
   if(newBelow>0)setNewMessagesBelow(n=>Math.min(99,n+newBelow));
  },[messages,group.id,userId]);
- useEffect(()=>{if(!membersOpen)return;const onKey=(event:KeyboardEvent)=>{if(event.key==='Escape')setMembersOpen(false);};window.addEventListener('keydown',onKey);return()=>window.removeEventListener('keydown',onKey);},[membersOpen]);
+ useLayoutEffect(()=>{
+  if(membersOpen){membersSearchRef.current?.focus();return;}
+  const opener=membersTriggerRef.current;
+  if(opener?.isConnected)opener.focus();
+  membersTriggerRef.current=null;
+ },[membersOpen]);
+ function handleMembersDialogKeyDown(event:KeyboardEvent<HTMLDivElement>){
+  if(event.key==='Escape'){event.preventDefault();setMembersOpen(false);return;}
+  if(event.key!=='Tab')return;
+  const dialog=membersDialogRef.current;
+  if(!dialog)return;
+  const focusables=Array.from(dialog.querySelectorAll<HTMLElement>(
+   'button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),a[href],[tabindex]:not([tabindex="-1"])'
+  )).filter(element=>element.getAttribute('aria-hidden')!=='true'&&element.getClientRects().length>0);
+  const current=focusables.indexOf(document.activeElement as HTMLElement);
+  const target=dialogTabTarget(current,focusables.length,event.shiftKey);
+  if(target===-1){event.preventDefault();dialog.focus();return;}
+  if(target!==null){event.preventDefault();focusables[target]?.focus();}
+ }
   useEffect(()=>{if(!membersOpen||!members.length)return;let gone=false;const load=()=>{if(document.visibilityState==='visible')void getUserActivities(token,members.map(m=>m.id)).then(value=>{if(!gone)setPresence(value);}).catch(()=>{});};load();const t=setInterval(load,40000);return()=>{gone=true;clearInterval(t);};},[token,membersOpen,members]);
  async function send(e:FormEvent){
  e.preventDefault();
@@ -412,7 +434,7 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
  const filtered=members.filter(p=>(p.display_name+' '+p.username).toLowerCase().includes(memberSearch.toLowerCase()));
  return <section className="group-view">
  <header className="conversation-header"><button type="button" className="back-button" onClick={onBack} aria-label="Назад">‹</button>
- <button type="button" className="conversation-heading group-member-trigger" onClick={()=>setMembersOpen(true)} aria-label="Показать участников группы"><strong>{group.title}</strong><small>{members.length} участников · нажми, чтобы посмотреть</small></button>
+ <button type="button" className="conversation-heading group-member-trigger" onClick={event=>{membersTriggerRef.current=event.currentTarget;setMembersOpen(true);}} aria-label="Показать участников группы"><strong>{group.title}</strong><small>{members.length} участников · нажми, чтобы посмотреть</small></button>
  <button type="button" className="ik-group-search-trigger" aria-label="Поиск сообщений в группе"
   aria-expanded={searchOpen} onClick={()=>searchOpen?closeSearch():setSearchOpen(true)}>
   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
@@ -505,9 +527,9 @@ export default function GroupPanel({token,userId,group,onBack,onShowProfile,onDr
  {retryAvailable&&online&&draft.trim()&&<button type="button" onClick={()=>composerFormRef.current?.requestSubmit()} disabled={busy}>Повторить отправку</button>}
  </div>}
  {membersOpen&&<div className="ik-members-backdrop" role="dialog" aria-modal="true" aria-label="Участники группы">
- <div className="ik-members-modal"><div className="ik-members-header"><div><strong>{group.title}</strong><small>{members.length} участников</small></div><button type="button" onClick={()=>setMembersOpen(false)} aria-label="Закрыть список участников">✕</button></div>
- <input className="ik-members-search" aria-label="Найти участника" placeholder="Поиск участников" value={memberSearch} onChange={e=>setMemberSearch(e.target.value)}/>
- <div className="ik-members-list">{filtered.map(p=><button type="button" key={p.id} className="ik-member-row" onClick={()=>{setMembersOpen(false);onShowProfile(p.id);}}>
+ <div className="ik-members-modal" ref={membersDialogRef} tabIndex={-1} onKeyDown={handleMembersDialogKeyDown}><div className="ik-members-header"><div><strong>{group.title}</strong><small>{members.length} участников</small></div><button type="button" onClick={()=>setMembersOpen(false)} aria-label="Закрыть список участников">✕</button></div>
+ <input ref={membersSearchRef} className="ik-members-search" aria-label="Найти участника" placeholder="Поиск участников" value={memberSearch} onChange={e=>setMemberSearch(e.target.value)}/>
+ <div className="ik-members-list">{filtered.map(p=><button type="button" key={p.id} className="ik-member-row" onClick={()=>{membersTriggerRef.current=null;setMembersOpen(false);onShowProfile(p.id);}}>
  <span className="ik-member-avatar">{imageUrl(p.avatar_path)?<img src={imageUrl(p.avatar_path)||''} alt=""/>:(p.display_name||p.username).slice(0,1).toUpperCase()}</span>
  <span className="ik-member-info"><strong><span className="ik-name-with-status"><span>{p.display_name||p.username}</span><StatusEmoji index={p.status_emoji} decorative/></span>{p.id===group.owner_id&&<span className="ik-member-owner">Администратор</span>}</strong><small>{activityLabel(presence[p.id])}</small></span><span className="ik-member-arrow">›</span>
  </button>)}
