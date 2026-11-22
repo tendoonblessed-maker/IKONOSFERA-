@@ -3,8 +3,8 @@ import {test} from 'node:test';
 import {readFileSync} from 'node:fs';
 import {
  chooseVoiceMimeType,createVoiceFile,createVoiceRecorderOptions,elapsedVoiceSeconds,
- formatVoiceTime,getVoiceClockNow,resolveVoiceMimeType,
- VOICE_RECORD_MAX_MS,VOICE_RECORD_MAX_BYTES,VOICE_MIME_CANDIDATES
+ formatVoiceTime,getVoiceClockNow,hasUnavailableVoiceTrack,resolveVoiceMimeType,
+ VOICE_RECORD_MAX_MS,VOICE_RECORD_MAX_BYTES,VOICE_MIME_CANDIDATES,VOICE_TRACK_MUTE_GRACE_MS
 } from '../lib/voice-notes.ts';
 const load=path=>readFileSync(new URL('../'+path,import.meta.url),'utf8');
 
@@ -43,6 +43,32 @@ test('elapsed voice recording time is monotonic, non-negative and capped at the 
  assert.match(ui,/startedAt:getVoiceClockNow\(\)/);
  assert.match(ui,/elapsedVoiceSeconds\(capture\.startedAt,getVoiceClockNow\(\)\)/);
  assert.doesNotMatch(ui,/Date\.now\(\)-capture\.startedAt/);
+});
+
+test('voice track availability rejects muted, ended and missing microphone tracks',()=>{
+ assert.equal(hasUnavailableVoiceTrack([{muted:false,readyState:'live'}]),false);
+ assert.equal(hasUnavailableVoiceTrack([{muted:true,readyState:'live'}]),true);
+ assert.equal(hasUnavailableVoiceTrack([{muted:false,readyState:'ended'}]),true);
+ assert.equal(hasUnavailableVoiceTrack([{muted:false,readyState:'live'},{muted:true,readyState:'live'}]),true);
+ assert.equal(hasUnavailableVoiceTrack([]),true);
+ assert.equal(VOICE_TRACK_MUTE_GRACE_MS,2000);
+});
+
+test('voice recorder cancels sustained mute and ended-track interruptions without previewing partial audio',()=>{
+ const ui=load('components/VoiceRecorder.tsx');
+ assert.match(ui,/track\.addEventListener\('mute',onMute\)/);
+ assert.match(ui,/track\.addEventListener\('unmute',onUnmute\)/);
+ assert.match(ui,/track\.addEventListener\('ended',onEnded\)/);
+ assert.match(ui,/track\.removeEventListener\('mute',onMute\)/);
+ assert.match(ui,/track\.removeEventListener\('unmute',onUnmute\)/);
+ assert.match(ui,/track\.removeEventListener\('ended',onEnded\)/);
+ assert.match(ui,/capture\.muteGrace=window\.setTimeout/);
+ assert.match(ui,/window\.clearTimeout\(capture\.muteGrace\)/);
+ assert.match(ui,/hasUnavailableVoiceTrack\(capture\.stream\.getAudioTracks\(\)\)/);
+ assert.match(ui,/if\(!capture\.stopRequested\)\{/);
+ assert.match(ui,/Запись прервана браузером или системным аудиособытием/);
+ assert.match(ui,/capture\.stopRequested=true/);
+ assert.match(ui,/removeCaptureTrackListeners\(capture\)/);
 });
 
 test('recorded audio normalizes codec parameters to strict private Storage MIME',()=>{
