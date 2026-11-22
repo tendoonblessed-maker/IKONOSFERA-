@@ -69,6 +69,11 @@ test('text and attachment handlers use the gate and chat-scoped busy state',()=>
  assert.match(source,/directSendBusyFor\(ownerId:string,chatId:string\)/);
  assert.match(source,/const directSendBusy=Boolean\(selected&&userId&&directSendBusyFor\(userId,selected\)\)/);
  assert.match(source,/disabled=\{directSendBusy\|\|activePartnerBlocked\|\|!networkOnline\}/);
+ assert.match(source,/<VoiceRecorder key=\{userId\+':'+selected\} disabled=\{directSendBusy\|\|activePartnerBlocked\|\|Boolean\(pendingAttachment\)\}/);
+ assert.match(source,/if\(draft\.trim\(\)&&!directSendBusy\)e\.currentTarget\.form\?\.requestSubmit\(\)/);
+ assert.match(source,/disabled=\{!draft\.trim\(\)\|\|directSendBusy\|\|activePartnerBlocked\|\|!networkOnline\}/);
+ assert.match(source,/onDragEnter=\{?event/);
+ assert.match(source,/if\(!canPrepareAttachment\|\|directSendBusy\)return/);
  assert.match(source,/sending=\{directSendBusy\} online=\{networkOnline\}/);
  for(const [name,block,networkCall] of [
   ['text',textSend,'await postMessage('],
