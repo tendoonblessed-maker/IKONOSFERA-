@@ -41,3 +41,13 @@ test('group composer connectivity state is refreshed and cleaned up on BFCache p
   assert.match(effect[0], /window\.addEventListener\('pageshow',update\)/);
   assert.match(effect[0], /window\.removeEventListener\('pageshow',update\)/);
 });
+
+test('AppShell connectivity hint rechecks navigator.onLine on BFCache pageshow and cleans up', () => {
+  const source = load('components/AppShell.tsx');
+  const effect = source.match(/\/\/ Browser online\/offline[\\s\\S]*?return\(\)=>\{[\\s\\S]*?\};\\s*\},\[\]\);/);
+  assert.ok(effect, 'connectivity effect should remain mount-scoped');
+  assert.match(effect[0], /const connected=navigator\.onLine/);
+  assert.match(effect[0], /window\.addEventListener\('pageshow',update\)/);
+  assert.match(effect[0], /window\.removeEventListener\('pageshow',update\)/);
+  assert.match(effect[0], /if\(connected\)setError\(/);
+});
