@@ -1,6 +1,8 @@
 /** Browser-native voice recordings: no new codec dependency or server API. */
 export const VOICE_RECORD_MAX_MS=120_000;
 export const VOICE_RECORD_MAX_BYTES=25*1024*1024;
+/** A short mute grace avoids cancelling on a transient device hand-off. */
+export const VOICE_TRACK_MUTE_GRACE_MS=2_000;
 
 export const VOICE_MIME_CANDIDATES=[
  'audio/mp4','audio/webm;codecs=opus','audio/webm','audio/ogg;codecs=opus','audio/ogg'
@@ -13,6 +15,10 @@ const EXTENSIONS:Record<string,string>={
 
 export function chooseVoiceMimeType(supported:(type:string)=>boolean):string|null{
  return VOICE_MIME_CANDIDATES.find(type=>supported(type))??null;
+}
+/** True when no live, unmuted audio track can currently feed the recorder. */
+export function hasUnavailableVoiceTrack(tracks:Array<{muted:boolean;readyState:string}>):boolean{
+ return tracks.length===0||tracks.some(track=>track.muted||track.readyState!=='live');
 }
 /** Use a monotonic clock for elapsed capture time, with a legacy fallback. */
 export function getVoiceClockNow():number{
