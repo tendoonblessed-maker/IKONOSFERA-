@@ -13,12 +13,44 @@ async function request<T>(
 export async function createGroup(token:string,title:string,ids:string[]){return request<string>(token,'/rest/v1/rpc/create_group_chat','POST',{p_title:title,p_members:ids});}
 export async function listGroups(token:string){return request<Group[]>(token,'/rest/v1/group_chats?select=*&order=created_at.desc&limit=100');}
 export async function groupMembers(token:string,id:string){return request<{group_id:string;user_id:string}[]>(token,'/rest/v1/group_members?select=group_id,user_id&group_id=eq.'+encodeURIComponent(id));}
+
+const UUID=/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
+const GROUP_MESSAGE_TIMESTAMP=/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?(?:Z|[+-]\d{2}:\d{2})$/;
+export const GROUP_LATEST_PAGE_SIZE=150;
+
+/** Validate the newest group snapshot before it reaches rendering or read tracking. */
+export function normalizeGroupMessagePage(data:unknown,groupId:string):GroupMessage[]{
+ if(!UUID.test(groupId)||!Array.isArray(data)||data.length>GROUP_LATEST_PAGE_SIZE)
+  throw Error('Некорректные данные истории группы.');
+ const rows:GroupMessage[]=[];
+ const seen=new Set<string>();
+ for(const value of data){
+  if(!value||typeof value!=='object'||Array.isArray(value))
+   throw Error('Некорректные данные истории группы.');
+  const row=value as Record<string,unknown>;
+  if(typeof row.id!=='string'||!UUID.test(row.id)
+   ||typeof row.group_id!=='string'||row.group_id!==groupId
+   ||typeof row.sender_id!=='string'||!UUID.test(row.sender_id)
+   ||typeof row.body!=='string'
+   ||typeof row.created_at!=='string'||!GROUP_MESSAGE_TIMESTAMP.test(row.created_at)
+   ||!Number.isFinite(Date.parse(row.created_at)))
+   throw Error('Некорректные данные истории группы.');
+  const messageId=row.id.toLowerCase();
+  if(seen.has(messageId))throw Error('Некорректные данные истории группы.');
+  seen.add(messageId);
+  rows.push(value as GroupMessage);
+ }
+ return rows;
+}
+
 export async function groupMessages(token:string,id:string){
- // Fetch the newest page, then display it chronologically.
- const latest=await request<GroupMessage[]>(token,'/rest/v1/group_messages?select=*&group_id=eq.'+encodeURIComponent(id)+'&order=created_at.desc,id.desc&limit=150');
+ // Fetch and validate the newest page before displaying it chronologically.
+ const latest=normalizeGroupMessagePage(
+  await request<unknown>(token,'/rest/v1/group_messages?select=*&group_id=eq.'+encodeURIComponent(id)+'&order=created_at.desc,id.desc&limit=150'),
+  id
+ );
  return latest.reverse();
 }
-const UUID=/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
 function assertGroupMessage(row:GroupMessage|undefined,groupId:string,userId:string,body:string,messageId:string):GroupMessage{
  if(!row||row.id!==messageId||row.group_id!==groupId||row.sender_id!==userId||row.body!==body)
   throw Error('Не удалось подтвердить отправку именно этого сообщения.');
