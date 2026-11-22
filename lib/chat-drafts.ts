@@ -15,6 +15,33 @@ function store():Storage|null{
   catch{return null;} // Safari private mode and disabled storage must work.
 }
 function key(userId:string){return PREFIX+userId;}
+
+/** Truncate on grapheme boundaries without exceeding the UTF-16 storage cap.
+ * Older browsers fall back to code-point boundaries, which still avoid splitting
+ * surrogate pairs when Intl.Segmenter is unavailable.
+ */
+export function truncateChatDraft(text:string,maxCodeUnits=MAX_TEXT):string{
+  if(!Number.isFinite(maxCodeUnits)||maxCodeUnits<=0)return '';
+  const limit=Math.floor(maxCodeUnits);
+  if(text.length<=limit)return text;
+  const Segmenter=Intl.Segmenter;
+  if(typeof Segmenter==='function'){
+    let result='';
+    const segmenter=new Segmenter(undefined,{granularity:'grapheme'});
+    for(const {segment} of segmenter.segment(text)){
+      if(result.length+segment.length>limit)break;
+      result+=segment;
+    }
+    return result;
+  }
+  let result='';
+  for(const character of text){
+    if(result.length+character.length>limit)break;
+    result+=character;
+  }
+  return result;
+}
+
 /** Keep the most recently edited valid drafts when the storage cap is reached.
  * Object insertion order records edits: writers move changed IDs to the end.
  * Invalid/blank entries must not consume one of the 48 slots.
@@ -24,7 +51,7 @@ export function cleanChatDrafts(input:unknown):ChatDrafts{
   const recent=new Map<string,string>();
   for(const [chatId,text] of Object.entries(input)){
     if(!UUID.test(chatId)||typeof text!=='string')continue;
-    const limited=text.slice(0,MAX_TEXT);
+    const limited=truncateChatDraft(text);
     if(!limited.trim())continue;
     recent.set(chatId,limited);
     if(recent.size>MAX_CHATS){
@@ -40,7 +67,8 @@ export function updateChatDraftEntry(drafts:ChatDrafts,chatId:string,text:string
   const next=cleanChatDrafts(drafts);
   if(!UUID.test(chatId))return next;
   delete next[chatId];
-  if(text.trim())next[chatId]=text.slice(0,MAX_TEXT);
+  const limited=truncateChatDraft(text);
+  if(limited.trim())next[chatId]=limited;
   return cleanChatDrafts(next);
 }
 export function readChatDrafts(userId:string):ChatDrafts{
