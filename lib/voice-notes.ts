@@ -14,6 +14,16 @@ const EXTENSIONS:Record<string,string>={
 export function chooseVoiceMimeType(supported:(type:string)=>boolean):string|null{
  return VOICE_MIME_CANDIDATES.find(type=>supported(type))??null;
 }
+/** Use the browser-selected codec when MIME probing is unavailable. */
+export function createVoiceRecorderOptions(mime:string|null):{mimeType?:string;audioBitsPerSecond:number}{
+ const options:{mimeType?:string;audioBitsPerSecond:number}={audioBitsPerSecond:64000};
+ if(mime)options.mimeType=mime;
+ return options;
+}
+/** Resolve the actual recorded format before validating/normalizing the file. */
+export function resolveVoiceMimeType(reportedMime:string,chunks:Blob[],requestedMime:string|null):string{
+ return reportedMime||chunks.find(chunk=>chunk.type)?.type||requestedMime||'';
+}
 export function formatVoiceTime(elapsedSeconds:number):string{
  const time=Math.max(0,Math.floor(Number.isFinite(elapsedSeconds)?elapsedSeconds:0));
  return Math.floor(time/60).toString().padStart(2,'0')+':'
