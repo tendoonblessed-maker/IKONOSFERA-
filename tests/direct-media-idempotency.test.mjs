@@ -351,3 +351,34 @@ test('direct media upload, signed URL and message send work without AbortSignal.
  assert.ok(calls.every(call=>typeof call.options.signal.addEventListener==='function'));
  assert.doesNotMatch(readFileSync(new URL('../lib/supabase-rest.ts',import.meta.url),'utf8'),/AbortSignal\.(?:timeout|any)/);
 });
+
+
+test('a stale failed signing request cannot evict a replacement in-flight URL',async()=>{
+ const path=CHAT+'/'+OWNER+'/'+ATTEMPT+'.png';
+ let rejectFirst,resolveSecond,signCalls=0;
+ const {api}=loadSupabase((url)=>{
+  if(url.includes('/storage/v1/object/sign/')){
+   signCalls++;
+   if(signCalls===1)return new Promise((_,reject)=>{rejectFirst=reject;});
+   if(signCalls===2)return new Promise(resolve=>{resolveSecond=resolve;});
+   throw Error('Unexpected extra signing request');
+  }
+  throw Error('Unexpected request '+url);
+ });
+ const first=api.getDirectMediaUrl('jwt',path);
+ assert.equal(signCalls,1);
+ api.invalidateDirectMediaUrl('jwt',path);
+ const second=api.getDirectMediaUrl('jwt',path);
+ assert.equal(signCalls,2);
+ rejectFirst(Error('stale signing request failed'));
+ await assert.rejects(first,/stale signing request failed/);
+ await new Promise(resolve=>setTimeout(resolve,0));
+ const third=api.getDirectMediaUrl('jwt',path);
+ assert.equal(signCalls,2,'the replacement request remains cached');
+ const expected=BASE+'/storage/v1/object/sign/ikonosfera-direct-media/'+path+'?token=fresh';
+ resolveSecond(ok({signedURL:'/object/sign/ikonosfera-direct-media/'+path+'?token=fresh'}));
+ const [secondUrl,thirdUrl]=await Promise.all([second,third]);
+ assert.equal(secondUrl,expected);
+ assert.equal(thirdUrl,expected);
+ assert.equal(signCalls,2);
+});
