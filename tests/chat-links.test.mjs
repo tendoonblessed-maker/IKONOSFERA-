@@ -65,8 +65,8 @@ test('embedded domain fragments, email addresses, credentials and malformed URLs
 });
 
 test('URLs in multiple lines are independent with no global-regex state leak',()=>{
- const a='https://first.example';
- const b='https://second.example';
+ const a='https://first.example.com';
+ const b='https://second.example.com';
  assert.equal(links(a).length,1);
  assert.equal(links(b).length,1);
  assert.equal(links(a).length,1);
