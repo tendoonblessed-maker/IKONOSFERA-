@@ -33,3 +33,11 @@ test('direct and group chat panels register and clean up BFCache resync listener
     assert.match(source, /window\.removeEventListener\('pageshow',onPageShow\)/);
   }
 });
+
+test('group composer connectivity state is refreshed and cleaned up on BFCache pageshow', () => {
+  const source = load('components/GroupPanel.tsx');
+  const effect = source.match(/const update=\(\)=>setOnline\(navigator\.onLine\);[\s\S]*?\},\[\]\);/);
+  assert.ok(effect, 'group connectivity effect should remain a mount-scoped lifecycle effect');
+  assert.match(effect[0], /window\.addEventListener\('pageshow',update\)/);
+  assert.match(effect[0], /window\.removeEventListener\('pageshow',update\)/);
+});
