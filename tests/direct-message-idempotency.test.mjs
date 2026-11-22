@@ -140,6 +140,28 @@ test('shared attempt cleanup is serialized and allows a later intentional repeat
  assert.equal(second.api.readDirectTextAttempts(OWNER,CHAT).length,1);
 });
 
+test('shared storage removal wins over a stale tab-local cache after another tab confirms a send',async()=>{
+ const sharedStore=new Map(),locks=createLockManager();
+ const originatingTab=loadAttempts({sharedStore,locks});
+ const confirmingTab=loadAttempts({sharedStore,locks});
+ const original=await originatingTab.api.getOrCreateDirectTextAttempt(
+  OWNER,CHAT,'Confirmed in another tab',null,nextId
+ );
+ const shared=await confirmingTab.api.getOrCreateDirectTextAttempt(
+  OWNER,CHAT,'Confirmed in another tab',null,nextId
+ );
+ assert.equal(shared,original);
+ await confirmingTab.api.clearDirectTextAttempt(OWNER,CHAT,original);
+ assert.equal(sharedStore.size,0);
+
+ const intentionalRepeat=await originatingTab.api.getOrCreateDirectTextAttempt(
+  OWNER,CHAT,'Confirmed in another tab',null,nextId
+ );
+ assert.notEqual(intentionalRepeat,original,
+  'a missing shared registry entry must not be resurrected from this tab’s stale memory');
+ assert.equal(originatingTab.api.readDirectTextAttempts(OWNER,CHAT).length,1);
+});
+
 test('without Web Locks, direct-message attempts remain tab-local',async()=>{
  const sharedStore=new Map();
  const first=loadAttempts({sharedStore});
